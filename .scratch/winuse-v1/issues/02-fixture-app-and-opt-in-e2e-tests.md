@@ -4,10 +4,10 @@
 
 **Blocked by:** 01 — Background helper + list windows
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Fixture app builds and exposes the listed Elements with stable names and AutomationIds
-- [ ] Fixture can report its end state (text field contents, checkbox state, last button pressed, canvas clicks) for assertions
-- [ ] End-to-end tests are skipped unless the user explicitly opts in (e.g. an environment variable)
-- [ ] Agents must not enable the opt-in; this rule is stated in the test runner's documentation
+- [x] Fixture app builds and exposes the listed Elements with stable names and AutomationIds
+- [x] Fixture can report its end state (text field contents, checkbox state, last button pressed, canvas clicks) for assertions
+- [x] End-to-end tests are skipped unless the user explicitly opts in (e.g. an environment variable)
+- [x] Agents must not enable the opt-in; this rule is stated in the test runner's documentation
 - [ ] First end-to-end test: `list-windows` lists the fixture Window (verified by user run)
