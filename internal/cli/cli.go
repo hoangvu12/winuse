@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
@@ -48,7 +49,7 @@ func listWindowsCmd(args []string) int {
 		return 2
 	}
 	if err := runSimple("list-windows"); err != nil {
-		fmt.Fprintf(os.Stderr, "winuse: %v\n", err)
+		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}
 	return 0
@@ -76,36 +77,57 @@ func runSimple(cmd string) error {
 	return finish(resp)
 }
 
-// finish prints a response and derives the exit code from it.
+// finish turns a response into an error carrying the exit code the CLI
+// should use; helper-reported failures keep their exact message text.
 func finish(resp *protocol.Response) error {
 	if resp.OK {
 		os.Stdout.WriteString(resp.Out)
 		return nil
 	}
-	err := fmt.Errorf("%s", resp.Err)
-	if resp.Hint != "" {
-		err = fmt.Errorf("%s\nhint: %s", resp.Err, resp.Hint)
+	code := resp.Exit
+	if code == 0 {
+		code = 1
 	}
-	if resp.Exit != 0 {
-		err = exitError{err: err, code: resp.Exit}
-	}
-	return err
+	return &exitError{msg: resp.Err, hint: resp.Hint, code: code}
 }
 
-// exitError carries a helper-suggested exit code (e.g. 130 for Esc stops).
+// exitError is a failure whose message is already the user-facing line,
+// with a helper-suggested exit code (e.g. 130 for Esc stops).
 type exitError struct {
-	err  error
+	msg  string
+	hint string
 	code int
 }
 
-func (e exitError) Error() string { return e.err.Error() }
-func (e exitError) Unwrap() error { return e.err }
+func (e *exitError) Error() string { return e.msg }
 
-// ExitCode extracts a helper-suggested process exit code from an error.
+// ExitCode extracts the process exit code an error prescribes (default 1).
 func ExitCode(err error) int {
-	var ee exitError
+	var ee *exitError
 	if errors.As(err, &ee) {
 		return ee.code
 	}
 	return 1
+}
+
+// reportError prints a failure, Codex-style: one line, then an optional
+// hint line. Helper-reported messages and request timeouts are printed
+// verbatim (their text is the decided user-facing style, e.g. "winuse
+// request timed out: <command>"); purely local failures get a "winuse: "
+// prefix so no failure line is ever bare.
+func reportError(w io.Writer, err error) {
+	var timeout *TimeoutError
+	if errors.As(err, &timeout) {
+		fmt.Fprintln(w, timeout)
+		return
+	}
+	var ee *exitError
+	if errors.As(err, &ee) {
+		fmt.Fprintln(w, ee.msg)
+		if ee.hint != "" {
+			fmt.Fprintf(w, "hint: %s\n", ee.hint)
+		}
+		return
+	}
+	fmt.Fprintf(w, "winuse: %v\n", err)
 }

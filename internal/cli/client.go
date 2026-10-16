@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strings"
 	"syscall"
 	"time"
@@ -46,6 +47,12 @@ type Client struct {
 
 // ErrNoHelper is embedded in dial errors when no helper is running.
 var ErrNoHelper = errors.New("helper is not running")
+
+// TimeoutError reports a request that exceeded its time budget, in the
+// decided style: "winuse request timed out: <command>".
+type TimeoutError struct{ Cmd string }
+
+func (e *TimeoutError) Error() string { return "winuse request timed out: " + e.Cmd }
 
 // DefaultClient builds a client wired to the real pipe and spawner.
 func DefaultClient() (*Client, error) {
@@ -175,13 +182,25 @@ func (c *Client) roundTrip(conn net.Conn, req *protocol.Request) (*protocol.Resp
 		return nil, err
 	}
 	if err := protocol.WriteLine(conn, req); err != nil {
+		if isDeadline(err) {
+			return nil, &TimeoutError{Cmd: req.Cmd}
+		}
 		return nil, fmt.Errorf("sending request: %w", err)
 	}
 	var resp protocol.Response
 	if err := readResponse(conn, &resp); err != nil {
+		if isDeadline(err) {
+			return nil, &TimeoutError{Cmd: req.Cmd}
+		}
 		return nil, fmt.Errorf("reading response: %w", err)
 	}
 	return &resp, nil
+}
+
+// isDeadline reports whether an error came from a connection or context
+// deadline (the client's copy of the request-timeout policy).
+func isDeadline(err error) bool {
+	return errors.Is(err, os.ErrDeadlineExceeded) || errors.Is(err, context.DeadlineExceeded)
 }
 
 // isConnDropped reports whether an exchange error means the helper vanished

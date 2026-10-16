@@ -72,7 +72,6 @@ func call(client net.Conn, req *protocol.Request) (*protocol.Response, error) {
 func testRequest(cmd string) *protocol.Request {
 	return &protocol.Request{V: protocol.Version, Ver: "0.1.0", Cmd: cmd}
 }
-
 func echoCommand(out string) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		return out, nil
@@ -249,6 +248,65 @@ func TestServeActivityPushesIdleOut(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("helper should have exited by now (post-test idle)")
+	}
+}
+
+// TestServeRequestTimeout covers the decided timeout style centrally: a
+// command that fails after its budget expires answers "winuse request
+// timed out: <command>".
+func TestServeRequestTimeout(t *testing.T) {
+	s := New("0.1.0", time.Hour, 100*time.Millisecond, map[string]Command{
+		"slow": func(ctx context.Context, args json.RawMessage) (string, *Error) {
+			<-ctx.Done()
+			return "", Fail("interrupted", "")
+		},
+	}, discardLogger())
+	ln := newFakeListener()
+	defer ln.Close()
+	done := make(chan error, 1)
+	go func() { done <- s.Serve(ln) }()
+
+	client := ln.push()
+	client.SetDeadline(time.Now().Add(5 * time.Second))
+	resp, err := call(client, testRequest("slow"))
+	if err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	if resp.OK || resp.Err != "winuse request timed out: slow" || resp.Exit != 1 {
+		t.Fatalf("want the decided timeout message, got %+v", resp)
+	}
+	s.Shutdown()
+	if err := <-done; err != nil {
+		t.Fatalf("Serve returned %v", err)
+	}
+}
+
+// Partial output delivered past the budget is NOT overwritten by a timeout
+// (the partial-tree-with-note behaviour later tickets rely on).
+func TestServePartialOutputPastBudgetIsDelivered(t *testing.T) {
+	s := New("0.1.0", time.Hour, 80*time.Millisecond, map[string]Command{
+		"slow": func(ctx context.Context, args json.RawMessage) (string, *Error) {
+			<-ctx.Done()
+			return "partial tree\n(note: timed out)", nil
+		},
+	}, discardLogger())
+	ln := newFakeListener()
+	defer ln.Close()
+	done := make(chan error, 1)
+	go func() { done <- s.Serve(ln) }()
+
+	client := ln.push()
+	client.SetDeadline(time.Now().Add(5 * time.Second))
+	resp, err := call(client, testRequest("slow"))
+	if err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	if !resp.OK || resp.Out != "partial tree\n(note: timed out)" {
+		t.Fatalf("partial output must be delivered, got %+v", resp)
+	}
+	s.Shutdown()
+	if err := <-done; err != nil {
+		t.Fatalf("Serve returned %v", err)
 	}
 }
 

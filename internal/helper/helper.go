@@ -13,14 +13,14 @@ import (
 	"github.com/hoangvu12/winuse/internal/win"
 )
 
-// Defaults for the real helper. The idle timeout is the period without any
-// connection after which the helper exits by itself; the next command
-// restarts it transparently. Overridable with WINUSE_HELPER_IDLE (a Go
-// duration like "90s", or a plain number of seconds).
-const (
-	DefaultIdle = 2 * time.Minute
-	logMaxSize  = 1 << 20 // truncate the log once it passes 1 MiB
-)
+// Defaults for the real helper (orchestrator decision: idle exit is
+// 5 minutes of no requests). The next command restarts it transparently.
+// Overridable with WINUSE_HELPER_IDLE (a Go duration like "90s", or a
+// plain number of seconds).
+const DefaultIdle = 5 * time.Minute
+
+// logMaxSize truncates the log once it passes 1 MiB.
+const logMaxSize = 1 << 20
 
 // Main is the helper entry point (winuse __helper). It returns the process
 // exit code.

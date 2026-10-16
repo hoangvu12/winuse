@@ -57,9 +57,12 @@ go run github.com/tc-hib/go-winres@latest make --arch amd64,arm64 --out cmd/winu
   response text (see `internal/protocol`). Requests carry the binary
   version; a helper from a different build answers "stale" and exits so
   the CLI restarts a current one — upgrades never talk to an old helper.
-- The helper exits by itself after **2 minutes idle** (override with
-  `WINUSE_HELPER_IDLE`, a duration like `90s`); the next command restarts
-  it transparently.
+- The helper exits by itself after **5 minutes without requests**
+  (orchestrator decision; override with `WINUSE_HELPER_IDLE`, a duration
+  like `90s`); the next command restarts it transparently.
+- Requests time out after **10 s** (15 s for launch-app once that command
+  exists) and report `winuse request timed out: <command>`;
+  Esc stops exit with code 130 (reserved in the protocol now).
 - Helper logs go to `%LOCALAPPDATA%\winuse\helper.log` (its stderr is NUL).
 - The process is **per-monitor DPI aware v2** (manifest + runtime call) so
   every coordinate is physical pixels from the start.

@@ -177,6 +177,14 @@ func (s *Server) handle(req *protocol.Request) protocol.Response {
 	ctx, cancel := context.WithTimeout(context.Background(), s.requestTimeout)
 	defer cancel()
 	out, cmdErr := cmd(ctx, req.Args)
+	// Timeout policy (orchestrator decision): a command that failed or
+	// produced nothing while its budget expired is reported centrally as
+	// "winuse request timed out: <command>". A command that returned
+	// partial output past its budget delivers that output — the
+	// partial-result-with-note behaviour later tickets rely on.
+	if ctx.Err() != nil && (cmdErr != nil || out == "") {
+		return timeoutResponse(req.Cmd)
+	}
 	if cmdErr != nil {
 		resp := protocol.Errorf(cmdErr.Exit, "%s", cmdErr.Msg)
 		resp.Hint = cmdErr.Hint
@@ -186,4 +194,9 @@ func (s *Server) handle(req *protocol.Request) protocol.Response {
 		return resp
 	}
 	return protocol.OKf(out)
+}
+
+// timeoutResponse builds the request-timeout failure in the decided style.
+func timeoutResponse(command string) protocol.Response {
+	return protocol.Response{OK: false, Err: "winuse request timed out: " + command, Exit: 1}
 }
