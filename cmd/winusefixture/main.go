@@ -1,0 +1,31 @@
+// Command winusefixture is the winuse end-to-end test fixture app: a
+// purpose-built Windows app whose Elements are known in advance so the
+// seam-1 tests in test/e2e can drive the real winuse binary against
+// deterministic UI.
+//
+// The Element contract (names, AutomationIds, roles, patterns, behaviour)
+// lives in internal/fixture/elements.go — the single source of truth. The
+// app reports its end state as JSON to the file given by -state.
+//
+// It is a plain GUI app: it takes over the desktop when run. It is never
+// run by agents; only the user starts it (directly, or through the opt-in
+// end-to-end tests).
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+
+	"github.com/hoangvu12/winuse/internal/fixture"
+)
+
+func main() {
+	state := flag.String("state", "", "path of the JSON state file to keep updated (required)")
+	flag.Parse()
+	if *state == "" {
+		fmt.Fprintln(os.Stderr, "usage: winusefixture -state <path>")
+		os.Exit(2)
+	}
+	os.Exit(fixture.Main(*state))
+}
