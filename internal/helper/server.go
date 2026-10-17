@@ -215,7 +215,7 @@ func (s *Server) handle(req *protocol.Request) protocol.Response {
 		}
 		return resp
 	}
-	return protocol.OKf(out)
+	return protocol.OK(out)
 }
 
 // timeoutResponse builds the request-timeout failure in the decided style.

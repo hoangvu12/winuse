@@ -82,7 +82,7 @@ func TestListenDialRoundTrip(t *testing.T) {
 			done <- err
 			return
 		}
-		resp := protocol.OKf("pong:" + req.Cmd)
+		resp := protocol.OK("pong:" + req.Cmd)
 		done <- protocol.WriteLine(conn, &resp)
 	}()
 

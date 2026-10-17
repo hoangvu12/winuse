@@ -132,20 +132,19 @@ func TestConstants(t *testing.T) {
 	}
 }
 
-func TestTimeoutFor(t *testing.T) {
-	// The decided budgets: 10 s per request, 15 s for launch-app, 60 s for
-	// a batch of Actions (winuse's own bound; Codex has no batch).
-	if got := TimeoutFor("list-windows"); got != RequestTimeout {
-		t.Errorf("TimeoutFor(list-windows) = %s, want the default %s", got, RequestTimeout)
+func TestCommandTimeout(t *testing.T) {
+	// The decided budgets: 10 s per request (the default), 15 s for
+	// launch-app, 60 s for a batch of Actions (winuse's own bound; Codex
+	// has no batch). CommandTimeout is the one helper: it reports only the
+	// explicit entries, and callers compose it with RequestTimeout.
+	if _, ok := CommandTimeout("list-windows"); ok {
+		t.Error("CommandTimeout(list-windows) must not have an explicit entry")
 	}
-	if got := TimeoutFor("launch-app"); got != LaunchTimeout {
-		t.Errorf("TimeoutFor(launch-app) = %s, want %s", got, LaunchTimeout)
+	if d, ok := CommandTimeout("launch-app"); !ok || d != LaunchTimeout {
+		t.Errorf("CommandTimeout(launch-app) = %s, %v; want %s", d, ok, LaunchTimeout)
 	}
-	if got := TimeoutFor("batch"); got != BatchTimeout {
-		t.Errorf("TimeoutFor(batch) = %s, want %s", got, BatchTimeout)
-	}
-	if got := TimeoutFor("unknown-command"); got != RequestTimeout {
-		t.Errorf("TimeoutFor(unknown) = %s, want the default %s", got, RequestTimeout)
+	if d, ok := CommandTimeout("batch"); !ok || d != BatchTimeout {
+		t.Errorf("CommandTimeout(batch) = %s, %v; want %s", d, ok, BatchTimeout)
 	}
 	if LaunchTimeout != 15*time.Second {
 		t.Errorf("launch-app budget must be 15s (Codex), got %s", LaunchTimeout)

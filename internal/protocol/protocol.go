@@ -51,19 +51,11 @@ var commandTimeouts = map[string]time.Duration{
 	"batch":      BatchTimeout,
 }
 
-// TimeoutFor returns the request budget for a command (RequestTimeout for
-// everything without an explicit entry, e.g. launch-app's 15 s). The CLI
-// uses this for its deadlines; the helper starts from its own configured
-// requestTimeout and only explicit entries (CommandTimeout) override it.
-func TimeoutFor(cmd string) time.Duration {
-	if d, ok := commandTimeouts[cmd]; ok {
-		return d
-	}
-	return RequestTimeout
-}
-
 // CommandTimeout returns a command's explicitly configured budget, if it
-// has one (launch-app: 15 s).
+// has one (launch-app: 15 s, batch: 60 s). It is the one timeout helper
+// (finding 17): the CLI composes it with RequestTimeout for its
+// connection deadlines, and the helper overrides its configured default
+// with the explicit entries only.
 func CommandTimeout(cmd string) (time.Duration, bool) {
 	d, ok := commandTimeouts[cmd]
 	return d, ok
@@ -290,7 +282,7 @@ func Errorf(exit int, format string, args ...any) Response {
 	return Response{OK: false, Err: fmt.Sprintf(format, args...), Exit: exit}
 }
 
-// OKf formats a success response carrying text for stdout.
-func OKf(out string) Response {
+// OK formats a success response carrying text for stdout.
+func OK(out string) Response {
 	return Response{OK: true, Out: out}
 }
