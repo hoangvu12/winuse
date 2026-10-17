@@ -80,6 +80,7 @@ This discipline is what makes computer use reliable; follow it strictly:
 
 ```
 winuse list-windows                  # one line per Window: <Window ID>  <App>  <title>
+winuse get-window <window>           # one Window's line, re-resolved by ID or App name
 winuse list-apps                     # running and recent Apps, with their Windows
 winuse launch-app <name|exe path>    # start an App; prints the Window it opened
 ```
@@ -89,6 +90,9 @@ winuse launch-app <name|exe path>    # start an App; prints the Window it opened
   lists the candidates — pick from them, never guess.
 - Never reconstruct a Window from remembered or guessed fields; always use
   what `list-windows`, `list-apps` or `launch-app` actually returned.
+- `get-window` re-resolves one Window — by Window ID or unambiguous App
+  name — and prints its one line: the cheap re-check after a helper
+  restart, or before acting on a Window that may have closed.
 - If the App you need has no Window yet, `launch-app` it (by name, by the
   catalog's launch identifier, or by exe path) and use the Window line it
   prints; if it reports none, re-list before concluding the launch failed.
@@ -260,6 +264,8 @@ Esc is the hard stop; beyond it, judgment is yours. The rules that matter:
 
 ```
 winuse list-windows                  list visible Windows: Window ID, App and title
+winuse get-window <window>           print one Window's line, resolved by Window ID or
+                                     an unambiguous App name
 winuse list-apps                     list running and recently used Apps, with their Windows
 winuse launch-app <name|exe path>    start an App by name or path; prints the Window it opened
 winuse get-window-state <window> [--screenshot]

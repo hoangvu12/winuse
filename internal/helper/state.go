@@ -113,6 +113,7 @@ func CommandsWith(s Services) map[string]Command {
 	store := &apps.StoreSource{Run: apps.GetStartApps}
 	cmds := map[string]Command{
 		"list-windows":             listWindows,
+		"get-window":               getWindow(s),
 		"get-window-state":         func(ctx context.Context, args json.RawMessage) (string, *Error) { return getWindowState(s, ctx, args) },
 		"record-tree":              func(ctx context.Context, args json.RawMessage) (string, *Error) { return recordTree(s, ctx, args) },
 		"zoom":                     zoom(s),

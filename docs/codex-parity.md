@@ -34,12 +34,14 @@ the executable's FileDescription, falling back to the exe base name.
 
 | Parameter | Codex | winuse | Status |
 |---|---|---|---|
-| `id` | rehydrate a currently open window by id after losing a binding | every command's `<window>` argument resolves a Window ID (or an App name with exactly one Window); `get-window-state` re-reads it | intentionally different |
-| `app` | disambiguate the window by app | the App-name form of `<window>`; several Windows of one App fail listing the candidates | intentionally different |
+| `id` | rehydrate a currently open window by id after losing a binding | `winuse get-window <window>` re-resolves a Window by ID and prints its line; every command's `<window>` argument also resolves Window IDs directly (a stable ID needs no binding) | matched |
+| `app` | disambiguate the window by app | the App-name form of `<window>`; several Windows of one App fail listing the candidates | matched |
 
 Codex needs a rehydrate call because its window bindings live in the
-JS REPL; winuse's Window ID is stable across CLI calls, so the step
-folds into every command. Ambiguity is an error in both, never a guess.
+JS REPL; winuse's Window ID is stable across CLI calls, so resolution
+folds into every command — and `get-window` covers Codex's step
+explicitly (re-resolve by ID or App name, print the one line). Ambiguity
+is an error in both, never a guess.
 
 ### list_apps
 

@@ -77,6 +77,13 @@ type Request struct {
 	Args json.RawMessage `json:"args,omitempty"` // command arguments, command-specific JSON
 }
 
+// GetWindowArgs are get-window's arguments: the Window to re-resolve and
+// print as one list-windows line — Codex's get_window "id"/"app" step
+// (winuse names the Window by Window ID or unambiguous App name).
+type GetWindowArgs struct {
+	Window string `json:"window"`
+}
+
 // LaunchArgs are launch-app's arguments: an App name from the catalog or
 // an explicit identifier (executable path, shortcut path, App User Model
 // ID) — Codex's launch_app "app" parameter.

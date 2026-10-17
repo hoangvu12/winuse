@@ -37,6 +37,26 @@ func listWindows(ctx context.Context, args json.RawMessage) (string, *Error) {
 	return win.FormatWindows(win.VisibleWindows(all)), nil
 }
 
+// getWindow answers `winuse get-window <window>`: the resolved Window as
+// the one list-windows line — Codex's get_window, the re-resolve step for
+// a binding that may have gone stale (a Window ID after a helper restart,
+// an App name after Windows opened or closed). Exactly one Window must
+// match, else the candidates error. It only reads window metadata: no
+// input, no activation.
+func getWindow(s Services) Command {
+	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
+		var a protocol.GetWindowArgs
+		if err := parseArgs(args, &a); err != nil {
+			return "", Fail("get-window: "+err.Error(), "usage: winuse get-window <window>")
+		}
+		w, rerr := resolveWindow(s, a.Window)
+		if rerr != nil {
+			return "", rerr
+		}
+		return win.FormatWindows([]win.WindowInfo{w}), nil
+	}
+}
+
 // listApps answers with the App catalog: one line per App (name, running
 // state, last used, use count, launch identifier) and one line per Window
 // of running Apps (see apps.FormatApps). It reads window metadata, the

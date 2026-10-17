@@ -564,6 +564,12 @@ As") are listed as their own Window of the same App. UWP windows are
 attributed to their real app process, and the App name is the executable's
 FileDescription, falling back to the exe base name.
 
+`winuse get-window <window>` re-resolves exactly one Window — by Window
+ID or an unambiguous App name — and prints its one line: Codex's
+`get_window` re-resolve step, the cheap re-check after a helper restart
+or before acting on a Window that may have closed. Ambiguity and misses
+fail exactly like every other `<window>` argument, with the candidates.
+
 `winuse list-apps` prints the App catalog — every running App with its
 Windows, then recently used Apps (from Explorer's UserAssist tracking,
 most recent first, at most 30) marked `not running`:

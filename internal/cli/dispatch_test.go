@@ -52,9 +52,36 @@ func TestMainUsageErrors(t *testing.T) {
 // TestUsageMentionsWindowStateCommands guards the command surface against
 // accidental removal from the help text.
 func TestUsageMentionsWindowStateCommands(t *testing.T) {
-	for _, cmd := range []string{"list-windows", "get-window-state", "record-tree"} {
+	for _, cmd := range []string{"list-windows", "get-window", "get-window-state", "record-tree"} {
 		if !strings.Contains(Usage, cmd) {
 			t.Errorf("usage text missing %q", cmd)
+		}
+	}
+}
+
+// TestGetWindowUsageErrors pins get-window's local validation: usage
+// failures exit 2 and never dial the helper.
+func TestGetWindowUsageErrors(t *testing.T) {
+	for _, args := range [][]string{{}, {"101", "extra"}} {
+		path := filepath.Join(t.TempDir(), "stderr")
+		f, err := os.Create(path)
+		if err != nil {
+			t.Fatalf("create stderr file: %v", err)
+		}
+		oldStderr, oldStdout := os.Stderr, os.Stdout
+		os.Stderr, os.Stdout = f, f
+		exit := Main(append([]string{"get-window"}, args...))
+		os.Stderr, os.Stdout = oldStderr, oldStdout
+		f.Close()
+		if exit != 2 {
+			t.Fatalf("get-window %v: exit = %d, want 2 (usage error)", args, exit)
+		}
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read stderr: %v", err)
+		}
+		if !strings.Contains(string(got), "usage: winuse get-window <window>") {
+			t.Errorf("get-window %v: stderr = %q, want the usage line", args, got)
 		}
 	}
 }

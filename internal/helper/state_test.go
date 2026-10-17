@@ -289,3 +289,43 @@ func TestTreeBudgetFromEnv(t *testing.T) {
 		}
 	}
 }
+
+func TestGetWindowPrintsOneListWindowsLine(t *testing.T) {
+	// By Window ID and by unambiguous App name: the one line, exactly as
+	// list-windows prints it (Codex's get_window re-resolve step).
+	for _, ref := range []string{"101", "notepad"} {
+		out, cmdErr := runCommand(t, CommandsWith(testServices(&fakeTrees{})), "get-window", windowRef{Window: ref})
+		if cmdErr != nil {
+			t.Fatalf("get-window %s: %v", ref, cmdErr.Error())
+		}
+		want := win.FormatWindows([]win.WindowInfo{fakeWindows()[0]})
+		if out != want {
+			t.Errorf("get-window %s output = %q, want %q", ref, out, want)
+		}
+	}
+}
+
+func TestGetWindowFailuresShareTheResolveRules(t *testing.T) {
+	// Ambiguity lists the candidates; a missing Window points at
+	// list-windows; the argument is required.
+	cases := []struct {
+		ref     string
+		wantMsg string
+	}{
+		{"Chrome", `app "Chrome" has 2 open Windows`},
+		{"404", "no open Window with ID 404"},
+		{"", "a window reference is required"},
+	}
+	for _, tc := range cases {
+		_, cmdErr := runCommand(t, CommandsWith(testServices(&fakeTrees{})), "get-window", windowRef{Window: tc.ref})
+		if cmdErr == nil || !strings.Contains(cmdErr.Error(), tc.wantMsg) {
+			t.Fatalf("get-window %q: %v, want it to contain %q", tc.ref, cmdErr, tc.wantMsg)
+		}
+	}
+	// Malformed arguments (a non-string window) are refused.
+	cmds := CommandsWith(testServices(&fakeTrees{}))
+	_, cmdErr := cmds["get-window"](context.Background(), json.RawMessage(`{"window": 12}`))
+	if cmdErr == nil {
+		t.Fatal("malformed arguments must be refused")
+	}
+}

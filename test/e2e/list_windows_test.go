@@ -110,3 +110,46 @@ func TestHelperHasNoConsoleWindow(t *testing.T) {
 		}
 	}
 }
+
+// TestGetWindowPrintsTheResovedLine checks `winuse get-window <window>`:
+// the one list-windows line of the Window the listing reported, by ID and
+// by App name, with the ambiguity and unknown-Window failures.
+func TestGetWindowPrintsTheResovedLine(t *testing.T) {
+	optIn(t)
+	stdout, _, exit := runListWindows(t, "WINUSE_HELPER_IDLE="+e2eIdle)
+	if exit != 0 {
+		t.Fatalf("list-windows failed (exit %d)", exit)
+	}
+	lines := strings.Split(strings.TrimSuffix(stdout, "\n"), "\n")
+	fields := strings.Split(lines[0], "\t")
+	id, app := fields[0], fields[1]
+
+	want := lines[0] + "\n"
+	for _, tc := range []struct {
+		name string
+		ref  string
+	}{
+		{"by Window ID", id},
+		{"by App name", app},
+	} {
+		stdout, stderr, exit := runWinuse(t, []string{"get-window", tc.ref},
+			"WINUSE_HELPER_IDLE="+e2eIdle)
+		if exit != 0 {
+			t.Fatalf("get-window %s (%s): exit %d, stderr:\n%s", tc.name, tc.ref, exit, stderr)
+		}
+		if stdout != want {
+			t.Errorf("get-window %s (%s) = %q, want %q", tc.name, tc.ref, stdout, want)
+		}
+	}
+
+	// An unknown Window ID fails with the shared resolution error and a
+	// non-zero exit.
+	_, stderr, exit := runWinuse(t, []string{"get-window", "999999999"},
+		"WINUSE_HELPER_IDLE="+e2eIdle)
+	if exit == 0 {
+		t.Fatal("get-window of an unknown Window must fail")
+	}
+	if !strings.Contains(stderr, "no open Window with ID 999999999") {
+		t.Errorf("stderr = %q, want the unknown-Window failure", stderr)
+	}
+}

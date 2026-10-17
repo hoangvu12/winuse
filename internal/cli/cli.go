@@ -19,6 +19,8 @@ const Usage = `usage: winuse <command> [arguments]
 
 commands:
   list-windows                list visible Windows: Window ID, App and title
+  get-window <window>         print one Window's line (Window ID, App and title),
+                               resolved by Window ID or an unambiguous App name
   list-apps                   list running and recently used Apps, with their Windows
   launch-app <name|exe path>  start an App by name or executable path, report its Window
   get-window-state <window> [--screenshot]
@@ -82,6 +84,8 @@ func Main(args []string) int {
 		return 0
 	case "list-windows":
 		return listWindowsCmd(args[1:])
+	case "get-window":
+		return getWindowCmd(args[1:])
 	case "get-window-state":
 		return getWindowStateCmd(args[1:])
 	case "record-tree":
@@ -126,6 +130,21 @@ func listWindowsCmd(args []string) int {
 		return 2
 	}
 	if err := runSimple("list-windows"); err != nil {
+		reportError(os.Stderr, err)
+		return ExitCode(err)
+	}
+	return 0
+}
+
+// getWindowCmd implements `winuse get-window <window>`: print the one
+// list-windows line of the resolved Window (Codex's get_window — the
+// re-resolve step after a helper restart or a stale Window ID).
+func getWindowCmd(args []string) int {
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: winuse get-window <window>")
+		return 2
+	}
+	if err := runWithArgs("get-window", protocol.GetWindowArgs{Window: args[0]}); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}
