@@ -159,12 +159,14 @@ func zoom(s Services) Command {
 // to the screen point to inject input at: the Mapping carries the point
 // in window space (anchored to the extended frame bounds of the moment
 // the screenshot was taken), and the anchor is re-read fresh — so the
-// click survives the Window having moved since the screenshot.
-func shotPoint(s Services, w win.WindowInfo, x, y int) (image.Point, *Error) {
+// input survives the Window having moved since the screenshot. verb
+// names the action ("click", "scroll", ...) in the no-screenshot
+// recovery hint.
+func shotPoint(s Services, w win.WindowInfo, x, y int, verb string) (image.Point, *Error) {
 	m, ok := s.Shots.Lookup(w.ID)
 	if !ok {
 		return image.Point{}, Fail(fmt.Sprintf("no screenshot is available for window %d", w.ID),
-			"run winuse get-window-state "+strconv.FormatUint(w.ID, 10)+" --screenshot, then click @x,y coordinates from that screenshot")
+			"run winuse get-window-state "+strconv.FormatUint(w.ID, 10)+" --screenshot, then "+verb+" @x,y coordinates from that screenshot")
 	}
 	if !m.Contains(x, y) {
 		return image.Point{}, Fail(fmt.Sprintf("point @%d,%d is outside the latest screenshot of window %d (%dx%d px)", x, y, w.ID, m.Width, m.Height),

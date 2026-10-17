@@ -5,7 +5,7 @@ run shell commands list Apps and Windows, read a Window State (accessibility
 tree as text, screenshots on request) and perform Actions — at the quality of
 Codex Computer Use, without being tied to Codex.
 
-**Status: tickets 01–08, 13 and 14 of the v1 plan** (`.scratch/winuse-v1/`) —
+**Status: tickets 01–08, 10, 13 and 14 of the v1 plan** (`.scratch/winuse-v1/`) —
 background helper, `winuse list-windows`, the fixture app with its opt-in
 e2e runner, `winuse list-apps` and `winuse launch-app`, `winuse
 get-window-state`: the Window State as Codex's Element tree, read through UI
@@ -24,7 +24,12 @@ Collapse, plus winuse's Toggle and Select); and screenshots (ticket 08):
 `get-window-state --screenshot` captures the Window through a fallback-proof method chain and saves a
 model-friendly image whose path is printed, `winuse zoom` returns a
 full-resolution crop of a region, and `@x,y` coordinate clicks land exactly
-where aimed at any display scaling and on any monitor; and the in-control
+where aimed at any display scaling and on any monitor; the pointer Actions
+(ticket 10): `winuse scroll` at a point of the latest screenshot (horizontal
+and vertical, Codex's signs, one wheel notch = 120 units), `winuse drag` from
+point to point with interpolated injected moves so apps register it, and
+`winuse hover`, which moves the pointer and leaves it there to reveal
+hover-only toolbars and tooltips; and the in-control
 overlay (ticket 13): a Codex-style, click-through, never-focused indicator
 framing the Window while an Action runs, kept out of winuse's own
 screenshots. Later tickets add more Actions, Windows.Graphics.Capture as
@@ -257,8 +262,9 @@ path printed after the tree, with the scale recorded:
 Screenshot: C:\Users\me\AppData\Local\Temp\winuse\winuse-screenshot-101-....jpg (1568x784 px, scale 0.5)
 ```
 
-`@x,y` coordinate clicks and zoom regions live **in that screenshot's
-coordinate space**, and the helper maps them back exactly: every
+`@x,y` coordinate references — clicks, and the pointer actions scroll,
+drag and hover — and zoom regions live **in that screenshot's coordinate
+space**, and the helper maps them back exactly: every
 coordinate is a physical pixel (the helper is per-monitor-v2 DPI aware),
 and the mapping is anchored to the Window's visible bounds **re-read at
 action time** — so a click lands on the intended pixel at 100%, 150%,
@@ -284,6 +290,9 @@ winuse type-text <window> <text>
 winuse press-key <window> <key>
 winuse set-value <window> <element index> <value>
 winuse perform-secondary-action <window> <element index> <action>
+winuse scroll <window> @x,y <dx> <dy>
+winuse drag <window> @x,y @x,y
+winuse hover <window> @x,y
 winuse activate-window <window>
 ```
 
@@ -353,6 +362,24 @@ UI Automation pattern. An unknown action fails listing the expected
 names; an action the Element does not offer fails listing the ones it
 does (probed live, so an Element that changed since the Window State was
 read says so).
+
+`scroll`, `drag` and `hover` are the pointer Actions: they aim at
+`@x,y` points of the Window's **latest screenshot** (mapped back exactly
+like coordinate clicks — see above) rather than at Elements, because
+where the pointer is matters to them. `scroll` moves the pointer to the
+point and injects the wheel there — both axes at once, amounts in wheel
+units (one notch is 120), Codex's signs: positive `dy` scrolls down,
+positive `dx` scrolls right, negatives scroll up/left; a point over
+another window is refused, not scrolled. `drag` places the pointer at
+the from-point, presses the left button (Codex supports no other),
+injects ~16 interpolated absolute moves ~10 ms apart to the to-point —
+so apps register a drag (menus track, canvases draw, lists reorder)
+instead of a teleport — pins the exact end point and releases; the
+button always comes up, even if a move fails. `hover` moves the pointer
+to the point — an injected absolute move plus the pixel-exact position
+— and **leaves it there**, so hover-only toolbars and tooltips appear
+and stay while the agent re-observes. All three go through the same
+Action pipeline (activation, refusals, overlay) as every other Action.
 
 The **output contract** for all Actions: `ok` on stdout, or a one-line
 failure with a recovery hint on stderr and a non-zero exit. Timeouts are
@@ -428,7 +455,7 @@ cmd/winuse/          binary: CLI dispatch + hidden __helper entry (manifest .sys
 cmd/winusefixture/   the e2e fixture app's entry point (see The fixture app)
 internal/protocol/   CLI↔helper contract: JSON-lines request/response, timeouts, exit codes
 internal/pipe/       named pipe: naming per user/session, user-only DACL, dial, anti-squat check, singleton
-internal/win/        Win32 layer: identity, DPI awareness, window enumeration, process/App names, window resolution, helper spawn, and the Actions' Win32 side: SendInput clicks, keyboard (Unicode text and key chords), foreground activation, integrity/locked-desktop refusals; the UI thread and the in-control overlay window (ADR 0006)
+internal/win/        Win32 layer: identity, DPI awareness, window enumeration, process/App names, window resolution, helper spawn, and the Actions' Win32 side: SendInput clicks, the pointer Actions (wheel scroll, interpolated drag, hover), keyboard (Unicode text and key chords), foreground activation, integrity/locked-desktop refusals; the UI thread and the in-control overlay window (ADR 0006)
 internal/apps/       App catalog and launching: list-apps (UserAssist, Start menu, store Apps), launch-app (CreateProcess/ShellExecuteExW + Window polling)
 internal/keys/       Codex/X keysym key-name and chord parsing for press-key (pure Go, fully covered offline)
 internal/helper/     helper: serve loop, idle exit, stale-exit, command registry, window-state + record-tree + list-apps + launch-app commands

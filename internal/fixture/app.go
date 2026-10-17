@@ -211,10 +211,12 @@ func (a *app) wndMain(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		a.onDoubleClick(lParamPoint(lp))
 		return 0
 	case wmMouseWheel:
-		a.onWheel(lParamPoint(lp), 0, wheelDelta(wp))
+		// lParam is screen coordinates for the wheel messages: convert to
+		// client before the hit-test uses the client-space rects.
+		a.onWheel(screenToClient(hwnd, lParamPoint(lp)), 0, wheelDelta(wp))
 		return 0
 	case wmMouseHWheel:
-		a.onWheel(lParamPoint(lp), wheelDelta(wp), 0)
+		a.onWheel(screenToClient(hwnd, lParamPoint(lp)), wheelDelta(wp), 0)
 		return 0
 	case wmKeydown:
 		a.onKeyDown(uint32(wp))

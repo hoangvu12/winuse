@@ -57,13 +57,18 @@ func parseWindowStateArgs(args []string) (window string, screenshot bool, err er
 }
 
 // parsePointRef parses a `@x,y` coordinate Element Reference: two
-// non-negative comma-separated integers (optional spaces around the parts
-// and after the @). Screenshot pixels are what the agent saw, so negatives
+// non-negative comma-separated integers (optional spaces around the
+// parts and after the @). The leading @ is required — it is what marks
+// a token as a coordinate reference everywhere (click, scroll, drag,
+// hover) — so screenshot pixels are what the agent saw, and negatives
 // are a mistake, not a flag.
 func parsePointRef(s string) (x, y int, err error) {
 	bad := fmt.Errorf("a coordinate reference must be @x,y (two non-negative integers), got %q", s)
-	body := strings.TrimSpace(strings.TrimPrefix(s, "@"))
-	parts := strings.Split(body, ",")
+	body := strings.TrimSpace(s)
+	if !strings.HasPrefix(body, "@") {
+		return 0, 0, bad
+	}
+	parts := strings.Split(strings.TrimPrefix(body, "@"), ",")
 	if len(parts) != 2 {
 		return 0, 0, bad
 	}

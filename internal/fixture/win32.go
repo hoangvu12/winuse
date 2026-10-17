@@ -38,6 +38,7 @@ var (
 	procEndPaint            = user32.NewProc("EndPaint")
 	procGetClientRect       = user32.NewProc("GetClientRect")
 	procClientToScreen      = user32.NewProc("ClientToScreen")
+	procScreenToClient      = user32.NewProc("ScreenToClient")
 	procGetWindowRect       = user32.NewProc("GetWindowRect")
 	procSetWindowTextW      = user32.NewProc("SetWindowTextW")
 	procEnableWindow        = user32.NewProc("EnableWindow")
@@ -201,6 +202,15 @@ func lParamPoint(lp uintptr) point {
 // high word).
 func wheelDelta(wp uintptr) int32 {
 	return int32(int16(wp >> 16))
+}
+
+// screenToClient converts a point from screen to client coordinates of
+// hwnd — WM_MOUSEWHEEL and WM_MOUSEHWHEEL deliver their lParam in screen
+// coordinates (unlike every other mouse message), so the wheel hit-test
+// must convert before it uses the client-space element rects.
+func screenToClient(hwnd uintptr, p point) point {
+	procScreenToClient.Call(hwnd, uintptr(unsafe.Pointer(&p)))
+	return p
 }
 
 var newCallback = syscall.NewCallback
