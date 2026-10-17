@@ -88,8 +88,10 @@ const (
 // IUIAutomationElement vtable slots (cached getters are the current ones
 // offset by +32).
 const (
+	elSetFocus               = 3  // SetFocus()
 	elBuildUpdatedCache      = 9  // BuildUpdatedCache(req, **fresh)
 	elGetCurrentPatternAs    = 14 // GetCurrentPatternAs(patternId, REFIID, **out)
+	elGetCachedPropertyValue = 12 // GetCachedPropertyValue(propertyId, *VARIANT)
 	elGetCachedChildren      = 19 // GetCachedChildren(**arr)
 	elCurrentBoundingRect    = 43 // get_CurrentBoundingRectangle(*RECT)
 	elCachedControlType      = 53 // get_CachedControlType(*int32)
@@ -126,9 +128,10 @@ var iidScrollItemPattern = windows.GUID{
 	Data4: [8]byte{0x9c, 0x29, 0xbb, 0x59, 0x5e, 0x36, 0x45, 0xef},
 }
 
-// UIA property ids cached for the tree read (SDK; uia-go.md §3). The list is
-// the basic ticket-03 set; later tickets extend it (pattern availability,
-// value/toggle/expand/selection state for Secondary Actions).
+// UIA property ids cached for the tree read (SDK; uia-go.md §3). The
+// basic ticket-03 set plus the ticket-07 pattern-availability and
+// pattern-state properties (value.go's prop* constants) the rich Window
+// State lines and Secondary Actions render from.
 var treeProperties = []uint32{
 	30003, // ControlType
 	30005, // Name
@@ -137,6 +140,21 @@ var treeProperties = []uint32{
 	30011, // AutomationId
 	30012, // ClassName (the root's, for Chromium/Electron detection; ticket 14)
 	30013, // HelpText
+
+	30028, // IsExpandCollapsePatternAvailable
+	30033, // IsRangeValuePatternAvailable
+	30034, // IsScrollPatternAvailable
+	30036, // IsSelectionItemPatternAvailable
+	30041, // IsTogglePatternAvailable
+	30043, // IsValuePatternAvailable
+	30044, // IsWindowPatternAvailable
+	30045, // ValueValue
+	30046, // ValueIsReadOnly
+	30057, // ScrollHorizontallyScrollable
+	30058, // ScrollVerticallyScrollable
+	30070, // ExpandCollapseExpandCollapseState
+	30079, // SelectionItemIsSelected
+	30086, // ToggleToggleState
 }
 
 // TreeScope_Element|Children: one cache chunk covers a node and its direct
@@ -153,6 +171,7 @@ const (
 const (
 	uiaErrTimeout          = HRESULT(-0x7FECEAFB) // 0x80131505 UIA_E_TIMEOUT: a provider did not answer in time
 	uiaErrNoClickablePoint = HRESULT(-0x7FFBFDFE) // 0x80040202 UIA_E_NOCLICKABLEPOINT
+	uiaErrElementDisabled  = HRESULT(-0x7FFBFE00) // 0x80040200 UIA_E_ELEMENTNOTENABLED
 )
 
 // hrStale reports whether hr means the Element behind a stored Element
@@ -171,12 +190,13 @@ func hrStale(hr HRESULT) bool {
 }
 
 var (
-	ole32                = windows.NewLazySystemDLL("ole32.dll")
-	oleaut32             = windows.NewLazySystemDLL("oleaut32.dll")
-	procCoInitializeEx   = ole32.NewProc("CoInitializeEx")
-	procCoCreateInstance = ole32.NewProc("CoCreateInstance")
-	procSysStringLen     = oleaut32.NewProc("SysStringLen")
-	procSysFreeString    = oleaut32.NewProc("SysFreeString")
+	ole32                 = windows.NewLazySystemDLL("ole32.dll")
+	oleaut32              = windows.NewLazySystemDLL("oleaut32.dll")
+	procCoInitializeEx    = ole32.NewProc("CoInitializeEx")
+	procCoCreateInstance  = ole32.NewProc("CoCreateInstance")
+	procSysAllocStringLen = oleaut32.NewProc("SysAllocStringLen")
+	procSysStringLen      = oleaut32.NewProc("SysStringLen")
+	procSysFreeString     = oleaut32.NewProc("SysFreeString")
 )
 
 const coinitMultithreaded = 0 // COINIT_MULTITHREADED: the MTA (no message pump)

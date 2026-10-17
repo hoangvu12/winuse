@@ -106,6 +106,17 @@ numpad virtual keys, and extended arrow keys), a chord, and the refusals
 (unknown key with a hint, the forbidden Windows-key family, the empty
 key) proven to send no input by the fixture's state generation staying
 put.
+The ticket-07 tests (`set_value_test.go`): `set-value` sets
+the fixture's text field (the value shows in a fresh Window State) and the
+Save As dialog's file-name edit, joins unquoted multi-argument values, and
+fails on a non-settable Element with Codex's message plus the type-text
+hint; `perform-secondary-action` toggles the checkbox (the Window State
+flips to `on`), expands and collapses the File menu (the dropdown's items
+appear in the tree), selects a list item and scrolls the list down one
+page, performs Raise on the window root, and fails with the expected-name
+list for an unknown action and with the offered list for an action the
+Element does not offer. A stale Element Index fails pointing at a fresh
+Window State read.
 
 The ticket-14 test (`chromium_test.go`) covers the Chromium path: it starts
 Edge (and Chrome, when installed) with an **isolated profile in a temp

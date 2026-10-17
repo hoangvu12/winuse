@@ -146,14 +146,17 @@ func chromiumWebContentInWindowState(t *testing.T, b chromiumBrowser) {
 
 	// The page's web content Elements: links, buttons, inputs (spec user
 	// story 24). Indexes and depth are not stable across browser versions,
-	// so the lines are matched by role and name at any position.
+	// so the lines are matched by role and name at any position; the
+	// optional parenthesised state list (ticket 07's rich state — e.g. an
+	// HTML input renders as `edit (settable, string)`) sits between the
+	// role and the name.
 	for _, w := range []struct{ role, name string }{
 		{"link", "winuse e2e link"},
 		{"button", "winuse e2e button"},
 		{"edit", "winuse e2e input"},
 		{"check box", "winuse e2e checkbox"},
 	} {
-		re := regexp.MustCompile(`(?m)^\t+\d+ ` + regexp.QuoteMeta(w.role) + ` ` + regexp.QuoteMeta(w.name) + `\b`)
+		re := regexp.MustCompile(`(?m)^\t+\d+ ` + regexp.QuoteMeta(w.role) + `( \([^)]*\))? ` + regexp.QuoteMeta(w.name) + `\b`)
 		if !re.MatchString(stdout) {
 			t.Errorf("Window State missing the %s %q Element line:\n%s", w.role, w.name, stdout)
 		}

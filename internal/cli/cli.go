@@ -30,6 +30,13 @@ commands:
   type-text <window> <text>    type Unicode text into the Window's focused Element
   press-key <window> <key>     press a key or key combination by Codex's key
                                names, e.g. Return, Tab, Control_L+a, Numpad_0
+  set-value <window> <element index> <value>
+                               set an Element's value directly (a settable
+                               edit or a numeric range)
+  perform-secondary-action <window> <element index> <action>
+                               perform one of the Element's Secondary Actions
+                               (Raise, Scroll Down, Expand, Collapse, Toggle,
+                               Select, ...)
   activate-window <window>    bring a Window to the foreground
   version                     print the winuse version
 
@@ -65,6 +72,10 @@ func Main(args []string) int {
 		return typeTextCmd(args[1:])
 	case "press-key":
 		return pressKeyCmd(args[1:])
+	case "set-value":
+		return setValueCmd(args[1:])
+	case "perform-secondary-action":
+		return performSecondaryActionCmd(args[1:])
 	case "activate-window":
 		return activateWindowCmd(args[1:])
 	default:

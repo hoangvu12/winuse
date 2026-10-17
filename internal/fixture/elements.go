@@ -137,6 +137,7 @@ const (
 	PatternSelectionItem  Pattern = 10010 // SelectionItem (list items)
 	PatternToggle         Pattern = 10015 // Toggle
 	PatternScrollItem     Pattern = 10017 // ScrollItem (list items)
+	PatternWindow         Pattern = 10009 // Window (the two window roots: Raise)
 )
 
 // Spec is one Element's contract: everything winuse and the e2e tests may
@@ -167,7 +168,7 @@ const InitialStatus = "ready"
 // doubles as the documentation of the tree. Elements with conditional
 // visibility are marked in Note and enforced by tree.go.
 var Specs = []Spec{
-	{ElemWindow, WindowTitle, RoleWindow, nil, "main window root; the Window `winuse list-windows` shows"},
+	{ElemWindow, WindowTitle, RoleWindow, []Pattern{PatternWindow}, "main window root; the Window `winuse list-windows` shows; Window pattern gives its line Secondary Actions: Raise"},
 
 	{ElemMenuBar, "Menu Bar", RoleMenuBar, nil, "static menu bar"},
 	{ElemMenuFile, "File", RoleMenuItem, []Pattern{PatternExpandCollapse}, "Expand opens the dropdown, exposing its three items"},
@@ -218,7 +219,7 @@ var Specs = []Spec{
 // DialogSpecs is the Element table of the Save As dialog. The dialog is its
 // own top-level window, so its root is a separate Window with its own tree.
 var DialogSpecs = []Spec{
-	{ElemDialog, DialogTitle, RoleWindow, nil, "dialog window root; IsDialog=true; disables the main window while open (modal Save As behaviour)"},
+	{ElemDialog, DialogTitle, RoleWindow, []Pattern{PatternWindow}, "dialog window root; IsDialog=true; disables the main window while open (modal Save As behaviour); Window pattern gives its line Secondary Actions: Raise"},
 	{ElemDialogLabelFileName, "File name:", RoleText, nil, "static label"},
 	{ElemDialogEditFileName, "File name", RoleEdit, []Pattern{PatternValue}, "single-line edit for the file name; value is dialogFileName in the state file; focused when the dialog opens; typing lands here, Control+A selects and typing replaces"},
 	{ElemDialogButtonSave, "Save", RoleButton, []Pattern{PatternInvoke}, "closes the dialog; records dialogResult=save"},
@@ -265,6 +266,20 @@ func Name(e Elem, status string) string {
 		return StatusNamePrefix + status
 	}
 	return s.Name
+}
+
+// ElementEnabled reports the element's IsEnabled for a State: the disabled
+// button is never enabled; main-window elements are disabled while the
+// modal dialog is open. It mirrors the app's own check (app.enabled) so
+// tests can derive the expected tree from a State alone.
+func ElementEnabled(e Elem, s State) bool {
+	if e == ElemButtonDisabled {
+		return false
+	}
+	if s.DialogOpen && !InDialog(e) {
+		return false
+	}
+	return true
 }
 
 // HasPattern reports whether the element offers the control pattern.

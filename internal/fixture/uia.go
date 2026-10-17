@@ -67,6 +67,10 @@ var (
 	iidSelectionItemProvider          = windows.GUID{Data1: 0x2acad808, Data2: 0xb2d4, Data3: 0x452d, Data4: [8]byte{0xa4, 0x07, 0x91, 0xff, 0x1a, 0xd1, 0x67, 0xb2}}
 	iidScrollProvider                 = windows.GUID{Data1: 0xb38b8077, Data2: 0x1fc3, Data3: 0x42a5, Data4: [8]byte{0x8c, 0xae, 0xd4, 0x0c, 0x22, 0x15, 0x05, 0x5a}}
 	iidScrollItemProvider             = windows.GUID{Data1: 0x2360c714, Data2: 0x4bf1, Data3: 0x4b26, Data4: [8]byte{0xba, 0x65, 0x9b, 0x21, 0x31, 0x61, 0x27, 0xeb}}
+	// IWindowProvider (SDK UIAutomationCore.h): the Window pattern the
+	// fixture's window roots expose, which lists Raise among their
+	// Secondary Actions (ticket 07).
+	iidWindowProvider = windows.GUID{Data1: 0x987df77b, Data2: 0xdb06, Data3: 0x4d77, Data4: [8]byte{0x8f, 0x8a, 0x86, 0xa9, 0xc3, 0xbb, 0x90, 0xb9}}
 )
 
 // UIA property ids used by GetPropertyValue (uia-go.md §3).
@@ -98,6 +102,9 @@ const (
 	propIsSelectionAvailable      = 30037
 	propIsToggleAvailable         = 30041
 	propIsValueAvailable          = 30043
+	propIsWindowAvailable         = 30044
+	propScrollHScrollable         = 30057
+	propScrollVScrollable         = 30058
 )
 
 // ToggleState / ExpandCollapseState / ScrollAmount values.
@@ -159,6 +166,7 @@ const (
 	ifaceSelectionItem
 	ifaceScroll
 	ifaceScrollItem
+	ifaceWindow
 	ifaceCount
 )
 
@@ -333,6 +341,23 @@ func init() {
 		newCallback(scrollGetVScrollable),
 	)
 	vt(ifaceScrollItem, newCallback(scrollItemScrollIntoView))
+	// IWindowProvider (window roots only): the vtable order is
+	// SetVisualState, Close, WaitForInputIdle, CanMaximize, CanMinimize,
+	// IsModal, WindowVisualState, WindowInteractionState, IsTopmost
+	// (SDK UIAutomationCore.h). SetVisualState and Close are deliberately
+	// E_NOTIMPL: neither is part of winuse's surface, and refusing is
+	// honest.
+	vt(ifaceWindow,
+		newCallback(windowSetVisualState),
+		newCallback(windowClose),
+		newCallback(windowWaitForInputIdle),
+		newCallback(windowCanMaximize),
+		newCallback(windowCanMinimize),
+		newCallback(windowIsModal),
+		newCallback(windowVisualState),
+		newCallback(windowInteractionState),
+		newCallback(windowIsTopmost),
+	)
 
 	iids[iidRawElementProviderSimple] = ifaceSimple
 	iids[iidRawElementProviderFragment] = ifaceFragment
@@ -345,6 +370,7 @@ func init() {
 	iids[iidSelectionItemProvider] = ifaceSelectionItem
 	iids[iidScrollProvider] = ifaceScroll
 	iids[iidScrollItemProvider] = ifaceScrollItem
+	iids[iidWindowProvider] = ifaceWindow
 }
 
 // ---- IUnknown ----
@@ -414,6 +440,11 @@ func comQueryInterface(this, riid, ppv uintptr) uintptr {
 		}
 	case ifaceScrollItem:
 		if !HasPattern(node.elem, PatternScrollItem) {
+			return hrFail(eNoInterface)
+		}
+	case ifaceWindow:
+		// The Window pattern exists on the two window roots only.
+		if node.elem != providerRootElem(node.dialog) {
 			return hrFail(eNoInterface)
 		}
 	}
@@ -487,6 +518,11 @@ func getPatternProvider(this, patternId, ppv uintptr) uintptr {
 	case 10017: // UIA_ScrollItemPatternId
 		kind = ifaceScrollItem
 		if !HasPattern(node.elem, PatternScrollItem) {
+			return hrOK()
+		}
+	case 10009: // UIA_WindowPatternId
+		kind = ifaceWindow
+		if node.elem != providerRootElem(node.dialog) {
 			return hrOK()
 		}
 	default:
@@ -595,6 +631,15 @@ func getPropertyValue(this, propId, pv uintptr) uintptr {
 		v.setBool(HasPattern(e, PatternSelectionItem))
 	case propIsSelectionAvailable:
 		v.setBool(HasPattern(e, PatternSelection))
+	case propIsWindowAvailable:
+		v.setBool(e == providerRootElem(node.dialog) && HasPattern(e, PatternWindow))
+	case propScrollHScrollable:
+		// The list never scrolls horizontally.
+		v.setBool(false)
+	case propScrollVScrollable:
+		if e == ElemItemList {
+			v.setBool(len(ListItems) > ListVisibleItems)
+		}
 	case propBoundingRectangle:
 		// Answered by the fragment interface; UIA uses that.
 	}
@@ -1173,6 +1218,82 @@ func scrollItemScrollIntoView(this uintptr) uintptr {
 	} else if idx >= a.state.ListFirstVisible+ListVisibleItems {
 		a.scrollList(idx - (a.state.ListFirstVisible + ListVisibleItems) + 1)
 	}
+	return hrOK()
+}
+
+// ---- IWindowProvider (window roots) ----
+
+// windowSetVisualState is deliberately unimplemented: it is not part of
+// winuse's surface, and a provider may refuse (E_NOTIMPL).
+func windowSetVisualState(this, state uintptr) uintptr {
+	return hrFail(eNotImpl)
+}
+
+// windowClose is deliberately unimplemented: winuse never closes a Window
+// through the pattern (closing is the user's / the app's own act).
+func windowClose(this uintptr) uintptr {
+	return hrFail(eNotImpl)
+}
+
+// windowWaitForInputIdle: the fixture answers instantly, so the wait
+// succeeds with TRUE.
+func windowWaitForInputIdle(this, ms, pBool uintptr) uintptr {
+	if pBool == 0 {
+		return hrFail(ePointer)
+	}
+	*(*int32)(cptr(pBool)) = -1 // TRUE
+	return hrOK()
+}
+
+func windowCanMaximize(this, pBool uintptr) uintptr {
+	if pBool == 0 {
+		return hrFail(ePointer)
+	}
+	*(*int32)(cptr(pBool)) = -1
+	return hrOK()
+}
+
+func windowCanMinimize(this, pBool uintptr) uintptr {
+	if pBool == 0 {
+		return hrFail(ePointer)
+	}
+	*(*int32)(cptr(pBool)) = -1
+	return hrOK()
+}
+
+// windowIsModal: the Save As dialog is modal; the main window is not.
+func windowIsModal(this, pBool uintptr) uintptr {
+	if pBool == 0 {
+		return hrFail(ePointer)
+	}
+	node := comNode(this)
+	*(*int32)(cptr(pBool)) = boolInt(node != nil && node.dialog, -1, 0)
+	return hrOK()
+}
+
+// windowVisualState: WindowVisualState_Normal (0).
+func windowVisualState(this, pState uintptr) uintptr {
+	if pState == 0 {
+		return hrFail(ePointer)
+	}
+	*(*int32)(cptr(pState)) = 0
+	return hrOK()
+}
+
+// windowInteractionState: WindowInteractionState_Running (0).
+func windowInteractionState(this, pState uintptr) uintptr {
+	if pState == 0 {
+		return hrFail(ePointer)
+	}
+	*(*int32)(cptr(pState)) = 0
+	return hrOK()
+}
+
+func windowIsTopmost(this, pBool uintptr) uintptr {
+	if pBool == 0 {
+		return hrFail(ePointer)
+	}
+	*(*int32)(cptr(pBool)) = 0
 	return hrOK()
 }
 

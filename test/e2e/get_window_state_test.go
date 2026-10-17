@@ -32,9 +32,13 @@ func runGetWindowState(t *testing.T, window string, extraEnv ...string) (string,
 }
 
 // expectedLines flattens the fixture's initial tree into the exact Element
-// lines winuse must print (index, TABs, role, name, ID), depth-first.
+// lines winuse must print (index, TABs, role, states, name, Secondary
+// Actions, ID), depth-first — the same rich lines the live walk renders
+// since ticket 07 (pattern availability, value/toggle/selection/expand
+// state), derived from the fixture's Element contract and initial state.
 func expectedLines() []string {
-	nodes := fixture.NewTreeMap(fixture.BuildTree(fixture.State{}))
+	state := fixture.State{}
+	nodes := fixture.NewTreeMap(fixture.BuildTree(state))
 	var lines []string
 	var walk func(e fixture.Elem, depth int)
 	walk = func(e fixture.Elem, depth int) {
@@ -43,8 +47,58 @@ func expectedLines() []string {
 			return
 		}
 		line := strings.Repeat("\t", depth+1) +
-			fmt.Sprintf("%d %s %s ID: %s", len(lines), wstate.RoleName(int32(spec.Role)),
-				fixture.Name(e, fixture.InitialStatus), fixture.AutomationID(e))
+			fmt.Sprintf("%d %s", len(lines), wstate.RoleName(int32(spec.Role)))
+		// Codex's state list, between role and name: selectable, selected,
+		// disabled, collapsed/expanded, settable.
+		var states []string
+		if fixture.HasPattern(e, fixture.PatternSelectionItem) {
+			states = append(states, "selectable")
+			if state.SelectedItem == fixture.Name(e, "") {
+				states = append(states, "selected")
+			}
+		}
+		if !fixture.ElementEnabled(e, state) {
+			states = append(states, "disabled")
+		}
+		if fixture.HasPattern(e, fixture.PatternExpandCollapse) {
+			states = append(states, "collapsed") // no menu open, details collapsed
+		}
+		if fixture.HasPattern(e, fixture.PatternValue) {
+			states = append(states, "settable, string") // the fixture's edits are writable
+		}
+		if len(states) > 0 {
+			line += " (" + strings.Join(states, ", ") + ")"
+		}
+		if name := fixture.Name(e, fixture.InitialStatus); name != "" {
+			line += " " + name
+		}
+		if e == fixture.ElemCheckboxNotify {
+			line += " off" // the toggle token, after the name (and Value)
+		}
+		// Secondary Actions, in winuse's fixed order.
+		var actions []string
+		if fixture.HasPattern(e, fixture.PatternWindow) {
+			actions = append(actions, "Raise")
+		}
+		if fixture.HasPattern(e, fixture.PatternScroll) {
+			// The list scrolls vertically only.
+			actions = append(actions, "Scroll Up", "Scroll Down")
+		}
+		if fixture.HasPattern(e, fixture.PatternExpandCollapse) {
+			actions = append(actions, "Expand")
+		}
+		if fixture.HasPattern(e, fixture.PatternToggle) {
+			actions = append(actions, "Toggle")
+		}
+		if fixture.HasPattern(e, fixture.PatternSelectionItem) {
+			actions = append(actions, "Select")
+		}
+		if len(actions) > 0 {
+			line += " Secondary Actions: " + strings.Join(actions, ", ")
+		}
+		if id := fixture.AutomationID(e); id != "" {
+			line += " ID: " + id
+		}
 		lines = append(lines, line)
 		for _, kid := range nodes.Children(e) {
 			walk(kid, depth+1)
@@ -209,7 +263,7 @@ func TestGetWindowStateTinyBudgetIsPartialWithNote(t *testing.T) {
 	if !strings.Contains(stdout, `Window: "`+fixture.WindowTitle+`", App: winusefixture.exe.`) {
 		t.Errorf("partial output missing the header:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "\t0 window "+fixture.WindowTitle+" ID: "+string(fixture.ElemWindow)) {
+	if !strings.Contains(stdout, "\t0 window "+fixture.WindowTitle+" Secondary Actions: Raise ID: "+string(fixture.ElemWindow)) {
 		t.Errorf("partial output missing the root element:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "Note: this Window State is partial:") || !strings.Contains(stdout, "time limit") {
