@@ -257,7 +257,7 @@ func TestWriteFileAtomicIsAtomicAndCreatesDirs(t *testing.T) {
 
 func TestCommandsRegistryHasWindowStateCommands(t *testing.T) {
 	cmds := Commands()
-	for _, name := range []string{"list-windows", "get-window-state", "record-tree"} {
+	for _, name := range []string{"list-windows", "get-window", "get-window-state", "record-tree"} {
 		if _, ok := cmds[name]; !ok {
 			t.Errorf("%s missing from the command registry: %v", name, cmds)
 		}
