@@ -6,6 +6,7 @@ package win
 // opt-in e2e suite.
 
 import (
+	"errors"
 	"testing"
 	"unsafe"
 )
@@ -279,4 +280,15 @@ func abs32(v int32) int32 {
 		return -v
 	}
 	return v
+}
+
+// TestDragStepsStopBeforeAnyInput pins finding 10's drag checkpoint: a
+// stopped drag aborts before injecting anything (the interpolation loop
+// polls the checkpoint before every step, so the events already injected
+// are the only ones that landed).
+func TestDragStepsStopBeforeAnyInput(t *testing.T) {
+	err := dragSteps(0, 0, 100, 100, func() bool { return true })
+	if !errors.Is(err, ErrEscStopped) {
+		t.Fatalf("dragSteps = %v, want ErrEscStopped", err)
+	}
 }

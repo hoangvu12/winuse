@@ -254,6 +254,25 @@ func activationError(err error) *Error {
 	return Fail(err.Error(), "")
 }
 
+// inputAbortError maps an input side that aborted mid-way — typing
+// between its batches, a drag between its interpolation steps — on the
+// Esc stop or the request's deadline (finding 10): the user's Esc
+// outranks the deadline (the stop keeps its exit 130 even when the
+// budget expired in the same instant, the server's policy), and a
+// deadline abort is reported in the shared style (the server's central
+// timeout policy rewrites it to "winuse request timed out: <command>").
+// during names the input side ("while typing ...") for the message.
+func inputAbortError(s Services, ctx context.Context, err error, during string) *Error {
+	if s.Esc.Stopped() {
+		return inputError(err)
+	}
+	if ctx.Err() != nil {
+		return Fail("the request's budget expired "+during,
+			"re-observe the Window and continue in a fresh request")
+	}
+	return inputError(err)
+}
+
 // inputError maps an input-injection failure to the user-facing line; a
 // click aimed at a covered point tells the agent what covers it, and an
 // injection aborted by the user's Esc press becomes the exit-130 stop.

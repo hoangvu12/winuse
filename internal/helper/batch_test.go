@@ -416,3 +416,54 @@ func TestBatchStepWithoutAnAction(t *testing.T) {
 		t.Fatalf("message = %v, want the no-action refusal", cmdErr)
 	}
 }
+
+func TestBatchStopsWhenTheRequestBudgetExpires(t *testing.T) {
+	// Finding 10: a Batch whose request deadline expires between Actions
+	// stops running the remaining ones — a timed-out request keeps no
+	// work running — and the failure names the Action that would have run
+	// next (the server reports the request timeout centrally).
+	var mu sync.Mutex
+	var ran int
+	var canceller context.CancelFunc
+	cmds := map[string]Command{
+		"activate-window": func(ctx context.Context, args json.RawMessage) (string, *Error) {
+			mu.Lock()
+			ran++
+			n := ran
+			mu.Unlock()
+			if n == 1 {
+				// Step 1 spends the request's budget, as a slow Action
+				// would: the loop's next checkpoint must stop the Batch.
+				canceller()
+			}
+			return "ok\n", nil
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	canceller = cancel
+
+	raw, err := json.Marshal(protocol.BatchArgs{
+		Window: "101",
+		Steps: []protocol.Step{
+			stepOf("activate-window", nil),
+			stepOf("activate-window", nil),
+			stepOf("activate-window", nil),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, cmdErr := batch(cmds, nil)(ctx, raw)
+	if cmdErr == nil {
+		t.Fatal("a Batch whose request expired must fail")
+	}
+	if !strings.Contains(cmdErr.Msg, "the batch's request budget expired before Action 2 (activate-window)") {
+		t.Fatalf("message = %q, want the budget failure naming Action 2", cmdErr.Msg)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if ran != 1 {
+		t.Errorf("%d Actions ran, want 1: the remaining Actions must not run", ran)
+	}
+}

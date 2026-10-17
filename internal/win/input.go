@@ -316,7 +316,12 @@ func wheelEvent(flags uint32, delta int32) input {
 // the exact end point is pinned, and the button comes up. The button
 // is released even when a move fails, so a failed drag never leaves it
 // held.
-func MouseDrag(target uint64, fx, fy, tx, ty int32) error {
+//
+// stopped is the abort checkpoint (finding 10, the Esc stop's drag
+// interpolation follow-up from ADR 0007): polled before anything moves
+// and between the interpolation steps, an abort returns ErrEscStopped
+// with the events already injected landed (the button is still released).
+func MouseDrag(target uint64, fx, fy, tx, ty int32, stopped func() bool) error {
 	// Both endpoints are verified before anything moves: a drag whose
 	// start or end is over another window would drag that app's content.
 	if err := checkOverTarget(target, fx, fy); err != nil {
@@ -325,13 +330,17 @@ func MouseDrag(target uint64, fx, fy, tx, ty int32) error {
 	if err := checkOverTarget(target, tx, ty); err != nil {
 		return err
 	}
+	if stopped != nil && stopped() {
+		// Nothing has moved yet: stop before the button goes down.
+		return ErrEscStopped
+	}
 	if err := moveCursor(fx, fy); err != nil {
 		return err
 	}
 	if err := sendInput(mouseEvent(mouseEventfLeftDown)); err != nil {
 		return fmt.Errorf("injecting the drag press failed: %v", err)
 	}
-	err := dragSteps(fx, fy, tx, ty)
+	err := dragSteps(fx, fy, tx, ty, stopped)
 	// Always release: a drag that failed part-way must not leave the
 	// button held (the pointer would drag whatever it passes on the
 	// user's next physical click).
@@ -352,8 +361,13 @@ const (
 // (tx, ty) — one SendInput per step, ~10 ms apart so apps pump the
 // moves as separate positions — and pins the cursor on the exact end
 // point (the absolute normalization can round a step off by a pixel).
-func dragSteps(fx, fy, tx, ty int32) error {
+// The stopped checkpoint runs before every step, so an Esc press or an
+// expired request budget stops the interpolation (finding 10).
+func dragSteps(fx, fy, tx, ty int32, stopped func() bool) error {
 	for i := 1; i <= dragStepCount; i++ {
+		if stopped != nil && stopped() {
+			return ErrEscStopped
+		}
 		x, y := dragStepPoint(fx, fy, tx, ty, i, dragStepCount)
 		if err := sendInput(absoluteMoveInput(x, y)); err != nil {
 			return fmt.Errorf("injecting a drag move failed: %v", err)

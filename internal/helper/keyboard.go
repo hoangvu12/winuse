@@ -28,9 +28,10 @@ const (
 // typeText runs `winuse type-text <window> <text>`: the Window is
 // activated and verified in the foreground, then the text is typed into
 // whatever holds keyboard focus, as Unicode key events — any script and
-// emoji, newline as a real Return, tab as a real Tab. The Esc-stop
+// emoji, newline as a real Return, tab as a real Tab. The abort
 // checkpoint rides along: typing aborts between its batches when the
-// user pressed Esc, and the abort reports the exit-130 stop.
+// user pressed Esc — the abort reports the exit-130 stop — or when
+// the request's deadline expires (finding 10).
 func typeText(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.TypeTextArgs
@@ -42,8 +43,11 @@ func typeText(s Services) Command {
 				"pass the text as one argument; quote it if it contains spaces")
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-			if err := s.TypeText(a.Text, s.Esc.Stopped); err != nil {
-				return "", inputError(err)
+			// The abort checkpoint polls the Esc stop and the request's
+			// deadline (finding 10): typing stops between its batches when
+			// either fires.
+			if err := s.TypeText(a.Text, func() bool { return s.Esc.Stopped() || ctx.Err() != nil }); err != nil {
+				return "", inputAbortError(s, ctx, err, "while typing (the text injected so far landed)")
 			}
 			return okOutput, nil
 		})

@@ -17,7 +17,9 @@ package helper
 // Ticket 12 (Esc stop) aborts a running Batch here: the run loop below is
 // the between-steps point (the Esc check at its top, before each step),
 // and a stopped step's own input pipeline is where mid-step input aborts;
-// remaining steps must not run after a stop. The whole Batch is one armed
+// remaining steps must not run after a stop. The request's deadline
+// stops the Batch at the same point (finding 10): a timed-out request
+// keeps no work running. The whole Batch is one armed
 // Esc scope around its steps' Actions, so a press between steps — or in
 // the last step's tail — is latched and stops the Batch, and the physical
 // key is swallowed for the Batch's duration.
@@ -100,6 +102,13 @@ func batch(commands map[string]Command, esc EscWatch) Command {
 		for i, st := range steps {
 			if esc.Stopped() {
 				return "", escStopError()
+			}
+			// The request's deadline stops the Batch between Actions
+			// (finding 10): the remaining Actions must not run, and the
+			// server reports the request timeout centrally.
+			if err := ctx.Err(); err != nil {
+				return "", Fail(fmt.Sprintf("the batch's request budget expired before Action %d (%s); the Actions that ran took effect", i+1, st.kind),
+					"re-observe the Window and continue in a fresh request")
 			}
 			_, err := st.cmd(ctx, st.args)
 			if err != nil {
