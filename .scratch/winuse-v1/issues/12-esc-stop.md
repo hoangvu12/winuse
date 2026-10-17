@@ -4,9 +4,9 @@
 
 **Blocked by:** 11 — `name:` / `id:` references + Batches
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Physical Esc aborts the in-progress Action or Batch; remaining Batch steps do not run
-- [ ] Injected Esc (e.g. `press-key Escape`) does not trigger the stop
-- [ ] Stopped commands exit 130 with a message saying the user stopped winuse
+- [x] Physical Esc aborts the in-progress Action or Batch; remaining Batch steps do not run
+- [x] Injected Esc (e.g. `press-key Escape`) does not trigger the stop
+- [x] Stopped commands exit 130 with a message saying the user stopped winuse
 - [ ] End-to-end: a long Batch against the fixture is interrupted by pressing Esc (verified by user run)
