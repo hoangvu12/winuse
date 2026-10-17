@@ -81,9 +81,17 @@ func PressChord(chord keys.Chord) error {
 // presses and \t a real Tab; every other rune is injected as its UTF-16
 // code units, so non-Latin scripts and emoji (surrogate pairs) arrive
 // intact.
-func TypeText(text string) error {
+//
+// stopped is the Esc-stop checkpoint (ticket 12): it is polled between
+// batches — the pause is the abort point ticket 06 designed in — and a
+// stop returns ErrEscStopped with the batches already injected landed
+// and nothing further sent. A nil stopped never aborts.
+func TypeText(text string, stopped func() bool) error {
 	runes := []rune(text)
 	for _, batch := range textBatches(runes, typeBatchRunes) {
+		if stopped != nil && stopped() {
+			return ErrEscStopped
+		}
 		events := textEvents(batch, mapVirtualKeyScan)
 		if err := sendInput(events...); err != nil {
 			return fmt.Errorf("injecting the text failed: %v", err)

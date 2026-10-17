@@ -15,9 +15,12 @@ package helper
 // named: "batch stopped at step N (<action>): <message>".
 //
 // Ticket 12 (Esc stop) aborts a running Batch here: the run loop below is
-// the between-steps point (an Esc check belongs at its top, before each
-// step), and a stopped step's own input pipeline is where mid-step input
-// aborts; remaining steps must not run after a stop.
+// the between-steps point (the Esc check at its top, before each step),
+// and a stopped step's own input pipeline is where mid-step input aborts;
+// remaining steps must not run after a stop. The whole Batch is one armed
+// Esc scope around its steps' Actions, so a press between steps — or in
+// the last step's tail — is latched and stops the Batch, and the physical
+// key is swallowed for the Batch's duration.
 
 import (
 	"context"
@@ -35,8 +38,12 @@ const batchUsageHint = "usage: winuse batch <window> <action> [arguments] [then 
 // [arguments]]...`: the Actions run in order on the one Window, and the
 // first failure stops the Batch with the failed step named. Steps are the
 // Action commands (protocol.BatchStepKinds); a step's arguments are the
-// standalone command's own, without the Window.
-func batch(commands map[string]Command) Command {
+// standalone command's own, without the Window. A stopped Batch (the
+// user's Esc press) keeps the stop's exit code (130) and message.
+func batch(commands map[string]Command, esc EscWatch) Command {
+	if esc == nil {
+		esc = noopEscWatch{}
+	}
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.BatchArgs
 		if err := parseArgs(args, &a); err != nil {
@@ -84,8 +91,16 @@ func batch(commands map[string]Command) Command {
 
 		// Run the steps in order, stopping at the first failure. The
 		// failed step's message and hint are forwarded verbatim (its exit
-		// code too, so an Esc stop keeps protocol.ExitEsc).
+		// code too, so an Esc stop keeps protocol.ExitEsc). The Batch is one
+		// armed Esc scope around the loop — a press anywhere in it (during a
+		// step, between steps, in the last step's tail) stops the Batch with
+		// the exit-130 stop, and the remaining steps never run.
+		esc.Arm()
+		defer esc.Disarm()
 		for i, st := range steps {
+			if esc.Stopped() {
+				return "", escStopError()
+			}
 			_, err := st.cmd(ctx, st.args)
 			if err != nil {
 				return "", &Error{
@@ -94,6 +109,12 @@ func batch(commands map[string]Command) Command {
 					Exit: err.Exit,
 				}
 			}
+		}
+		// A press in the last step's tail: the steps all ran, but the user's
+		// stop must still surface (their Esc was swallowed) rather than the
+		// Batch reporting success.
+		if esc.Stopped() {
+			return "", escStopError()
 		}
 		return okOutput, nil
 	}

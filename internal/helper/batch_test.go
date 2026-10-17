@@ -53,11 +53,16 @@ func newBatchSpy() *batchSpy {
 		base.mu.Unlock()
 		return err
 	}
-	svc.TypeText = func(text string) error {
+	svc.TypeText = func(text string, stopped func() bool) error {
 		s.step("type-text")
 		s.mu.Lock()
 		s.typed = append(s.typed, text)
 		err := s.typeErr
+		if err == nil && stopped != nil && stopped() {
+			// The real typing aborts between batches; the fake honors the
+			// checkpoint the same way.
+			err = win.ErrEscStopped
+		}
 		s.mu.Unlock()
 		return err
 	}
@@ -317,7 +322,7 @@ func TestBatchExitCodeForwarding(t *testing.T) {
 				Exit: protocol.ExitEsc,
 			}
 		},
-	})
+	}, nil)
 	raw, err := json.Marshal(protocol.BatchArgs{
 		Window: "101",
 		Steps:  []protocol.Step{stepOf("press-key", protocol.PressKeyArgs{Key: "Return"})},
@@ -406,7 +411,7 @@ func TestBatchStepWithoutAnAction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, cmdErr := batch(map[string]Command{})(context.Background(), raw)
+	_, cmdErr := batch(map[string]Command{}, nil)(context.Background(), raw)
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "step 1 has no action") {
 		t.Fatalf("message = %v, want the no-action refusal", cmdErr)
 	}

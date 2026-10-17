@@ -243,3 +243,24 @@ resolution (parsing, matching semantics, candidate lines) and Batch
 parsing are offline-tested in `internal/wstate`, `internal/uia`,
 `internal/helper` and `internal/cli`; these tests pin the live wiring
 only.
+
+The ticket-12 tests (`esc_test.go`) cover the Esc stop.
+**`TestEscStopsTheLongBatch` is interactive — a human must be at the
+keyboard** (with `-v`, the run prints `PRESS THE PHYSICAL ESC KEY NOW`):
+only a physical press can trip the low-level hook, by design, so the
+test starts a long Batch against the fixture (click, a ~30 s type-text,
+then a button click and more typing — steps that must never run once the
+user stops it), waits for the typing to start, prompts, and then asserts
+the full stop contract: the command exits 130 (Codex's interrupt code)
+with the message that says the user stopped winuse with the physical
+Escape key plus the stop-and-ask hint; the typing aborted as a proper
+prefix of the long text; the fixture's `lastKey` is not `Escape` (the
+hook swallowed the key — the app must not act on the stop key); and the
+in-control overlay is gone. `TestInjectedEscDoesNotStopTheBatch` is
+self-contained: while a Batch types, a concurrent `press-key Escape`
+injects the key — it must reach the app (the fixture records the
+key-down) without stopping the Batch, which still prints `ok`. The
+hook's decision table (injected filtering, swallow pairing, the armed
+scope), the abort checkpoints and the exit-130 mapping are
+offline-tested in `internal/win`, `internal/apps`, `internal/helper`;
+these tests pin the live hook only.

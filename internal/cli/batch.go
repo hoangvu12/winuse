@@ -4,10 +4,11 @@ package cli
 // in a single call. Steps are separated by `then` tokens, and each step
 // is an Action command without its Window argument, parsed exactly like
 // the standalone form — so `winuse batch 101 click name:OK then type-text
-// hello then press-key Return` sends three steps. Step syntax is parsed
-// entirely here (usage errors exit 2 and never dial the helper); value
-// validation (key names, element availability) stays in the helper so the
-// CLI and any other client agree on the messages.
+// hello then press-key Return` sends three steps. The pointer Actions
+// (scroll, drag, hover — ticket 10) are steps too (ticket 12). Step syntax
+// is parsed entirely here (usage errors exit 2 and never dial the helper);
+// value validation (key names, element availability) stays in the helper so
+// the CLI and any other client agree on the messages.
 
 import (
 	"encoding/json"
@@ -131,6 +132,48 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 			return protocol.Step{}, errors.New("a batch activate-window step takes no arguments")
 		}
 		return protocol.Step{Kind: kind}, nil // no arguments at all
+	case "scroll":
+		// The pointer Actions as steps (ticket 10's Actions, batchable
+		// from ticket 12): the same arguments the standalone commands take,
+		// minus the Window.
+		if len(rest) != 3 {
+			return protocol.Step{}, errors.New("a batch scroll step takes an @x,y point and two scroll amounts")
+		}
+		x, y, err := parsePointRef(rest[0])
+		if err != nil {
+			return protocol.Step{}, err
+		}
+		dx, err := parseScrollAmount(rest[1])
+		if err != nil {
+			return protocol.Step{}, err
+		}
+		dy, err := parseScrollAmount(rest[2])
+		if err != nil {
+			return protocol.Step{}, err
+		}
+		args = protocol.ScrollArgs{X: x, Y: y, ScrollX: dx, ScrollY: dy}
+	case "drag":
+		if len(rest) != 2 {
+			return protocol.Step{}, errors.New("a batch drag step takes two @x,y points (from, to)")
+		}
+		fromX, fromY, err := parsePointRef(rest[0])
+		if err != nil {
+			return protocol.Step{}, err
+		}
+		toX, toY, err := parsePointRef(rest[1])
+		if err != nil {
+			return protocol.Step{}, err
+		}
+		args = protocol.DragArgs{FromX: fromX, FromY: fromY, ToX: toX, ToY: toY}
+	case "hover":
+		if len(rest) != 1 {
+			return protocol.Step{}, errors.New("a batch hover step takes an @x,y point")
+		}
+		x, y, err := parsePointRef(rest[0])
+		if err != nil {
+			return protocol.Step{}, err
+		}
+		args = protocol.HoverArgs{X: x, Y: y}
 	default:
 		return protocol.Step{}, fmt.Errorf("unknown batch action %q; expected one of %s", kind, batchKindsWord())
 	}

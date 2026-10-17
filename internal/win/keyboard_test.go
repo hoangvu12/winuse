@@ -6,6 +6,7 @@ package win
 // the live desktop and is covered only by the opt-in e2e suite.
 
 import (
+	"errors"
 	"testing"
 	"unicode/utf16"
 	"unsafe"
@@ -211,5 +212,17 @@ func TestTextBatchNeverSplitsASurrogatePair(t *testing.T) {
 				t.Errorf("a lone surrogate half %04X ended up in a batch", r)
 			}
 		}
+	}
+}
+
+func TestTypeTextStopsBeforeInjecting(t *testing.T) {
+	// The Esc-stop checkpoint runs between batches — including before the
+	// first: a stop already latched when typing starts aborts with
+	// ErrEscStopped before a single event is injected (and so never
+	// reaches the live-desktop guard). A stop mid-typing is exercised by
+	// the user-run e2e suite; here the immediate abort pins the contract.
+	err := TypeText("hello", func() bool { return true })
+	if !errors.Is(err, ErrEscStopped) {
+		t.Fatalf("TypeText with a latched stop: error = %v, want ErrEscStopped", err)
 	}
 }

@@ -50,6 +50,10 @@ _Avoid_: Selector, locator
 Several Actions sent in one call and run in order, stopping at the first one that fails.
 _Avoid_: Script, macro, sequence
 
+**Esc stop**:
+The user pressing the physical Escape key while winuse is acting: the running command stops immediately, its key never reaching the controlled app, and the agent is told the user stopped winuse (exit code 130).
+_Avoid_: Interrupt, cancel, kill switch
+
 **Harness**:
 The coding-agent program the user runs (Claude Code, Pi, ...) that drives winuse on the model's behalf.
 _Avoid_: Client, agent, host

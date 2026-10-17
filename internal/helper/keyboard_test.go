@@ -39,6 +39,7 @@ type keySpy struct {
 
 	// recorded calls
 	typedText   string
+	stopped     func() bool // the Esc-stop checkpoint type-text was called with
 	pressChords []keys.Chord
 }
 
@@ -61,10 +62,11 @@ func (s *keySpy) services() Services {
 	svc.Locked = func() (bool, string) { s.step("locked"); return s.locked, s.lockedDesktop }
 	svc.Integrity = func(w win.WindowInfo) error { s.step("integrity"); return s.refuse }
 	svc.Activate = func(hwnd uint64) error { s.step("activate"); return s.activateErr }
-	svc.TypeText = func(text string) error {
+	svc.TypeText = func(text string, stopped func() bool) error {
 		s.step("type")
 		s.mu.Lock()
 		s.typedText = text
+		s.stopped = stopped
 		err := s.typeErr
 		s.mu.Unlock()
 		return err

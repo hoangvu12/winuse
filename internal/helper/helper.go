@@ -105,12 +105,36 @@ func Main() int {
 		defer overlay.Close()
 	}
 
+	// The Esc stop (ticket 12): the low-level keyboard hook joins the
+	// overlay's UI thread when there is one (ADR 0006: hook and overlay
+	// share the pumping thread), and otherwise gets its own — a helper
+	// whose indicator could not start must still stop on Esc. A watcher
+	// that cannot start disables itself the same way: commands run, the
+	// user just cannot stop them with the physical Esc key.
+	var esc *win.EscWatcher
+	if overlay != nil {
+		esc, err = win.NewEscWatcherOnUI(overlay.Do)
+	} else {
+		esc, err = win.NewEscWatcher()
+	}
+	if err != nil {
+		log.Printf("the Esc stop is unavailable, commands will run without Esc stopping them: %v", err)
+		esc = nil
+	} else {
+		// Closed before the overlay's thread stops (deferred LIFO), so the
+		// hook is unhooked while its thread still pumps.
+		defer esc.Close()
+	}
+
 	svc := Services{
 		Trees:  trees,
 		Budget: budget,
 	}
 	if overlay != nil {
 		svc.Overlay = overlay
+	}
+	if esc != nil {
+		svc.Esc = esc
 	}
 	server := New(version.Version, idle, protocol.RequestTimeout, CommandsWith(svc), nil)
 	err = server.Serve(ln)

@@ -2,6 +2,7 @@ package apps
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -163,6 +164,12 @@ func (e *NoWindowError) Error() string {
 	return "launched app did not expose a targetable window: " + e.App
 }
 
+// ErrStopped reports a Window wait aborted by the user's Esc press
+// (ticket 12): the App that was started keeps running; the wait — and
+// with it the launch-app command — stops. Wrapped by WaitForWindow so
+// callers distinguish it from a timeout through errors.Is.
+var ErrStopped = errors.New("the wait for the launched app's window was stopped")
+
 // pollInterval is how often the launched App's Window is looked for.
 const pollInterval = 250 * time.Millisecond
 
@@ -170,7 +177,8 @@ const pollInterval = 250 * time.Millisecond
 // one, or budget passes (the caller keeps it just under the request
 // timeout so this specific error, not the generic one, is reported).
 // enum enumerates the visible Windows (z-order); fg returns the
-// foreground Window's ID; sleep waits between polls (tests stub it).
+// foreground Window's ID; sleep waits between polls (tests stub it);
+// stopped reports whether the user pressed Esc (nil: never).
 //
 // A Window counts as the one the launch opened when it is new since the
 // before snapshot and belongs to the App's process (exe path, or the
@@ -178,9 +186,14 @@ const pollInterval = 250 * time.Millisecond
 // Window is recognized by that Window coming to the foreground. Without a
 // known target exe any new visible Window counts.
 func WaitForWindow(ctx context.Context, spec Spec, pid uint32, before []win.WindowInfo, fgBefore uint64, budget time.Duration,
-	enum func() ([]win.WindowInfo, error), fg func() uint64, sleep func(time.Duration)) (win.WindowInfo, error) {
+	enum func() ([]win.WindowInfo, error), fg func() uint64, sleep func(time.Duration), stopped func() bool) (win.WindowInfo, error) {
 	deadline := time.Now().Add(budget)
 	for {
+		// The Esc stop outranks both the timeout and a lucky late match:
+		// the user's signal is what the caller must act on (exit 130).
+		if stopped != nil && stopped() {
+			return win.WindowInfo{}, fmt.Errorf("%w: %s", ErrStopped, spec.App)
+		}
 		if err := ctx.Err(); err != nil {
 			return win.WindowInfo{}, &NoWindowError{App: spec.App}
 		}

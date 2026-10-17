@@ -400,3 +400,45 @@ func TestPointerCommandsRegistered(t *testing.T) {
 		t.Error("CommandsWith must default Scroll, Drag and Hover")
 	}
 }
+
+func TestBatchRunsThePointerSteps(t *testing.T) {
+	// Ticket 12: scroll, drag and hover are Batch steps, running through
+	// the same pipeline and coordinate mapping their standalone forms use,
+	// in order, on the Batch's one Window.
+	s := newPointerSpy(t)
+	cmds := CommandsWith(s.svc)
+	s.recordScreenshot(t, cmds)
+	s.origin = image.Point{X: 150, Y: 260}
+
+	out, cmdErr := runJSON(t, cmds, "batch", protocol.BatchArgs{
+		Window: "101",
+		Steps: []protocol.Step{
+			stepOf("scroll", protocol.ScrollArgs{X: 400, Y: 235, ScrollX: -240, ScrollY: 600}),
+			stepOf("drag", protocol.DragArgs{FromX: 400, FromY: 235, ToX: 500, ToY: 300}),
+			stepOf("hover", protocol.HoverArgs{X: 400, Y: 235}),
+		},
+	})
+	if cmdErr != nil {
+		t.Fatalf("batch: %v", cmdErr.Error())
+	}
+	if out != "ok\n" {
+		t.Errorf("output = %q, want ok", out)
+	}
+	// All three ran on window 101, at the screen points the screenshot
+	// pixels map to with the frame bounds re-read at (150, 260):
+	// (400, 235) -> (550, 495), (500, 300) -> (650, 560).
+	if s.scrolled != [5]int32{101, 550, 495, -240, 600} {
+		t.Errorf("scrolled %+v, want target 101 at (550, 495) by (-240, 600)", s.scrolled)
+	}
+	if s.dragged != [5]int32{101, 550, 495, 650, 560} {
+		t.Errorf("dragged %+v, want target 101 from (550, 495) to (650, 560)", s.dragged)
+	}
+	if s.hovered != [3]int32{101, 550, 495} {
+		t.Errorf("hovered %+v, want target 101 at (550, 495)", s.hovered)
+	}
+	// Each step activated its Window once: three activations (plus the
+	// one the recorded screenshot's capture performed).
+	if s.activations != 4 {
+		t.Errorf("activations = %d, want 4 (one per step plus the screenshot's)", s.activations)
+	}
+}

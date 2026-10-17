@@ -31,6 +31,23 @@ const okOutput = "ok\n"
 // clickUsageHint is the recovery hint for click's argument failures.
 const clickUsageHint = "usage: winuse click <window> <element index | name:<text> | id:<id> | @x,y> [--count 1|2|3] [--button left|middle|right]"
 
+// escStopMessage is the single user-facing line every Esc stop reports
+// (orchestrator decision, decisions.md: the message says the user stopped
+// winuse with the physical Escape key, and tells the agent to stop and
+// ask — Codex's USER_INTERRUPT_MESSAGE with winuse's wording).
+const escStopMessage = "winuse was stopped by the user with the physical Escape key"
+
+// escStopHint tells the agent what to do with a stop: stop and ask, and
+// treat the interrupted Action's effect as unknown (input already sent
+// before the press landed).
+const escStopHint = "stop your current task and ask the user how to proceed before sending more winuse commands; the interrupted Action may have partly taken effect, so re-read a Window State before acting again"
+
+// escStopError is the failure every Esc stop reports: Codex's interrupt
+// exit code (130) with the user-stopped-winuse message.
+func escStopError() *Error {
+	return &Error{Msg: escStopMessage, Hint: escStopHint, Exit: protocol.ExitEsc}
+}
+
 // click runs `winuse click <window> <element index>`: the Window is
 // activated and verified in the foreground, the Element behind the index
 // is scrolled into view if needed, and the click (single, double, right)
@@ -157,6 +174,13 @@ func activateWindow(s Services) Command {
 // standard foreground-lock workarounds and verify it is in the
 // foreground; then run the action's own step with the resolved Window.
 // Later Action tickets plug their step in through act.
+//
+// The whole pipeline from the activation on is one armed Esc scope
+// (ticket 12): while winuse is in control the physical Esc key is
+// swallowed and latched, and the checkpoints — after the activation,
+// around the act step's own abort points, and after it — turn a latched
+// press into the exit-130 stop. The refusal checks run unarmed: winuse
+// is not in control when it refuses.
 func (s Services) runAction(ctx context.Context, ref string, act func(ctx context.Context, w win.WindowInfo) (string, *Error)) (string, *Error) {
 	w, rerr := resolveWindow(s, ref)
 	if rerr != nil {
@@ -186,10 +210,26 @@ func (s Services) runAction(ctx context.Context, ref string, act func(ctx contex
 	// outcome. Best effort: an Action never fails over the indicator.
 	s.showOverlay(w)
 	defer s.hideOverlay()
+	// The armed Esc scope: from here (winuse takes control) to the defer's
+	// Disarm, the physical Esc key stops this Action.
+	s.Esc.Arm()
+	defer s.Esc.Disarm()
 	if err := s.Activate(w.ID); err != nil {
 		return "", activationError(err)
 	}
-	return act(ctx, w)
+	if s.Esc.Stopped() {
+		// The user pressed Esc during the activation: stop before any
+		// input is injected.
+		return "", escStopError()
+	}
+	out, err := act(ctx, w)
+	if s.Esc.Stopped() {
+		// A press during the act step (its own abort points, or its tail):
+		// the stop outranks the step's outcome — the user's signal is what
+		// the agent must act on.
+		return "", escStopError()
+	}
+	return out, err
 }
 
 // elementError maps an element-side Action failure to the user-facing
@@ -224,8 +264,12 @@ func activationError(err error) *Error {
 }
 
 // inputError maps an input-injection failure to the user-facing line; a
-// click aimed at a covered point tells the agent what covers it.
+// click aimed at a covered point tells the agent what covers it, and an
+// injection aborted by the user's Esc press becomes the exit-130 stop.
 func inputError(err error) *Error {
+	if errors.Is(err, win.ErrEscStopped) {
+		return escStopError()
+	}
 	var occluded *win.OcclusionError
 	if errors.As(err, &occluded) {
 		return Fail(err.Error(), "another window covers the target Element; dismiss or move it, then read a fresh Window State and retry")
