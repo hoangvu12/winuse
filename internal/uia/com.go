@@ -67,6 +67,16 @@ func release(o comPtr) {
 	}
 }
 
+// addRef takes one reference on a COM interface (IUnknown::AddRef), for
+// handing a stored Element to a caller that uses it beyond the store's
+// own reference: a newer Window State can install and release the stored
+// reference while the caller still holds its own (finding 4).
+func addRef(o comPtr) {
+	if o != nil {
+		call(o, 1)
+	}
+}
+
 // COM class/interface ids (SDK UIAutomationClient.h). CUIAutomation8 is the
 // Win8+ class whose default interface is IUIAutomation2, which carries the
 // connection/transaction timeout setters the bounded walk relies on.

@@ -341,6 +341,9 @@ func (c *Client) SetValue(ctx context.Context, hwnd uint64, index int, value str
 			jobErr = lerr
 			return
 		}
+		// AddRef'd on hand-out (finding 4): release our reference after
+		// the action.
+		defer c.store.release(el)
 		if w.thread == nil {
 			return // fake workers carry no COM thread; tests exercise the miss paths
 		}
@@ -366,6 +369,9 @@ func (c *Client) PerformSecondaryAction(ctx context.Context, hwnd uint64, index 
 			jobErr = lerr
 			return
 		}
+		// AddRef'd on hand-out (finding 4): release our reference after
+		// the action.
+		defer c.store.release(el)
 		if w.thread == nil {
 			return // fake workers carry no COM thread; tests exercise the miss paths
 		}

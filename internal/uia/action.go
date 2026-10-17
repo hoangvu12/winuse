@@ -48,6 +48,11 @@ func (c *Client) ElementPoint(ctx context.Context, hwnd uint64, index int) (Poin
 			jobErr = lerr
 			return
 		}
+		// The store AddRef'd the Element on hand-out (finding 4): release
+		// our reference after the action, so a newer Window State that
+		// replaced the stored one frees the Element exactly when the last
+		// user is done with it.
+		defer c.store.release(el)
 		if w.thread == nil {
 			return // fake workers carry no COM thread; tests exercise the miss paths
 		}
@@ -60,9 +65,12 @@ func (c *Client) ElementPoint(ctx context.Context, hwnd uint64, index int) (Poin
 }
 
 // lookup resolves an Element Index of hwnd's latest Window State to its
-// live element handle, on the worker thread. A Window with no cached
-// state fails as ErrNoState; an index beyond the stored one as ErrStale
-// (both with the read-the-state-again recovery, mapped by the helper).
+// live element handle, on the worker thread, AddRef'd for the caller (the
+// store's own reference can be released by a newer install while the
+// caller uses the Element; release it through the store when done). A
+// Window with no cached state fails as ErrNoState; an index beyond the
+// stored one as ErrStale (both with the read-the-state-again recovery,
+// mapped by the helper).
 func (c *Client) lookup(hwnd uint64, index int) (comPtr, error) {
 	el, ok := c.store.element(hwnd, index)
 	if ok {

@@ -190,7 +190,7 @@ type Client struct {
 // New creates a client. The worker thread starts lazily on first use, so a
 // helper that only ever lists windows never initialises COM.
 func New() *Client {
-	return &Client{factory: startWorker, store: newStore(release)}
+	return &Client{factory: startWorker, store: newStore(addRef, release)}
 }
 
 // Close releases the worker and the stored live Elements. Best effort: a
@@ -406,13 +406,6 @@ func (c *Client) installRead(hwnd uint64, seq uint64, res *captureResult, r *run
 	c.store.install(hwnd, seq, res.live, res.tree.Elements)
 }
 
-// Element returns the live element behind (hwnd, elementIndex) from the
-// latest Window State, for later Action tickets. ok is false when the
-// Window has no stored state or the index is out of range.
-func (c *Client) Element(hwnd uint64, elementIndex int) (comPtr, bool) {
-	return c.store.element(hwnd, elementIndex)
-}
-
 // responseMargin is kept between the walk's budget and the request deadline
 // so a partial tree still renders and answers in time.
 const responseMargin = 500 * time.Millisecond
@@ -451,12 +444,19 @@ func walkConfig(ctx context.Context, budget time.Duration) WalkConfig {
 // abandoned job's provider call eventually returns late — releases its own
 // Elements instead, so it can neither clobber the newer Window State the
 // agent actually saw nor release that state's Elements under a running
-// Action resolving an Element Index.
+// Action resolving an Element Index. Abandoned runs are refused outright
+// (installRead, finding 5).
+//
+// Hand-outs are AddRef'd (element): a newer install releases only the
+// stored reference, so an Element an Action is using cannot be freed
+// under it; the Action releases its own reference on the worker thread
+// when it is done (finding 4).
 type store struct {
 	mu      sync.Mutex
 	byHwnd  map[uint64]*windowState
-	next    uint64       // read sequence counter
-	release func(comPtr) // release, injectable for tests
+	next    uint64          // read sequence counter
+	addRef  func(comPtr)    // addRef, injectable for tests
+	release func(comPtr)    // release, injectable for tests
 }
 
 // windowState is one Window's stored live Elements, the Window State
@@ -468,8 +468,8 @@ type windowState struct {
 	elements []wstate.Element
 }
 
-func newStore(release func(comPtr)) *store {
-	return &store{byHwnd: map[uint64]*windowState{}, release: release}
+func newStore(addRef, release func(comPtr)) *store {
+	return &store{byHwnd: map[uint64]*windowState{}, addRef: addRef, release: release}
 }
 
 // beginRead allocates the sequence number of a tree read that is starting.
@@ -512,7 +512,10 @@ func (s *store) install(hwnd uint64, seq uint64, elems []comPtr, elements []wsta
 }
 
 // element returns the live element for an Element Index of hwnd's latest
-// Window State.
+// Window State, AddRef'd for the caller: a newer install releases the
+// stored reference, and without a reference of its own the caller's
+// Element could be freed while it still uses it. The caller releases it
+// when done (on the worker thread, through the same store).
 func (s *store) element(hwnd uint64, index int) (comPtr, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -520,7 +523,11 @@ func (s *store) element(hwnd uint64, index int) (comPtr, bool) {
 	if st == nil || index < 0 || index >= len(st.elems) {
 		return nil, false
 	}
-	return st.elems[index], true
+	el := st.elems[index]
+	if el != nil {
+		s.addRef(el)
+	}
+	return el, true
 }
 
 // state returns the Elements of hwnd's latest stored Window State — the

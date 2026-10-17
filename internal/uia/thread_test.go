@@ -44,7 +44,7 @@ func hangWorker() *worker {
 }
 
 func testClient(factory func() (*worker, error)) *Client {
-	return &Client{factory: factory, store: newStore(func(comPtr) {})}
+	return &Client{factory: factory, store: newStore(func(comPtr) {}, func(comPtr) {})}
 }
 
 func TestClientRunExecutesJobOnWorker(t *testing.T) {
@@ -264,7 +264,7 @@ func TestStoreInstallReplacesPreviousWindowState(t *testing.T) {
 	p1, p2, p3 := comPtr(&a), comPtr(&b), comPtr(&cc)
 	var mu sync.Mutex
 	released := map[comPtr]int{}
-	s := newStore(func(p comPtr) {
+	s := newStore(func(p comPtr) {}, func(p comPtr) {
 		mu.Lock()
 		released[p]++
 		mu.Unlock()
@@ -311,7 +311,7 @@ func TestStoreInstallRejectsSupersededRead(t *testing.T) {
 	p1, p2, p3 := comPtr(&a), comPtr(&b), comPtr(&cc)
 	var mu sync.Mutex
 	released := map[comPtr]int{}
-	s := newStore(func(p comPtr) {
+	s := newStore(func(p comPtr) {}, func(p comPtr) {
 		mu.Lock()
 		released[p]++
 		mu.Unlock()
@@ -430,5 +430,68 @@ func TestInstallReadRefusesAbandonedRuns(t *testing.T) {
 	}
 	if got := released[p1]; got != 0 {
 		t.Fatalf("the stored state's element was released %d times, want 0", got)
+	}
+}
+
+// TestStoreElementAddRefsOnHandOut pins finding 4's hand-out contract:
+// the store AddRefs the Element it hands an Action, so a newer Window
+// State installing and releasing the stored reference cannot free the
+// Element while the Action still uses it; the stored reference is the
+// only one a replacement releases.
+func TestStoreElementAddRefsOnHandOut(t *testing.T) {
+	a, b := 1, 2
+	p, p2 := comPtr(&a), comPtr(&b)
+	var mu sync.Mutex
+	addRefs, released := 0, 0
+	s := newStore(func(comPtr) { mu.Lock(); addRefs++; mu.Unlock() },
+		func(comPtr) { mu.Lock(); released++; mu.Unlock() })
+
+	s.install(101, s.beginRead(), []comPtr{p}, nil)
+	if _, ok := s.element(101, 0); !ok {
+		t.Fatal("element(101, 0) must resolve")
+	}
+	mu.Lock()
+	if addRefs != 1 {
+		t.Fatalf("AddRef called %d times on hand-out, want 1", addRefs)
+	}
+	if released != 0 {
+		t.Fatalf("Release called %d times before any replacement, want 0", released)
+	}
+	mu.Unlock()
+
+	// A newer read replaces the state: only the stored reference is
+	// released — the handed-out one keeps the Element alive for its user.
+	s.install(101, s.beginRead(), []comPtr{p2}, nil)
+	mu.Lock()
+	if released != 1 {
+		t.Fatalf("Release called %d times after the replacement, want 1 (the stored reference)", released)
+	}
+	mu.Unlock()
+}
+
+// TestElementPointReleasesItsBorrowedElement pins finding 4's other half:
+// an Action releases its borrowed Element reference when it is done —
+// through the store, on the worker thread — so the Element is freed
+// exactly when the last user finishes.
+func TestElementPointReleasesItsBorrowedElement(t *testing.T) {
+	c := testClient(func() (*worker, error) { return startFakeWorker(), nil })
+	defer c.Close()
+	a := 1
+	var mu sync.Mutex
+	addRefs, releases := 0, 0
+	c.store.addRef = func(comPtr) { mu.Lock(); addRefs++; mu.Unlock() }
+	c.store.release = func(comPtr) { mu.Lock(); releases++; mu.Unlock() }
+	c.store.install(101, c.store.beginRead(), []comPtr{comPtr(&a)}, nil)
+
+	if _, err := c.ElementPoint(context.Background(), 101, 0); err != nil {
+		t.Fatalf("element point: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if addRefs != 1 {
+		t.Errorf("AddRef called %d times, want 1 (the hand-out)", addRefs)
+	}
+	if releases != 1 {
+		t.Errorf("Release called %d times, want 1 (after the action)", releases)
 	}
 }
