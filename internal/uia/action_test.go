@@ -26,9 +26,10 @@ func TestElementPointNoCachedState(t *testing.T) {
 func TestElementPointIndexNotInCachedState(t *testing.T) {
 	c := testClient(func() (*worker, error) { return startFakeWorker(), nil })
 	defer c.Close()
-	// Fake element pointers: distinct real addresses.
+	// Fake element pointers: distinct real addresses; seeded through the
+	// real beginRead/install path.
 	a, b := 1, 2
-	c.store.replace(101, []comPtr{comPtr(&a), comPtr(&b)})
+	c.store.install(101, c.store.beginRead(), []comPtr{comPtr(&a), comPtr(&b)})
 
 	for _, index := range []int{2, 100, -1} {
 		_, err := c.ElementPoint(context.Background(), 101, index)
