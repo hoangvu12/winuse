@@ -29,24 +29,27 @@ import (
 const okOutput = "ok\n"
 
 // clickUsageHint is the recovery hint for click's argument failures.
-const clickUsageHint = "usage: winuse click <window> <element index> [--count 1|2|3] [--button left|middle|right]"
+const clickUsageHint = "usage: winuse click <window> <element index | @x,y> [--count 1|2|3] [--button left|middle|right]"
 
 // click runs `winuse click <window> <element index>`: the Window is
 // activated and verified in the foreground, the Element behind the index
 // is scrolled into view if needed, and the click (single, double, right)
 // is injected at its clickable point or bounds centre.
+//
+// `winuse click <window> @x,y` (ticket 08) aims at a coordinate of the
+// Window's latest screenshot instead: the Mapping turns the screenshot
+// pixel into the Window's physical pixel, anchored at the extended frame
+// bounds re-read at click time, so the click lands exactly where aimed at
+// any display scaling, on any monitor, and survives the Window moving
+// since the screenshot.
 func click(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.ClickArgs
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("click: "+err.Error(), clickUsageHint)
 		}
-		if a.ElementIndex == nil {
-			return "", Fail("click: an element index is required",
-				"read a Window's Element Indexes with winuse get-window-state <window>")
-		}
-		if *a.ElementIndex < 0 {
-			return "", Fail("click: the element index must be a non-negative integer", clickUsageHint)
+		if a.Point != nil && a.ElementIndex != nil {
+			return "", Fail("click: pass an element index or @x,y coordinates, not both", clickUsageHint)
 		}
 		count := a.ClickCount
 		if count == 0 {
@@ -64,6 +67,33 @@ func click(s Services) Command {
 			// Codex: "right double click is not supported" — extended to
 			// the middle button and triple clicks.
 			return "", Fail(fmt.Sprintf("%s %s click is not supported", buttonWord(button), clickWord(count)), "")
+		}
+
+		if a.Point != nil {
+			// The coordinate form (@x,y, ticket 08).
+			if a.Point.X < 0 || a.Point.Y < 0 {
+				return "", Fail("click: @x,y coordinates must be non-negative integers", clickUsageHint)
+			}
+			x, y := a.Point.X, a.Point.Y
+			return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
+				pt, serr := shotPoint(s, w, x, y)
+				if serr != nil {
+					return "", serr
+				}
+				if err := s.Click(w.ID, int32(pt.X), int32(pt.Y), button, count); err != nil {
+					return "", inputError(err)
+				}
+				return okOutput, nil
+			})
+		}
+
+		// The Element Index form (ticket 05).
+		if a.ElementIndex == nil {
+			return "", Fail("click: an element index or @x,y coordinates are required",
+				"read a Window's Element Indexes with winuse get-window-state <window>, or click @x,y from its latest screenshot")
+		}
+		if *a.ElementIndex < 0 {
+			return "", Fail("click: the element index must be a non-negative integer", clickUsageHint)
 		}
 		if s.Actions == nil {
 			return "", Fail("click is unavailable: no UIA client", "")

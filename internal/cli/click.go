@@ -16,7 +16,7 @@ import (
 )
 
 // clickUsage is the click command's usage line.
-const clickUsage = "usage: winuse click <window> <element index> [--count 1|2|3] [--button left|middle|right]"
+const clickUsage = "usage: winuse click <window> <element index | @x,y> [--count 1|2|3] [--button left|middle|right]"
 
 // clickOptions carries click's flags.
 type clickOptions struct {
@@ -24,12 +24,20 @@ type clickOptions struct {
 	button string // --button: left, middle or right (canonicalized by the helper)
 }
 
+// clickTarget is the Element Reference to click: an Element Index, or an
+// @x,y coordinate of the Window's latest screenshot.
+type clickTarget struct {
+	index *int            // the Element Index form
+	point *protocol.Point // the @x,y coordinate form
+}
+
 // parseClickArgs parses click's arguments: a Window reference and an
-// Element Index positionally, with --count/-c and --button/-b allowed
-// anywhere (before, between or after the positionals; values may be
-// separate arguments or =joined). Element Indexes are non-negative, so a
-// token that looks like a negative number is never mistaken for a flag.
-func parseClickArgs(args []string) (window string, index int, o clickOptions, err error) {
+// Element Reference positionally — an Element Index or `@x,y` — with
+// --count/-c and --button/-b allowed anywhere (before, between or after
+// the positionals; values may be separate arguments or =joined). Element
+// Indexes are non-negative and @x,y parts are too, so a token that looks
+// like a negative number is never mistaken for a flag.
+func parseClickArgs(args []string) (window string, target clickTarget, o clickOptions, err error) {
 	o = clickOptions{count: 1, button: "left"}
 	var pos []string
 	afterDashDash := false
@@ -56,37 +64,47 @@ func parseClickArgs(args []string) (window string, index int, o clickOptions, er
 		case "count", "c":
 			if !hasValue {
 				if i+1 >= len(args) {
-					return "", 0, o, errors.New("--count needs a value (1, 2 or 3)")
+					return "", target, o, errors.New("--count needs a value (1, 2 or 3)")
 				}
 				i++
 				value = args[i]
 			}
 			n, convErr := strconv.Atoi(value)
 			if convErr != nil || n < 1 {
-				return "", 0, o, fmt.Errorf("--count needs a value (1, 2 or 3), got %q", value)
+				return "", target, o, fmt.Errorf("--count needs a value (1, 2 or 3), got %q", value)
 			}
 			o.count = n
 		case "button", "b":
 			if !hasValue {
 				if i+1 >= len(args) {
-					return "", 0, o, errors.New("--button needs a value (left, middle or right)")
+					return "", target, o, errors.New("--button needs a value (left, middle or right)")
 				}
 				i++
 				value = args[i]
 			}
 			o.button = value
 		default:
-			return "", 0, o, fmt.Errorf("unknown flag %s", a)
+			return "", target, o, fmt.Errorf("unknown flag %s", a)
 		}
 	}
 	if len(pos) != 2 {
-		return "", 0, o, errors.New("click takes a window reference and an element index")
+		return "", target, o, errors.New("click takes a window reference and an element index or @x,y")
 	}
-	index, err = strconv.Atoi(pos[1])
+	ref := pos[1]
+	if strings.HasPrefix(ref, "@") || strings.HasPrefix(ref, " @") {
+		x, y, perr := parsePointRef(ref)
+		if perr != nil {
+			return "", target, o, perr
+		}
+		target.point = &protocol.Point{X: x, Y: y}
+		return pos[0], target, o, nil
+	}
+	index, err := strconv.Atoi(ref)
 	if err != nil || index < 0 {
-		return "", 0, o, fmt.Errorf("the element index must be a non-negative integer, got %q", pos[1])
+		return "", target, o, fmt.Errorf("the element index must be a non-negative integer, got %q", ref)
 	}
-	return pos[0], index, o, nil
+	target.index = &index
+	return pos[0], target, o, nil
 }
 
 // isNegativeNumber reports whether s looks like a negative integer (an
@@ -99,17 +117,19 @@ func isNegativeNumber(s string) bool {
 	return err == nil
 }
 
-// clickCmd implements `winuse click <window> <element index> [options]`:
-// single, double or right click on an Element of a Window.
+// clickCmd implements `winuse click <window> <element index | @x,y>
+// [options]`: single, double or right click on an Element of a Window by
+// Element Index, or at a coordinate of its latest screenshot.
 func clickCmd(args []string) int {
-	window, index, opts, err := parseClickArgs(args)
+	window, target, opts, err := parseClickArgs(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, clickUsage)
 		return 2
 	}
 	if err := runWithArgs("click", protocol.ClickArgs{
 		Window:       window,
-		ElementIndex: &index,
+		ElementIndex: target.index,
+		Point:        target.point,
 		ClickCount:   opts.count,
 		MouseButton:  opts.button,
 	}); err != nil {

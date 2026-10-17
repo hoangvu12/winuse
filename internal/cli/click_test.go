@@ -39,9 +39,9 @@ func TestParseClickArgs(t *testing.T) {
 			wantWindow: "-c", wantIndex: 2, wantCount: 1, wantButton: "right"},
 
 		{name: "too few positionals", args: []string{"101"},
-			wantErr: "click takes a window reference and an element index"},
+			wantErr: "click takes a window reference and an element index or @x,y"},
 		{name: "too many positionals", args: []string{"101", "1", "2"},
-			wantErr: "click takes a window reference and an element index"},
+			wantErr: "click takes a window reference and an element index or @x,y"},
 		{name: "unknown flag", args: []string{"--speed", "fast", "101", "1"},
 			wantErr: "unknown flag --speed"},
 		{name: "count without a value", args: []string{"101", "1", "--count"},
@@ -57,11 +57,11 @@ func TestParseClickArgs(t *testing.T) {
 		{name: "negative index is not a flag", args: []string{"101", "-3"},
 			wantErr: `the element index must be a non-negative integer, got "-3"`},
 		{name: "no arguments", args: nil,
-			wantErr: "click takes a window reference and an element index"},
+			wantErr: "click takes a window reference and an element index or @x,y"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			window, index, o, err := parseClickArgs(tc.args)
+			window, target, o, err := parseClickArgs(tc.args)
 			if tc.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 					t.Fatalf("error = %v, want %q", err, tc.wantErr)
@@ -71,8 +71,8 @@ func TestParseClickArgs(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if window != tc.wantWindow || index != tc.wantIndex {
-				t.Errorf("window/index = %q/%d, want %q/%d", window, index, tc.wantWindow, tc.wantIndex)
+			if window != tc.wantWindow || target.index == nil || *target.index != tc.wantIndex {
+				t.Errorf("window/index = %q/%v, want %q/%d", window, target.index, tc.wantWindow, tc.wantIndex)
 			}
 			if o.count != tc.wantCount || o.button != tc.wantButton {
 				t.Errorf("count/button = %d/%q, want %d/%q", o.count, o.button, tc.wantCount, tc.wantButton)
@@ -106,7 +106,7 @@ func TestClickUsageErrorsExit2WithoutDialing(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"click with no arguments", []string{"click"}, "usage: winuse click <window> <element index>"},
+		{"click with no arguments", []string{"click"}, "usage: winuse click <window> <element index | @x,y>"},
 		{"click with an unknown flag", []string{"click", "101", "1", "--speed", "5"}, "unknown flag --speed"},
 		{"click with a bad index", []string{"click", "101", "abc"}, "the element index must be a non-negative integer"},
 		{"activate-window with no window", []string{"activate-window"}, "usage: winuse activate-window <window>"},

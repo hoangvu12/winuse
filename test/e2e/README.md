@@ -131,3 +131,36 @@ so the first read is nearly empty and the retry must surface the page). It
 skips when no Chromium browser is installed. Offline, the retry and the
 sparse-tree notes are tested against recorded Chromium/Electron trees in
 `internal/uia/testdata/` (see `internal/uia/retry_test.go`).
+
+The ticket-08 tests (`screenshot_test.go`) cover screenshots, zoom and
+coordinate clicks: `get-window-state --screenshot` saves a JPEG whose path
+is printed, with the long edge capped at 1568 px and the scale recorded;
+the tree is unaffected and no screenshot is taken without the flag; a
+`@x,y` click on the fixture canvas lands within one pixel of the aimed
+screen point (the expected point is derived from the fixture's reported
+canvas rectangle and the printed scale, independently of winuse's
+mapping), and the click's red mark on the canvas is visible in a fresh
+screenshot; `zoom` returns a full-resolution PNG crop of the requested
+region containing the mark; the open dropdown menu is visible in the
+screenshot (the capture sees the live screen); a screenshot of a
+modal-dialog-blocked Window fails naming the dialog while the dialog
+itself screenshots fine; a helper restart loses the coordinate mapping
+(the `@x,y` click tells the agent to take a fresh screenshot instead of
+guessing); out-of-screenshot coordinates and zoom without any screenshot
+are refused with the size and the recovery instruction. The coordinate
+mapping itself (scale, footprint-centre rounding, window-anchored
+survival of moves, any monitor including negative coordinates) is
+offline-tested in `internal/shot` — the e2e tests pin only the live
+wiring.
+
+**Display-scaling acceptance (user-run):** these tests exercise whatever
+scaling the machine has. To accept ticket 08's `@x,y` criterion at
+100%, 150% and 175% and on a secondary monitor, re-run the suite with
+the display scaling changed between runs (Settings → System → Display →
+Scale), and once with the fixture's window moved to a secondary monitor
+(`TestCoordinateClickLandsOnAimedPoint` is the one that proves it); the
+assertions are scale-independent on purpose. A real Win32 popup over the
+target (a Notepad menu, a browser tooltip) is worth one manual
+`get-window-state --screenshot` check as well: the fixture's dropdown is
+painted inside its own window, so the popup-union path is only exercised
+by real menus.

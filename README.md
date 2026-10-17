@@ -5,7 +5,7 @@ run shell commands list Apps and Windows, read a Window State (accessibility
 tree as text, screenshots on request) and perform Actions — at the quality of
 Codex Computer Use, without being tied to Codex.
 
-**Status: tickets 01–07 and 14 of the v1 plan** (`.scratch/winuse-v1/`) —
+**Status: tickets 01–08 and 14 of the v1 plan** (`.scratch/winuse-v1/`) —
 background helper, `winuse list-windows`, the fixture app with its opt-in
 e2e runner, `winuse list-apps` and `winuse launch-app`, `winuse
 get-window-state`: the Window State as Codex's Element tree, read through UI
@@ -20,9 +20,13 @@ Codex's X keysym names); and `winuse set-value` plus
 `winuse perform-secondary-action`, with the full Codex line grammar in the
 Window State: each Element's rich state (value, toggled, selected,
 expanded, settable) and its Secondary Actions (Raise, Scroll Down, Expand,
-Collapse, plus winuse's Toggle and Select). Later tickets add more
-Actions, screenshots, the overlay and the Esc stop.
-The product spec and the domain language live in
+Collapse, plus winuse's Toggle and Select); and screenshots (ticket 08):
+`get-window-state --screenshot` captures the Window through a fallback-proof method chain and saves a
+model-friendly image whose path is printed, `winuse zoom` returns a
+full-resolution crop of a region, and `@x,y` coordinate clicks land exactly
+where aimed at any display scaling and on any monitor. Later tickets add
+more Actions, Windows.Graphics.Capture as the first capture method, the
+overlay and the Esc stop. The product spec and the domain language live in
 `.scratch/winuse-v1/spec.md` and `CONTEXT.md`.
 
 Windows-only. MIT licensed (see `LICENSE`).
@@ -141,7 +145,7 @@ none of it sends input.
 ## Reading a Window State
 
 ```
-winuse get-window-state <window>
+winuse get-window-state <window> [--screenshot]
 ```
 
 `<window>` is a **Window ID** from `list-windows`, or an **App name** —
@@ -207,10 +211,63 @@ same one retry. A tree that stays nearly empty after the retry — canvas
 apps, some Electron apps — carries a note saying so and pointing the agent
 at a screenshot instead.
 
+## Screenshots and coordinates
+
+```
+winuse get-window-state <window> --screenshot
+winuse zoom <window> <x>,<y>,<w>,<h>
+winuse click <window> @x,y [--count 1|2|3] [--button left|middle|right]
+```
+
+A screenshot is taken **only when `--screenshot` is passed** (the tree is
+the cheap default; image tokens are spent on request). The Window is
+brought to the foreground first — the region capture needs it — then
+captured through a **method chain** that never depends on one method:
+
+1. the **screen region** of the Window's visible bounds, widened with its
+   overlapping owned popups (menus, tooltips, dropdowns), copied from the
+   screen with BitBlt|CAPTUREBLT — so **menus and popups drawn over the
+   Window appear in the screenshot** (but not the mouse cursor);
+2. `PrintWindow` (PW_RENDERFULLCONTENT), which reaches Windows that are
+   partly off-screen but renders only the Window's own content.
+
+A near-black frame (the classic "nothing was rendered" failure) or an
+error falls through to the next method; only when every method fails does
+the command fail. Ticket 09 will prepend Windows.Graphics.Capture as the
+first method — the chain is the design point, and the fallbacks work on
+their own.
+
+The image is scaled so the **long edge is at most 1568 px** (a box filter,
+no aliasing), saved as **JPEG quality 80** into `%TEMP%\winuse`, and its
+path printed after the tree, with the scale recorded:
+
+```
+Screenshot: C:\Users\me\AppData\Local\Temp\winuse\winuse-screenshot-101-....jpg (1568x784 px, scale 0.5)
+```
+
+`@x,y` coordinate clicks and zoom regions live **in that screenshot's
+coordinate space**, and the helper maps them back exactly: every
+coordinate is a physical pixel (the helper is per-monitor-v2 DPI aware),
+and the mapping is anchored to the Window's visible bounds **re-read at
+action time** — so a click lands on the intended pixel at 100%, 150%,
+175% scaling, on any monitor (negative coordinates included), and still
+aims right if the Window moved since the screenshot. Coordinates are only
+valid for the latest screenshot of that Window (a new screenshot replaces
+the mapping; a helper restart loses it — the click fails with the
+instruction to take a fresh one instead of guessing).
+
+`zoom` maps a region of the latest screenshot back to the Window,
+re-captures at full resolution and saves a **PNG crop** (reading, not
+recognition — no scaling, no JPEG), with the path printed:
+
+```
+Zoom: C:\Users\me\AppData\Local\Temp\winuse\winuse-zoom-101-....png (312x208 px)
+```
+
 ## Acting on a Window
 
 ```
-winuse click <window> <element index> [--count 1|2|3] [--button left|middle|right]
+winuse click <window> <element index | @x,y> [--count 1|2|3] [--button left|middle|right]
 winuse type-text <window> <text>
 winuse press-key <window> <key>
 winuse set-value <window> <element index> <value>
@@ -331,6 +388,7 @@ internal/apps/       App catalog and launching: list-apps (UserAssist, Start men
 internal/keys/       Codex/X keysym key-name and chord parsing for press-key (pure Go, fully covered offline)
 internal/helper/     helper: serve loop, idle exit, stale-exit, command registry, window-state + record-tree + list-apps + launch-app commands
 internal/uia/        UI Automation: locked COM worker thread, bounded tree walk, Chromium/Electron lazy-tree retry, live-Element store (raw vtables, no cgo)
+internal/shot/       screenshots: frames, capture-method chain, box-filter scaling, the screenshot↔Window coordinate mapping and its per-Window store (pure, offline-tested)
 internal/wstate/     Window State model: Element/Tree, Codex-format rendering, recorded-tree fixtures (seam 2)
 internal/cli/        CLI: subcommands, dial-or-spawn client state machine, output/exit-code policy
 internal/version/    binary version (stale-helper detection)

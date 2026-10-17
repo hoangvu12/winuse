@@ -77,13 +77,38 @@ type LaunchArgs struct {
 }
 
 // ClickArgs are click's arguments — Codex's click parameters. Ticket 05
-// implements the Element Index form; later tickets add the coordinate form
-// (x, y) and Element References (name:, id:, @x,y).
+// implements the Element Index form; ticket 08 adds the `@x,y` coordinate
+// form (Point). Later tickets add Element References (name:, id:).
 type ClickArgs struct {
 	Window       string `json:"window"`                 // Window ID, or an App name when that App has exactly one Window
 	ElementIndex *int   `json:"element_index"`          // the Element to click, from that Window's latest Window State
+	Point        *Point `json:"point,omitempty"`        // @x,y: coordinates in the latest screenshot's coordinate space
 	ClickCount   int    `json:"click_count,omitempty"`  // 1 (default), 2 (double click) or 3 (triple click)
 	MouseButton  string `json:"mouse_button,omitempty"` // "left" (default), "right" or "middle"; aliases l, r, m
+}
+
+// Point is a coordinate Element Reference: a point in the coordinate space
+// of a Window's latest screenshot (`@x,y`). Screenshot pixels are mapped
+// back to the Window's physical pixels through the recorded scale, so the
+// reference is exact at any display scaling and on any monitor.
+type Point struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+}
+
+// Region is a rectangle in the latest screenshot's coordinate space
+// (x, y: top-left; w, h: size, in screenshot pixels): zoom's crop request.
+type Region struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+	W int `json:"w"`
+	H int `json:"h"`
+}
+
+// ZoomArgs are zoom's arguments.
+type ZoomArgs struct {
+	Window string `json:"window"`
+	Region Region `json:"region"`
 }
 
 // ActivateArgs are activate-window's arguments: the Window to bring to
