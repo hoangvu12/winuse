@@ -16,6 +16,7 @@ import (
 
 	"github.com/hoangvu12/winuse/internal/pipe"
 	"github.com/hoangvu12/winuse/internal/win"
+	"golang.org/x/sys/windows"
 )
 
 // This file holds the runner's shared plumbing: the opt-in gate, the winuse
@@ -116,4 +117,64 @@ func dialHelper(id win.Identity) (net.Conn, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	return pipe.Dial(ctx, id)
+}
+
+// killHelper terminates the running helper (if any) so the next command
+// spawns a fresh one — used when a test needs the helper to inherit this
+// process's environment (apps that winuse launches inherit the helper's,
+// not the CLI's). Killing the helper is process management only: no input,
+// no windows.
+func killHelper(t *testing.T) {
+	t.Helper()
+	id, err := win.CurrentIdentity()
+	if err != nil {
+		t.Fatalf("identity: %v", err)
+	}
+	conn, err := dialHelper(id)
+	if err != nil {
+		return // none running
+	}
+	pid, err := pipe.ServerPID(conn)
+	conn.Close()
+	if err != nil {
+		t.Fatalf("helper pid: %v", err)
+	}
+	terminatePID(t, pid)
+	// The next command respawns only after the old helper's pipe is gone.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		conn, err := dialHelper(id)
+		if err != nil {
+			return
+		}
+		conn.Close()
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("the killed helper is still answering")
+}
+
+// terminatePID terminates a process (test cleanup for processes the test
+// does not own, such as apps winuse launched).
+func terminatePID(t *testing.T, pid uint32) {
+	t.Helper()
+	h, err := windows.OpenProcess(windows.PROCESS_TERMINATE, false, pid)
+	if err != nil {
+		t.Fatalf("opening process %d: %v", pid, err)
+	}
+	defer windows.CloseHandle(h)
+	if err := windows.TerminateProcess(h, 1); err != nil {
+		t.Fatalf("terminating process %d: %v", pid, err)
+	}
+}
+
+// killWindowProcess terminates the process owning a Window (cleanup for
+// apps winuse launched: the test never owned them). Read-only lookup, no
+// input, no activation.
+func killWindowProcess(t *testing.T, windowID uint64) {
+	t.Helper()
+	pid := win.WindowPID(windowID)
+	if pid == 0 {
+		t.Fatalf("no process found for Window %d", windowID)
+	}
+	terminatePID(t, pid)
 }

@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
+	"github.com/hoangvu12/winuse/internal/apps"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/version"
 	"github.com/hoangvu12/winuse/internal/win"
@@ -17,6 +19,8 @@ const usage = `usage: winuse <command> [arguments]
 
 commands:
   list-windows    list visible Windows: Window ID, App and title
+  list-apps       list running and recently used Apps, with their Windows
+  launch-app      start an App by name or executable path, report its Window
   version         print the winuse version
 `
 
@@ -35,6 +39,10 @@ func Main(args []string) int {
 		return 0
 	case "list-windows":
 		return listWindowsCmd(args[1:])
+	case "list-apps":
+		return listAppsCmd(args[1:])
+	case "launch-app":
+		return launchAppCmd(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "winuse: unknown command %q\n\n%s", args[0], usage)
 		return 2
@@ -55,10 +63,51 @@ func listWindowsCmd(args []string) int {
 	return 0
 }
 
+// listAppsCmd prints one line per App (name, running state, last used,
+// use count, launch identifier) and one line per Window of running Apps.
+func listAppsCmd(args []string) int {
+	if len(args) > 0 {
+		fmt.Fprintln(os.Stderr, "winuse: list-apps takes no arguments")
+		return 2
+	}
+	if err := runSimple("list-apps"); err != nil {
+		reportError(os.Stderr, err)
+		return ExitCode(err)
+	}
+	return 0
+}
+
+// launchAppCmd starts an App by name or executable path and prints the
+// Window it opened (one list-windows-style line). Paths are resolved
+// against the CLI's working directory — the helper cannot see it.
+func launchAppCmd(args []string) int {
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: winuse launch-app <name|exe path>")
+		return 2
+	}
+	app := args[0]
+	if apps.LooksLikePath(app) {
+		if abs, err := filepath.Abs(app); err == nil {
+			app = abs
+		}
+	}
+	if err := run("launch-app", protocol.LaunchArgs{App: app}); err != nil {
+		reportError(os.Stderr, err)
+		return ExitCode(err)
+	}
+	return 0
+}
+
 // runSimple sends a no-argument command to the helper and prints its
 // response Codex-style: output on stdout, a single-line failure with a
 // recovery hint on stderr, non-zero exit on failure.
 func runSimple(cmd string) error {
+	return run(cmd, nil)
+}
+
+// run sends one command with arguments to the helper, with the same
+// output and exit-code policy as runSimple.
+func run(cmd string, args any) error {
 	if !win.HasInputDesktop() {
 		return win.ErrNoDesktop
 	}
@@ -66,7 +115,7 @@ func runSimple(cmd string) error {
 	if err != nil {
 		return err
 	}
-	req, err := Request(cmd, nil)
+	req, err := Request(cmd, args)
 	if err != nil {
 		return err
 	}

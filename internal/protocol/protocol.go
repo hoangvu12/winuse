@@ -29,9 +29,37 @@ const ExitEsc = 130
 // The client's connection deadline adds slack on top.
 const RequestTimeout = 10 * time.Second
 
+// LaunchTimeout is the launch-app budget: Codex gives launching an App
+// 15 s instead of the default 10 s (orchestrator decision).
+const LaunchTimeout = 15 * time.Second
+
 // MaxLine bounds one JSON line in either direction (a Window State tree can
 // be large, but not unbounded).
 const MaxLine = 4 << 20
+
+// commandTimeouts holds the per-command request budgets that differ from
+// RequestTimeout.
+var commandTimeouts = map[string]time.Duration{
+	"launch-app": LaunchTimeout,
+}
+
+// TimeoutFor returns the request budget for a command (RequestTimeout for
+// everything without an explicit entry, e.g. launch-app's 15 s). The CLI
+// uses this for its deadlines; the helper starts from its own configured
+// requestTimeout and only explicit entries (CommandTimeout) override it.
+func TimeoutFor(cmd string) time.Duration {
+	if d, ok := commandTimeouts[cmd]; ok {
+		return d
+	}
+	return RequestTimeout
+}
+
+// CommandTimeout returns a command's explicitly configured budget, if it
+// has one (launch-app: 15 s).
+func CommandTimeout(cmd string) (time.Duration, bool) {
+	d, ok := commandTimeouts[cmd]
+	return d, ok
+}
 
 // Request is one command sent by the CLI.
 type Request struct {
@@ -39,6 +67,13 @@ type Request struct {
 	Ver  string          `json:"ver"`            // CLI binary version; a helper from a different build exits (see Response.Stale)
 	Cmd  string          `json:"cmd"`            // command name, e.g. "list-windows"
 	Args json.RawMessage `json:"args,omitempty"` // command arguments, command-specific JSON
+}
+
+// LaunchArgs are launch-app's arguments: an App name from the catalog or
+// an explicit identifier (executable path, shortcut path, App User Model
+// ID) — Codex's launch_app "app" parameter.
+type LaunchArgs struct {
+	App string `json:"app"`
 }
 
 // Response is the helper's answer.

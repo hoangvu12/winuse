@@ -54,7 +54,10 @@ atomically on every change.
 
 The runner builds the fixture as a GUI-subsystem binary
 (`go build -ldflags -H windowsgui`), starts it with a temp state file,
-and kills it when the test ends.
+and kills it when the test ends. The fixture also accepts its state path
+from `WINUSE_FIXTURE_STATE` when `-state` is unset — for tests where
+`winuse launch-app` starts it (launched Apps inherit the helper's
+environment, not the test's).
 
 ## Writing a test in this package
 
@@ -67,7 +70,15 @@ and kills it when the test ends.
 4. Assert on stdout/stderr/exit code and on the fixture's state file.
 
 Current tests: the ticket-01 helper/list-windows contract tests
-(`list_windows_test.go`) and `TestListWindowsShowsFixtureWindow`
+(`list_windows_test.go`), `TestListWindowsShowsFixtureWindow`
 (`fixture_test.go`) — the first seam-1 test: `winuse list-windows` must list
 the fixture's Window, identified by the exact Window ID and title the
-fixture reports in its state file.
+fixture reports in its state file — and the ticket-04 tests
+(`launch_app_test.go`): `list-apps` must show the fixture App running with
+its Window; `launch-app` by path must report exactly the Window the
+launched fixture reports (the runner kills any running helper first so the
+fresh one inherits the fixture state environment, and cleans up the
+launched process by Window); a bogus name fails with `app not found`; a
+windowless executable fails with `launched app did not expose a targetable
+window` after the 15 s timeout. `parsing_test.go` (no build tag) unit-tests
+the listing-output parsing offline.

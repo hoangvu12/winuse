@@ -5,11 +5,12 @@ run shell commands list Apps and Windows, read a Window State (accessibility
 tree as text, screenshots on request) and perform Actions — at the quality of
 Codex Computer Use, without being tied to Codex.
 
-**Status: ticket 02 of the v1 plan** (`.scratch/winuse-v1/`) — background
-helper and `winuse list-windows`, plus the fixture app and the opt-in
-e2e runner. Later tickets add the UI Automation tree, actions,
-screenshots, the overlay and the Esc stop. The product spec and the domain
-language live in `.scratch/winuse-v1/spec.md` and `CONTEXT.md`.
+**Status: ticket 04 of the v1 plan** (`.scratch/winuse-v1/`) — background
+helper, `winuse list-windows`, the fixture app and the opt-in e2e runner,
+plus `winuse list-apps` and `winuse launch-app`. Later tickets add the UI
+Automation tree, actions, screenshots, the overlay and the Esc stop. The
+product spec and the domain language live in `.scratch/winuse-v1/spec.md`
+and `CONTEXT.md`.
 
 Windows-only. MIT licensed (see `LICENSE`).
 
@@ -63,8 +64,8 @@ go run github.com/tc-hib/go-winres@latest make --arch amd64,arm64 --out cmd/winu
 - The helper exits by itself after **5 minutes without requests**
   (orchestrator decision; override with `WINUSE_HELPER_IDLE`, a duration
   like `90s`); the next command restarts it transparently.
-- Requests time out after **10 s** (15 s for launch-app once that command
-  exists) and report `winuse request timed out: <command>`;
+- Requests time out after **10 s** (15 s for `launch-app`) and report
+  `winuse request timed out: <command>`;
   Esc stops exit with code 130 (reserved in the protocol now).
 - Helper logs go to `%LOCALAPPDATA%\winuse\helper.log` (its stderr is NUL).
 - The process is **per-monitor DPI aware v2** (manifest + runtime call) so
@@ -80,6 +81,32 @@ Hidden, DWM-cloaked and tool windows are excluded; owned dialogs ("Save
 As") are listed as their own Window of the same App. UWP windows are
 attributed to their real app process, and the App name is the executable's
 FileDescription, falling back to the exe base name.
+
+`winuse list-apps` prints the App catalog — every running App with its
+Windows, then recently used Apps (from Explorer's UserAssist tracking,
+most recent first, at most 30) marked `not running`:
+
+```
+<App name>\t<state>\t<last used>\t<use count>\t<launch identifier>
+\t<Window ID>\t<title>      (one line per Window of a running App)
+```
+
+Window lines start with a tab, so App and Window lines are easy to tell
+apart. The launch identifier is exactly what `launch-app` accepts: an
+executable path, a Start-menu shortcut path, or an App User Model ID for
+packaged (Store) Apps (their running processes adopt it automatically).
+
+`winuse launch-app <name|exe path>` starts an App — by name (matched
+case-insensitively against the catalog, installed Start-menu shortcuts and
+packaged Apps; several distinct matches are an error listing them, never a
+guess), or by an explicit identifier — and prints the Window it opened as
+one `list-windows`-style line, within the **15 s launch timeout**. Apps
+that open no Window fail with `launched app did not expose a targetable
+window: <app>` (Codex's message); a single-instance App that reuses an
+existing Window is recognized by that Window coming to the foreground.
+Name resolution reads the registry, the Start menu and (for packaged
+Apps, once per helper lifetime, best-effort) PowerShell's `Get-StartApps`;
+none of it sends input.
 
 ## The fixture app
 
@@ -106,6 +133,7 @@ cmd/winusefixture/   the e2e fixture app's entry point (see The fixture app)
 internal/protocol/   CLI↔helper contract: JSON-lines request/response, timeouts, exit codes
 internal/pipe/       named pipe: naming per user/session, user-only DACL, dial, anti-squat check, singleton
 internal/win/        Win32 layer: identity, DPI awareness, window enumeration, process/App names, helper spawn
+internal/apps/      App catalog and launching: list-apps (UserAssist, Start menu, store Apps), launch-app (CreateProcess/ShellExecuteExW + Window polling)
 internal/helper/     helper: serve loop, idle exit, stale-exit, command registry
 internal/cli/        CLI: subcommands, dial-or-spawn client state machine, output/exit-code policy
 internal/version/    binary version (stale-helper detection)

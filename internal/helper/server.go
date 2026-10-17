@@ -144,6 +144,14 @@ func (s *Server) serveConn(conn net.Conn) {
 	if err := protocol.ReadLine(bufio.NewReader(conn), &req); err != nil {
 		return // malformed request; drop the connection
 	}
+	// Commands with an explicitly longer budget (launch-app: 15 s) get it:
+	// extend the exchange deadline to cover the whole request.
+	if d, ok := protocol.CommandTimeout(req.Cmd); ok && d > s.requestTimeout {
+		if err := conn.SetDeadline(time.Now().Add(d + 2*time.Second)); err != nil {
+			s.log.Printf("extending deadline: %v", err)
+			return
+		}
+	}
 	resp := s.handle(&req)
 	if err := protocol.WriteLine(conn, &resp); err != nil {
 		s.log.Printf("writing response: %v", err)
@@ -174,7 +182,13 @@ func (s *Server) handle(req *protocol.Request) protocol.Response {
 	if !ok {
 		return protocol.Errorf(1, "unknown command %q", req.Cmd)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), s.requestTimeout)
+	// The request budget: the server's configured default, overridden by
+	// commands with an explicit budget (launch-app: 15 s).
+	budget := s.requestTimeout
+	if d, ok := protocol.CommandTimeout(req.Cmd); ok {
+		budget = d
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 	out, cmdErr := cmd(ctx, req.Args)
 	// Timeout policy (orchestrator decision): a command that failed or
