@@ -70,7 +70,7 @@ type Services struct {
 // Commands() wires the real ones.
 func CommandsWith(s Services) map[string]Command {
 	s = defaultServices(s)
-	return map[string]Command{
+	cmds := map[string]Command{
 		"list-windows":             listWindows,
 		"get-window-state":         func(ctx context.Context, args json.RawMessage) (string, *Error) { return getWindowState(s, ctx, args) },
 		"record-tree":              func(ctx context.Context, args json.RawMessage) (string, *Error) { return recordTree(s, ctx, args) },
@@ -82,6 +82,10 @@ func CommandsWith(s Services) map[string]Command {
 		"set-value":                setValue(s),
 		"perform-secondary-action": performSecondaryAction(s),
 	}
+	// The Batch dispatches its steps to the other commands, so it is wired
+	// to the registry itself (batch.go, ticket 11).
+	cmds["batch"] = batch(cmds)
+	return cmds
 }
 
 // defaultServices fills a Services' zero values with the real

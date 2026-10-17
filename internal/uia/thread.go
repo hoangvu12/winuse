@@ -224,7 +224,7 @@ func (c *Client) Capture(ctx context.Context, hwnd uint64, title, app string, bu
 		runErr := c.Run(ctx, func(w *worker) {
 			res, jobErr = w.thread.capture(uintptr(hwnd), title, app, cfg)
 			if jobErr == nil {
-				c.store.install(hwnd, seq, res.live)
+				c.store.install(hwnd, seq, res.live, res.tree.Elements)
 			}
 		})
 		if runErr != nil {
@@ -291,11 +291,13 @@ type store struct {
 	release func(comPtr) // release, injectable for tests
 }
 
-// windowState is one Window's stored live Elements and the read that
-// produced them.
+// windowState is one Window's stored live Elements, the Window State
+// they back (its Elements, the name:/id: reference space — ticket 11),
+// and the read that produced them.
 type windowState struct {
-	seq   uint64
-	elems []comPtr
+	seq      uint64
+	elems    []comPtr
+	elements []wstate.Element
 }
 
 func newStore(release func(comPtr)) *store {
@@ -310,12 +312,13 @@ func (s *store) beginRead() uint64 {
 	return s.next
 }
 
-// install stores elems as hwnd's live Elements when seq is newer than the
-// stored read's, releasing the previous Elements. A superseded read (an
-// abandoned worker's job completing after a newer read) has its elems
-// released instead; the newer Window State is left untouched. Callers run
-// on a COM thread — the worker whose walk produced the Elements.
-func (s *store) install(hwnd uint64, seq uint64, elems []comPtr) {
+// install stores elems (and the Window State elements they back) as
+// hwnd's live Elements when seq is newer than the stored read's,
+// releasing the previous Elements. A superseded read (an abandoned
+// worker's job completing after a newer read) has its elems released
+// instead; the newer Window State is left untouched. Callers run on a
+// COM thread — the worker whose walk produced the Elements.
+func (s *store) install(hwnd uint64, seq uint64, elems []comPtr, elements []wstate.Element) {
 	s.mu.Lock()
 	st := s.byHwnd[hwnd]
 	if st != nil && seq <= st.seq {
@@ -332,7 +335,7 @@ func (s *store) install(hwnd uint64, seq uint64, elems []comPtr) {
 	if len(elems) == 0 {
 		delete(s.byHwnd, hwnd)
 	} else {
-		s.byHwnd[hwnd] = &windowState{seq: seq, elems: elems}
+		s.byHwnd[hwnd] = &windowState{seq: seq, elems: elems, elements: elements}
 	}
 	s.mu.Unlock()
 	for _, p := range old {
@@ -350,6 +353,20 @@ func (s *store) element(hwnd uint64, index int) (comPtr, bool) {
 		return nil, false
 	}
 	return st.elems[index], true
+}
+
+// state returns the Elements of hwnd's latest stored Window State — the
+// space name:/id: references resolve against (ticket 11). Pure metadata:
+// no COM, no worker; the live Element behind a resolved Index is probed
+// by the Action's own step.
+func (s *store) state(hwnd uint64) ([]wstate.Element, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.byHwnd[hwnd]
+	if st == nil {
+		return nil, false
+	}
+	return st.elements, true
 }
 
 // releaseAll drops every stored Window. Called on the worker thread.

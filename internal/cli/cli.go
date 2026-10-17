@@ -29,25 +29,33 @@ commands:
   zoom <window> <x>,<y>,<w>,<h>
                                save a full-resolution crop of a region of the
                                Window's latest screenshot and print its path
-  click <window> <element index | @x,y> [options]
-                               click an Element of a Window by Element Index, or
-                               at @x,y coordinates from the Window's latest
+  click <window> <element index | name: | id: | @x,y> [options]
+                               click an Element of a Window by Element Index,
+                               name: or id: reference, or at @x,y
+                               coordinates from the Window's latest
                                screenshot; options: --count 1|2|3 (default 1),
                                --button left|middle|right (default left)
   type-text <window> <text>    type Unicode text into the Window's focused Element
   press-key <window> <key>     press a key or key combination by Codex's key
                                names, e.g. Return, Tab, Control_L+a, Numpad_0
-  set-value <window> <element index> <value>
+  set-value <window> <element index | name: | id:> <value>
                                set an Element's value directly (a settable
                                edit or a numeric range)
-  perform-secondary-action <window> <element index> <action>
+  perform-secondary-action <window> <element index | name: | id:> <action>
                                perform one of the Element's Secondary Actions
                                (Raise, Scroll Down, Expand, Collapse, Toggle,
                                Select, ...)
+  batch <window> <action> [arguments] [then <action> [arguments]] ...
+                               run several Actions on one Window in order,
+                               stopping at the first failure (which names
+                               the failed step); e.g.
+                               winuse batch 101 click name:File then type-text hello then press-key Return
   activate-window <window>    bring a Window to the foreground
   version                     print the winuse version
 
-a <window> is a Window ID, or an App name when that App has exactly one Window
+a <window> is a Window ID, or an App name when that App has exactly one Window;
+an element index, name:<text>, id:<AutomationId> (and, for click, @x,y) name an
+Element of the Window's latest Window State
 `
 
 // Main runs the CLI for args (without the program name) and returns the exit
@@ -85,6 +93,8 @@ func Main(args []string) int {
 		return setValueCmd(args[1:])
 	case "perform-secondary-action":
 		return performSecondaryActionCmd(args[1:])
+	case "batch":
+		return batchCmd(args[1:])
 	case "activate-window":
 		return activateWindowCmd(args[1:])
 	default:

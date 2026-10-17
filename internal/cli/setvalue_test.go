@@ -14,43 +14,67 @@ import (
 
 func TestParseSetValueArgs(t *testing.T) {
 	// Two arguments: usage error.
-	if _, _, _, err := parseSetValueArgs([]string{"101", "3"}); err == nil {
+	if _, _, _, _, err := parseSetValueArgs([]string{"101", "3"}); err == nil {
 		t.Error("missing value must be a usage error")
 	}
-	// A bad index is a usage error.
-	if _, _, _, err := parseSetValueArgs([]string{"101", "x", "v"}); err == nil {
+	// A bad element reference is a usage error.
+	if _, _, _, _, err := parseSetValueArgs([]string{"101", "x", "v"}); err == nil {
 		t.Error("a non-numeric index must be a usage error")
 	}
-	if _, _, _, err := parseSetValueArgs([]string{"101", "-1", "v"}); err == nil {
+	if _, _, _, _, err := parseSetValueArgs([]string{"101", "-1", "v"}); err == nil {
 		t.Error("a negative index must be a usage error")
 	}
 	// The value is every remaining argument joined with single spaces.
-	window, index, value, err := parseSetValueArgs([]string{"101", "3", "hello"})
-	if err != nil || window != "101" || index != 3 || value != "hello" {
-		t.Fatalf("parse = %q, %d, %q, %v", window, index, value, err)
+	window, index, _, value, err := parseSetValueArgs([]string{"101", "3", "hello"})
+	if err != nil || window != "101" || index == nil || *index != 3 || value != "hello" {
+		t.Fatalf("parse = %q, %v, %q, %v", window, index, value, err)
 	}
-	_, _, value, err = parseSetValueArgs([]string{"notepad", "0", "hello", "world", "  twice"})
+	_, _, _, value, err = parseSetValueArgs([]string{"notepad", "0", "hello", "world", "  twice"})
 	if err != nil || value != "hello world   twice" {
 		t.Fatalf("joined value = %q, %v; want the arguments joined with single spaces", value, err)
 	}
 	// A value that looks like a flag or a negative number is a value.
-	_, _, value, err = parseSetValueArgs([]string{"101", "2", "--not-a-flag"})
+	_, _, _, value, err = parseSetValueArgs([]string{"101", "2", "--not-a-flag"})
 	if err != nil || value != "--not-a-flag" {
 		t.Fatalf("value = %q, %v; want the raw argument", value, err)
 	}
 }
 
+func TestParseSetValueArgsElementReferences(t *testing.T) {
+	// name: and id: references pass through verbatim for the helper to
+	// resolve against the Window's latest Window State.
+	window, index, ref, value, err := parseSetValueArgs([]string{"101", "name:Text Field", "hello"})
+	if err != nil || window != "101" || index != nil || ref != "name:Text Field" || value != "hello" {
+		t.Fatalf("parse = %q, %v, %q, %q, %v", window, index, ref, value, err)
+	}
+	_, _, ref, _, err = parseSetValueArgs([]string{"101", "id:text-field", "42"})
+	if err != nil || ref != "id:text-field" {
+		t.Fatalf("id: reference = %q, %v", ref, err)
+	}
+	// A reference with an empty text is a usage error.
+	for _, bad := range []string{"name:", "id:"} {
+		if _, _, _, _, err := parseSetValueArgs([]string{"101", bad, "v"}); err == nil {
+			t.Errorf("%q must be a usage error", bad)
+		}
+	}
+}
+
 func TestParseSecondaryActionArgs(t *testing.T) {
-	if _, _, _, err := parseSecondaryActionArgs([]string{"101", "3"}); err == nil {
+	if _, _, _, _, err := parseSecondaryActionArgs([]string{"101", "3"}); err == nil {
 		t.Error("missing action must be a usage error")
 	}
-	if _, _, _, err := parseSecondaryActionArgs([]string{"101", "x", "Expand"}); err == nil {
+	if _, _, _, _, err := parseSecondaryActionArgs([]string{"101", "x", "Expand"}); err == nil {
 		t.Error("a non-numeric index must be a usage error")
 	}
 	// An unquoted two-word action joins into one action name.
-	window, index, action, err := parseSecondaryActionArgs([]string{"101", "3", "scroll", "down"})
-	if err != nil || window != "101" || index != 3 || action != "scroll down" {
-		t.Fatalf("parse = %q, %d, %q, %v", window, index, action, err)
+	window, index, _, action, err := parseSecondaryActionArgs([]string{"101", "3", "scroll", "down"})
+	if err != nil || window != "101" || index == nil || *index != 3 || action != "scroll down" {
+		t.Fatalf("parse = %q, %v, %q, %v", window, index, action, err)
+	}
+	// A name: reference names the Element.
+	_, _, ref, action, err := parseSecondaryActionArgs([]string{"101", "name:File", "expand"})
+	if err != nil || ref != "name:File" || action != "expand" {
+		t.Fatalf("parse = %q, %q, %v", ref, action, err)
 	}
 }
 
@@ -62,10 +86,10 @@ func TestSetValueAndSecondaryUsageErrors(t *testing.T) {
 	}{
 		{"set-value without arguments", []string{"set-value"}, setValueUsage},
 		{"set-value without a value", []string{"set-value", "101", "3"}, setValueUsage},
-		{"set-value with a bad index", []string{"set-value", "101", "x", "v"}, "the element index must be a non-negative integer"},
+		{"set-value with a bad index", []string{"set-value", "101", "x", "v"}, "the element reference must be a non-negative element index, name:<text> or id:<AutomationId>"},
 		{"perform-secondary-action without arguments", []string{"perform-secondary-action"}, secondaryActionUsage},
 		{"perform-secondary-action without an action", []string{"perform-secondary-action", "101", "3"}, secondaryActionUsage},
-		{"perform-secondary-action with a bad index", []string{"perform-secondary-action", "101", "x", "Expand"}, "the element index must be a non-negative integer"},
+		{"perform-secondary-action with a bad index", []string{"perform-secondary-action", "101", "x", "Expand"}, "the element reference must be a non-negative element index, name:<text> or id:<AutomationId>"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

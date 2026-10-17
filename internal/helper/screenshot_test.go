@@ -605,7 +605,7 @@ func TestClickCoordinateRefusalsMatchPipeline(t *testing.T) {
 		ElementIndex: &idx,
 		Point:        &protocol.Point{X: 1, Y: 1},
 	})
-	if cmdErr == nil || !strings.Contains(cmdErr.Error(), "not both") {
+	if cmdErr == nil || !strings.Contains(cmdErr.Error(), "not several") {
 		t.Fatalf("want both-forms refusal, got %v", cmdErr)
 	}
 
