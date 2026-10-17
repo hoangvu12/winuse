@@ -65,6 +65,14 @@ type Services struct {
 	Capture     func(hwnd uint64) (shot.Frame, error)  // the capture chain (region → PrintWindow; ticket 09 prepends WGC)
 	Shots       *shot.Store                            // per-Window latest screenshot mappings (`@x,y`, zoom)
 	FrameOrigin func(hwnd uint64) (image.Point, error) // the Window's extended frame bounds top-left, read fresh at Action time
+
+	// The in-control indicator (ticket 13): raised over the target Window
+	// for the duration of every Action, click-through, never focused, and
+	// hidden around every capture. Nil means no indicator (offline tests;
+	// a helper whose indicator could not start). The real one is
+	// *win.Overlay, wired by Main; the Esc keyboard hook of ticket 12 will
+	// join its UI thread.
+	Overlay Overlay
 }
 
 // CommandsWith builds the command registry over the given services.
@@ -140,8 +148,10 @@ func defaultServices(s Services) Services {
 	if s.Capture == nil {
 		// The GDI fallback chain (spec, Observation details): the Window's
 		// screen region first, then PrintWindow. Ticket 09 prepends
-		// Windows.Graphics.Capture in front of these.
-		s.Capture = shot.Chain{Methods: []shot.Method{win.RegionMethod{}, win.PrintWindowMethod{}}}.CaptureWindow
+		// Windows.Graphics.Capture in front of these. With an indicator
+		// wired, every method captures with it hidden (ticket 13), so
+		// winuse's own screenshots never contain it.
+		s.Capture = shot.Chain{Methods: captureMethods(s.Overlay)}.CaptureWindow
 	}
 	if s.FrameOrigin == nil {
 		s.FrameOrigin = win.FrameOrigin

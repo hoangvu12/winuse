@@ -93,10 +93,26 @@ func Main() int {
 		budget = uia.DefaultTreeBudget
 	}
 
-	server := New(version.Version, idle, protocol.RequestTimeout, CommandsWith(Services{
+	// The in-control indicator (ticket 13) lives on the helper's UI
+	// thread: one OS-locked thread with a message loop that owns the
+	// overlay window now and the Esc keyboard hook in ticket 12. An
+	// indicator that cannot start disables itself — Actions run without
+	// it rather than failing.
+	overlay, oerr := win.NewOverlay()
+	if oerr != nil {
+		log.Printf("the in-control overlay is unavailable, Actions will run without it: %v", oerr)
+	} else {
+		defer overlay.Close()
+	}
+
+	svc := Services{
 		Trees:  trees,
 		Budget: budget,
-	}), nil)
+	}
+	if overlay != nil {
+		svc.Overlay = overlay
+	}
+	server := New(version.Version, idle, protocol.RequestTimeout, CommandsWith(svc), nil)
 	err = server.Serve(ln)
 	if err != nil {
 		log.Printf("helper server: %v", err)

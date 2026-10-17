@@ -159,6 +159,12 @@ func (s Services) runAction(ctx context.Context, ref string, act func(ctx contex
 		}
 		return "", Fail(err.Error(), "")
 	}
+	// The in-control indicator (ticket 13): raised over the target Window
+	// for as long as winuse controls it — the activation, the injected
+	// input, the action's own step — then hidden again, whatever the
+	// outcome. Best effort: an Action never fails over the indicator.
+	s.showOverlay(w)
+	defer s.hideOverlay()
 	if err := s.Activate(w.ID); err != nil {
 		return "", activationError(err)
 	}
