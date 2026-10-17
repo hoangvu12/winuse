@@ -64,6 +64,9 @@ func (e *ModalDialogError) Error() string {
 // and only a minimized one (un-maximizing on activation is a documented
 // Codex bug). No input is injected while the Window is disabled.
 func Activate(hwnd uint64) error {
+	if err := LiveDesktopGuard(); err != nil {
+		return err
+	}
 	h := windows.HWND(hwnd)
 
 	// AttachThreadInput binds OS threads, and Go may migrate this goroutine

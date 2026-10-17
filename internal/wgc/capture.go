@@ -165,6 +165,9 @@ func (m *Method) CaptureWindow(hwnd uint64) (shot.Frame, error) {
 		m.logf("wgc: window %d fell back: %v", hwnd, err)
 		return shot.Frame{}, err
 	}
+	if err := win.LiveDesktopGuard(); err != nil {
+		return shot.Frame{}, err
+	}
 	w, err := m.ensureWorker()
 	if err != nil {
 		return shot.Frame{}, err

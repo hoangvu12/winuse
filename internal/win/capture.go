@@ -307,6 +307,9 @@ func PopupPresent(all []WindowInfo, target WindowInfo) bool {
 // over the region (menus, tooltips, popups) are included; the cursor is
 // not (win32.md §10).
 func CaptureScreenRegion(r Rect) (*image.RGBA, error) {
+	if err := LiveDesktopGuard(); err != nil {
+		return nil, err
+	}
 	w, h := r.Width(), r.Height()
 	if w <= 0 || h <= 0 {
 		return nil, errors.New("the capture region is empty")
@@ -356,6 +359,9 @@ func CaptureScreenRegion(r Rect) (*image.RGBA, error) {
 // overlapping Windows are not part of the image — the price of the
 // fallback position. A hung app is abandoned after printWindowBudget.
 func CapturePrintWindow(hwnd uint64) (*image.RGBA, Rect, error) {
+	if err := LiveDesktopGuard(); err != nil {
+		return nil, Rect{}, err
+	}
 	h := windows.HWND(hwnd)
 	var wr Rect
 	if ok, _, _ := procGetWindowRect.Call(uintptr(h), uintptr(unsafe.Pointer(&wr))); ok == 0 {

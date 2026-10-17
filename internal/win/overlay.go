@@ -149,6 +149,9 @@ func (o *Overlay) Close() {
 // bounds): the window is moved there, raised to topmost and shown
 // without taking focus.
 func (o *Overlay) Show(r Rect) error {
+	if err := LiveDesktopGuard(); err != nil {
+		return err
+	}
 	return o.thread.do(func() {
 		o.shown = true
 		o.rect = r

@@ -115,6 +115,9 @@ func MouseClick(target uint64, x, y int32, button MouseButton, count int) error 
 // under PMv2, unlike absolute SendInput moves whose rounding can drift a
 // physical pixel) and verifies it arrived, retrying once.
 func moveCursor(x, y int32) error {
+	if err := LiveDesktopGuard(); err != nil {
+		return err
+	}
 	for attempt := 0; attempt < 2; attempt++ {
 		if r, _, _ := procSetCursorPos.Call(uintptr(int32ToU32(x)), uintptr(int32ToU32(y))); r != 0 {
 			var p point
@@ -191,6 +194,9 @@ func mouseEvent(flags uint32) input {
 
 // sendInput injects events in one SendInput call.
 func sendInput(events ...input) error {
+	if err := LiveDesktopGuard(); err != nil {
+		return err
+	}
 	if len(events) == 0 {
 		return nil
 	}
