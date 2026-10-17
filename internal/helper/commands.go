@@ -20,13 +20,7 @@ import (
 // set-value, ...); their handlers reuse the UIA worker and the live-Element
 // store the window-state commands create.
 func Commands() map[string]Command {
-	cmds := CommandsWith(Services{})
-	// The Start-apps listing is shared by list-apps and launch-app and
-	// cached for the helper's lifetime (it is a ~1 s PowerShell call).
-	store := &apps.StoreSource{Run: apps.GetStartApps}
-	cmds["list-apps"] = listApps(store)
-	cmds["launch-app"] = launchApp(store)
-	return cmds
+	return CommandsWith(Services{})
 }
 
 // listWindows answers with one line per visible Window:

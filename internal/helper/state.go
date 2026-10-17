@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hoangvu12/winuse/internal/apps"
 	"image"
 	"os"
 	"path/filepath"
@@ -70,6 +71,9 @@ type Services struct {
 // Commands() wires the real ones.
 func CommandsWith(s Services) map[string]Command {
 	s = defaultServices(s)
+	// The Start-apps listing is shared by list-apps and launch-app and
+	// cached for the helper's lifetime (it is a ~1 s PowerShell call).
+	store := &apps.StoreSource{Run: apps.GetStartApps}
 	return map[string]Command{
 		"list-windows":             listWindows,
 		"get-window-state":         func(ctx context.Context, args json.RawMessage) (string, *Error) { return getWindowState(s, ctx, args) },
@@ -81,6 +85,8 @@ func CommandsWith(s Services) map[string]Command {
 		"press-key":                pressKey(s),
 		"set-value":                setValue(s),
 		"perform-secondary-action": performSecondaryAction(s),
+		"list-apps":                listApps(store),
+		"launch-app":               launchApp(store),
 	}
 }
 
