@@ -220,7 +220,11 @@ Window needs an elevated winuse. **intentionally different** (fix).
 
 Detected and refused with the same message shape ("Windows desktop is
 locked (input desktop is LockApp); unlock before using winuse"); the
-agent is told to stop and ask. **matched**.
+agent is told to stop and ask. The refusal is reported everywhere the
+lock can be met — at Action time, at the helper's startup, and at the
+CLI's early exit when the input desktop cannot be opened in an
+interactive session — so the agent always learns "locked" rather than a
+session-0 message. **matched**.
 
 ### owned dialogs
 

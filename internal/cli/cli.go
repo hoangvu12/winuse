@@ -236,6 +236,21 @@ func launchAppCmd(args []string) int {
 	return 0
 }
 
+// inputDesktopExitError classifies an unavailable input desktop for the
+// CLI: an interactive session whose input desktop cannot be opened is the
+// lock screen / secure desktop, so the answer is the locked-desktop
+// refusal — the same message and hint the helper's Actions use, exit 1 —
+// never the session-0 message, which would send the agent looking for a
+// service that is not the problem.
+func inputDesktopExitError() error {
+	err := win.InputDesktopRefusal()
+	var locked *win.LockedDesktopError
+	if errors.As(err, &locked) {
+		return &exitError{msg: err.Error(), hint: win.LockedDesktopHint, code: 1}
+	}
+	return err
+}
+
 // runSimple sends a no-argument command to the helper and prints its
 // response Codex-style: output on stdout, a single-line failure with a
 // recovery hint on stderr, non-zero exit on failure.
@@ -247,7 +262,7 @@ func runSimple(cmd string) error {
 // prints its response Codex-style.
 func runWithArgs(cmd string, args any) error {
 	if !win.HasInputDesktop() {
-		return win.ErrNoDesktop
+		return inputDesktopExitError()
 	}
 	client, err := DefaultClient()
 	if err != nil {

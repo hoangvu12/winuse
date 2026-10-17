@@ -1,6 +1,7 @@
 package win
 
 import (
+	"fmt"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -19,6 +20,28 @@ var (
 	procWTSFreeMemory            = wtsapi32.NewProc("WTSFreeMemory")
 	procGetUserObjectInformation = user32.NewProc("GetUserObjectInformationW")
 )
+
+// LockedDesktopError is the refusal every command reports when the
+// interactive desktop refuses input — the session is locked, or the
+// input desktop is the lock screen / secure desktop and cannot be
+// opened. One message shape everywhere: Actions' refusals, the helper's
+// startup check and the CLI's early exit alike (finding 9: the CLI and
+// helper used to pre-empt it with the session-0 message, so the agent
+// never learned the desktop was merely locked).
+type LockedDesktopError struct {
+	Desktop string // the input desktop's name; "" when it could not be read
+}
+
+func (e *LockedDesktopError) Error() string {
+	if e.Desktop != "" && e.Desktop != "Default" {
+		return fmt.Sprintf("Windows desktop is locked (input desktop is %s); unlock before using winuse", e.Desktop)
+	}
+	return "Windows desktop is locked; unlock before using winuse"
+}
+
+// LockedDesktopHint is the recovery hint paired with LockedDesktopError:
+// the agent is told to stop and ask, not to drive the lock screen.
+const LockedDesktopHint = "stop and ask the user to unlock the desktop, then read a fresh Window State before acting"
 
 // DesktopLocked reports whether the interactive desktop refuses input: the
 // session is locked, or the input desktop is the secure one (the lock

@@ -66,3 +66,17 @@ func HasInputDesktop() bool {
 
 // ErrNoDesktop is returned when the process has no input desktop.
 var ErrNoDesktop = errors.New("winuse needs an interactive desktop session; this process has none (session 0 / service?)")
+
+// InputDesktopRefusal classifies an unavailable input desktop (the
+// early-exit checks HasInputDesktop failed): a process in an interactive
+// session whose input desktop cannot be opened is looking at the lock
+// screen or the secure desktop, so the answer is the locked-desktop
+// refusal — the same message Actions use — and only a true
+// non-interactive session (session 0: a service, an SSH-spawned shell)
+// gets ErrNoDesktop.
+func InputDesktopRefusal() error {
+	if id, err := CurrentIdentity(); err == nil && id.Session != 0 {
+		return &LockedDesktopError{}
+	}
+	return ErrNoDesktop
+}

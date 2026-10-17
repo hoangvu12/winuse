@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 // TestMainUsageErrors pins the argument-count validation of the
@@ -83,5 +86,34 @@ func TestGetWindowUsageErrors(t *testing.T) {
 		if !strings.Contains(string(got), "usage: winuse get-window <window>") {
 			t.Errorf("get-window %v: stderr = %q, want the usage line", args, got)
 		}
+	}
+}
+
+// TestInputDesktopExitErrorReportsLocked pins finding 9's CLI half: when
+// the input desktop cannot be opened in an interactive session (the lock
+// screen / secure desktop), the CLI's early exit reports the
+// locked-desktop refusal — the helper's own message and hint, exit 1 —
+// not the session-0 message that would send the agent chasing a service.
+func TestInputDesktopExitErrorReportsLocked(t *testing.T) {
+	id, err := win.CurrentIdentity()
+	if err != nil {
+		t.Fatalf("CurrentIdentity: %v", err)
+	}
+	if id.Session == 0 {
+		t.Skip("running in session 0: the refusal is ErrNoDesktop by definition")
+	}
+	err = inputDesktopExitError()
+	var ee *exitError
+	if !errors.As(err, &ee) {
+		t.Fatalf("error = %v (%T), want an exitError", err, err)
+	}
+	if ee.msg != "Windows desktop is locked; unlock before using winuse" {
+		t.Errorf("message = %q, want the locked-desktop refusal", ee.msg)
+	}
+	if ee.hint != win.LockedDesktopHint {
+		t.Errorf("hint = %q, want the stop-and-ask hint", ee.hint)
+	}
+	if code := ExitCode(err); code != 1 {
+		t.Errorf("exit = %d, want 1", code)
 	}
 }

@@ -172,14 +172,7 @@ func (s Services) runAction(ctx context.Context, ref string, act func(ctx contex
 		return "", rerr
 	}
 	if locked, desktop := s.Locked(); locked {
-		msg := "Windows desktop is locked; unlock before using winuse"
-		// A WTS-locked session may still sit on the Default desktop; the
-		// parenthetical names the desktop only when it is not Default (the
-		// lock screen's LockApp, the UAC secure desktop).
-		if desktop != "" && desktop != "Default" {
-			msg = fmt.Sprintf("Windows desktop is locked (input desktop is %s); unlock before using winuse", desktop)
-		}
-		return "", Fail(msg, "stop and ask the user to unlock the desktop, then read a fresh Window State before acting")
+		return "", lockedDesktopFailure(desktop)
 	}
 	if err := s.Integrity(w); err != nil {
 		var admin *win.AdminWindowError
@@ -215,6 +208,19 @@ func (s Services) runAction(ctx context.Context, ref string, act func(ctx contex
 		return "", escStopError()
 	}
 	return out, err
+}
+
+// lockedDesktopFailure builds the locked-desktop refusal (runAction's and
+// the observation commands' screenshot paths share it): the shared
+// message and stop-and-ask hint from win.LockedDesktopError, so the
+// agent sees one locked-desktop contract everywhere — Action refusals,
+// the helper's startup check and the CLI's early exit alike.
+func lockedDesktopFailure(desktop string) *Error {
+	return &Error{
+		Msg:  (&win.LockedDesktopError{Desktop: desktop}).Error(),
+		Hint: win.LockedDesktopHint,
+		Exit: 1,
+	}
 }
 
 // elementError maps an element-side Action failure to the user-facing
