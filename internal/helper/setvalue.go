@@ -1,0 +1,150 @@
+package helper
+
+// The ticket-07 Action commands: set-value and perform-secondary-action.
+// They reuse ticket 05's pipeline (Services.runAction: resolve the Window,
+// refuse a locked desktop, refuse an administrator Window, activate and
+// verify the foreground) and plug their step into it, then run the
+// element-side work on the UIA worker (internal/uia value.go: live pattern
+// probes). The output contract is the shared one: `ok`, or a one-line
+// failure with a recovery hint, non-zero exit.
+//
+// The commands reach the element side through ElementActor, a type
+// assertion on Services.Actions — ticket 05's ElementPointer stays
+// untouched, so later Action tickets can extend the same way.
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+
+	"github.com/hoangvu12/winuse/internal/protocol"
+	"github.com/hoangvu12/winuse/internal/uia"
+	"github.com/hoangvu12/winuse/internal/win"
+)
+
+// setValueUsageHint is the recovery hint for set-value's argument failures.
+const setValueUsageHint = "usage: winuse set-value <window> <element index> <value>"
+
+// secondaryUsageHint is the recovery hint for perform-secondary-action's
+// argument failures.
+const secondaryUsageHint = "usage: winuse perform-secondary-action <window> <element index> <action>"
+
+// ElementActor is the element-side half of ticket 07's Actions: setting an
+// Element's value and performing its Secondary Actions, on the UIA worker.
+// The real implementation is *uia.Client; Services.Actions is type-asserted
+// to it, so tests fake it like the click pipeline's ElementPointer.
+type ElementActor interface {
+	// SetValue writes value to the Element behind the index of the
+	// Window's latest Window State (Value pattern, or RangeValue for
+	// range Elements).
+	SetValue(ctx context.Context, hwnd uint64, index int, value string) error
+	// PerformSecondaryAction performs one Secondary Action (already
+	// canonicalized) on the Element behind the index.
+	PerformSecondaryAction(ctx context.Context, hwnd uint64, index int, action string) error
+}
+
+// setValue runs `winuse set-value <window> <element index> <value>`: the
+// shared Action pipeline, then the Element's value is written through its
+// value pattern (focused first, Codex's set_value order).
+func setValue(s Services) Command {
+	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
+		var a protocol.SetValueArgs
+		if err := parseArgs(args, &a); err != nil {
+			return "", Fail("set-value: "+err.Error(), setValueUsageHint)
+		}
+		if a.ElementIndex == nil {
+			return "", Fail("set-value: an element index is required",
+				"read a Window's Element Indexes with winuse get-window-state <window>")
+		}
+		if *a.ElementIndex < 0 {
+			return "", Fail("set-value: the element index must be a non-negative integer", setValueUsageHint)
+		}
+		actor, ok := s.Actions.(ElementActor)
+		if !ok {
+			return "", Fail("set-value is unavailable: no UIA client", "")
+		}
+
+		index := *a.ElementIndex
+		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
+			if err := actor.SetValue(ctx, w.ID, index, a.Value); err != nil {
+				return "", valueError(err, w, index)
+			}
+			return okOutput, nil
+		})
+	}
+}
+
+// performSecondaryAction runs `winuse perform-secondary-action <window>
+// <element index> <action>`: the action name is validated against winuse's
+// Secondary Actions (case-insensitive) before the pipeline runs, then the
+// Element's own Secondary Actions are probed live and the requested one is
+// performed through its pattern.
+func performSecondaryAction(s Services) Command {
+	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
+		var a protocol.SecondaryActionArgs
+		if err := parseArgs(args, &a); err != nil {
+			return "", Fail("perform-secondary-action: "+err.Error(), secondaryUsageHint)
+		}
+		if a.ElementIndex == nil {
+			return "", Fail("perform-secondary-action: an element index is required",
+				"read a Window's Element Indexes with winuse get-window-state <window>")
+		}
+		if *a.ElementIndex < 0 {
+			return "", Fail("perform-secondary-action: the element index must be a non-negative integer", secondaryUsageHint)
+		}
+		if a.Action == "" {
+			return "", Fail("perform-secondary-action: an action is required", secondaryUsageHint)
+		}
+		action, ok := uia.CanonicalSecondaryAction(a.Action)
+		if !ok {
+			return "", Fail(fmt.Sprintf("unsupported secondary action: %s; expected %s", a.Action, uia.ExpectedSecondaryActions()),
+				"the Secondary Actions each Element offers are listed in its Window State line")
+		}
+		actor, ok := s.Actions.(ElementActor)
+		if !ok {
+			return "", Fail("perform-secondary-action is unavailable: no UIA client", "")
+		}
+
+		index := *a.ElementIndex
+		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
+			if err := actor.PerformSecondaryAction(ctx, w.ID, index, action); err != nil {
+				return "", secondaryError(err, w, index)
+			}
+			return okOutput, nil
+		})
+	}
+}
+
+// valueError maps a set-value failure to the user-facing line: the
+// not-settable refusal points at type-text (the ticket's contract);
+// anything element-side falls through to the shared stale/state mapping.
+func valueError(err error, w win.WindowInfo, index int) *Error {
+	switch {
+	case errors.Is(err, uia.ErrNotSettable):
+		return Fail(err.Error(),
+			"use winuse click to focus the Element, then winuse type-text to type into it instead")
+	case errors.Is(err, uia.ErrRangeValue):
+		return Fail(err.Error(), "this Element takes a numeric value (a slider or spinner); pass a number")
+	case errors.Is(err, uia.ErrFocusBeforeValue):
+		return Fail(err.Error(), "the Element may not be focusable; read a fresh Window State and retry")
+	case errors.Is(err, uia.ErrDisabled):
+		return Fail(err.Error(), "a disabled Element cannot be acted on; read a fresh Window State and pick another Element")
+	}
+	return elementError(err, w, index)
+}
+
+// secondaryError maps a perform-secondary-action failure to the
+// user-facing line: an action the Element does not offer lists the ones
+// it does; anything element-side falls through to the shared mapping.
+func secondaryError(err error, w win.WindowInfo, index int) *Error {
+	var unavail *uia.UnavailableActionError
+	if errors.As(err, &unavail) {
+		return Fail(err.Error(),
+			"run winuse get-window-state "+fmt.Sprint(w.ID)+" again and use one of the Element's listed Secondary Actions")
+	}
+	if errors.Is(err, uia.ErrDisabled) {
+		return Fail(err.Error(), "a disabled Element cannot be acted on; read a fresh Window State and pick another Element")
+	}
+	return elementError(err, w, index)
+}

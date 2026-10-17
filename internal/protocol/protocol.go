@@ -92,6 +92,23 @@ type ActivateArgs struct {
 	Window string `json:"window"`
 }
 
+// SetValueArgs are set-value's arguments — Codex's set_value parameters:
+// the Element Index of a settable Element and its new value.
+type SetValueArgs struct {
+	Window       string `json:"window"`        // Window ID, or an App name when that App has exactly one Window
+	ElementIndex *int   `json:"element_index"` // the Element to set, from that Window's latest Window State
+	Value        string `json:"value"`         // the new value (a string, or a number for range Elements)
+}
+
+// SecondaryActionArgs are perform-secondary-action's arguments — Codex's
+// perform_secondary_action parameters: an Element Index and one of the
+// Element's Secondary Actions (case-insensitive).
+type SecondaryActionArgs struct {
+	Window       string `json:"window"`        // Window ID, or an App name when that App has exactly one Window
+	ElementIndex *int   `json:"element_index"` // the Element to act on, from that Window's latest Window State
+	Action       string `json:"action"`        // e.g. "Raise", "Scroll Down", "Expand", "Collapse", "Toggle", "Select"
+}
+
 // Response is the helper's answer.
 type Response struct {
 	OK    bool   `json:"ok"`

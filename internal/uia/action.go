@@ -43,13 +43,9 @@ func (c *Client) ElementPoint(ctx context.Context, hwnd uint64, index int) (Poin
 	var pt Point
 	var jobErr error
 	err := c.Run(ctx, func(w *worker) {
-		el, ok := c.store.element(hwnd, index)
-		if !ok {
-			if c.store.has(hwnd) {
-				jobErr = fmt.Errorf("%w: element %d is not in the cached Window State of window %d", ErrStale, index, hwnd)
-			} else {
-				jobErr = fmt.Errorf("%w: window %d", ErrNoState, hwnd)
-			}
+		el, lerr := c.lookup(hwnd, index)
+		if lerr != nil {
+			jobErr = lerr
 			return
 		}
 		if w.thread == nil {
@@ -61,6 +57,21 @@ func (c *Client) ElementPoint(ctx context.Context, hwnd uint64, index int) (Poin
 		return Point{}, err
 	}
 	return pt, jobErr
+}
+
+// lookup resolves an Element Index of hwnd's latest Window State to its
+// live element handle, on the worker thread. A Window with no cached
+// state fails as ErrNoState; an index beyond the stored one as ErrStale
+// (both with the read-the-state-again recovery, mapped by the helper).
+func (c *Client) lookup(hwnd uint64, index int) (comPtr, error) {
+	el, ok := c.store.element(hwnd, index)
+	if ok {
+		return el, nil
+	}
+	if c.store.has(hwnd) {
+		return nil, fmt.Errorf("%w: element %d is not in the cached Window State of window %d", ErrStale, index, hwnd)
+	}
+	return nil, fmt.Errorf("%w: window %d", ErrNoState, hwnd)
 }
 
 // elementPoint computes the point to click for one live element, on the

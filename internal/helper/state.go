@@ -27,8 +27,9 @@ type TreeReader interface {
 // inject input at (scrolling the Element into view, clickable point or
 // bounds centre), on the UIA worker. The real implementation is
 // *uia.Client (Actions defaults to Trees when it is one); later Action
-// tickets widen it with their own element work (set value, secondary
-// actions, ...).
+// tickets add their own element work as separate interfaces type-asserted
+// from Services.Actions (ticket 07's ElementActor in setvalue.go: set
+// value, secondary actions) rather than widening this one.
 type ElementPointer interface {
 	ElementPoint(ctx context.Context, hwnd uint64, index int) (uia.Point, error)
 }
@@ -87,11 +88,13 @@ func CommandsWith(s Services) map[string]Command {
 		s.Click = win.MouseClick
 	}
 	return map[string]Command{
-		"list-windows":     listWindows,
-		"get-window-state": func(ctx context.Context, args json.RawMessage) (string, *Error) { return getWindowState(s, ctx, args) },
-		"record-tree":      func(ctx context.Context, args json.RawMessage) (string, *Error) { return recordTree(s, ctx, args) },
-		"click":            click(s),
-		"activate-window":  activateWindow(s),
+		"list-windows":             listWindows,
+		"get-window-state":         func(ctx context.Context, args json.RawMessage) (string, *Error) { return getWindowState(s, ctx, args) },
+		"record-tree":              func(ctx context.Context, args json.RawMessage) (string, *Error) { return recordTree(s, ctx, args) },
+		"click":                    click(s),
+		"activate-window":          activateWindow(s),
+		"set-value":                setValue(s),
+		"perform-secondary-action": performSecondaryAction(s),
 	}
 }
 

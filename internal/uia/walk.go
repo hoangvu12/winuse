@@ -11,7 +11,12 @@ import (
 )
 
 // NodeData is the cached property set the walk reads per element, on the
-// worker thread, from the cache request built by the COM source.
+// worker thread, from the cache request built by the COM source. The
+// basic ticket-03 fields render role/name/state; the pattern fields
+// (ticket 07) render the rich state (value, toggle, selection, expand,
+// settable) and the Secondary Actions line — value.go owns the policy
+// they feed. The Has* gates carry pattern availability, so the zero
+// NodeData a fake source builds renders no rich state.
 type NodeData struct {
 	ControlType  int32
 	Name         string
@@ -19,6 +24,26 @@ type NodeData struct {
 	HelpText     string
 	Enabled      bool
 	Focused      bool
+
+	// Pattern facts (ticket 07), from cached pattern properties.
+	HasWindow bool
+	HasScroll bool
+	ScrollH   bool
+	ScrollV   bool
+	HasExpand bool
+	// ExpandState is the ExpandCollapse state, -1 when unreadable. State
+	// tokens render only while HasExpand; a leaf node (3) offers no
+	// Expand/Collapse either.
+	ExpandState int32
+	HasToggle   bool
+	// ToggleState is the Toggle state (-1 unreadable, gated on HasToggle).
+	ToggleState      int32
+	HasSelectionItem bool
+	Selected         bool
+	HasValue         bool
+	ValueReadOnly    bool
+	ValueValue       string
+	HasRangeValue    bool
 }
 
 // ErrChunkTimedOut reports that a cache chunk exceeded the UIA transaction
@@ -263,7 +288,7 @@ func (w *walker[T]) reasonNote() (string, bool) {
 
 // elementFrom builds the renderable Element from one node's cached data.
 func elementFrom(d NodeData, depth int) wstate.Element {
-	return wstate.Element{
+	e := wstate.Element{
 		Depth:        depth,
 		Role:         wstate.RoleName(d.ControlType),
 		Name:         d.Name,
@@ -271,4 +296,42 @@ func elementFrom(d NodeData, depth int) wstate.Element {
 		Description:  d.HelpText,
 		Disabled:     !d.Enabled,
 	}
+	// Rich state and Secondary Actions (ticket 07), in Codex's line order
+	// (the policy itself lives in value.go).
+	if d.HasSelectionItem {
+		e.Selectable = true
+		e.Selected = d.Selected
+	}
+	if d.HasExpand {
+		switch d.ExpandState {
+		case expandCollapsed:
+			e.ExpandState = "collapsed"
+		case expandExpanded:
+			e.ExpandState = "expanded"
+		case expandPartiallyExpanded:
+			e.ExpandState = "partially expanded"
+		}
+	}
+	if d.HasRangeValue {
+		// Codex renders every RangeValue as settable, float (its Value
+		// writeability check covers only the Value pattern).
+		e.Settable = "float"
+	} else if d.HasValue && !d.ValueReadOnly {
+		e.Settable = "string"
+	}
+	if d.HasValue {
+		e.Value = d.ValueValue
+	}
+	if d.HasToggle {
+		switch d.ToggleState {
+		case toggleOff:
+			e.Toggle = "off"
+		case toggleOn:
+			e.Toggle = "on"
+		case toggleIndeterminate:
+			e.Toggle = "indeterminate"
+		}
+	}
+	e.SecondaryActions = d.patternFacts().secondaryActions()
+	return e
 }

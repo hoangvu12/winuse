@@ -27,6 +27,13 @@ commands:
                                click an Element of a Window: single, double or
                                right click; options: --count 1|2|3 (default 1),
                                --button left|middle|right (default left)
+  set-value <window> <element index> <value>
+                               set an Element's value directly (a settable
+                               edit or a numeric range)
+  perform-secondary-action <window> <element index> <action>
+                               perform one of the Element's Secondary Actions
+                               (Raise, Scroll Down, Expand, Collapse, Toggle,
+                               Select, ...)
   activate-window <window>    bring a Window to the foreground
   version                     print the winuse version
 
@@ -58,6 +65,10 @@ func Main(args []string) int {
 		return launchAppCmd(args[1:])
 	case "click":
 		return clickCmd(args[1:])
+	case "set-value":
+		return setValueCmd(args[1:])
+	case "perform-secondary-action":
+		return performSecondaryActionCmd(args[1:])
 	case "activate-window":
 		return activateWindowCmd(args[1:])
 	default:

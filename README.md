@@ -5,17 +5,21 @@ run shell commands list Apps and Windows, read a Window State (accessibility
 tree as text, screenshots on request) and perform Actions — at the quality of
 Codex Computer Use, without being tied to Codex.
 
-**Status: tickets 01–05 and 14 of the v1 plan** (`.scratch/winuse-v1/`) —
+**Status: tickets 01–05, 07 and 14 of the v1 plan** (`.scratch/winuse-v1/`) —
 background helper, `winuse list-windows`, the fixture app with its opt-in
 e2e runner, `winuse list-apps` and `winuse launch-app`, `winuse
 get-window-state`: the Window State as Codex's Element tree, read through UI
 Automation on a single locked COM thread, plus the recorder for seam-2
 fixtures; Chromium/Electron support (a near-empty first read is retried once
-after a short delay, so web content appears in the tree); and the first
+after a short delay, so web content appears in the tree); the first
 Actions, `winuse click` (single, double, right click by Element Index) and
 `winuse activate-window`, with the shared Action pipeline every later Action
-reuses. Later tickets add more Actions, screenshots, the overlay and the Esc
-stop. The product spec and the domain language live in
+reuses; and `winuse set-value` plus `winuse perform-secondary-action`, with
+the full Codex line grammar in the Window State: each Element's rich state
+(value, toggled, selected, expanded, settable) and its Secondary Actions
+(Raise, Scroll Down, Expand, Collapse, plus winuse's Toggle and Select).
+Later tickets add more Actions, screenshots, the overlay and the Esc stop.
+The product spec and the domain language live in
 `.scratch/winuse-v1/spec.md` and `CONTEXT.md`.
 
 Windows-only. MIT licensed (see `LICENSE`).
@@ -44,9 +48,12 @@ go run github.com/tc-hib/go-winres@latest make --arch amd64,arm64 --out cmd/winu
   window filtering/formatting and resolution, client state machine, helper
   serving and idle exit, the fixture app's Element contract, and the
   seam-2 Window State tests: recorded/hand-authored tree fixtures are
-  rendered and compared with expected text, the bounded tree walk
+  rendered and compared with expected text (including the rich state and
+  Secondary Actions columns ticket 07 populates), the bounded tree walk
   (caps, time limit, truncation notes) is tested against a fake element
-  source, and the Chromium/Electron sparse-tree detection (the
+  source, the Secondary Actions policy (Codex's set plus Toggle/Select)
+  and the set-value/perform-secondary-action argument handling are tested
+  offline, and the Chromium/Electron sparse-tree detection (the
   lazy-accessibility retry and its notes) is tested against recorded
   Chromium/Electron trees (`internal/uia/testdata/`). No desktop access,
   no input injection, safe to run any time.
@@ -142,20 +149,30 @@ per depth level:
 
 ```
 Window: "Example", App: app.exe.
-	0 window Example
-		1 edit Search ID: searchBox
-		2 button OK ID: okButton
+	0 window Example Secondary Actions: Raise
+		1 edit (settable, string) Search ID: searchBox
+		2 check box Notify me off Secondary Actions: Toggle
+		3 button OK ID: okButton
 
-The focused UI element is 1 edit Search ID: searchBox.
+The focused UI element is 1 edit (settable, string) Search ID: searchBox.
 ```
 
 Element lines follow the grammar
 `<index> <role>[ (<states>)][ <name>][ Description: …][ Value: …][ on|off|indeterminate][ Secondary Actions: …][ ID: <AutomationId>]`
 (codex-surface.md §2; ADR 0004 records the deliberate divergences —
 notably English role names from the numeric ControlType instead of the
-locale-dependent LocalizedControlType). Later tickets fill in the rich
-state and Secondary Actions columns; the format supports them from the
-start.
+locale-dependent LocalizedControlType).
+
+The rich columns are populated from UI Automation pattern availability
+and state (ticket 07): the parenthesised states are `selectable`,
+`selected`, `disabled`, `collapsed`/`expanded`/`partially expanded`, and
+`settable, string` (a writable value) or `settable, float` (a numeric
+range); `Value:` shows a value Element's content; the bare `on`/`off`/
+`indeterminate` token is a toggle's state; and `Secondary Actions:`
+lists what the Element offers besides a click — Codex's Raise (windows),
+Scroll Up/Down/Left/Right (scrollable Elements) and Expand/Collapse
+(per the current expand state), plus winuse's Toggle and Select
+extensions — which `perform-secondary-action` accepts by name:
 
 A read is **bounded**: it is scoped to the Window with UI Automation cache
 requests (one chunk per expanded node — never a bulk Subtree read, the
@@ -189,6 +206,8 @@ at a screenshot instead.
 
 ```
 winuse click <window> <element index> [--count 1|2|3] [--button left|middle|right]
+winuse set-value <window> <element index> <value>
+winuse perform-secondary-action <window> <element index> <action>
 winuse activate-window <window>
 ```
 
@@ -214,6 +233,23 @@ actually reached that point and that the point is over the target's
 window group — and only then injects the click through **SendInput**
 (pixel-exact under per-monitor-v2, no DPI offsets), one batch so double
 and triple clicks register.
+
+`set-value` writes an Element's value directly (one reliable Action for
+filling a text field): the Element is focused first — Codex's `set_value`
+order — then its value is written through the UI Automation Value
+pattern, or through RangeValue with the value parsed as a number for
+numeric Elements (sliders). An Element that is not settable fails with
+Codex's `Cannot set a value for an element that is not settable` and a
+hint to click the Element and use `type-text` instead.
+
+`perform-secondary-action` performs one of the Element's Secondary
+Actions (case-insensitive): Codex's set — `Raise`, `Scroll Up`,
+`Scroll Down`, `Scroll Left`, `Scroll Right`, `Expand`, `Collapse` — plus
+winuse's `Toggle` and `Select` extensions, going through the matching
+UI Automation pattern. An unknown action fails listing the expected
+names; an action the Element does not offer fails listing the ones it
+does (probed live, so an Element that changed since the Window State was
+read says so).
 
 The **output contract** for all Actions: `ok` on stdout, or a one-line
 failure with a recovery hint on stderr and a non-zero exit. Timeouts are
