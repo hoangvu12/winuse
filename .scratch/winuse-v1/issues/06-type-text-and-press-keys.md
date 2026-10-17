@@ -4,9 +4,9 @@
 
 **Blocked by:** 05 — Click by Element Index
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Unicode text (including non-Latin scripts and emoji) is typed correctly
-- [ ] Key names and combinations match Codex's accepted names; unknown names fail with a hint
-- [ ] Offline tests cover key-name parsing
+- [x] Unicode text (including non-Latin scripts and emoji) is typed correctly
+- [x] Key names and combinations match Codex's accepted names; unknown names fail with a hint
+- [x] Offline tests cover key-name parsing
 - [ ] End-to-end: typing into the fixture's text field, then `Control_L+a` and a replacement key, leaves the expected text (verified by user run)
