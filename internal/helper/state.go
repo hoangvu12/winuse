@@ -22,13 +22,33 @@ type TreeReader interface {
 	Capture(ctx context.Context, hwnd uint64, title, app string, budget time.Duration) (*wstate.Tree, error)
 }
 
-// Services carries the window-state commands' dependencies so tests can
-// inject fakes (the desktop enumeration and the tree source); zero values
-// fall back to the real ones.
+// ElementPointer is the element-side half of Actions: resolving an
+// Element Index of a Window's latest Window State to the screen point to
+// inject input at (scrolling the Element into view, clickable point or
+// bounds centre), on the UIA worker. The real implementation is
+// *uia.Client (Actions defaults to Trees when it is one); later Action
+// tickets widen it with their own element work (set value, secondary
+// actions, ...).
+type ElementPointer interface {
+	ElementPoint(ctx context.Context, hwnd uint64, index int) (uia.Point, error)
+}
+
+// Services carries the commands' dependencies so tests can inject fakes
+// (the desktop enumeration, the tree source and the Action pipeline's
+// Win32 steps); zero values fall back to the real ones.
 type Services struct {
 	Windows func() ([]win.WindowInfo, error) // visible Windows; nil: the live desktop
 	Trees   TreeReader                       // nil: a real UI Automation client (lazy COM)
 	Budget  time.Duration                    // tree-read time limit; 0: uia.DefaultTreeBudget
+
+	// The Action pipeline (ticket 05). Nil values fall back to the real
+	// Win32 implementations; tests fake them so offline tests never
+	// activate a window or inject input.
+	Locked    func() (locked bool, desktop string)                                     // locked-desktop refusal
+	Integrity func(win.WindowInfo) error                                               // administrator-Window refusal
+	Activate  func(hwnd uint64) error                                                  // foreground activation + verification
+	Actions   ElementPointer                                                           // element-side Action work (UIA worker)
+	Click     func(target uint64, x, y int32, button win.MouseButton, count int) error // SendInput click
 }
 
 // CommandsWith builds the command registry over the given services.
@@ -49,10 +69,29 @@ func CommandsWith(s Services) map[string]Command {
 	if s.Budget <= 0 {
 		s.Budget = uia.DefaultTreeBudget
 	}
+	if s.Locked == nil {
+		s.Locked = win.DesktopLocked
+	}
+	if s.Integrity == nil {
+		s.Integrity = win.CheckWindowIntegrity
+	}
+	if s.Activate == nil {
+		s.Activate = win.Activate
+	}
+	if s.Actions == nil {
+		if ep, ok := s.Trees.(ElementPointer); ok {
+			s.Actions = ep
+		}
+	}
+	if s.Click == nil {
+		s.Click = win.MouseClick
+	}
 	return map[string]Command{
 		"list-windows":     listWindows,
 		"get-window-state": func(ctx context.Context, args json.RawMessage) (string, *Error) { return getWindowState(s, ctx, args) },
 		"record-tree":      func(ctx context.Context, args json.RawMessage) (string, *Error) { return recordTree(s, ctx, args) },
+		"click":            click(s),
+		"activate-window":  activateWindow(s),
 	}
 }
 

@@ -7,7 +7,7 @@ what `winuse` prints and on the fixture's end state — never on internals.
 ## They are opt-in only, and agents must not run them
 
 These tests take over the screen: they start a GUI app, and winuse will
-click, type, activate windows and take screenshots in later tickets. The
+click, activate windows, type and take screenshots while they run. The
 user may be using the machine. So:
 
 - The tests compile only with the `-tags e2e` build tag.
@@ -85,4 +85,14 @@ fresh one inherits the fixture state environment, and cleans up the
 launched process by Window); a bogus name fails with `app not found`; a
 windowless executable fails with `launched app did not expose a targetable
 window` after the 15 s timeout. `parsing_test.go` (no build tag) unit-tests
-the listing-output parsing offline.
+the listing-output parsing offline. The ticket-05 Action tests
+(`click_test.go`): clicking the button, checkbox, canvas (double and
+right) and the Save As button changes the fixture's state; the dialog
+appears as its own Window and its Cancel button clicks too; a
+below-the-fold list item is scrolled into view before it is clicked; a
+stale Element Index and a helper restart (no cached Window State) fail
+with the read-the-state-again instruction; clicking the main window while
+its modal dialog is open fails naming the dialog, without sending input;
+`activate-window` works standalone and refuses the dialog-blocked main
+window. Element Indexes are derived from the fixture's Element contract,
+not restated.

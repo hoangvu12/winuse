@@ -23,6 +23,11 @@ commands:
   launch-app <name|exe path>  start an App by name or executable path, report its Window
   get-window-state <window>   print a Window's State: its Element tree as text
   record-tree <window> <file> record a Window's real tree to a fixture file
+  click <window> <element index> [options]
+                               click an Element of a Window: single, double or
+                               right click; options: --count 1|2|3 (default 1),
+                               --button left|middle|right (default left)
+  activate-window <window>    bring a Window to the foreground
   version                     print the winuse version
 
 a <window> is a Window ID, or an App name when that App has exactly one Window
@@ -51,6 +56,10 @@ func Main(args []string) int {
 		return listAppsCmd(args[1:])
 	case "launch-app":
 		return launchAppCmd(args[1:])
+	case "click":
+		return clickCmd(args[1:])
+	case "activate-window":
+		return activateWindowCmd(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "winuse: unknown command %q\n\n%s", args[0], usage)
 		return 2

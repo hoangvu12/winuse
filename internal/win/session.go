@@ -57,16 +57,11 @@ var (
 // HasInputDesktop reports whether the calling process can see the interactive
 // input desktop. winuse drives a real desktop: a process in session 0 (a
 // service, an SSH-spawned process) has no input desktop and must fail loudly
-// instead of silently seeing no windows. A locked desktop still answers true;
-// detecting the lock is a later ticket's job.
+// instead of silently seeing no windows. A locked desktop still answers true
+// (detecting the lock is DesktopLocked's job, at Action time).
 func HasInputDesktop() bool {
-	const desktopReadObjects = 0x0001
-	h, _, _ := procOpenInputDesktop.Call(0, 0, desktopReadObjects)
-	if h == 0 {
-		return false
-	}
-	procCloseDesktop.Call(h)
-	return true
+	_, readable := InputDesktopName()
+	return readable
 }
 
 // ErrNoDesktop is returned when the process has no input desktop.
