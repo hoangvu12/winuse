@@ -188,6 +188,22 @@ func collectOne(hwnd windows.HWND, shell windows.HWND, selfExe string, apps *app
 	return w
 }
 
+// ForegroundWindow returns the ID of the Window currently in the
+// foreground (0 when there is none). Read-only: no activation, no input.
+func ForegroundWindow() uint64 {
+	return uint64(windows.GetForegroundWindow())
+}
+
+// WindowPID returns the process id that owns the Window with the given
+// Window ID (0 when it cannot be read).
+func WindowPID(id uint64) uint32 {
+	var pid uint32
+	if _, err := windows.GetWindowThreadProcessId(windows.HWND(id), &pid); err != nil {
+		return 0
+	}
+	return pid
+}
+
 // uwpContentPID returns the pid of the CoreWindow child of a UWP app frame,
 // or 0 for non-frame (or frame without content) windows.
 func uwpContentPID(hwnd windows.HWND) uint32 {

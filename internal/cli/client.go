@@ -29,6 +29,10 @@ const (
 	spawnDialWait = 5 * time.Second
 )
 
+// exchangeSlack is added on top of a command's budget for the connection
+// deadline (launch-app gets 15 s, other commands 10 s).
+const exchangeSlack = 2 * time.Second
+
 // Client talks to the background helper. The dialer, spawner and verifier
 // are pluggable so the state machine (start-on-demand, stale restart,
 // dead-helper retry) is testable offline.
@@ -178,7 +182,8 @@ func (c *Client) roundTrip(conn net.Conn, req *protocol.Request) (*protocol.Resp
 			return nil, fmt.Errorf("verifying helper: %w", err)
 		}
 	}
-	if err := conn.SetDeadline(time.Now().Add(protocol.RequestTimeout + 2*time.Second)); err != nil {
+	deadline := protocol.TimeoutFor(req.Cmd) + exchangeSlack
+	if err := conn.SetDeadline(time.Now().Add(deadline)); err != nil {
 		return nil, err
 	}
 	if err := protocol.WriteLine(conn, req); err != nil {

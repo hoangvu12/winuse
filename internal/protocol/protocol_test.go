@@ -131,3 +131,33 @@ func TestConstants(t *testing.T) {
 		t.Errorf("request timeout should be ~10s (Codex), got %s", RequestTimeout)
 	}
 }
+
+func TestTimeoutFor(t *testing.T) {
+	// The decided budgets: 10 s per request, 15 s for launch-app.
+	if got := TimeoutFor("list-windows"); got != RequestTimeout {
+		t.Errorf("TimeoutFor(list-windows) = %s, want the default %s", got, RequestTimeout)
+	}
+	if got := TimeoutFor("launch-app"); got != LaunchTimeout {
+		t.Errorf("TimeoutFor(launch-app) = %s, want %s", got, LaunchTimeout)
+	}
+	if got := TimeoutFor("unknown-command"); got != RequestTimeout {
+		t.Errorf("TimeoutFor(unknown) = %s, want the default %s", got, RequestTimeout)
+	}
+	if LaunchTimeout != 15*time.Second {
+		t.Errorf("launch-app budget must be 15s (Codex), got %s", LaunchTimeout)
+	}
+}
+
+func TestLaunchArgsJSONShape(t *testing.T) {
+	b, err := json.Marshal(LaunchArgs{App: "Notepad"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"app":"Notepad"}`; string(b) != want {
+		t.Fatalf("launch args JSON:\n got %s\nwant %s", b, want)
+	}
+	var got LaunchArgs
+	if err := json.Unmarshal([]byte(`{"app":"x"}`), &got); err != nil || got.App != "x" {
+		t.Fatalf("unmarshal: %v %+v", err, got)
+	}
+}

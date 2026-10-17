@@ -371,3 +371,81 @@ func TestListWindowsRejectsArguments(t *testing.T) {
 		t.Fatalf("want refusal for non-empty args, got %q, %v", out, cmdErr)
 	}
 }
+
+// TestServeLongBudgetCommand: launch-app has an explicit 15 s budget, so a
+// handler running longer than the server's default request timeout still
+// answers normally instead of timing out.
+func TestServeLongBudgetCommand(t *testing.T) {
+	s := New("0.1.0", time.Hour, 100*time.Millisecond, map[string]Command{
+		"launch-app": func(ctx context.Context, args json.RawMessage) (string, *Error) {
+			select {
+			case <-time.After(300 * time.Millisecond): // past the 100 ms default, far under 15 s
+				return "101\tApp\tTitle\n", nil
+			case <-ctx.Done():
+				return "", Fail("cut short", "")
+			}
+		},
+	}, discardLogger())
+	ln := newFakeListener()
+	defer ln.Close()
+	done := make(chan error, 1)
+	go func() { done <- s.Serve(ln) }()
+	defer func() {
+		s.Shutdown()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("server did not stop")
+		}
+	}()
+
+	client := ln.push()
+	defer client.Close()
+	client.SetDeadline(time.Now().Add(10 * time.Second))
+	resp, err := call(client, testRequest("launch-app"))
+	if err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	if !resp.OK || resp.Out != "101\tApp\tTitle\n" {
+		t.Fatalf("launch-app must get its 15 s budget, got %+v", resp)
+	}
+}
+
+// Commands with the default budget still time out centrally when the
+// server's requestTimeout is short (the long budget is per-command, not
+// global).
+func TestServeDefaultBudgetStillApplies(t *testing.T) {
+	s := New("0.1.0", time.Hour, 100*time.Millisecond, map[string]Command{
+		"slow": func(ctx context.Context, args json.RawMessage) (string, *Error) {
+			select {
+			case <-time.After(300 * time.Millisecond):
+				return "ok\n", nil
+			case <-ctx.Done():
+				return "", Fail("interrupted", "")
+			}
+		},
+	}, discardLogger())
+	ln := newFakeListener()
+	defer ln.Close()
+	done := make(chan error, 1)
+	go func() { done <- s.Serve(ln) }()
+	defer func() {
+		s.Shutdown()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("server did not stop")
+		}
+	}()
+
+	client := ln.push()
+	defer client.Close()
+	client.SetDeadline(time.Now().Add(10 * time.Second))
+	resp, err := call(client, testRequest("slow"))
+	if err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	if resp.OK || resp.Err != "winuse request timed out: slow" {
+		t.Fatalf("default-budget command must time out, got %+v", resp)
+	}
+}

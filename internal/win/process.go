@@ -116,3 +116,16 @@ func trimExt(base string) string {
 	}
 	return base
 }
+
+// sharedNames caches App display names for the whole process. Collect
+// carries its own instance per enumeration; this one serves callers
+// outside it, e.g. the App catalog's recently used Apps.
+var sharedNames = newAppNames()
+
+// AppName resolves the App display name for an executable path — the
+// FileDescription from the version resource, falling back to the
+// executable base name ("" for an empty path) — cached per path. Read-only
+// file access; safe any time.
+func AppName(exePath string) string {
+	return sharedNames.Name(exePath)
+}

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/hoangvu12/winuse/internal/apps"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/version"
 	"github.com/hoangvu12/winuse/internal/win"
@@ -18,6 +19,8 @@ const usage = `usage: winuse <command> [arguments]
 
 commands:
   list-windows                list visible Windows: Window ID, App and title
+  list-apps                   list running and recently used Apps, with their Windows
+  launch-app <name|exe path>  start an App by name or executable path, report its Window
   get-window-state <window>   print a Window's State: its Element tree as text
   record-tree <window> <file> record a Window's real tree to a fixture file
   version                     print the winuse version
@@ -44,6 +47,10 @@ func Main(args []string) int {
 		return getWindowStateCmd(args[1:])
 	case "record-tree":
 		return recordTreeCmd(args[1:])
+	case "list-apps":
+		return listAppsCmd(args[1:])
+	case "launch-app":
+		return launchAppCmd(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "winuse: unknown command %q\n\n%s", args[0], usage)
 		return 2
@@ -103,6 +110,41 @@ func recordTreeCmd(args []string) int {
 		return 2
 	}
 	if err := runWithArgs("record-tree", recordArgs{Window: args[0], File: file}); err != nil {
+		reportError(os.Stderr, err)
+		return ExitCode(err)
+	}
+	return 0
+}
+
+// listAppsCmd prints one line per App (name, running state, last used,
+// use count, launch identifier) and one line per Window of running Apps.
+func listAppsCmd(args []string) int {
+	if len(args) > 0 {
+		fmt.Fprintln(os.Stderr, "winuse: list-apps takes no arguments")
+		return 2
+	}
+	if err := runSimple("list-apps"); err != nil {
+		reportError(os.Stderr, err)
+		return ExitCode(err)
+	}
+	return 0
+}
+
+// launchAppCmd starts an App by name or executable path and prints the
+// Window it opened (one list-windows-style line). Paths are resolved
+// against the CLI's working directory — the helper cannot see it.
+func launchAppCmd(args []string) int {
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: winuse launch-app <name|exe path>")
+		return 2
+	}
+	app := args[0]
+	if apps.LooksLikePath(app) {
+		if abs, err := filepath.Abs(app); err == nil {
+			app = abs
+		}
+	}
+	if err := runWithArgs("launch-app", protocol.LaunchArgs{App: app}); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}

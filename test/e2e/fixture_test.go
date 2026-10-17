@@ -81,10 +81,18 @@ func startFixture(t *testing.T) *fixtureProc {
 // passes. It fails the test on timeout.
 func (fp *fixtureProc) waitState(t *testing.T, timeout time.Duration, pred func(*fixture.State) bool) *fixture.State {
 	t.Helper()
+	return waitStateFile(t, fp.state, timeout, pred)
+}
+
+// waitStateFile polls a fixture state file until pred holds or the timeout
+// passes; it works for fixtures this test started and for fixtures winuse
+// launched (they report to WINUSE_FIXTURE_STATE).
+func waitStateFile(t *testing.T, path string, timeout time.Duration, pred func(*fixture.State) bool) *fixture.State {
+	t.Helper()
 	deadline := time.Now().Add(timeout)
 	var last fixture.State
 	for time.Now().Before(deadline) {
-		data, err := os.ReadFile(fp.state)
+		data, err := os.ReadFile(path)
 		if err == nil && json.Unmarshal(data, &last) == nil {
 			if pred(&last) {
 				return &last
