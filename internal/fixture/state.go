@@ -27,10 +27,14 @@ type State struct {
 	DialogFileName string `json:"dialogFileName"`
 
 	// Text is the main window's Text Field content; Typed is the raw
-	// WM_CHAR stream (capped, last 200 runes) so press-key/type tests can
-	// tell typed characters apart from focus side effects.
-	Text  string `json:"text"`
-	Typed string `json:"typed"`
+	// WM_CHAR stream (capped, last 200 runes, surrogate pairs recombined)
+	// so press-key/type tests can tell typed characters apart from focus
+	// side effects. TextSelected is true while the focused edit's whole
+	// content is selected (Control+A, or the Edit menu's Select All):
+	// typing or Backspace then replaces it, like a real edit control.
+	Text         string `json:"text"`
+	Typed        string `json:"typed"`
+	TextSelected bool   `json:"textSelected"`
 
 	// Checkbox is the check box's toggle state.
 	Checkbox bool `json:"checkbox"`

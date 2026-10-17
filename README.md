@@ -5,17 +5,19 @@ run shell commands list Apps and Windows, read a Window State (accessibility
 tree as text, screenshots on request) and perform Actions — at the quality of
 Codex Computer Use, without being tied to Codex.
 
-**Status: tickets 01–05 and 14 of the v1 plan** (`.scratch/winuse-v1/`) —
+**Status: tickets 01–06 and 14 of the v1 plan** (`.scratch/winuse-v1/`) —
 background helper, `winuse list-windows`, the fixture app with its opt-in
 e2e runner, `winuse list-apps` and `winuse launch-app`, `winuse
 get-window-state`: the Window State as Codex's Element tree, read through UI
 Automation on a single locked COM thread, plus the recorder for seam-2
 fixtures; Chromium/Electron support (a near-empty first read is retried once
-after a short delay, so web content appears in the tree); and the first
+after a short delay, so web content appears in the tree); the first
 Actions, `winuse click` (single, double, right click by Element Index) and
 `winuse activate-window`, with the shared Action pipeline every later Action
-reuses. Later tickets add more Actions, screenshots, the overlay and the Esc
-stop. The product spec and the domain language live in
+reuses; and keyboard input, `winuse type-text` (arbitrary Unicode text,
+typed as Unicode key events) and `winuse press-key` (keys and chords by
+Codex's X keysym names). Later tickets add more Actions, screenshots, the
+overlay and the Esc stop. The product spec and the domain language live in
 `.scratch/winuse-v1/spec.md` and `CONTEXT.md`.
 
 Windows-only. MIT licensed (see `LICENSE`).
@@ -42,7 +44,9 @@ go run github.com/tc-hib/go-winres@latest make --arch amd64,arm64 --out cmd/winu
 
 - **Default (offline, hermetic):** `go test ./...` — protocol framing,
   window filtering/formatting and resolution, client state machine, helper
-  serving and idle exit, the fixture app's Element contract, and the
+  serving and idle exit, the fixture app's Element contract, **Codex's
+  key-name parsing** (`internal/keys`: every accepted name, alias and
+  chord; the `unsupported key:` and Windows-key refusals) and the
   seam-2 Window State tests: recorded/hand-authored tree fixtures are
   rendered and compared with expected text, the bounded tree walk
   (caps, time limit, truncation notes) is tested against a fake element
@@ -189,6 +193,8 @@ at a screenshot instead.
 
 ```
 winuse click <window> <element index> [--count 1|2|3] [--button left|middle|right]
+winuse type-text <window> <text>
+winuse press-key <window> <key>
 winuse activate-window <window>
 ```
 
@@ -214,6 +220,31 @@ actually reached that point and that the point is over the target's
 window group — and only then injects the click through **SendInput**
 (pixel-exact under per-monitor-v2, no DPI offsets), one batch so double
 and triple clicks register.
+
+`type-text` types into the Window's focused Element (check the Window
+State's focused-element line first, Codex's guidance). Every argument
+after the Window is part of the text, joined with single spaces — quoting
+is optional, so `winuse type-text 101 hello world` and `winuse type-text
+101 "hello world"` type the same text. The text is injected as **Unicode
+key events** (KEYEVENTF_UNICODE, one UTF-16 unit per event, in small
+batches), so any script and emoji type correctly; newline and tab are
+injected as real Return/Tab keys, because many controls ignore Unicode
+CR.
+
+`press-key` presses a key or a `+`-separated chord by **Codex's X keysym
+names** (`a`, `space`, `Return`, `Tab`, `Control_L+a`,
+`Control_L+Shift_L+period`, `Numpad_0`; case-insensitive, `-` as `_`,
+whitespace around `+` ignored, aliases like `Ctrl`, `Alt`, `period`,
+`greater`, `Numpad_Add` accepted). Chords are delivered as Codex delivers
+them — every key down in order, then every key up in reverse — with the
+scan code filled from MapVirtualKey (some apps read scancodes; Codex's
+Ctrl-chords-in-Flutter bug was zero scancodes) and KEYEVENTF_EXTENDEDKEY
+on the extended keys, so arrows arrive as arrows, not numpad keys.
+Shifted punctuation names map to the *unshifted* key: add an explicit
+Shift (`Control_L+Shift_L+period`) to type the shifted character. Unknown
+names fail with `unsupported key: <name>` plus a hint; the Windows key
+(`Win`, `Windows`, `Meta`, `Command`, `Cmd`, `Super`, `OS`) is recognized
+only to be refused — winuse never sends it.
 
 The **output contract** for all Actions: `ok` on stdout, or a one-line
 failure with a recovery hint on stderr and a non-zero exit. Timeouts are
@@ -258,8 +289,9 @@ cmd/winuse/          binary: CLI dispatch + hidden __helper entry (manifest .sys
 cmd/winusefixture/   the e2e fixture app's entry point (see The fixture app)
 internal/protocol/   CLI↔helper contract: JSON-lines request/response, timeouts, exit codes
 internal/pipe/       named pipe: naming per user/session, user-only DACL, dial, anti-squat check, singleton
-internal/win/        Win32 layer: identity, DPI awareness, window enumeration, process/App names, window resolution, helper spawn, and the Actions' Win32 side: SendInput clicks, foreground activation, integrity/locked-desktop refusals
+internal/win/        Win32 layer: identity, DPI awareness, window enumeration, process/App names, window resolution, helper spawn, and the Actions' Win32 side: SendInput clicks, keyboard (Unicode text and key chords), foreground activation, integrity/locked-desktop refusals
 internal/apps/       App catalog and launching: list-apps (UserAssist, Start menu, store Apps), launch-app (CreateProcess/ShellExecuteExW + Window polling)
+internal/keys/       Codex/X keysym key-name and chord parsing for press-key (pure Go, fully covered offline)
 internal/helper/     helper: serve loop, idle exit, stale-exit, command registry, window-state + record-tree + list-apps + launch-app commands
 internal/uia/        UI Automation: locked COM worker thread, bounded tree walk, Chromium/Electron lazy-tree retry, live-Element store (raw vtables, no cgo)
 internal/wstate/     Window State model: Element/Tree, Codex-format rendering, recorded-tree fixtures (seam 2)

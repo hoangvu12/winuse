@@ -27,6 +27,9 @@ commands:
                                click an Element of a Window: single, double or
                                right click; options: --count 1|2|3 (default 1),
                                --button left|middle|right (default left)
+  type-text <window> <text>    type Unicode text into the Window's focused Element
+  press-key <window> <key>     press a key or key combination by Codex's key
+                               names, e.g. Return, Tab, Control_L+a, Numpad_0
   activate-window <window>    bring a Window to the foreground
   version                     print the winuse version
 
@@ -58,6 +61,10 @@ func Main(args []string) int {
 		return launchAppCmd(args[1:])
 	case "click":
 		return clickCmd(args[1:])
+	case "type-text":
+		return typeTextCmd(args[1:])
+	case "press-key":
+		return pressKeyCmd(args[1:])
 	case "activate-window":
 		return activateWindowCmd(args[1:])
 	default:

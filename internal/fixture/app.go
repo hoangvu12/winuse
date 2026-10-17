@@ -4,6 +4,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"unicode/utf16"
 	"unsafe"
 
 	"github.com/hoangvu12/winuse/internal/win"
@@ -31,6 +32,9 @@ type app struct {
 	pressedElem Elem // element under the last button-down
 	dragging    bool
 	dragFrom    Point
+
+	ctrlDown bool       // a Control key is held (chord state, e.g. Ctrl+A)
+	chars    charStream // recombines UTF-16 halves arriving as separate WM_CHAR
 
 	// provider tree cache, rebuilt when the state generation changes
 	treeGen    uint64
@@ -215,9 +219,15 @@ func (a *app) wndMain(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 	case wmKeydown:
 		a.onKeyDown(uint32(wp))
 		return 0
+	case wmKeyup:
+		a.onKeyUp(uint32(wp))
+		return 0
 	case wmSyskeydown:
 		a.onKeyDown(uint32(wp))
 		// Fall through to DefWindowProc: Alt+F4 and friends must keep working.
+	case wmSyskeyup:
+		a.onKeyUp(uint32(wp))
+		// Fall through too: modifier bookkeeping must not eat the key-up.
 	case wmChar:
 		a.onChar(rune(uint32(wp)))
 		return 0
@@ -255,9 +265,15 @@ func (a *app) wndDialog(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 	case wmKeydown:
 		a.onKeyDown(uint32(wp))
 		return 0
+	case wmKeyup:
+		a.onKeyUp(uint32(wp))
+		return 0
 	case wmSyskeydown:
 		a.onKeyDown(uint32(wp))
 		// Fall through to DefWindowProc: Alt+F4 and friends must keep working.
+	case wmSyskeyup:
+		a.onKeyUp(uint32(wp))
+		// Fall through too: modifier bookkeeping must not eat the key-up.
 	case wmChar:
 		a.onChar(rune(uint32(wp)))
 		return 0
@@ -490,6 +506,7 @@ func (a *app) invokeMenu(elem Elem) {
 	case ElemMenuFileNew:
 		a.state.Text = ""
 		a.state.Typed = ""
+		a.state.TextSelected = false
 		a.setStatus("new")
 	case ElemMenuFileOpen:
 		a.setStatus("open")
@@ -501,9 +518,11 @@ func (a *app) invokeMenu(elem Elem) {
 		procPostMessageW.Call(a.mainHwnd, wmClose, 0, 0)
 		return
 	case ElemMenuEditSelectAll:
+		a.selectAll()
 		a.setStatus("selected all text")
 	case ElemMenuEditClear:
 		a.state.Text = ""
+		a.state.TextSelected = false
 		a.setStatus("cleared")
 	case ElemMenuHelpAbout:
 		a.setStatus("about winuse fixture")
@@ -546,6 +565,7 @@ func (a *app) openDialog() {
 	a.state.DialogOpen = true
 	a.state.DialogResult = ""
 	a.state.DialogFileName = ""
+	a.state.TextSelected = false
 	a.state.ToolbarVisible = false
 	a.focusDialog = ElemDialogEditFileName
 	a.setStatus("dialog opened")
@@ -561,6 +581,7 @@ func (a *app) closeDialog(result string) {
 	procSetFocus.Call(a.mainHwnd)
 	a.state.DialogOpen = false
 	a.state.DialogResult = result
+	a.state.TextSelected = false
 	a.focusDialog = ""
 	a.setStatus("dialog closed: " + result)
 	a.changed()
@@ -583,8 +604,51 @@ func (a *app) scrollList(delta int) {
 
 // ---- keyboard ----
 
+// Virtual keys the keyboard handling tracks. Control arrives as VK_CONTROL
+// from real keyboards and as VK_LCONTROL/VK_RCONTROL from injected chords.
+const (
+	vkControlKey  = 0x11
+	vkLcontrolKey = 0xA2
+	vkRcontrolKey = 0xA3
+	vkAKey        = 0x41
+)
+
+// charStream recombines the UTF-16 halves of a surrogate pair that arrive
+// as separate WM_CHAR messages: Unicode key injection delivers one code
+// unit per event, so an emoji reaches the app as two WM_CHAR messages, and
+// a real app recombines them (Notepad does; so does the fixture).
+type charStream struct {
+	pending rune // the pending high surrogate; 0 when none
+}
+
+// char feeds one WM_CHAR rune and returns the complete runes it produced:
+// nothing while a high half waits, the combined rune on the low half, and
+// the rune itself when it is not part of a pair (a stray pending half is
+// dropped).
+func (cs *charStream) char(r rune) []rune {
+	switch {
+	case r >= 0xD800 && r <= 0xDBFF: // a high surrogate starts a pair
+		cs.pending = r
+		return nil
+	case r >= 0xDC00 && r <= 0xDFFF && cs.pending != 0: // the low half completes it
+		full := utf16.DecodeRune(cs.pending, r)
+		cs.pending = 0
+		return []rune{full}
+	}
+	cs.pending = 0
+	return []rune{r}
+}
+
 func (a *app) onKeyDown(vk uint32) {
+	if vk == vkControlKey || vk == vkLcontrolKey || vk == vkRcontrolKey {
+		a.ctrlDown = true
+	}
 	a.state.LastKey = keyName(vk)
+	// Control+A selects the focused edit's whole content (every real edit
+	// control does); typing then replaces it.
+	if a.ctrlDown && vk == vkAKey {
+		a.selectAll()
+	}
 	// Space/Return activate the focused control, like real Windows.
 	focus := a.focusElem()
 	switch {
@@ -598,6 +662,15 @@ func (a *app) onKeyDown(vk uint32) {
 	a.changed()
 }
 
+// onKeyUp tracks modifier releases: a Control key-up clears the chord
+// state (press-key chords release in reverse order, so the modifier
+// always leaves last).
+func (a *app) onKeyUp(vk uint32) {
+	if vk == vkControlKey || vk == vkLcontrolKey || vk == vkRcontrolKey {
+		a.ctrlDown = false
+	}
+}
+
 func (a *app) onChar(r rune) {
 	if r == 0x08 {
 		a.backspace()
@@ -608,15 +681,35 @@ func (a *app) onChar(r rune) {
 		return
 	}
 	if r >= 0x20 {
-		a.typeRune(r)
+		for _, full := range a.chars.char(r) {
+			a.typeRune(full)
+		}
+	}
+}
+
+// selectAll marks the focused text edit's whole content as selected
+// (Control+A, or the Edit menu's Select All): typing or Backspace then
+// replaces it.
+func (a *app) selectAll() {
+	switch a.focusElem() {
+	case ElemTextField, ElemDialogEditFileName:
+		a.state.TextSelected = true
 	}
 }
 
 func (a *app) typeRune(r rune) {
 	switch a.focusElem() {
 	case ElemTextField:
+		if a.state.TextSelected {
+			a.state.Text = ""
+			a.state.TextSelected = false
+		}
 		a.state.Text += string(r)
 	case ElemDialogEditFileName:
+		if a.state.TextSelected {
+			a.state.DialogFileName = ""
+			a.state.TextSelected = false
+		}
 		a.state.DialogFileName += string(r)
 	default:
 		return
@@ -625,14 +718,22 @@ func (a *app) typeRune(r rune) {
 	a.changed()
 }
 
+// backspace deletes one character behind the caret — or the whole
+// selection, when the focused edit's content is selected.
 func (a *app) backspace() {
 	switch a.focusElem() {
 	case ElemTextField:
-		if a.state.Text != "" {
+		if a.state.TextSelected {
+			a.state.TextSelected = false
+			a.state.Text = ""
+		} else if a.state.Text != "" {
 			a.state.Text = dropLastRune(a.state.Text)
 		}
 	case ElemDialogEditFileName:
-		if a.state.DialogFileName != "" {
+		if a.state.TextSelected {
+			a.state.TextSelected = false
+			a.state.DialogFileName = ""
+		} else if a.state.DialogFileName != "" {
 			a.state.DialogFileName = dropLastRune(a.state.DialogFileName)
 		}
 	default:
@@ -660,6 +761,7 @@ func (a *app) setFocus(e Elem) {
 		}
 		a.focusMain = e
 	}
+	a.state.TextSelected = false // moving focus drops the selection
 	a.changed()
 }
 

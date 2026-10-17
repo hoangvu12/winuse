@@ -202,7 +202,7 @@ func TestStateJSONFieldNames(t *testing.T) {
 	}
 	for _, key := range []string{
 		"app", "title", "windowId", "dialogOpen", "dialogWindowId", "dialogResult",
-		"dialogFileName", "text", "typed", "checkbox", "lastButton", "lastToolbar",
+		"dialogFileName", "text", "typed", "textSelected", "checkbox", "lastButton", "lastToolbar",
 		"lastMenu", "lastKey", "selectedItem", "listFirstVisible", "detailsExpanded",
 		"toolbarVisible", "openMenu", "canvasClicks", "canvasDoubleClicks",
 		"canvasRightClicks", "canvasDrags", "canvasScrolls", "canvasRect", "generation",
