@@ -4,10 +4,10 @@
 
 **Blocked by:** 03 — Window State text tree
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Web content Elements (links, buttons, inputs) appear in the Window State of Chrome and Edge
-- [ ] A near-empty first read is retried once after a short delay
-- [ ] A persistently sparse tree produces a note in the Window State
-- [ ] Offline tests cover sparse-tree detection on recorded Chromium/Electron trees
+- [x] Web content Elements (links, buttons, inputs) appear in the Window State of Chrome and Edge
+- [x] A near-empty first read is retried once after a short delay
+- [x] A persistently sparse tree produces a note in the Window State
+- [x] Offline tests cover sparse-tree detection on recorded Chromium/Electron trees
 - [ ] End-to-end: the local HTML fixture page in Edge exposes its Elements (verified by user run)
