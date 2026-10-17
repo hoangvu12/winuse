@@ -5,7 +5,7 @@ run shell commands list Apps and Windows, read a Window State (accessibility
 tree as text, screenshots on request) and perform Actions — at the quality of
 Codex Computer Use, without being tied to Codex.
 
-**Status: tickets 01–08 and 14 of the v1 plan** (`.scratch/winuse-v1/`) —
+**Status: tickets 01–08, 13 and 14 of the v1 plan** (`.scratch/winuse-v1/`) —
 background helper, `winuse list-windows`, the fixture app with its opt-in
 e2e runner, `winuse list-apps` and `winuse launch-app`, `winuse
 get-window-state`: the Window State as Codex's Element tree, read through UI
@@ -24,9 +24,11 @@ Collapse, plus winuse's Toggle and Select); and screenshots (ticket 08):
 `get-window-state --screenshot` captures the Window through a fallback-proof method chain and saves a
 model-friendly image whose path is printed, `winuse zoom` returns a
 full-resolution crop of a region, and `@x,y` coordinate clicks land exactly
-where aimed at any display scaling and on any monitor. Later tickets add
-more Actions, Windows.Graphics.Capture as the first capture method, the
-overlay and the Esc stop. The product spec and the domain language live in
+where aimed at any display scaling and on any monitor; and the in-control
+overlay (ticket 13): a Codex-style, click-through, never-focused indicator
+framing the Window while an Action runs, kept out of winuse's own
+screenshots. Later tickets add more Actions, Windows.Graphics.Capture as
+the first capture method, and the Esc stop. The product spec and the domain language live in
 `.scratch/winuse-v1/spec.md` and `CONTEXT.md`.
 
 Windows-only. MIT licensed (see `LICENSE`).
@@ -62,10 +64,15 @@ go run github.com/tc-hib/go-winres@latest make --arch amd64,arm64 --out cmd/winu
   (caps, time limit, truncation notes) is tested against a fake element
   source, the Secondary Actions policy (Codex's set plus Toggle/Select)
   and the set-value/perform-secondary-action argument handling are tested
-  offline, and the Chromium/Electron sparse-tree detection (the
+  offline, the Chromium/Electron sparse-tree detection (the
   lazy-accessibility retry and its notes) is tested against recorded
-  Chromium/Electron trees (`internal/uia/testdata/`). No desktop access,
-  no input injection, safe to run any time.
+  Chromium/Electron trees (`internal/uia/testdata/`), and the in-control
+  overlay's brackets are tested with fakes: the show/hide bracket around
+  every Action (never shown for the pre-input refusals, always hidden
+  after, whatever the outcome) and the capture bracket every capture
+  method runs inside, plus the overlay's layout functions and the UI
+  thread's job mechanics (in order, on one locked thread, bounded waits).
+  No desktop access, no input injection, safe to run any time.
 - **End-to-end (seam 1):** `test/e2e` — the real binary and the fixture app
   against the live desktop. Opt-in only, **started by the user, never by
   an agent** (see `test/e2e/README.md` for the rules):
@@ -104,6 +111,10 @@ go run github.com/tc-hib/go-winres@latest make --arch amd64,arm64 --out cmd/winu
   is **no UIA event monitoring at all** (a known cause of Codex's
   system-wide UIA freezes), and a wedged worker thread is abandoned and
   replaced, never killed.
+- The helper also owns a **UI thread**: one more OS-locked thread, with a
+  Win32 message loop, that carries the **in-control overlay** window (and,
+  later, the Esc keyboard hook). Input injection and UI Automation never
+  run on it (ADR 0006).
 
 `winuse list-windows` prints one line per visible Window:
 
@@ -235,7 +246,8 @@ A near-black frame (the classic "nothing was rendered" failure) or an
 error falls through to the next method; only when every method fails does
 the command fail. Ticket 09 will prepend Windows.Graphics.Capture as the
 first method — the chain is the design point, and the fallbacks work on
-their own.
+their own. Every method runs with the in-control overlay hidden, so
+winuse's own screenshots never contain it even while an Action runs.
 
 The image is scaled so the **long edge is at most 1568 px** (a box filter,
 no aliasing), saved as **JPEG quality 80** into `%TEMP%\winuse`, and its
@@ -284,11 +296,13 @@ the same thing before its own step:
 3. **refuse an administrator Window** with an explanation (Windows would
    silently drop the input, UIPI): start winuse from an elevated terminal
    to control elevated Windows;
-4. **activate** the Window with the standard foreground-lock workarounds
+4. **raise the in-control overlay** over the target Window (best effort —
+   see below); it comes down when the Action ends, whatever the outcome;
+5. **activate** the Window with the standard foreground-lock workarounds
    (a no-op injected move so the caller "received the last input", plus
    `AttachThreadInput`) and **verify it is in front** — a Window blocked
    by its own modal dialog fails naming the dialog instead;
-5. then act.
+6. then act.
 
 `click` resolves the Element Index against the Window's cached Window
 State, scrolls the Element into view when it offers ScrollItem, takes its
@@ -347,6 +361,37 @@ exists (or a Window with no cached state, e.g. after a helper restart)
 fails as **stale** and instructs a fresh `get-window-state` — Element
 Indexes are only valid within the Window State that produced them.
 
+## The in-control overlay
+
+While an Action runs, winuse shows what Codex shows: an on-screen
+indicator that the agent is driving the PC. A border frames the Window
+being controlled and a pill banner at its top centre reads
+**“winuse is in control — press Esc to stop”** (the Esc stop itself is
+ticket 12; the hint already says what it will do).
+
+The indicator is a topmost layered window with a magenta colour key:
+everything except the border and the pill is fully transparent. It is
+**click-through** (`WS_EX_TRANSPARENT` plus `HTTRANSPARENT`, so even the
+pill's opaque pixels pass clicks to the Window beneath), **never takes
+focus** (shown with `SWP_NOACTIVATE|WS_EX_SHOWWINDOW`), never appears in
+Alt-Tab or the taskbar, and is excluded from winuse's own window
+listings. It is raised over the target Window for exactly the duration of
+the Action — after the locked-desktop and administrator-Window refusals
+(winuse is not “in control” when it refuses), around the activation and
+the injected input — and hidden again whatever the outcome; observation
+commands (`get-window-state`, `zoom`) never show it.
+
+It never appears in **winuse's own screenshots**: every capture method
+runs with the indicator hidden (hidden, captured, restored) — the
+deterministic path, since it is unverified whether
+`WDA_EXCLUDEFROMCAPTURE` also hides a layered window from GDI BitBlt and
+pre-2004 Windows turns it into a black box. The affinity is still applied
+best-effort so other software's captures (screen recorders) exclude the
+indicator where the OS supports it. If a screenshot is taken while an
+Action runs, the indicator blinks off for the capture's duration and
+comes back — and if the indicator cannot start or a show fails, the
+Action still runs (the failure is logged to the helper log).
+
 ### Recorder
 
 ```
@@ -383,7 +428,7 @@ cmd/winuse/          binary: CLI dispatch + hidden __helper entry (manifest .sys
 cmd/winusefixture/   the e2e fixture app's entry point (see The fixture app)
 internal/protocol/   CLI↔helper contract: JSON-lines request/response, timeouts, exit codes
 internal/pipe/       named pipe: naming per user/session, user-only DACL, dial, anti-squat check, singleton
-internal/win/        Win32 layer: identity, DPI awareness, window enumeration, process/App names, window resolution, helper spawn, and the Actions' Win32 side: SendInput clicks, keyboard (Unicode text and key chords), foreground activation, integrity/locked-desktop refusals
+internal/win/        Win32 layer: identity, DPI awareness, window enumeration, process/App names, window resolution, helper spawn, and the Actions' Win32 side: SendInput clicks, keyboard (Unicode text and key chords), foreground activation, integrity/locked-desktop refusals; the UI thread and the in-control overlay window (ADR 0006)
 internal/apps/       App catalog and launching: list-apps (UserAssist, Start menu, store Apps), launch-app (CreateProcess/ShellExecuteExW + Window polling)
 internal/keys/       Codex/X keysym key-name and chord parsing for press-key (pure Go, fully covered offline)
 internal/helper/     helper: serve loop, idle exit, stale-exit, command registry, window-state + record-tree + list-apps + launch-app commands

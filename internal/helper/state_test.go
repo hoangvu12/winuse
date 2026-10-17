@@ -59,7 +59,8 @@ func cannedTree() *wstate.Tree {
 
 func fakeWindows() []win.WindowInfo {
 	return []win.WindowInfo{
-		{ID: 101, App: "Notepad", ExePath: `C:\Windows\notepad.exe`, Title: "Untitled - Notepad"},
+		{ID: 101, App: "Notepad", ExePath: `C:\Windows\notepad.exe`, Title: "Untitled - Notepad",
+			Bounds: win.Rect{Left: 10, Top: 20, Right: 810, Bottom: 490}},
 		{ID: 202, App: "Chrome", ExePath: `C:\Chrome\chrome.exe`, Title: "One"},
 		{ID: 203, App: "Chrome", ExePath: `C:\Chrome\chrome.exe`, Title: "Two"},
 	}
