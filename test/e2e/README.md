@@ -151,7 +151,32 @@ are refused with the size and the recovery instruction. The coordinate
 mapping itself (scale, footprint-centre rounding, window-anchored
 survival of moves, any monitor including negative coordinates) is
 offline-tested in `internal/shot` — the e2e tests pin only the live
-wiring.
+wiring. With ticket 09 all of these now run through Windows.Graphics
+Capture first (the method is prepended to the chain), which is also why
+the dropdown-menu test still passes: the fixture paints its dropdown
+inside its own window.
+
+The ticket-09 tests (`wgc_test.go`) cover the capture chain's first
+method and its fallbacks. Which method captured a frame is observable
+through the helper log (the only file a detached helper writes): the
+tests read the log's delta around one CLI invocation and assert on its
+`wgc: captured window …` / `wgc: window … fell back: …` lines. The
+positive test (`TestWGCScreenshotCapturedViaWindowsGraphicsCapture`)
+proves the default screenshot comes from Windows.Graphics.Capture and
+is the expected model-friendly image — it skips when the machine cannot
+do WGC at all (before Windows 10 1903), since the criterion is "when
+available". The forced-failure tests use the method's environment knobs
+(each kills the running helper first so the fresh one inherits them):
+`WINUSE_WGC=off` (`TestWGCDisabledFallsBackToGDI`) must produce a valid
+screenshot through the GDI methods with the fallback logged and no WGC
+capture; `WINUSE_WGC_BUDGET=1ms` (`TestWGCTimeoutFallsBackToGDI`)
+starves the frame poll and must still produce a valid screenshot.
+`TestCoordinateClickExactViaWGC` pins ticket 09's coordinate criterion:
+a `@x,y` click aimed through a WGC-captured screenshot lands within one
+pixel, and `TestWGCZoomStillFullResolution` pins zoom through the WGC
+path (a full-resolution PNG crop containing the canvas mark). The pure
+parts (IIDs, struct packing, frame-size cross-check, BGRA readback,
+knobs) are offline-tested in `internal/wgc`.
 
 **Display-scaling acceptance (user-run):** these tests exercise whatever
 scaling the machine has. To accept ticket 08's `@x,y` criterion at

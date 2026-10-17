@@ -4,8 +4,8 @@ package win
 // capture chain — the screen region (BitBlt with CAPTUREBLT, everything
 // drawn over the Window included) and PrintWindow (PW_RENDERFULLCONTENT,
 // works off-screen, renders only the Window's own content). Both implement
-// shot.Method; ticket 09 prepends Windows.Graphics.Capture in front of
-// them. Recipes: win32.md §10. All coordinates are physical pixels (the
+// shot.Method; Windows.Graphics.Capture (internal/wgc, ticket 09) comes
+// first in front of them. Recipes: win32.md §10. All coordinates are physical pixels (the
 // process is per-monitor-v2 DPI aware). No capture is ever performed from
 // the CLI process — only the helper captures, after activating the Window.
 
@@ -84,7 +84,8 @@ var _ [40]byte = [unsafe.Sizeof(bitmapInfoHeader{})]byte{}
 // pixels: the visible extent without the drop shadow and the invisible
 // resize borders — the anchor every capture method and coordinate mapping
 // uses (wgc.md §5 confirms Windows.Graphics.Capture's frame origin is the
-// extended frame bounds too, so ticket 09 plugs in unchanged).
+// extended frame bounds too, so the Windows.Graphics.Capture method
+// plugged in unchanged).
 func FrameBounds(hwnd uint64) (Rect, error) {
 	var r Rect
 	if err := windows.DwmGetWindowAttribute(windows.HWND(hwnd), windows.DWMWA_EXTENDED_FRAME_BOUNDS,
@@ -279,6 +280,25 @@ func imageRect(r Rect) image.Rectangle {
 		Min: image.Point{X: int(r.Left), Y: int(r.Top)},
 		Max: image.Point{X: int(r.Right), Y: int(r.Bottom)},
 	}
+}
+
+// PopupPresent reports whether any of target's owned popups overlaps
+// or touches it — the same population PopupUnion unions. Windows's own
+// capture (Windows.Graphics.Capture, ticket 09) captures only the
+// Window's own window tree, so a capture method that cannot include
+// popups must defer to the screen-region capture while one is open (spec,
+// user story 19). Pure function of the window list: offline-testable.
+func PopupPresent(all []WindowInfo, target WindowInfo) bool {
+	byID := make(map[uint64]WindowInfo, len(all))
+	for _, w := range all {
+		byID[w.ID] = w
+	}
+	for _, w := range all {
+		if w.ID != target.ID && ownedPopupOf(byID, w, target) && rectsNear(w.Bounds, target.Bounds, 1) {
+			return true
+		}
+	}
+	return false
 }
 
 // CaptureScreenRegion captures the screen rectangle r — physical pixels,

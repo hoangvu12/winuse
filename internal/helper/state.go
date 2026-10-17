@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/hoangvu12/winuse/internal/keys"
 	"github.com/hoangvu12/winuse/internal/shot"
 	"github.com/hoangvu12/winuse/internal/uia"
+	"github.com/hoangvu12/winuse/internal/wgc"
 	"github.com/hoangvu12/winuse/internal/win"
 	"github.com/hoangvu12/winuse/internal/wstate"
 )
@@ -58,10 +60,10 @@ type Services struct {
 	// SendInput implementations; tests fake them.
 	TypeText  func(text string) error      // Unicode key-event typing
 	PressKeys func(chord keys.Chord) error // key or chord press (downs in order, ups in reverse)
-	// The screenshot services (ticket 08). Nil values fall back to the
-	// real ones; tests fake them so offline tests never capture the
+	// The screenshot services (tickets 08 and 09). Nil values fall back
+	// to the real ones; tests fake them so offline tests never capture the
 	// screen.
-	Capture     func(hwnd uint64) (shot.Frame, error)  // the capture chain (region → PrintWindow; ticket 09 prepends WGC)
+	Capture     func(hwnd uint64) (shot.Frame, error)  // the capture chain (Windows.Graphics.Capture → region → PrintWindow)
 	Shots       *shot.Store                            // per-Window latest screenshot mappings (`@x,y`, zoom)
 	FrameOrigin func(hwnd uint64) (image.Point, error) // the Window's extended frame bounds top-left, read fresh at Action time
 }
@@ -86,9 +88,9 @@ func CommandsWith(s Services) map[string]Command {
 
 // defaultServices fills a Services' zero values with the real
 // implementations: the desktop enumeration, the UIA client and budget, the
-// Action pipeline's Win32 steps, and the screenshot chain — the GDI
-// fallbacks (region, then PrintWindow; ticket 09 prepends
-// Windows.Graphics.Capture in front of them).
+// Action pipeline's Win32 steps, and the screenshot chain —
+// Windows.Graphics.Capture first (ticket 09), then the GDI fallbacks
+// (region, PrintWindow).
 func defaultServices(s Services) Services {
 	if s.Windows == nil {
 		s.Windows = func() ([]win.WindowInfo, error) {
@@ -132,10 +134,19 @@ func defaultServices(s Services) Services {
 		s.Shots = shot.NewStore()
 	}
 	if s.Capture == nil {
-		// The GDI fallback chain (spec, Observation details): the Window's
-		// screen region first, then PrintWindow. Ticket 09 prepends
-		// Windows.Graphics.Capture in front of these.
-		s.Capture = shot.Chain{Methods: []shot.Method{win.RegionMethod{}, win.PrintWindowMethod{}}}.CaptureWindow
+		// The capture chain (spec, Observation details): Windows.Graphics
+		// Capture first (ticket 09, Codex's method — falling back on any
+		// failure, black frame or timeout), then the GDI fallbacks: the
+		// Window's screen region, then PrintWindow. The wgc method logs
+		// its captures into the helper log — the diagnostic surface for
+		// which method actually captured a frame.
+		wgcCapture := wgc.New()
+		wgcCapture.Log = log.Printf
+		s.Capture = shot.Chain{Methods: []shot.Method{
+			wgcCapture,
+			win.RegionMethod{},
+			win.PrintWindowMethod{},
+		}}.CaptureWindow
 	}
 	if s.FrameOrigin == nil {
 		s.FrameOrigin = win.FrameOrigin

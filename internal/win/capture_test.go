@@ -140,3 +140,42 @@ func TestPopupUnionMenuWithoutOwnerMatchesByProcess(t *testing.T) {
 		t.Errorf("PopupUnion = %v, want %v (unowned non-menu windows never join)", got, target.Bounds)
 	}
 }
+
+// TestPopupPresentReportsOverlappingPopups pins the gate the
+// Windows.Graphics.Capture method (ticket 09) keys off: WGC captures only
+// the Window's own tree, so popups present mean "defer to the
+// screen-region capture". Same population as PopupUnion.
+func TestPopupPresentReportsOverlappingPopups(t *testing.T) {
+	all, target := popupsFixture()
+
+	keep := []WindowInfo{all[0]}
+	if PopupPresent(keep, target) {
+		t.Error("a target with no popups must not report popups present")
+	}
+
+	// The owned menu touching the bottom edge, the tooltip over the top
+	// edge and the unowned same-process menu are all popups present.
+	for _, idx := range []int{1, 2, 5} {
+		if !PopupPresent([]WindowInfo{all[0], all[idx]}, target) {
+			t.Errorf("popup %d (overlapping or touching) must be present", all[idx].ID)
+		}
+	}
+
+	// A fully-inside popup counts as present too (WGC without
+	// IncludeSecondaryWindows would miss it).
+	inside := WindowInfo{
+		ID: 10, PID: 10, Owner: 1, Class: "#32768", Title: "",
+		Bounds: Rect{Left: 200, Top: 300, Right: 400, Bottom: 400},
+	}
+	if !PopupPresent([]WindowInfo{all[0], inside}, target) {
+		t.Error("a popup fully inside the target must be present")
+	}
+
+	// Non-popups never count: the elsewhere dialog, foreign windows,
+	// cloaked popups, winuse's own windows.
+	for _, idx := range []int{3, 6, 7, 8} {
+		if PopupPresent([]WindowInfo{all[0], all[idx]}, target) {
+			t.Errorf("window %d must not count as a popup of the target", all[idx].ID)
+		}
+	}
+}
