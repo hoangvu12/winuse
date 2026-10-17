@@ -4,9 +4,9 @@
 
 **Blocked by:** 08 — Screenshots (fallback methods) + coordinate clicks + zoom
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Overlay appears for the duration of each Action or Batch and disappears afterwards
-- [ ] Overlay never receives clicks or focus and does not affect input delivery
-- [ ] Overlay does not appear in screenshots taken by winuse
+- [x] Overlay appears for the duration of each Action or Batch and disappears afterwards
+- [x] Overlay never receives clicks or focus and does not affect input delivery
+- [x] Overlay does not appear in screenshots taken by winuse
 - [ ] End-to-end: the overlay is visible during a fixture Action and absent from the captured screenshot (verified by user run)
