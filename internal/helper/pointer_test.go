@@ -451,9 +451,12 @@ func TestDragStopsOnTheRequestDeadline(t *testing.T) {
 	cmds := CommandsWith(s.svc)
 	s.recordScreenshot(t, cmds)
 	// The fake drag honors the checkpoint the command passes it, exactly
-	// like win.MouseDrag's interpolation loop.
+	// like win.MouseDrag's interpolation loop: the deadline fires mid-drag.
 	stoppedByDeadline := false
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	s.svc.Drag = func(target uint64, fx, fy, tx, ty int32, stopped func() bool) error {
+		cancel() // the budget expires mid-drag
 		if stopped != nil && stopped() {
 			stoppedByDeadline = true
 			return win.ErrEscStopped
@@ -464,8 +467,6 @@ func TestDragStopsOnTheRequestDeadline(t *testing.T) {
 	// value at CommandsWith).
 	cmds = CommandsWith(s.svc)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // the budget is already spent
 	c := cmds["drag"]
 	raw, _ := json.Marshal(protocol.DragArgs{Window: "101", FromX: 10, FromY: 10, ToX: 400, ToY: 300})
 	_, cmdErr := c(ctx, raw)

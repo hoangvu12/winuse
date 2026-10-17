@@ -297,8 +297,14 @@ AUMIDs — `launch-app` never guesses between several distinct matches.
 ### one request at a time
 
 Codex's helper rejects concurrent requests ("already has an active
-request"); winuse's helper serializes every command through one
-UIA-locked thread. **matched**.
+request"); winuse's helper serializes every command that activates a
+Window, injects input or shows the overlay through one helper-wide
+action gate — one command controls the desktop at a time, and a request
+queued behind another Action until its own budget expired fails instead
+of acting late. Observation-only commands (list-windows, get-window,
+list-apps, the plain tree read, record-tree, launch-app) may answer
+concurrently; the UIA worker serializes everything that touches
+automation. **matched**.
 
 ### stale elements
 

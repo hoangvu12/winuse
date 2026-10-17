@@ -327,11 +327,23 @@ func TestTypeTextStopsOnTheRequestDeadline(t *testing.T) {
 	// The failure reports the budget (the server's central timeout
 	// policy), never a fake Esc stop; a real Esc press still wins.
 	spy := &keySpy{}
-	spy.typeErr = win.ErrEscStopped // typing aborted at its checkpoint
-
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // the budget is already spent
-	cmds := CommandsWith(spy.services())
+	defer cancel()
+	svc := spy.services()
+	spy.typeErr = win.ErrEscStopped // typing aborted at its checkpoint
+	svc.TypeText = func(text string, stopped func() bool) error {
+		spy.step("type")
+		spy.typedText = text
+		spy.stopped = stopped
+		// The deadline fires between typing's batches, mid-run: the real
+		// checkpoint sees it and typing aborts.
+		if stopped != nil && stopped() {
+			return win.ErrEscStopped
+		}
+		cancel() // spend the budget now
+		return win.ErrEscStopped
+	}
+	cmds := CommandsWith(svc)
 	c := cmds["type-text"]
 	_, cmdErr := c(ctx, typeTextArgs("101", "hello"))
 	if cmdErr == nil {

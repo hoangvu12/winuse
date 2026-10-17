@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"github.com/hoangvu12/winuse/internal/apps"
 	"image"
 	"log"
@@ -104,10 +105,26 @@ type Services struct {
 	// *win.Overlay, wired by Main; the Esc keyboard hook of ticket 12 will
 	// join its UI thread.
 	Overlay Overlay
+
+	// actionGate serializes every command that activates a Window, injects
+	// input or shows the overlay (finding 11): two concurrent CLI calls
+	// must never interleave control of the desktop. It is a capacity-1
+	// channel — a mutex whose wait is bounded by the waiting request's own
+	// budget. Created by defaultServices so one Services (one helper)
+	// shares one gate; observation-only commands skip it.
+	actionGate chan struct{}
 }
 
 // CommandsWith builds the command registry over the given services.
 // Commands() wires the real ones.
+//
+// Commands that activate a Window, inject input or show the overlay are
+// serialized on the helper-wide action mutex (finding 11): one winuse
+// command controls the desktop at a time, exactly what codex-parity's
+// "one request at a time" promises. Observation-only commands —
+// list-windows, get-window, list-apps, the plain tree read, record-tree,
+// launch-app — stay concurrent; get-window-state's --screenshot branch
+// and zoom join the serialized set inside their handlers.
 func CommandsWith(s Services) map[string]Command {
 	s = defaultServices(s)
 	// The Start-apps listing is shared by list-apps and launch-app and
@@ -133,9 +150,67 @@ func CommandsWith(s Services) map[string]Command {
 	}
 	// The Batch dispatches its steps to the other commands, and brackets
 	// itself as one armed Esc scope around them (batch.go, tickets 11 and
-	// 12).
+	// 12). It dispatches to the raw step commands: the batch as a whole is
+	// serialized below, and the action gate is not reentrant.
 	cmds["batch"] = batch(cmds, s.Esc)
-	return cmds
+
+	// The serialized registry: every control-path command runs alone.
+	out := make(map[string]Command, len(cmds))
+	for name, cmd := range cmds {
+		if observationOnlyCommand(name) {
+			out[name] = cmd
+			continue
+		}
+		out[name] = s.serialized(cmd)
+	}
+	return out
+}
+
+// observationOnlyCommand reports whether a command never activates a
+// Window, injects input or shows the overlay, so it may run concurrently
+// with a serialized one (finding 11). get-window-state is listed here for
+// its plain tree read; its --screenshot branch serializes inside the
+// handler. launch-app starts a process and watches for its Window — it
+// injects nothing.
+func observationOnlyCommand(name string) bool {
+	switch name {
+	case "list-windows", "get-window", "list-apps", "get-window-state", "record-tree", "launch-app":
+		return true
+	}
+	return false
+}
+
+// serialized wraps one command in the helper-wide action gate (finding
+// 11): the command runs alone — no other activating, injecting or
+// overlay-showing command interleaves with it. The wait for the gate is
+// bounded by the waiting request's own budget: a request queued behind
+// another Action until its budget expired fails instead of acting late
+// (the server's central timeout policy reports it).
+func (s Services) serialized(cmd Command) Command {
+	if s.actionGate == nil {
+		return cmd // a zero Services (no defaultServices): tests wrap nothing
+	}
+	gate := s.actionGate
+	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
+		select {
+		case gate <- struct{}{}:
+		case <-ctx.Done():
+			return "", queuedOutError()
+		}
+		defer func() { <-gate }()
+		if err := ctx.Err(); err != nil {
+			// The budget expired in the instant the gate opened.
+			return "", queuedOutError()
+		}
+		return cmd(ctx, args)
+	}
+}
+
+// queuedOutError is the failure a serialized command reports when its
+// request's budget expired while another Action held the desktop.
+func queuedOutError() *Error {
+	return Fail("another winuse Action was still running when this request's budget expired",
+		"retry once the other Action finishes")
 }
 
 // noopEscWatch is the Esc service when there is no watcher: no armed
@@ -221,6 +296,9 @@ func defaultServices(s Services) Services {
 	if s.FrameOrigin == nil {
 		s.FrameOrigin = win.FrameOrigin
 	}
+	if s.actionGate == nil {
+		s.actionGate = make(chan struct{}, 1)
+	}
 	return s
 }
 
@@ -247,7 +325,12 @@ func getWindowState(s Services, ctx context.Context, args json.RawMessage) (stri
 		return "", rerr
 	}
 	if a.Screenshot {
-		return windowStateScreenshot(s, ctx, w)
+		// The screenshot path activates the Window and captures: serialize
+		// it like an Action (finding 11), while the plain tree read stays
+		// concurrent.
+		return s.serialized(func(ctx context.Context, args json.RawMessage) (string, *Error) {
+			return windowStateScreenshot(s, ctx, w)
+		})(ctx, args)
 	}
 	tree, err := s.Trees.Capture(ctx, w.ID, w.Title, win.AppExeName(w), s.Budget)
 	if err != nil {
