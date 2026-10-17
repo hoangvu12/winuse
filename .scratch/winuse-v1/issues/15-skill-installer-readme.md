@@ -4,11 +4,11 @@
 
 **Blocked by:** 04 — List and launch Apps; 09 — Windows.Graphics.Capture screenshots; 10 — Scroll, drag, hover; 12 — Esc stop; 13 — Codex-style overlay; 14 — Chromium / Electron apps
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] SKILL.md covers the full command surface and the Codex-derived guidance, with a concise description for lazy loading
-- [ ] SKILL.md never references use-browser
-- [ ] `install.ps1` installs the binary from a GitHub Release onto PATH
-- [ ] Release workflow builds the binary; nothing is published without the user
-- [ ] Skill installs via `npx skills add` for both Claude Code and Pi
-- [ ] README documents install, the unsigned-binary Defender note, and the opt-in rule for end-to-end tests
+- [x] SKILL.md covers the full command surface and the Codex-derived guidance, with a concise description for lazy loading
+- [x] SKILL.md never references use-browser
+- [x] `install.ps1` installs the binary from a GitHub Release onto PATH
+- [x] Release workflow builds the binary; nothing is published without the user
+- [x] Skill installs via `npx skills add` for both Claude Code and Pi
+- [x] README documents install, the unsigned-binary Defender note, and the opt-in rule for end-to-end tests
