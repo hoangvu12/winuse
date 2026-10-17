@@ -279,4 +279,51 @@ func TestBatchStepKindsAreBatchableActions(t *testing.T) {
 	}
 }
 
+func TestScrollArgsJSONShape(t *testing.T) {
+	// The wire names follow Codex's scroll parameters exactly (guiding
+	// rule): window, x, y, scrollX, scrollY.
+	b, err := json.Marshal(ScrollArgs{Window: "101", X: 400, Y: 235, ScrollX: -240, ScrollY: 600})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"window":"101","x":400,"y":235,"scrollX":-240,"scrollY":600}`; string(b) != want {
+		t.Fatalf("scroll args JSON:\n got %s\nwant %s", b, want)
+	}
+	var got ScrollArgs
+	if err := json.Unmarshal([]byte(`{"window":"101","x":400,"y":235,"scrollX":-240,"scrollY":600}`), &got); err != nil || got != (ScrollArgs{Window: "101", X: 400, Y: 235, ScrollX: -240, ScrollY: 600}) {
+		t.Fatalf("unmarshal: %v %+v", err, got)
+	}
+}
+
+func TestDragArgsJSONShape(t *testing.T) {
+	// Codex's drag parameters: from_x, from_y, to_x, to_y.
+	b, err := json.Marshal(DragArgs{Window: "101", FromX: 100, FromY: 50, ToX: 400, ToY: 235})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"window":"101","from_x":100,"from_y":50,"to_x":400,"to_y":235}`; string(b) != want {
+		t.Fatalf("drag args JSON:\n got %s\nwant %s", b, want)
+	}
+	var got DragArgs
+	if err := json.Unmarshal([]byte(`{"window":"101","from_x":100,"from_y":50,"to_x":400,"to_y":235}`), &got); err != nil || got.FromX != 100 || got.ToY != 235 {
+		t.Fatalf("unmarshal: %v %+v", err, got)
+	}
+}
+
+func TestHoverArgsJSONShape(t *testing.T) {
+	// Hover is a winuse extension; its parameters follow Codex's
+	// coordinate names (x, y).
+	b, err := json.Marshal(HoverArgs{Window: "101", X: 200, Y: 42})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"window":"101","x":200,"y":42}`; string(b) != want {
+		t.Fatalf("hover args JSON:\n got %s\nwant %s", b, want)
+	}
+	var got HoverArgs
+	if err := json.Unmarshal([]byte(`{"window":"101","x":200,"y":42}`), &got); err != nil || got.X != 200 || got.Y != 42 {
+		t.Fatalf("unmarshal: %v %+v", err, got)
+	}
+}
+
 func intPtr(v int) *int { return &v }

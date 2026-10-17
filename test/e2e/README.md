@@ -194,6 +194,24 @@ observation commands never raise the indicator. The overlay's brackets
 and layout are offline-tested (`internal/helper`, `internal/win`); these
 e2e tests pin the live window.
 
+The ticket-10 tests (`pointer_test.go`) cover the pointer Actions:
+`scroll` at a point scrolls the fixture list down and back up (the
+fixture scrolls one item per wheel notch, so 360 units = 3 items), and
+scrolls the canvas with both axes at once — the canvas records every
+wheel event in canvas coordinates, which pins the point *and* both
+signs (positive x right, scrollY up = positive wheel delta);
+`drag` across the canvas registers exactly one drag with the from/to
+points within a pixel of the aimed screenshot coordinates (the fixture
+records from the button-down and to the button-up, so the interpolation
+and the exact end pinning are both exercised);
+`hover` over the hover band under the menu bar reveals the hover-only
+toolbar (the pointer stays at the point: a subsequent Window State,
+which never moves the pointer, still reports it and its Elements), and
+hovering the canvas hides it again. The refusals: scrolling without a
+screenshot, a helper restart losing the mapping (restored by a fresh
+screenshot), points outside the screenshot, and a zero-amount scroll
+proven to send no input by the state generation staying put.
+
 **Display-scaling acceptance (user-run):** these tests exercise whatever
 scaling the machine has. To accept ticket 08's `@x,y` criterion at
 100%, 150% and 175% and on a secondary monitor, re-run the suite with

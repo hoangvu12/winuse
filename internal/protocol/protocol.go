@@ -115,6 +115,42 @@ type Region struct {
 	H int `json:"h"`
 }
 
+// ScrollArgs are scroll's arguments — Codex's scroll parameters: a
+// point plus horizontal and vertical amounts. The point is a coordinate
+// Element Reference: x, y in the coordinate space of the Window's latest
+// screenshot. Positive scrollY scrolls down, negative up; positive
+// scrollX scrolls right, negative left (Codex: "scrollY: 600 scrolls
+// down ... Negative scrolls up or left"). Amounts are in wheel units:
+// one notch is 120.
+type ScrollArgs struct {
+	Window  string `json:"window"`
+	X       int    `json:"x"`
+	Y       int    `json:"y"`
+	ScrollX int    `json:"scrollX"`
+	ScrollY int    `json:"scrollY"`
+}
+
+// DragArgs are drag's arguments — Codex's drag parameters: from and to
+// points, both coordinate Element References in the latest screenshot's
+// coordinate space.
+type DragArgs struct {
+	Window string `json:"window"`
+	FromX  int    `json:"from_x"`
+	FromY  int    `json:"from_y"`
+	ToX    int    `json:"to_x"`
+	ToY    int    `json:"to_y"`
+}
+
+// HoverArgs are hover's arguments: the point to move the pointer to,
+// a coordinate Element Reference in the latest screenshot's coordinate
+// space. Hover is a winuse extension (Codex has no hover); the parameter
+// names follow Codex's coordinate parameters.
+type HoverArgs struct {
+	Window string `json:"window"`
+	X      int    `json:"x"`
+	Y      int    `json:"y"`
+}
+
 // ZoomArgs are zoom's arguments.
 type ZoomArgs struct {
 	Window string `json:"window"`

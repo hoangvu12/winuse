@@ -35,7 +35,7 @@ _Avoid_: Element ID, ref
 ### Operation
 
 **Action**:
-A single operation the agent performs on a Window: click, set value, secondary action, scroll, drag, press key or type text.
+A single operation the agent performs on a Window: click, set value, secondary action, scroll, drag, hover, press key or type text.
 _Avoid_: Command, step, tool call
 
 **Secondary Action**:

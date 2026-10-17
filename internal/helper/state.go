@@ -68,6 +68,14 @@ type Services struct {
 	Shots       *shot.Store                            // per-Window latest screenshot mappings (`@x,y`, zoom)
 	FrameOrigin func(hwnd uint64) (image.Point, error) // the Window's extended frame bounds top-left, read fresh at Action time
 
+	// The pointer input (ticket 10). Nil values fall back to the real
+	// SendInput implementations; tests fake them. dx/dy are Codex's
+	// scroll amounts (positive right/down, wheel units — the win layer
+	// flips the vertical to wheel semantics).
+	Scroll func(target uint64, x, y, dx, dy int32) error   // wheel scroll at a point
+	Drag   func(target uint64, fx, fy, tx, ty int32) error // left-button drag, from point to point
+	Hover  func(target uint64, x, y int32) error           // move the pointer and leave it there
+
 	// The in-control indicator (ticket 13): raised over the target Window
 	// for the duration of every Action, click-through, never focused, and
 	// hidden around every capture. Nil means no indicator (offline tests;
@@ -95,6 +103,9 @@ func CommandsWith(s Services) map[string]Command {
 		"press-key":                pressKey(s),
 		"set-value":                setValue(s),
 		"perform-secondary-action": performSecondaryAction(s),
+		"scroll":                   scroll(s),
+		"drag":                     drag(s),
+		"hover":                    hover(s),
 		"list-apps":                listApps(store),
 		"launch-app":               launchApp(store),
 	}
@@ -147,6 +158,15 @@ func defaultServices(s Services) Services {
 	}
 	if s.PressKeys == nil {
 		s.PressKeys = win.PressChord
+	}
+	if s.Scroll == nil {
+		s.Scroll = win.MouseScroll
+	}
+	if s.Drag == nil {
+		s.Drag = win.MouseDrag
+	}
+	if s.Hover == nil {
+		s.Hover = win.MouseHover
 	}
 	if s.Shots == nil {
 		s.Shots = shot.NewStore()

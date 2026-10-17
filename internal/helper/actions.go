@@ -85,7 +85,7 @@ func click(s Services) Command {
 			}
 			x, y := a.Point.X, a.Point.Y
 			return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-				pt, serr := shotPoint(s, w, x, y)
+				pt, serr := shotPoint(s, w, x, y, "click")
 				if serr != nil {
 					return "", serr
 				}

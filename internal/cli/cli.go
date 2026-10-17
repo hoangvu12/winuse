@@ -50,6 +50,15 @@ commands:
                                stopping at the first failure (which names
                                the failed step); e.g.
                                winuse batch 101 click name:File then type-text hello then press-key Return
+  scroll <window> @x,y <dx> <dy>
+                               scroll the Window at a point of its latest
+                               screenshot: positive dy scrolls down, positive
+                               dx right; one wheel notch is 120
+  drag <window> @x,y @x,y     drag the pointer from one point to another,
+                               both in the Window's latest screenshot's pixels
+  hover <window> @x,y         move the pointer to a point of the Window's
+                               latest screenshot and leave it there (reveals
+                               hover-only UI and tooltips)
   activate-window <window>    bring a Window to the foreground
   version                     print the winuse version
 
@@ -95,6 +104,12 @@ func Main(args []string) int {
 		return performSecondaryActionCmd(args[1:])
 	case "batch":
 		return batchCmd(args[1:])
+	case "scroll":
+		return scrollCmd(args[1:])
+	case "drag":
+		return dragCmd(args[1:])
+	case "hover":
+		return hoverCmd(args[1:])
 	case "activate-window":
 		return activateWindowCmd(args[1:])
 	default:
