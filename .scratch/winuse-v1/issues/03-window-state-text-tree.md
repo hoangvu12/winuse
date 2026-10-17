@@ -4,12 +4,12 @@
 
 **Blocked by:** 02 — Fixture app + opt-in end-to-end tests
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Output follows Codex's tree format; indexes are depth-first and stable within one Window State
-- [ ] Reading a new Window State for a Window replaces the previous one in the helper
-- [ ] Tree reads are bounded by a time limit; a timeout returns the partial tree plus a note
-- [ ] Naming a Window by App resolves only when exactly one Window matches; otherwise an error lists the candidates
-- [ ] Recorder captures a real Window's tree to a fixture file
-- [ ] Offline tests render recorded trees and compare with expected text
+- [x] Output follows Codex's tree format; indexes are depth-first and stable within one Window State
+- [x] Reading a new Window State for a Window replaces the previous one in the helper
+- [x] Tree reads are bounded by a time limit; a timeout returns the partial tree plus a note
+- [x] Naming a Window by App resolves only when exactly one Window matches; otherwise an error lists the candidates
+- [x] Recorder captures a real Window's tree to a fixture file
+- [x] Offline tests render recorded trees and compare with expected text
 - [ ] End-to-end: the fixture's Elements appear with expected roles, names and IDs (verified by user run)
