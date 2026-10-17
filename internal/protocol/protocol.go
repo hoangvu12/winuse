@@ -92,6 +92,22 @@ type ActivateArgs struct {
 	Window string `json:"window"`
 }
 
+// TypeTextArgs are type-text's arguments — Codex's type_text parameters:
+// the text is typed into the Window's focused Element (the Window is
+// activated first, like every Action).
+type TypeTextArgs struct {
+	Window string `json:"window"`
+	Text   string `json:"text"`
+}
+
+// PressKeyArgs are press-key's arguments — Codex's press_key parameters:
+// a key or `+`-separated chord in Codex's X keysym-style names (Return,
+// Tab, Control_L+a, Numpad_0).
+type PressKeyArgs struct {
+	Window string `json:"window"`
+	Key    string `json:"key"`
+}
+
 // Response is the helper's answer.
 type Response struct {
 	OK    bool   `json:"ok"`

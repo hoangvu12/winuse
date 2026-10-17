@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hoangvu12/winuse/internal/keys"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
 	"github.com/hoangvu12/winuse/internal/wstate"
@@ -49,6 +50,11 @@ type Services struct {
 	Activate  func(hwnd uint64) error                                                  // foreground activation + verification
 	Actions   ElementPointer                                                           // element-side Action work (UIA worker)
 	Click     func(target uint64, x, y int32, button win.MouseButton, count int) error // SendInput click
+
+	// Keyboard input (ticket 06). Nil values fall back to the real
+	// SendInput implementations; tests fake them.
+	TypeText  func(text string) error      // Unicode key-event typing
+	PressKeys func(chord keys.Chord) error // key or chord press (downs in order, ups in reverse)
 }
 
 // CommandsWith builds the command registry over the given services.
@@ -86,12 +92,20 @@ func CommandsWith(s Services) map[string]Command {
 	if s.Click == nil {
 		s.Click = win.MouseClick
 	}
+	if s.TypeText == nil {
+		s.TypeText = win.TypeText
+	}
+	if s.PressKeys == nil {
+		s.PressKeys = win.PressChord
+	}
 	return map[string]Command{
 		"list-windows":     listWindows,
 		"get-window-state": func(ctx context.Context, args json.RawMessage) (string, *Error) { return getWindowState(s, ctx, args) },
 		"record-tree":      func(ctx context.Context, args json.RawMessage) (string, *Error) { return recordTree(s, ctx, args) },
 		"click":            click(s),
 		"activate-window":  activateWindow(s),
+		"type-text":        typeText(s),
+		"press-key":        pressKey(s),
 	}
 }
 

@@ -185,7 +185,7 @@ var Specs = []Spec{
 	{ElemToolbarItalic, "Italic", RoleButton, []Pattern{PatternInvoke}, "visible only while the hover toolbar is revealed; records lastToolbar"},
 	{ElemToolbarUnderline, "Underline", RoleButton, []Pattern{PatternInvoke}, "visible only while the hover toolbar is revealed; records lastToolbar"},
 
-	{ElemTextField, "Text Field", RoleEdit, []Pattern{PatternValue}, "single-line edit; typing lands here when focused; value is the state file's text"},
+	{ElemTextField, "Text Field", RoleEdit, []Pattern{PatternValue}, "single-line edit; typing lands here when focused (value is the state file's text; surrogate pairs recombined); Control+A or Edit > Select All selects its whole content, and typing or Backspace then replaces the selection"},
 
 	{ElemButtonClick, "Click Me", RoleButton, []Pattern{PatternInvoke}, "records lastButton and sets the status text"},
 	{ElemButtonSaveAs, "Save As...", RoleButton, []Pattern{PatternInvoke}, "opens the Save As dialog"},
@@ -220,7 +220,7 @@ var Specs = []Spec{
 var DialogSpecs = []Spec{
 	{ElemDialog, DialogTitle, RoleWindow, nil, "dialog window root; IsDialog=true; disables the main window while open (modal Save As behaviour)"},
 	{ElemDialogLabelFileName, "File name:", RoleText, nil, "static label"},
-	{ElemDialogEditFileName, "File name", RoleEdit, []Pattern{PatternValue}, "single-line edit for the file name; value is dialogFileName in the state file"},
+	{ElemDialogEditFileName, "File name", RoleEdit, []Pattern{PatternValue}, "single-line edit for the file name; value is dialogFileName in the state file; focused when the dialog opens; typing lands here, Control+A selects and typing replaces"},
 	{ElemDialogButtonSave, "Save", RoleButton, []Pattern{PatternInvoke}, "closes the dialog; records dialogResult=save"},
 	{ElemDialogButtonCancel, "Cancel", RoleButton, []Pattern{PatternInvoke}, "closes the dialog; records dialogResult=cancel"},
 }

@@ -45,7 +45,8 @@ Esc, overlay) must import that package for the constants and must not
 restate or invent names or ids; extend the table there instead.
 
 The app reports its end state as JSON to the file given by `-state`:
-text field contents, checkbox state, last button pressed, menu invoked,
+text field contents (and whether they are selected, e.g. after
+Control+A), checkbox state, last button pressed, menu invoked,
 dialog result, list selection and scroll position, toolbar visibility,
 canvas clicks/drags/scrolls (in canvas coordinates, with the canvas's
 screen rectangle), the last key pressed, and a generation counter. The
@@ -95,7 +96,16 @@ with the read-the-state-again instruction; clicking the main window while
 its modal dialog is open fails naming the dialog, without sending input;
 `activate-window` works standalone and refuses the dialog-blocked main
 window. Element Indexes are derived from the fixture's Element contract,
-not restated.
+not restated. The ticket-06 keyboard tests (`type_text_test.go`): typing
+Unicode (non-Latin scripts and a surrogate-pair emoji) into the text
+field, unquoted multi-word text, a multi-batch long text, the ticket's
+acceptance flow (type, `Control_L+a`, type the replacement — and
+Backspace deleting the selection), typing into the dialog's file-name
+edit, press-key by name (including numpad keys, which must arrive as
+numpad virtual keys, and extended arrow keys), a chord, and the refusals
+(unknown key with a hint, the forbidden Windows-key family, the empty
+key) proven to send no input by the fixture's state generation staying
+put.
 
 The ticket-14 test (`chromium_test.go`) covers the Chromium path: it starts
 Edge (and Chrome, when installed) with an **isolated profile in a temp

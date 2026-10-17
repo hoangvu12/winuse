@@ -82,6 +82,8 @@ const (
 	wmKeydown          = 0x0100
 	wmChar             = 0x0102
 	wmSyskeydown       = 0x0104
+	wmSyskeyup         = 0x0105
+	wmKeyup            = 0x0101
 	wmMousemove        = 0x0200
 	wmLButtonDown      = 0x0201
 	wmLButtonUp        = 0x0202
