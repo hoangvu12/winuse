@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/version"
@@ -16,8 +17,12 @@ import (
 const usage = `usage: winuse <command> [arguments]
 
 commands:
-  list-windows    list visible Windows: Window ID, App and title
-  version         print the winuse version
+  list-windows                list visible Windows: Window ID, App and title
+  get-window-state <window>   print a Window's State: its Element tree as text
+  record-tree <window> <file> record a Window's real tree to a fixture file
+  version                     print the winuse version
+
+a <window> is a Window ID, or an App name when that App has exactly one Window
 `
 
 // Main runs the CLI for args (without the program name) and returns the exit
@@ -35,6 +40,10 @@ func Main(args []string) int {
 		return 0
 	case "list-windows":
 		return listWindowsCmd(args[1:])
+	case "get-window-state":
+		return getWindowStateCmd(args[1:])
+	case "record-tree":
+		return recordTreeCmd(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "winuse: unknown command %q\n\n%s", args[0], usage)
 		return 2
@@ -55,10 +64,61 @@ func listWindowsCmd(args []string) int {
 	return 0
 }
 
+// windowArgs is the CLI→helper argument shape of commands that name a
+// Window.
+type windowArgs struct {
+	Window string `json:"window"`
+}
+
+// recordArgs is record-tree's CLI→helper argument shape.
+type recordArgs struct {
+	Window string `json:"window"`
+	File   string `json:"file"`
+}
+
+// getWindowStateCmd prints the Window State: Codex's depth-first,
+// indented, numbered Element tree.
+func getWindowStateCmd(args []string) int {
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: winuse get-window-state <window>")
+		return 2
+	}
+	if err := runWithArgs("get-window-state", windowArgs{Window: args[0]}); err != nil {
+		reportError(os.Stderr, err)
+		return ExitCode(err)
+	}
+	return 0
+}
+
+// recordTreeCmd records a real Window's tree to a fixture file (the
+// recorder; see the README).
+func recordTreeCmd(args []string) int {
+	if len(args) != 2 {
+		fmt.Fprintln(os.Stderr, "usage: winuse record-tree <window> <file>")
+		return 2
+	}
+	file, err := filepath.Abs(args[1])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "winuse: resolving %s: %v\n", args[1], err)
+		return 2
+	}
+	if err := runWithArgs("record-tree", recordArgs{Window: args[0], File: file}); err != nil {
+		reportError(os.Stderr, err)
+		return ExitCode(err)
+	}
+	return 0
+}
+
 // runSimple sends a no-argument command to the helper and prints its
 // response Codex-style: output on stdout, a single-line failure with a
 // recovery hint on stderr, non-zero exit on failure.
 func runSimple(cmd string) error {
+	return runWithArgs(cmd, nil)
+}
+
+// runWithArgs sends one command (with its JSON arguments) to the helper and
+// prints its response Codex-style.
+func runWithArgs(cmd string, args any) error {
 	if !win.HasInputDesktop() {
 		return win.ErrNoDesktop
 	}
@@ -66,7 +126,7 @@ func runSimple(cmd string) error {
 	if err != nil {
 		return err
 	}
-	req, err := Request(cmd, nil)
+	req, err := Request(cmd, args)
 	if err != nil {
 		return err
 	}

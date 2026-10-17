@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "source": "hand-authored: exercises the full Codex line grammar (parenthesised states, Description, Value, toggle tokens, Secondary Actions, the truncation suffix, notes and the focused-Element tail). Modelled on the Word excerpts recovered from Codex's helper (codex-surface.md §2), translated to English roles; not captured from a real app. The live walk populates the rich-state fields from ticket 07 on; this fixture pins the format they will render in.",
+  "title": "  Report   q4 - Word ",
+  "app": "WINWORD.EXE",
+  "focusedIndex": 8,
+  "notes": [
+    "this Window State is partial: the tree read exceeded the 8s time limit."
+  ],
+  "elements": [
+    { "depth": 0, "role": "window", "name": "Report q4 - Word", "automationId": "Document1", "secondaryActions": ["Raise"] },
+    { "depth": 1, "role": "title bar", "name": "Report q4 - Word" },
+    { "depth": 1, "role": "toolbar", "name": "Ribbon", "description": "Ribbon toolbar", "automationId": "Ribbon" },
+    { "depth": 2, "role": "split button", "name": "Cannot undo", "automationId": "Undo", "disabled": true },
+    { "depth": 2, "role": "tab list", "name": "Ribbon tabs", "automationId": "RibbonTabs" },
+    { "depth": 3, "role": "tab", "name": "Home", "automationId": "TabHome", "selectable": true, "selected": true },
+    { "depth": 3, "role": "tab", "name": "Insert", "automationId": "TabInsert", "selectable": true },
+    { "depth": 2, "role": "group", "name": "Clipboard", "automationId": "Clipboard", "expandState": "expanded", "secondaryActions": ["Collapse"] },
+    { "depth": 3, "role": "edit", "name": "File name", "automationId": "edit-file", "settable": "string", "value": "report q4.docx" },
+    { "depth": 2, "role": "check box", "name": "Notify me", "automationId": "notify", "toggle": "on" },
+    { "depth": 2, "role": "tree item", "name": "Favorites", "automationId": "favorites", "expandState": "collapsed", "secondaryActions": ["Expand"] },
+    { "depth": 1, "role": "pane", "name": "Page view", "automationId": "page-view", "secondaryActions": ["Scroll Down", "Scroll Right"] },
+    { "depth": 2, "role": "list", "name": "Comments", "automationId": "comments", "truncated": { "limit": "1000", "omittedChildren": 12 } }
+  ]
+}

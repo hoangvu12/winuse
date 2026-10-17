@@ -1,0 +1,29 @@
+Window: "winuse fixture app", App: winusefixture.exe.
+	0 window winuse fixture app ID: window
+		1 menu bar Menu Bar ID: menu-bar
+			2 menu item File ID: menu-file
+			3 menu item Edit ID: menu-edit
+			4 menu item Help ID: menu-help
+		5 edit Text Field ID: text-field
+		6 button Click Me ID: button-click
+		7 button Save As... ID: button-save-as
+		8 button (disabled) Disabled Button ID: button-disabled
+		9 button Twin ID: twin-a
+		10 button Twin ID: twin-b
+		11 button Solo One ID: solo
+		12 button Solo Two ID: solo
+		13 check box Notify me ID: checkbox-notify
+		14 list Item List ID: item-list
+			15 list item Alpha ID: item-alpha
+			16 list item Bravo ID: item-bravo
+			17 list item Charlie ID: item-charlie
+			18 list item Delta ID: item-delta
+			19 list item Echo ID: item-echo
+			20 list item Foxtrot ID: item-foxtrot
+			21 list item Golf ID: item-golf
+			22 list item Hotel ID: item-hotel
+		23 group Details ID: details-expander
+		24 custom Canvas ID: canvas
+		25 text Status: ready ID: status
+
+The focused UI element is 5 edit Text Field ID: text-field.
