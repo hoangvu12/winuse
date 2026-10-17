@@ -5,18 +5,23 @@ run shell commands list Apps and Windows, read a Window State (accessibility
 tree as text, screenshots on request) and perform Actions — at the quality of
 Codex Computer Use, without being tied to Codex.
 
-**Status: tickets 01–15 of the v1 plan** (`.scratch/winuse-v1/`; only the
-Task Suite — 16 — remains): the background helper and the full command
-surface — discovery (`list-windows`, `list-apps`, `launch-app`),
-observation (`get-window-state`, Codex's Element-tree format with opt-in
+**Status: all 16 tickets of the v1 plan** (`.scratch/winuse-v1/`):
+the background helper and the full command surface — discovery
+(`list-windows`, `list-apps`, `launch-app`), observation
+(`get-window-state`, Codex's Element-tree format with opt-in
 screenshots and `zoom`) and every Action (`click`, `type-text`,
 `press-key`, `set-value`, `perform-secondary-action`, `scroll`, `drag`,
 `hover`, `activate-window`, `batch`), with Element References (index,
 `name:`, `id:`, `@x,y`), the Chromium/Electron lazy-tree retry, the
 in-control overlay, the Esc stop (exit 130), and the
-Windows.Graphics.Capture-first screenshot chain — plus, with ticket 15, the
-shipped agent skill, installer and release workflow. The product spec and
-the domain language live in `.scratch/winuse-v1/spec.md` and `CONTEXT.md`.
+Windows.Graphics.Capture-first screenshot chain — plus the shipped
+agent skill, installer and release workflow, and, with ticket 16, the
+Task Suite (the quality measurement: [tasksuite/](tasksuite/), started
+only by the user) and the [Codex parity checklist](docs/codex-parity.md).
+The Task Suite is written and validated but not yet run: its first run
+is the user's to start (see [tasksuite/README.md](tasksuite/README.md)).
+The product spec and the domain language live in
+`.scratch/winuse-v1/spec.md` and `CONTEXT.md`.
 
 Windows-only. MIT licensed (see `LICENSE`). No telemetry.
 
@@ -652,7 +657,20 @@ assertions never depend on pixels.
   SKILL.md keeps covering the full command surface (cross-checked against
   the CLI's usage text), never mentions the tool it must not depend on,
   and the installer's asset names stay in sync with the release workflow.
-  No desktop access, no input injection, safe to run any time.
+  The ticket-16 test there guards the **Codex parity checklist**
+  (`docs/codex-parity.md`): every recovered Codex tool and parameter of
+  the Windows surface must appear with a status (matched /
+  intentionally different / extension), and every winuse command the
+  checklist names must exist on the CLI. The ticket-16 tests
+  (`internal/tasksuite`) cover the **Task Suite runner's pure logic**:
+  task-file parsing (front-matter, validation, the fixed run order),
+  prompt rendering (the identical preamble, the templated paths, the
+  scratch-only property of every shipped task), the opt-in refusal, the
+  Harness specs (the pinned models and limits), the PATH/shim resolution
+  and the Claude/Pi output parsing that yields steps, the pass/fail table
+  with steps and time, the task server, and the process-cleanup diff —
+  never executing a setup or Check script. No desktop access, no input
+  injection, safe to run any time.
 - **End-to-end (seam 1):** `test/e2e` — the real binary and the fixture app
   against the live desktop. **Opt-in only, started by the user, never by
   an agent** (see `test/e2e/README.md` for the rules):
@@ -667,6 +685,21 @@ assertions never depend on pixels.
   opt-in, run them, or start the fixture app, without the user's explicit
   go-ahead. `go test ./...` (above) is the only test command an agent may
   run.
+- **Task Suite (quality, not correctness):** `tasksuite/` — about ten
+  real desktop tasks across ordinary Windows apps, Chromium/Electron
+  apps, dialog-heavy flows and a canvas app, each with a setup script in
+  a scratch folder and a Check script that inspects the end result (no
+  model judges). A runner drives them unattended through `claude -p`
+  with Opus 5.5 (15 minutes and 40 turns per task) and a text-only
+  subset through Pi with glm-5.3, then prints a pass/fail table with
+  steps and time. **Runs take over the screen and are started only by
+  the user** — the runner refuses without `--i-am-the-user`, and an
+  agent must never pass it, run the runner, or run any task's setup or
+  Check script. See [tasksuite/README.md](tasksuite/README.md):
+
+  ```
+  go run ./cmd/winusetasks run --i-am-the-user
+  ```
 
 ## Build
 
@@ -694,6 +727,7 @@ install.ps1             one-line installer: release binary onto the user PATH
 .github/workflows/release.yml   builds the release binaries on a pushed tag
 cmd/winuse/          binary: CLI dispatch + hidden __helper entry (manifest .syso here)
 cmd/winusefixture/   the e2e fixture app's entry point (see The fixture app)
+cmd/winusetasks/     the Task Suite runner: user-started runs of the suite (see tasksuite/README.md)
 internal/protocol/   CLI↔helper contract: JSON-lines request/response, timeouts, exit codes
 internal/pipe/       named pipe: naming per user/session, user-only DACL, dial, anti-squat check, singleton
 internal/win/        Win32 layer: identity, DPI awareness, window enumeration, process/App names, window resolution, helper spawn, and the Actions' Win32 side: SendInput clicks, the pointer Actions (wheel scroll, interpolated drag, hover), keyboard (Unicode text and key chords), foreground activation, integrity/locked-desktop refusals; the UI thread and the in-control overlay window (ADR 0006)
@@ -706,9 +740,12 @@ internal/wgc/        Windows.Graphics.Capture: hand-written WinRT/Direct3D inter
 internal/wstate/     Window State model: Element/Tree, Codex-format rendering, name:/id: Element Reference resolution, recorded-tree fixtures (seam 2)
 internal/cli/        CLI: subcommands, dial-or-spawn client state machine, output/exit-code policy
 internal/skill/      guards the shipped SKILL.md / installer / release surface (offline tests)
+internal/tasksuite/  the Task Suite runner's logic: task parsing, prompts, the user-start refusal, harness driving, results (offline-tested)
 internal/version/    binary version (stale-helper detection)
 internal/fixture/    the fixture app: Element contract (elements.go), state file, UIA provider, Win32 app
 test/e2e/            opt-in end-to-end tests (user-run only; see test/e2e/README.md)
+tasksuite/           the Task Suite: tasks/ (one directory per task: task.md, setup.ps1, check.ps1) and the user guide (tasksuite/README.md)
+docs/codex-parity.md the Codex parity checklist: every Codex Windows tool and parameter, matched or intentionally different
 winres/              manifest + version-info source for the .syso files
 ```
 
