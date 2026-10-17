@@ -486,7 +486,7 @@ func TestWaitForWindowFindsWindowAfterPolls(t *testing.T) {
 		}
 		return append(before, target), nil
 	}
-	w, err := WaitForWindow(context.Background(), spec, 0, before, 0, 5*time.Second, enum, func() uint64 { return 0 }, func(time.Duration) {})
+	w, err := WaitForWindow(context.Background(), spec, 0, before, 0, 5*time.Second, enum, func() uint64 { return 0 }, func(time.Duration) {}, nil)
 	if err != nil {
 		t.Fatalf("WaitForWindow: %v", err)
 	}
@@ -502,7 +502,7 @@ func TestWaitForWindowTimesOut(t *testing.T) {
 	spec := Spec{App: "windowless app", ID: `C:\x.exe`, Kind: IDExe, TargetExe: `C:\x.exe`}
 	before := []win.WindowInfo{winInfo(1, "Old", "old", `C:\old\old.exe`, 1)}
 	_, err := WaitForWindow(context.Background(), spec, 0, before, 0, 30*time.Millisecond,
-		func() ([]win.WindowInfo, error) { return before, nil }, func() uint64 { return 0 }, func(time.Duration) {})
+		func() ([]win.WindowInfo, error) { return before, nil }, func() uint64 { return 0 }, func(time.Duration) {}, nil)
 	var noWindow *NoWindowError
 	if !errors.As(err, &noWindow) {
 		t.Fatalf("want NoWindowError, got %v", err)
@@ -517,10 +517,63 @@ func TestWaitForWindowContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := WaitForWindow(ctx, spec, 0, nil, 0, time.Minute,
-		func() ([]win.WindowInfo, error) { return nil, nil }, func() uint64 { return 0 }, func(time.Duration) {})
+		func() ([]win.WindowInfo, error) { return nil, nil }, func() uint64 { return 0 }, func(time.Duration) {}, nil)
 	var noWindow *NoWindowError
 	if !errors.As(err, &noWindow) {
 		t.Fatalf("want NoWindowError on cancellation, got %v", err)
+	}
+}
+
+func TestWaitForWindowStoppedByEsc(t *testing.T) {
+	// Ticket 12: the user pressing Esc while winuse waits for a launched
+	// App's Window aborts the wait with ErrStopped (the caller reports the
+	// exit-130 stop), even when the Window would have appeared on the next
+	// poll — and before the timeout's NoWindow error.
+	spec := Spec{App: "slow app", ID: `C:\slow.exe`, Kind: IDExe, TargetExe: `C:\slow.exe`}
+	before := []win.WindowInfo{winInfo(1, "Old", "old", `C:\old\old.exe`, 1)}
+	target := winInfo(2, "Slow", "slow", `C:\slow.exe`, 2)
+	calls := 0
+	enum := func() ([]win.WindowInfo, error) {
+		calls++
+		if calls >= 3 {
+			return append(before, target), nil // would match on the 3rd poll
+		}
+		return before, nil
+	}
+	_, err := WaitForWindow(context.Background(), spec, 0, before, 0, 5*time.Second,
+		enum, func() uint64 { return 0 }, func(time.Duration) {}, func() bool { return true })
+	if !errors.Is(err, ErrStopped) {
+		t.Fatalf("want ErrStopped, got %v", err)
+	}
+	if calls != 0 {
+		t.Fatalf("a stopped wait must not poll; enum called %d times", calls)
+	}
+}
+
+// A stop that latches mid-wait aborts on the next poll boundary, before
+// the App's matching Window is acted on.
+func TestWaitForWindowStopsMidWait(t *testing.T) {
+	spec := Spec{App: "slow app", ID: `C:\slow.exe`, Kind: IDExe, TargetExe: `C:\slow.exe`}
+	before := []win.WindowInfo{winInfo(1, "Old", "old", `C:\old\old.exe`, 1)}
+	target := winInfo(2, "Slow", "slow", `C:\slow.exe`, 2)
+	calls, stopped := 0, false
+	enum := func() ([]win.WindowInfo, error) {
+		calls++
+		if calls <= 2 {
+			if calls == 2 {
+				stopped = true // the user presses Esc after the first poll
+			}
+			return before, nil // the App has not opened its Window yet
+		}
+		return append(before, target), nil // would match from the 3rd poll on
+	}
+	_, err := WaitForWindow(context.Background(), spec, 0, before, 0, 5*time.Second,
+		enum, func() uint64 { return 0 }, func(time.Duration) {}, func() bool { return stopped })
+	if !errors.Is(err, ErrStopped) {
+		t.Fatalf("want ErrStopped, got %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("enum called %d times, want 2 (stop noticed at the next poll)", calls)
 	}
 }
 

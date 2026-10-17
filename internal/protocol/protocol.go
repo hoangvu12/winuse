@@ -224,6 +224,7 @@ type Step struct {
 // of the wire never disagree about what a Batch can run.
 var BatchStepKinds = []string{
 	"click", "type-text", "press-key", "set-value", "perform-secondary-action", "activate-window",
+	"scroll", "drag", "hover",
 }
 
 // Response is the helper's answer.

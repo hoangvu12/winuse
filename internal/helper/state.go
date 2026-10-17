@@ -40,6 +40,20 @@ type ElementPointer interface {
 	ElementPoint(ctx context.Context, hwnd uint64, index int) (uia.Point, error)
 }
 
+// EscWatch is the helper's Esc-stop service (ticket 12): Arm and Disarm
+// bracket every scope the user can stop with the physical Esc key (an
+// Action, a Batch, a launch wait — nestable), and Stopped reports whether
+// the user pressed it inside the scope (cleared when the outermost scope
+// ends, so a stop never leaks into the next command). The real watcher is
+// *win.EscWatcher — the low-level keyboard hook on the UI thread;
+// CommandsWith installs a no-op when there is none (offline tests, a
+// helper whose hook could not start), so every command still runs.
+type EscWatch interface {
+	Arm()
+	Disarm()
+	Stopped() bool
+}
+
 // Services carries the commands' dependencies so tests can inject fakes
 // (the desktop enumeration, the tree source and the Action pipeline's
 // Win32 steps); zero values fall back to the real ones.
@@ -58,9 +72,14 @@ type Services struct {
 	Click     func(target uint64, x, y int32, button win.MouseButton, count int) error // SendInput click
 
 	// Keyboard input (ticket 06). Nil values fall back to the real
-	// SendInput implementations; tests fake them.
-	TypeText  func(text string) error      // Unicode key-event typing
-	PressKeys func(chord keys.Chord) error // key or chord press (downs in order, ups in reverse)
+	// SendInput implementations; tests fake them. stopped is the Esc-stop
+	// checkpoint (ticket 12), polled between typing batches.
+	TypeText  func(text string, stopped func() bool) error // Unicode key-event typing
+	PressKeys func(chord keys.Chord) error                 // key or chord press (downs in order, ups in reverse)
+
+	// The Esc stop (ticket 12): nil falls back to a no-op (no physical-Esc
+	// stopping); tests fake it with a latch they can press.
+	Esc EscWatch
 	// The screenshot services (tickets 08 and 09). Nil values fall back
 	// to the real ones; tests fake them so offline tests never capture the
 	// screen.
@@ -107,13 +126,23 @@ func CommandsWith(s Services) map[string]Command {
 		"drag":                     drag(s),
 		"hover":                    hover(s),
 		"list-apps":                listApps(store),
-		"launch-app":               launchApp(store),
+		"launch-app":               launchApp(store, s.Esc),
 	}
-	// The Batch dispatches its steps to the other commands, so it is wired
-	// to the registry itself (batch.go, ticket 11).
-	cmds["batch"] = batch(cmds)
+	// The Batch dispatches its steps to the other commands, and brackets
+	// itself as one armed Esc scope around them (batch.go, tickets 11 and
+	// 12).
+	cmds["batch"] = batch(cmds, s.Esc)
 	return cmds
 }
+
+// noopEscWatch is the Esc service when there is no watcher: no armed
+// scopes, no stops. Commands still run; the user just cannot stop them
+// with Esc (a helper whose hook could not start logs it).
+type noopEscWatch struct{}
+
+func (noopEscWatch) Arm()          {}
+func (noopEscWatch) Disarm()       {}
+func (noopEscWatch) Stopped() bool { return false }
 
 // defaultServices fills a Services' zero values with the real
 // implementations: the desktop enumeration, the UIA client and budget, the
@@ -158,6 +187,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.PressKeys == nil {
 		s.PressKeys = win.PressChord
+	}
+	if s.Esc == nil {
+		s.Esc = noopEscWatch{}
 	}
 	if s.Scroll == nil {
 		s.Scroll = win.MouseScroll

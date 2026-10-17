@@ -5,7 +5,8 @@ run shell commands list Apps and Windows, read a Window State (accessibility
 tree as text, screenshots on request) and perform Actions — at the quality of
 Codex Computer Use, without being tied to Codex.
 
-**Status: tickets 01–11, 13 and 14 of the v1 plan** (`.scratch/winuse-v1/`) —
+**Status: tickets 01–14 of the v1 plan** (`.scratch/winuse-v1/`; the
+skill/installer and the Task Suite — 15 and 16 — remain) —
 background helper, `winuse list-windows`, the fixture app with its opt-in
 e2e runner, `winuse list-apps` and `winuse launch-app`, `winuse
 get-window-state`: the Window State as Codex's Element tree, read through UI
@@ -41,7 +42,16 @@ Element-taking Action can name its Element instead of using an Index,
 resolving against the Window's latest Window State, with ambiguous
 matches failing listing the candidates — and `winuse batch`, several
 Actions on one Window in a single call, in order, stopping at the first
-failure and naming the failed step. The Esc stop comes in ticket 12. The product spec and the domain
+failure and naming the failed step. The Esc stop (ticket 12) is live:
+pressing the **physical Esc key** while winuse acts — an Action, a Batch
+step or in between, a launch-app wait — immediately stops the command:
+remaining Batch steps do not run, the key itself is swallowed so the
+controlled app never sees it, and the command exits with Codex's
+interrupt code 130 and the message that the user stopped winuse with the
+physical Escape key, telling the agent to stop and ask. The watcher is a
+low-level keyboard hook (`WH_KEYBOARD_LL`) on the helper's UI thread —
+the overlay's — that ignores every injected keystroke (winuse's own
+`press-key Escape` types a plain Escape). The product spec and the domain
 language live in
 `.scratch/winuse-v1/spec.md` and `CONTEXT.md`.
 
@@ -101,7 +111,16 @@ go run github.com/tc-hib/go-winres@latest make --arch amd64,arm64 --out cmd/winu
   argument parsing, in-order execution stopping at the first failure that
   names the step, malformed steps refused before any input, the Window
   injected into every step) with every Win32 and element side faked
-  (`internal/helper`, `internal/cli`). No desktop access,
+  (`internal/helper`, `internal/cli`). The ticket-12 tests: **the Esc
+  stop** — the hook's decision table (physical vs injected keys, the
+  down/up swallow pairing, the not-armed pass-through) and the latch's
+  nested scopes (`internal/win`), the typing abort between batches, the
+  launch-app wait stop, every command's exit-130 mapping with the
+  user-stopped-winuse message, Batch stops at every checkpoint (a stopped
+  step, between steps, the last step's tail), and the Esc stop outranking
+  the request timeout (`internal/apps`, `internal/helper`), plus the
+  pointer Actions as Batch steps. A guard proves no offline test ever
+  installs the real hook. No desktop access,
   no input injection, safe to run any time.
 - **End-to-end (seam 1):** `test/e2e` — the real binary and the fixture app
   against the live desktop. Opt-in only, **started by the user, never by
@@ -131,7 +150,7 @@ go run github.com/tc-hib/go-winres@latest make --arch amd64,arm64 --out cmd/winu
   like `90s`); the next command restarts it transparently.
 - Requests time out after **10 s** (15 s for `launch-app`) and report
   `winuse request timed out: <command>`;
-  Esc stops exit with code 130 (reserved in the protocol now).
+  Esc stops exit with code 130.
 - Helper logs go to `%LOCALAPPDATA%\winuse\helper.log` (its stderr is NUL).
 - The process is **per-monitor DPI aware v2** (manifest + runtime call) so
   every coordinate is physical pixels from the start.
@@ -142,9 +161,11 @@ go run github.com/tc-hib/go-winres@latest make --arch amd64,arm64 --out cmd/winu
   system-wide UIA freezes), and a wedged worker thread is abandoned and
   replaced, never killed.
 - The helper also owns a **UI thread**: one more OS-locked thread, with a
-  Win32 message loop, that carries the **in-control overlay** window (and,
-  later, the Esc keyboard hook). Input injection and UI Automation never
-  run on it (ADR 0006).
+  Win32 message loop, that carries the **in-control overlay** window and
+  the **Esc keyboard hook** (`WH_KEYBOARD_LL`; injected keystrokes are
+  ignored, and the physical key is swallowed only while winuse is in
+  control). Input injection and UI Automation never run on it (ADR 0006,
+  ADR 0007).
 
 `winuse list-windows` prints one line per visible Window:
 
@@ -495,20 +516,26 @@ batch stopped at step 2 (click): name "Twin" matches 2 elements in the cached Wi
 
 with that step's own recovery hint (here the candidate list) forwarded.
 Steps after the failure do not run, and the failure's exit code survives
-(an Esc stop will exit 130, like a standalone Action). Malformed steps —
+(an Esc stop exits 130, like a standalone Action). Malformed steps —
 an unknown action, a bad flag — are refused **before any input is sent**,
 so a mistyped Batch never half-runs. A Batch's request budget is 60 s
 (each step is fast, but a Batch of dozens of steps needs more than the
-10 s default). Ticket 12's Esc stop will abort a running Batch: the
-remaining steps will not run.
+10 s default). Pressing the physical Esc key aborts a running Batch at
+the next checkpoint — between a stopped step's input batches, between
+steps, in a step's tail — and the remaining steps do not run. The
+ticket-10 pointer Actions are Batch steps too (`scroll`, `drag`,
+`hover`, taking the same arguments as their standalone forms minus the
+Window):
 
 ## The in-control overlay
 
 While an Action runs, winuse shows what Codex shows: an on-screen
 indicator that the agent is driving the PC. A border frames the Window
 being controlled and a pill banner at its top centre reads
-**“winuse is in control — press Esc to stop”** (the Esc stop itself is
-ticket 12; the hint already says what it will do).
+**“winuse is in control — press Esc to stop”** — and since ticket 12,
+pressing that key really does stop winuse (see the Esc section below).
+When the user presses it, the hook swallows the key, the running command
+exits 130, and the overlay disappears with it.
 
 The indicator is a topmost layered window with a magenta colour key:
 everything except the border and the pill is fully transparent. It is
@@ -544,6 +571,35 @@ same JSON the renderer loads (`wstate.Tree`, format 1) — for the seam-2
 offline tests (`internal/wstate/testdata/`, `internal/uia/testdata/`).
 Hand-authored fixtures are written in the same format and marked as such
 in their `source` field.
+
+## The Esc stop
+
+Pressing the **physical Esc key** while winuse is acting stops the
+running command immediately (ADR 0007): a low-level keyboard hook
+(`WH_KEYBOARD_LL`) on the helper's UI thread — the overlay's thread —
+sees the press, **swallows the key** (the controlled app never receives
+it; Codex does the same), and the stopped command exits with **code 130**
+(Codex's interrupt code):
+
+```
+winuse was stopped by the user with the physical Escape key
+hint: stop your current task and ask the user how to proceed before sending more winuse commands; ...
+```
+
+so the agent stops and asks instead of retrying. What counts:
+
+- The press is latched while winuse is in control — an Action, a whole
+  Batch (including the gaps between steps and a step's tail), or a
+  launch-app wait — and never leaks into the next command.
+- **Injected keys are ignored** (the hook checks `LLKHF_INJECTED`):
+  `winuse press-key <window> Escape` types a plain Escape into the app
+  and stops nothing.
+- The swallow is down/up paired, so no app ever sees half an Esc press,
+  and while nothing runs the user's Esc passes through untouched.
+- A stop mid-typing aborts between the injection batches (what already
+  landed, landed — the hint says so); a stop mid-Batch leaves the
+  remaining steps unrun; a stop during a launch-app wait reports the
+  stop, not the timeout, and the App that already started keeps running.
 
 ## The fixture app
 

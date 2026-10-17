@@ -195,7 +195,15 @@ func (s *Server) handle(req *protocol.Request) protocol.Response {
 	// produced nothing while its budget expired is reported centrally as
 	// "winuse request timed out: <command>". A command that returned
 	// partial output past its budget delivers that output — the
-	// partial-result-with-note behaviour later tickets rely on.
+	// partial-result-with-note behaviour later tickets rely on. An Esc
+	// stop outranks the timeout: a press in the budget's last moment is
+	// the user's signal, and reporting it keeps exit 130 and its message
+	// instead of a timeout the user did not cause.
+	if cmdErr != nil && cmdErr.Exit == protocol.ExitEsc {
+		resp := protocol.Errorf(cmdErr.Exit, "%s", cmdErr.Msg)
+		resp.Hint = cmdErr.Hint
+		return resp
+	}
 	if ctx.Err() != nil && (cmdErr != nil || out == "") {
 		return timeoutResponse(req.Cmd)
 	}

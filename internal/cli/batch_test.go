@@ -141,6 +141,30 @@ func TestParseBatchStepRemainingActions(t *testing.T) {
 			want: protocol.Step{Kind: "activate-window"}},
 		{name: "activate-window rejects arguments", tokens: []string{"activate-window", "101"},
 			wantErr: "a batch activate-window step takes no arguments"},
+		// The pointer Actions (ticket 10) as steps: the same arguments the
+		// standalone commands take, minus the Window.
+		{name: "scroll", tokens: []string{"scroll", "@12,34", "0", "600"},
+			want: protocol.ScrollArgs{X: 12, Y: 34, ScrollX: 0, ScrollY: 600}},
+		{name: "scroll both axes, negative amounts", tokens: []string{"scroll", "@5,6", "-120", "-240"},
+			want: protocol.ScrollArgs{X: 5, Y: 6, ScrollX: -120, ScrollY: -240}},
+		{name: "scroll needs three arguments", tokens: []string{"scroll", "@1,2", "3"},
+			wantErr: "a batch scroll step takes an @x,y point and two scroll amounts"},
+		{name: "scroll amount must be an integer", tokens: []string{"scroll", "@1,2", "lots", "0"},
+			wantErr: "the scroll amount must be an integer"},
+		{name: "scroll point must be @x,y", tokens: []string{"scroll", "12,34", "0", "600"},
+			wantErr: "@x,y"},
+		{name: "drag", tokens: []string{"drag", "@10,20", "@30,40"},
+			want: protocol.DragArgs{FromX: 10, FromY: 20, ToX: 30, ToY: 40}},
+		{name: "drag needs two points", tokens: []string{"drag", "@10,20"},
+			wantErr: "a batch drag step takes two @x,y points (from, to)"},
+		{name: "drag needs valid points", tokens: []string{"drag", "@10,20", "nope"},
+			wantErr: "@x,y"},
+		{name: "hover", tokens: []string{"hover", "@100,200"},
+			want: protocol.HoverArgs{X: 100, Y: 200}},
+		{name: "hover needs a point", tokens: []string{"hover"},
+			wantErr: "a batch hover step takes an @x,y point"},
+		{name: "hover rejects a second argument", tokens: []string{"hover", "@1,2", "extra"},
+			wantErr: "a batch hover step takes an @x,y point"},
 		{name: "unknown action", tokens: []string{"get-window-state", "101"},
 			wantErr: `unknown batch action "get-window-state"`},
 	}
@@ -221,7 +245,15 @@ func TestBatchUsageErrorsExit2WithoutDialing(t *testing.T) {
 		{"batch with no arguments", []string{"batch"}, batchUsage},
 		{"batch with a window only", []string{"batch", "101"}, batchUsage},
 		{"batch with an empty step", []string{"batch", "101", "then", "click", "1"}, "a batch step is empty"},
-		{"batch with an unknown action", []string{"batch", "101", "scroll", "5"}, "unknown batch action"},
+		{"batch with an unknown action", []string{"batch", "101", "zoom", "1,2,3,4"}, "unknown batch action"},
+		// A known Action with malformed step arguments is also a usage error
+		// (the pointer steps added in ticket 12 parse like the rest).
+		{"batch with a malformed scroll step", []string{"batch", "101", "scroll", "@1,2", "3"},
+			"a batch scroll step takes an @x,y point and two scroll amounts"},
+		{"batch with a malformed drag step", []string{"batch", "101", "drag", "@1,2"},
+			"a batch drag step takes two @x,y points (from, to)"},
+		{"batch with a malformed hover step", []string{"batch", "101", "hover"},
+			"a batch hover step takes an @x,y point"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

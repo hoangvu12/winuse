@@ -72,12 +72,22 @@ const launchPollBudget = protocol.LaunchTimeout - 500*time.Millisecond
 // launch timeout (15 s): one list-windows-style line. Name resolution
 // matches running, recently used, installed and packaged Apps; explicit
 // identifiers (paths, AUMIDs) skip the lookup.
-func launchApp(store *apps.StoreSource) Command {
+//
+// The launch is an armed Esc scope (ticket 12): the user pressing Esc
+// while winuse waits for the App's Window stops the wait with the same
+// exit-130 stop as an Action — WaitForWindow's poll loop is the
+// checkpoint, and the App that already started keeps running.
+func launchApp(store *apps.StoreSource, esc EscWatch) Command {
+	if esc == nil {
+		esc = noopEscWatch{}
+	}
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.LaunchArgs
 		if len(args) == 0 || json.Unmarshal(args, &a) != nil || strings.TrimSpace(a.App) == "" {
 			return "", Fail("app is required", "pass an App name from winuse list-apps or an executable path")
 		}
+		esc.Arm()
+		defer esc.Disarm()
 		// The Window snapshot taken for resolution doubles as the
 		// before-start snapshot for recognizing the opened Window.
 		all, err := win.Collect()
@@ -110,6 +120,12 @@ func launchApp(store *apps.StoreSource) Command {
 		}
 
 		fgBefore := win.ForegroundWindow()
+		// The checkpoint before the App starts: a stop during the name
+		// resolution (the catalog sources can take a second or two) must
+		// not start anything.
+		if esc.Stopped() {
+			return "", escStopError()
+		}
 		pid, err := apps.StartApp(spec)
 		if err != nil {
 			return "", Fail(fmt.Sprintf("failed to launch app %s: %v", a.App, err), "")
@@ -122,10 +138,20 @@ func launchApp(store *apps.StoreSource) Command {
 				}
 				return win.VisibleWindows(all), nil
 			},
-			win.ForegroundWindow, time.Sleep)
+			win.ForegroundWindow, time.Sleep, esc.Stopped)
 		if err != nil {
-			return "", Fail(err.Error(), "the App may be running without a visible Window; run winuse list-windows")
+			return "", launchError(err)
 		}
 		return win.FormatWindows([]win.WindowInfo{window}), nil
 	}
+}
+
+// launchError maps launch-app's wait failures to the user-facing line:
+// an Esc stop keeps its exit 130 and message; a Window that never
+// appeared keeps Codex's message and its recovery hint.
+func launchError(err error) *Error {
+	if errors.Is(err, apps.ErrStopped) {
+		return escStopError()
+	}
+	return Fail(err.Error(), "the App may be running without a visible Window; run winuse list-windows")
 }
