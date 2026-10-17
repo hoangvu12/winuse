@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/hoangvu12/winuse/internal/shot"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
 	"github.com/hoangvu12/winuse/internal/wstate"
@@ -49,11 +51,35 @@ type Services struct {
 	Activate  func(hwnd uint64) error                                                  // foreground activation + verification
 	Actions   ElementPointer                                                           // element-side Action work (UIA worker)
 	Click     func(target uint64, x, y int32, button win.MouseButton, count int) error // SendInput click
+
+	// The screenshot services (ticket 08). Nil values fall back to the
+	// real ones; tests fake them so offline tests never capture the
+	// screen.
+	Capture     func(hwnd uint64) (shot.Frame, error)  // the capture chain (region → PrintWindow; ticket 09 prepends WGC)
+	Shots       *shot.Store                            // per-Window latest screenshot mappings (`@x,y`, zoom)
+	FrameOrigin func(hwnd uint64) (image.Point, error) // the Window's extended frame bounds top-left, read fresh at Action time
 }
 
 // CommandsWith builds the command registry over the given services.
 // Commands() wires the real ones.
 func CommandsWith(s Services) map[string]Command {
+	s = defaultServices(s)
+	return map[string]Command{
+		"list-windows":     listWindows,
+		"get-window-state": func(ctx context.Context, args json.RawMessage) (string, *Error) { return getWindowState(s, ctx, args) },
+		"record-tree":      func(ctx context.Context, args json.RawMessage) (string, *Error) { return recordTree(s, ctx, args) },
+		"zoom":             zoom(s),
+		"click":            click(s),
+		"activate-window":  activateWindow(s),
+	}
+}
+
+// defaultServices fills a Services' zero values with the real
+// implementations: the desktop enumeration, the UIA client and budget, the
+// Action pipeline's Win32 steps, and the screenshot chain — the GDI
+// fallbacks (region, then PrintWindow; ticket 09 prepends
+// Windows.Graphics.Capture in front of them).
+func defaultServices(s Services) Services {
 	if s.Windows == nil {
 		s.Windows = func() ([]win.WindowInfo, error) {
 			all, err := win.Collect()
@@ -86,31 +112,45 @@ func CommandsWith(s Services) map[string]Command {
 	if s.Click == nil {
 		s.Click = win.MouseClick
 	}
-	return map[string]Command{
-		"list-windows":     listWindows,
-		"get-window-state": func(ctx context.Context, args json.RawMessage) (string, *Error) { return getWindowState(s, ctx, args) },
-		"record-tree":      func(ctx context.Context, args json.RawMessage) (string, *Error) { return recordTree(s, ctx, args) },
-		"click":            click(s),
-		"activate-window":  activateWindow(s),
+	if s.Shots == nil {
+		s.Shots = shot.NewStore()
 	}
+	if s.Capture == nil {
+		// The GDI fallback chain (spec, Observation details): the Window's
+		// screen region first, then PrintWindow. Ticket 09 prepends
+		// Windows.Graphics.Capture in front of these.
+		s.Capture = shot.Chain{Methods: []shot.Method{win.RegionMethod{}, win.PrintWindowMethod{}}}.CaptureWindow
+	}
+	if s.FrameOrigin == nil {
+		s.FrameOrigin = win.FrameOrigin
+	}
+	return s
 }
 
 // windowRef is the shared argument shape of commands that name a Window.
 type windowRef struct {
-	Window string `json:"window"` // a Window ID, or an App name (exactly one Window)
+	Window     string `json:"window"`     // a Window ID, or an App name (exactly one Window)
+	Screenshot bool   `json:"screenshot"` // get-window-state --screenshot: capture and save a screenshot too
 }
 
 // getWindowState answers `winuse get-window-state <window>`: the resolved
 // Window's State as Codex's depth-first, indented, numbered tree. A read
-// that hits the tree budget returns the partial tree with a note.
+// that hits the tree budget returns the partial tree with a note. With
+// --screenshot (screenshot.go), the Window is activated, captured through
+// the method chain, the image saved scaled (long edge at most 1568 px,
+// JPEG q80) with its path printed and its mapping recorded for `@x,y`
+// references and zoom regions.
 func getWindowState(s Services, ctx context.Context, args json.RawMessage) (string, *Error) {
 	var a windowRef
 	if err := parseArgs(args, &a); err != nil {
-		return "", Fail("get-window-state: "+err.Error(), "run winuse get-window-state <window>")
+		return "", Fail("get-window-state: "+err.Error(), "run winuse get-window-state <window> [--screenshot]")
 	}
 	w, rerr := resolveWindow(s, a.Window)
 	if rerr != nil {
 		return "", rerr
+	}
+	if a.Screenshot {
+		return windowStateScreenshot(s, ctx, w)
 	}
 	tree, err := s.Trees.Capture(ctx, w.ID, w.Title, win.AppExeName(w), s.Budget)
 	if err != nil {

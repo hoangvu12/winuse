@@ -21,11 +21,18 @@ commands:
   list-windows                list visible Windows: Window ID, App and title
   list-apps                   list running and recently used Apps, with their Windows
   launch-app <name|exe path>  start an App by name or executable path, report its Window
-  get-window-state <window>   print a Window's State: its Element tree as text
+  get-window-state <window> [--screenshot]
+                               print a Window's State: its Element tree as text,
+                               and with --screenshot a screenshot saved to a file
+                               whose path is printed
   record-tree <window> <file> record a Window's real tree to a fixture file
-  click <window> <element index> [options]
-                               click an Element of a Window: single, double or
-                               right click; options: --count 1|2|3 (default 1),
+  zoom <window> <x>,<y>,<w>,<h>
+                               save a full-resolution crop of a region of the
+                               Window's latest screenshot and print its path
+  click <window> <element index | @x,y> [options]
+                               click an Element of a Window by Element Index, or
+                               at @x,y coordinates from the Window's latest
+                               screenshot; options: --count 1|2|3 (default 1),
                                --button left|middle|right (default left)
   activate-window <window>    bring a Window to the foreground
   version                     print the winuse version
@@ -56,6 +63,8 @@ func Main(args []string) int {
 		return listAppsCmd(args[1:])
 	case "launch-app":
 		return launchAppCmd(args[1:])
+	case "zoom":
+		return zoomCmd(args[1:])
 	case "click":
 		return clickCmd(args[1:])
 	case "activate-window":
@@ -83,7 +92,8 @@ func listWindowsCmd(args []string) int {
 // windowArgs is the CLI→helper argument shape of commands that name a
 // Window.
 type windowArgs struct {
-	Window string `json:"window"`
+	Window     string `json:"window"`
+	Screenshot bool   `json:"screenshot"` // get-window-state --screenshot
 }
 
 // recordArgs is record-tree's CLI→helper argument shape.
@@ -93,13 +103,15 @@ type recordArgs struct {
 }
 
 // getWindowStateCmd prints the Window State: Codex's depth-first,
-// indented, numbered Element tree.
+// indented, numbered Element tree — with --screenshot, the screenshot line
+// after it.
 func getWindowStateCmd(args []string) int {
-	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "usage: winuse get-window-state <window>")
+	window, screenshot, err := parseWindowStateArgs(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "winuse: %v\nusage: winuse get-window-state <window> [--screenshot]\n", err)
 		return 2
 	}
-	if err := runWithArgs("get-window-state", windowArgs{Window: args[0]}); err != nil {
+	if err := runWithArgs("get-window-state", windowArgs{Window: window, Screenshot: screenshot}); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}

@@ -336,7 +336,7 @@ func TestClickValidatesArguments(t *testing.T) {
 		wantMsg string
 	}{
 		{"no arguments", nil, "click: arguments are required"},
-		{"missing element index", clickArgs("101", -100, 1, "left"), "click: an element index is required"},
+		{"missing element index", clickArgs("101", -100, 1, "left"), "click: an element index or @x,y coordinates are required"},
 		{"negative element index", clickArgs("101", -1, 1, "left"), "click: the element index must be a non-negative integer"},
 		{"unknown button", clickArgs("101", 1, 1, "side"), "unsupported mouse_button: side"},
 		{"click count zero-ish too high", clickArgs("101", 1, 4, "left"), "click_count must be 1, 2 or 3"},
