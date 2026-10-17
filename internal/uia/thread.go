@@ -203,6 +203,13 @@ func (c *Client) Run(ctx context.Context, job func(w *worker)) error {
 // Edge and Electron apps includes their web content, and a tree that
 // stays nearly empty carries a note pointing the agent at a screenshot.
 //
+// Replacement is generation-aware (ticket 14's finding): the read takes a
+// sequence number when it starts, and its Elements are installed only if
+// they are newer than what is stored. A read whose job completes late —
+// an abandoned wedged worker whose provider call eventually returns after
+// a newer read already stored its Elements — releases its own Elements
+// instead of clobbering the newer Window State.
+//
 // title and app fill the Window State's header (the resolved Window's title
 // and executable file name).
 func (c *Client) Capture(ctx context.Context, hwnd uint64, title, app string, budget time.Duration) (*wstate.Tree, error) {
@@ -211,12 +218,13 @@ func (c *Client) Capture(ctx context.Context, hwnd uint64, title, app string, bu
 	// replaces the Window's live Elements, so the store ends up holding the
 	// Elements behind the Window State that is returned.
 	read := func(cfg WalkConfig) (*readResult, error) {
+		seq := c.store.beginRead()
 		var res *captureResult
 		var jobErr error
 		runErr := c.Run(ctx, func(w *worker) {
 			res, jobErr = w.thread.capture(uintptr(hwnd), title, app, cfg)
 			if jobErr == nil {
-				c.store.replace(hwnd, res.live)
+				c.store.install(hwnd, seq, res.live)
 			}
 		})
 		if runErr != nil {
@@ -267,25 +275,64 @@ func walkConfig(ctx context.Context, budget time.Duration) WalkConfig {
 // It is client-level (not worker-level): live UIA elements belong to the
 // process's MTA, so they stay valid when a wedged worker is replaced. All
 // COM calls on them still go through Run, which guarantees a live worker.
+//
+// Replacements are generation-aware: every read takes a sequence number
+// when it starts (beginRead) and may install its Elements only when it is
+// newer than what is stored (install). A read whose job completes after a
+// newer read stored its Elements — the wedged-worker case, where an
+// abandoned job's provider call eventually returns late — releases its own
+// Elements instead, so it can neither clobber the newer Window State the
+// agent actually saw nor release that state's Elements under a running
+// Action resolving an Element Index.
 type store struct {
 	mu      sync.Mutex
-	byHwnd  map[uint64][]comPtr
+	byHwnd  map[uint64]*windowState
+	next    uint64       // read sequence counter
 	release func(comPtr) // release, injectable for tests
 }
 
-func newStore(release func(comPtr)) *store {
-	return &store{byHwnd: map[uint64][]comPtr{}, release: release}
+// windowState is one Window's stored live Elements and the read that
+// produced them.
+type windowState struct {
+	seq   uint64
+	elems []comPtr
 }
 
-// replace swaps the live Elements behind hwnd with elems, releasing the
-// previous ones. Called on the worker thread after a successful capture.
-func (s *store) replace(hwnd uint64, elems []comPtr) {
+func newStore(release func(comPtr)) *store {
+	return &store{byHwnd: map[uint64]*windowState{}, release: release}
+}
+
+// beginRead allocates the sequence number of a tree read that is starting.
+func (s *store) beginRead() uint64 {
 	s.mu.Lock()
-	old := s.byHwnd[hwnd]
+	defer s.mu.Unlock()
+	s.next++
+	return s.next
+}
+
+// install stores elems as hwnd's live Elements when seq is newer than the
+// stored read's, releasing the previous Elements. A superseded read (an
+// abandoned worker's job completing after a newer read) has its elems
+// released instead; the newer Window State is left untouched. Callers run
+// on a COM thread — the worker whose walk produced the Elements.
+func (s *store) install(hwnd uint64, seq uint64, elems []comPtr) {
+	s.mu.Lock()
+	st := s.byHwnd[hwnd]
+	if st != nil && seq <= st.seq {
+		s.mu.Unlock()
+		for _, p := range elems {
+			s.release(p)
+		}
+		return
+	}
+	var old []comPtr
+	if st != nil {
+		old = st.elems
+	}
 	if len(elems) == 0 {
 		delete(s.byHwnd, hwnd)
 	} else {
-		s.byHwnd[hwnd] = elems
+		s.byHwnd[hwnd] = &windowState{seq: seq, elems: elems}
 	}
 	s.mu.Unlock()
 	for _, p := range old {
@@ -298,21 +345,21 @@ func (s *store) replace(hwnd uint64, elems []comPtr) {
 func (s *store) element(hwnd uint64, index int) (comPtr, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	elems := s.byHwnd[hwnd]
-	if index < 0 || index >= len(elems) {
+	st := s.byHwnd[hwnd]
+	if st == nil || index < 0 || index >= len(st.elems) {
 		return nil, false
 	}
-	return elems[index], true
+	return st.elems[index], true
 }
 
 // releaseAll drops every stored Window. Called on the worker thread.
 func (s *store) releaseAll() {
 	s.mu.Lock()
 	all := s.byHwnd
-	s.byHwnd = map[uint64][]comPtr{}
+	s.byHwnd = map[uint64]*windowState{}
 	s.mu.Unlock()
-	for _, elems := range all {
-		for _, p := range elems {
+	for _, st := range all {
+		for _, p := range st.elems {
 			s.release(p)
 		}
 	}

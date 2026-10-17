@@ -161,3 +161,43 @@ func TestLaunchArgsJSONShape(t *testing.T) {
 		t.Fatalf("unmarshal: %v %+v", err, got)
 	}
 }
+
+func TestClickArgsJSONShape(t *testing.T) {
+	// The wire names follow Codex's click parameters exactly (guiding
+	// rule): window, element_index, click_count, mouse_button.
+	b, err := json.Marshal(ClickArgs{Window: "101", ElementIndex: intPtr(3), ClickCount: 2, MouseButton: "right"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"window":"101","element_index":3,"click_count":2,"mouse_button":"right"}`; string(b) != want {
+		t.Fatalf("click args JSON:\n got %s\nwant %s", b, want)
+	}
+	// Defaults (count 0, empty button) are omitted; a missing or null
+	// element_index stays nil so required-ness is checkable.
+	b, err = json.Marshal(ClickArgs{Window: "101"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"window":"101","element_index":null}`; string(b) != want {
+		t.Fatalf("minimal click args JSON:\n got %s\nwant %s", b, want)
+	}
+	var got ClickArgs
+	if err := json.Unmarshal([]byte(`{"window":"101"}`), &got); err != nil || got.ElementIndex != nil {
+		t.Fatalf("unmarshal: %v %+v", err, got)
+	}
+	if err := json.Unmarshal([]byte(`{"window":"101","element_index":7}`), &got); err != nil || got.ElementIndex == nil || *got.ElementIndex != 7 {
+		t.Fatalf("unmarshal with index: %v %+v", err, got)
+	}
+}
+
+func TestActivateArgsJSONShape(t *testing.T) {
+	b, err := json.Marshal(ActivateArgs{Window: "notepad"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"window":"notepad"}`; string(b) != want {
+		t.Fatalf("activate args JSON:\n got %s\nwant %s", b, want)
+	}
+}
+
+func intPtr(v int) *int { return &v }

@@ -89,7 +89,9 @@ const (
 // offset by +32).
 const (
 	elBuildUpdatedCache      = 9  // BuildUpdatedCache(req, **fresh)
+	elGetCurrentPatternAs    = 14 // GetCurrentPatternAs(patternId, REFIID, **out)
 	elGetCachedChildren      = 19 // GetCachedChildren(**arr)
+	elCurrentBoundingRect    = 43 // get_CurrentBoundingRectangle(*RECT)
 	elCachedControlType      = 53 // get_CachedControlType(*int32)
 	elCachedName             = 55 // get_CachedName(*BSTR)
 	elCachedHasKeyboardFocus = 58 // get_CachedHasKeyboardFocus(*BOOL)
@@ -97,6 +99,7 @@ const (
 	elCachedAutomationId     = 61 // get_CachedAutomationId(*BSTR)
 	elCachedClassName        = 62 // get_CachedClassName(*BSTR)
 	elCachedHelpText         = 63 // get_CachedHelpText(*BSTR)
+	elGetClickablePoint      = 84 // GetClickablePoint(*POINT, *BOOL)
 )
 
 // IUIAutomationCacheRequest and IUIAutomationElementArray vtable slots.
@@ -108,6 +111,20 @@ const (
 	arrGetLength                = 3  // get_Length(*int32)
 	arrGetElement               = 4  // GetElement(index, **el)
 )
+
+// IUIAutomationScrollItemPattern vtable slots and the pattern id used
+// with GetCurrentPatternAs (uia-go.md §2).
+const (
+	scrollItemScrollIntoView = 3 // ScrollIntoView()
+	patternScrollItem        = 10017
+)
+
+// iidScrollItemPattern is IUIAutomationScrollItemPattern's IID (SDK
+// UIAutomationClient.h; uia-go.md §2).
+var iidScrollItemPattern = windows.GUID{
+	Data1: 0xb488300f, Data2: 0xd015, Data3: 0x4f19,
+	Data4: [8]byte{0x9c, 0x29, 0xbb, 0x59, 0x5e, 0x36, 0x45, 0xef},
+}
 
 // UIA property ids cached for the tree read (SDK; uia-go.md §3). The list is
 // the basic ticket-03 set; later tickets extend it (pattern availability,
@@ -130,10 +147,28 @@ const (
 	automationElementModeFull = 1
 )
 
-// UIA HRESULTs the walk treats specially. Signed constants are used
-// because the hex values do not fit in a positive int32; a test pins the
-// hex value so it cannot be mistyped.
-const uiaErrTimeout = HRESULT(-0x7FECEAFB) // 0x80131505 UIA_E_TIMEOUT: a provider did not answer in time
+// UIA HRESULTs the walk and the actions treat specially. Signed constants
+// are used because the hex values do not fit in a positive int32; tests
+// pin the hex values so they cannot be mistyped.
+const (
+	uiaErrTimeout          = HRESULT(-0x7FECEAFB) // 0x80131505 UIA_E_TIMEOUT: a provider did not answer in time
+	uiaErrNoClickablePoint = HRESULT(-0x7FFBFDFE) // 0x80040202 UIA_E_NOCLICKABLEPOINT
+)
+
+// hrStale reports whether hr means the Element behind a stored Element
+// Index is gone: the documented "stale" HRESULTs (uia-go.md §2 —
+// UIA_E_ELEMENTNOTAVAILABLE plus the "target process gone" RPC errors,
+// which a disconnected provider also surfaces).
+func hrStale(hr HRESULT) bool {
+	switch uint32(hr) {
+	case 0x80040201, // UIA_E_ELEMENTNOTAVAILABLE
+		0x80010108, // RPC_E_DISCONNECTED
+		0x800401FD, // CO_E_OBJNOTCONNECTED
+		0x80010105: // RPC_E_SERVERFAULT
+		return true
+	}
+	return false
+}
 
 var (
 	ole32                = windows.NewLazySystemDLL("ole32.dll")

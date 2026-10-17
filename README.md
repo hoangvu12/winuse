@@ -5,17 +5,18 @@ run shell commands list Apps and Windows, read a Window State (accessibility
 tree as text, screenshots on request) and perform Actions — at the quality of
 Codex Computer Use, without being tied to Codex.
 
-**Status: tickets 01–04 and 14 of the v1 plan** (`.scratch/winuse-v1/`)
-— background helper, `winuse list-windows`, the fixture app with its
-opt-in e2e runner, `winuse list-apps` and `winuse launch-app`,
-`winuse get-window-state`: the Window State as Codex's Element tree, read
-through UI Automation on a single locked COM thread, plus the recorder for
-seam-2 fixtures — and Chromium/Electron support: a near-empty first read
-is retried once after a short delay, so Chrome, Edge and Electron apps
-expose their web content in the tree. Later
-tickets add actions, screenshots, the overlay and the Esc stop. The product
-spec and the domain language live in `.scratch/winuse-v1/spec.md` and
-`CONTEXT.md`.
+**Status: tickets 01–05 and 14 of the v1 plan** (`.scratch/winuse-v1/`) —
+background helper, `winuse list-windows`, the fixture app with its opt-in
+e2e runner, `winuse list-apps` and `winuse launch-app`, `winuse
+get-window-state`: the Window State as Codex's Element tree, read through UI
+Automation on a single locked COM thread, plus the recorder for seam-2
+fixtures; Chromium/Electron support (a near-empty first read is retried once
+after a short delay, so web content appears in the tree); and the first
+Actions, `winuse click` (single, double, right click by Element Index) and
+`winuse activate-window`, with the shared Action pipeline every later Action
+reuses. Later tickets add more Actions, screenshots, the overlay and the Esc
+stop. The product spec and the domain language live in
+`.scratch/winuse-v1/spec.md` and `CONTEXT.md`.
 
 Windows-only. MIT licensed (see `LICENSE`).
 
@@ -184,6 +185,43 @@ same one retry. A tree that stays nearly empty after the retry — canvas
 apps, some Electron apps — carries a note saying so and pointing the agent
 at a screenshot instead.
 
+## Acting on a Window
+
+```
+winuse click <window> <element index> [--count 1|2|3] [--button left|middle|right]
+winuse activate-window <window>
+```
+
+Every Action (this is the pipeline all later Action tickets reuse) does
+the same thing before its own step:
+
+1. **resolve** the Window by Window ID or App name (exactly one match);
+2. **refuse a locked desktop** (`Windows desktop is locked (input desktop
+   is LockApp); unlock before using winuse`) — no input is sent;
+3. **refuse an administrator Window** with an explanation (Windows would
+   silently drop the input, UIPI): start winuse from an elevated terminal
+   to control elevated Windows;
+4. **activate** the Window with the standard foreground-lock workarounds
+   (a no-op injected move so the caller "received the last input", plus
+   `AttachThreadInput`) and **verify it is in front** — a Window blocked
+   by its own modal dialog fails naming the dialog instead;
+5. then act.
+
+`click` resolves the Element Index against the Window's cached Window
+State, scrolls the Element into view when it offers ScrollItem, takes its
+clickable point (or the centre of its bounds), verifies the cursor
+actually reached that point and that the point is over the target's
+window group — and only then injects the click through **SendInput**
+(pixel-exact under per-monitor-v2, no DPI offsets), one batch so double
+and triple clicks register.
+
+The **output contract** for all Actions: `ok` on stdout, or a one-line
+failure with a recovery hint on stderr and a non-zero exit. Timeouts are
+the shared request budget (10 s). An Element Index whose Element no longer
+exists (or a Window with no cached state, e.g. after a helper restart)
+fails as **stale** and instructs a fresh `get-window-state` — Element
+Indexes are only valid within the Window State that produced them.
+
 ### Recorder
 
 ```
@@ -220,7 +258,7 @@ cmd/winuse/          binary: CLI dispatch + hidden __helper entry (manifest .sys
 cmd/winusefixture/   the e2e fixture app's entry point (see The fixture app)
 internal/protocol/   CLI↔helper contract: JSON-lines request/response, timeouts, exit codes
 internal/pipe/       named pipe: naming per user/session, user-only DACL, dial, anti-squat check, singleton
-internal/win/        Win32 layer: identity, DPI awareness, window enumeration, process/App names, window resolution, helper spawn
+internal/win/        Win32 layer: identity, DPI awareness, window enumeration, process/App names, window resolution, helper spawn, and the Actions' Win32 side: SendInput clicks, foreground activation, integrity/locked-desktop refusals
 internal/apps/       App catalog and launching: list-apps (UserAssist, Start menu, store Apps), launch-app (CreateProcess/ShellExecuteExW + Window polling)
 internal/helper/     helper: serve loop, idle exit, stale-exit, command registry, window-state + record-tree + list-apps + launch-app commands
 internal/uia/        UI Automation: locked COM worker thread, bounded tree walk, Chromium/Electron lazy-tree retry, live-Element store (raw vtables, no cgo)

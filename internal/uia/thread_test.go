@@ -153,7 +153,7 @@ func TestClientFactoryErrorSurfaces(t *testing.T) {
 	}
 }
 
-func TestStoreReplaceReleasesPreviousWindowState(t *testing.T) {
+func TestStoreInstallReplacesPreviousWindowState(t *testing.T) {
 	// Fake element pointers: distinct real addresses; the injected release
 	// never calls COM on them.
 	a, b, cc := 1, 2, 3
@@ -166,13 +166,14 @@ func TestStoreReplaceReleasesPreviousWindowState(t *testing.T) {
 		mu.Unlock()
 	})
 
-	s.replace(101, []comPtr{p1})
+	// A newer read's install replaces the previous state's Elements.
+	s.install(101, s.beginRead(), []comPtr{p1})
 	if got := released[p1]; got != 0 {
 		t.Fatalf("p1 released %d times before any replacement, want 0", got)
 	}
 	// A different Window does not disturb the first.
-	s.replace(202, []comPtr{p2})
-	s.replace(101, []comPtr{p3})
+	s.install(202, s.beginRead(), []comPtr{p2})
+	s.install(101, s.beginRead(), []comPtr{p3})
 	if got := released[p1]; got != 1 {
 		t.Fatalf("the previous state's element was released %d times, want 1", got)
 	}
@@ -192,5 +193,57 @@ func TestStoreReplaceReleasesPreviousWindowState(t *testing.T) {
 	s.releaseAll()
 	if got := released[p2]; got != 1 || released[p3] != 1 {
 		t.Fatalf("releaseAll released p2 %d times and p3 %d times, want 1 each", released[p2], released[p3])
+	}
+}
+
+// TestStoreInstallRejectsSupersededRead pins ticket 14's finding: an
+// abandoned (wedged-worker) read that completes after a newer read has
+// stored its Elements must not clobber them — it releases its own
+// Elements instead, so the newest Window State (the one the agent saw)
+// stays intact and its Elements are never released under a running
+// Action.
+func TestStoreInstallRejectsSupersededRead(t *testing.T) {
+	a, b, cc := 1, 2, 3
+	p1, p2, p3 := comPtr(&a), comPtr(&b), comPtr(&cc)
+	var mu sync.Mutex
+	released := map[comPtr]int{}
+	s := newStore(func(p comPtr) {
+		mu.Lock()
+		released[p]++
+		mu.Unlock()
+	})
+
+	// Read 1 starts (its worker later wedges); read 2 starts after it and
+	// completes first — the state the agent actually saw.
+	read1 := s.beginRead()
+	read2 := s.beginRead()
+	s.install(101, read2, []comPtr{p2})
+	if e, ok := s.element(101, 0); !ok || e != p2 {
+		t.Fatalf("element(101, 0) = %v, %v; want read 2's element", e, ok)
+	}
+
+	// Read 1's job finally completes: superseded, it releases its own
+	// Elements and leaves read 2's state untouched.
+	s.install(101, read1, []comPtr{p1, p3})
+	if e, ok := s.element(101, 0); !ok || e != p2 {
+		t.Fatalf("element(101, 0) = %v, %v; the late read must not clobber it", e, ok)
+	}
+	if _, ok := s.element(101, 1); ok {
+		t.Fatal("the late read's Elements must not extend the stored state")
+	}
+	if released[p1] != 1 || released[p3] != 1 {
+		t.Fatalf("the superseded read's Elements released %d and %d times, want 1 each", released[p1], released[p3])
+	}
+	if released[p2] != 0 {
+		t.Fatalf("the current state's element released %d times, want 0", released[p2])
+	}
+
+	// A read starting now is the latest and installs normally.
+	s.install(101, s.beginRead(), []comPtr{p1})
+	if e, ok := s.element(101, 0); !ok || e != p1 {
+		t.Fatalf("element(101, 0) = %v, %v; want the newest read's element", e, ok)
+	}
+	if released[p2] != 1 {
+		t.Fatalf("the replaced state's element released %d times, want 1", released[p2])
 	}
 }

@@ -76,6 +76,22 @@ type LaunchArgs struct {
 	App string `json:"app"`
 }
 
+// ClickArgs are click's arguments — Codex's click parameters. Ticket 05
+// implements the Element Index form; later tickets add the coordinate form
+// (x, y) and Element References (name:, id:, @x,y).
+type ClickArgs struct {
+	Window       string `json:"window"`                 // Window ID, or an App name when that App has exactly one Window
+	ElementIndex *int   `json:"element_index"`          // the Element to click, from that Window's latest Window State
+	ClickCount   int    `json:"click_count,omitempty"`  // 1 (default), 2 (double click) or 3 (triple click)
+	MouseButton  string `json:"mouse_button,omitempty"` // "left" (default), "right" or "middle"; aliases l, r, m
+}
+
+// ActivateArgs are activate-window's arguments: the Window to bring to
+// the foreground.
+type ActivateArgs struct {
+	Window string `json:"window"`
+}
+
 // Response is the helper's answer.
 type Response struct {
 	OK    bool   `json:"ok"`
