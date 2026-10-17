@@ -13,10 +13,10 @@ import (
 //
 // Anchor is the Window's extended-frame-bounds top-left at capture time.
 // Frames are window-anchored by convention — every capture method anchors
-// to the same extended frame bounds (the GDI methods here; ticket 09's
-// Windows.Graphics.Capture, whose texture origin is the extended frame
-// bounds as well) — so Rect.Min−Anchor is the frame's window-space offset
-// and the Mapping built from a frame is method-independent.
+// to the same extended frame bounds (the GDI methods here; the
+// Windows.Graphics.Capture method, whose texture origin is the extended
+// frame bounds as well) — so Rect.Min−Anchor is the frame's window-space
+// offset and the Mapping built from a frame is method-independent.
 type Frame struct {
 	Image  *image.RGBA     // full-resolution pixels, top-left origin
 	Rect   image.Rectangle // screen-space rectangle the image covers
@@ -37,10 +37,10 @@ type Method interface {
 // ErrCapture reports that every method in the capture chain failed.
 var ErrCapture = errors.New("capturing the window failed")
 
-// Chain is the ordered capture methods, tried first to last. Ticket 09
-// prepends Windows.Graphics.Capture in front of the GDI methods; the chain
-// is the whole "never depend on one method" design (spec, Observation
-// details).
+// Chain is the ordered capture methods, tried first to last:
+// Windows.Graphics.Capture (internal/wgc, ticket 09) in front of the GDI
+// methods; the chain is the whole "never depend on one method" design
+// (spec, Observation details).
 //
 // A method that fails, returns an empty frame, or returns a near-black
 // frame (the classic "nothing was rendered" failure) falls through to the
@@ -81,7 +81,9 @@ const blankSampleStep = 16
 // IsBlank reports whether an image looks near-black (every sampled pixel
 // has max(R,G,B) ≤ 2) — the signature of a capture that rendered nothing:
 // a Windows.Graphics.Capture black frame, a PrintWindow refused by UIPI,
-// a WDA_MONITOR window. Ticket 09's black-frame detection reuses this.
+// a WDA_MONITOR window. The Windows.Graphics.Capture method's one-frame
+// black retry reuses this, and the chain treats a blank non-final frame
+// as a fall-through.
 func IsBlank(img *image.RGBA) bool {
 	if img == nil {
 		return true

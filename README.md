@@ -5,7 +5,7 @@ run shell commands list Apps and Windows, read a Window State (accessibility
 tree as text, screenshots on request) and perform Actions — at the quality of
 Codex Computer Use, without being tied to Codex.
 
-**Status: tickets 01–08, 13 and 14 of the v1 plan** (`.scratch/winuse-v1/`) —
+**Status: tickets 01–09, 13 and 14 of the v1 plan** (`.scratch/winuse-v1/`) —
 background helper, `winuse list-windows`, the fixture app with its opt-in
 e2e runner, `winuse list-apps` and `winuse launch-app`, `winuse
 get-window-state`: the Window State as Codex's Element tree, read through UI
@@ -24,11 +24,14 @@ Collapse, plus winuse's Toggle and Select); and screenshots (ticket 08):
 `get-window-state --screenshot` captures the Window through a fallback-proof method chain and saves a
 model-friendly image whose path is printed, `winuse zoom` returns a
 full-resolution crop of a region, and `@x,y` coordinate clicks land exactly
-where aimed at any display scaling and on any monitor; and the in-control
-overlay (ticket 13): a Codex-style, click-through, never-focused indicator
-framing the Window while an Action runs, kept out of winuse's own
-screenshots. Later tickets add more Actions, Windows.Graphics.Capture as
-the first capture method, and the Esc stop. The product spec and the domain language live in
+where aimed at any display scaling and on any monitor. Windows.Graphics
+Capture (ticket 09) is the first capture method — Codex's own —
+implemented with hand-written WinRT and Direct3D interop (no cgo) on a
+dedicated capture thread, falling back to the GDI chain on any failure;
+and the in-control overlay (ticket 13): a Codex-style, click-through,
+never-focused indicator framing the Window while an Action runs, kept out
+of winuse's own screenshots. Later tickets add more Actions and the Esc
+stop. The product spec and the domain language live in
 `.scratch/winuse-v1/spec.md` and `CONTEXT.md`.
 
 Windows-only. MIT licensed (see `LICENSE`).
@@ -72,7 +75,12 @@ go run github.com/tc-hib/go-winres@latest make --arch amd64,arm64 --out cmd/winu
   after, whatever the outcome) and the capture bracket every capture
   method runs inside, plus the overlay's layout functions and the UI
   thread's job mechanics (in order, on one locked thread, bounded waits).
-  No desktop access, no input injection, safe to run any time.
+  The Windows.Graphics.Capture method's pure parts are offline-tested too
+  (`internal/wgc`: the GUID literals against the documented IIDs, the
+  by-value struct packing, the frame-size cross-check, the BGRA→RGBA
+  readback, the environment knobs); its WinRT/Direct3D calls are
+  exercised only by the user-run e2e suite. No desktop access,
+  no input injection, safe to run any time.
 - **End-to-end (seam 1):** `test/e2e` — the real binary and the fixture app
   against the live desktop. Opt-in only, **started by the user, never by
   an agent** (see `test/e2e/README.md` for the rules):
@@ -235,19 +243,29 @@ the cheap default; image tokens are spent on request). The Window is
 brought to the foreground first — the region capture needs it — then
 captured through a **method chain** that never depends on one method:
 
-1. the **screen region** of the Window's visible bounds, widened with its
+1. **Windows.Graphics.Capture** (ticket 09) — Windows's own capture
+   stack, as Codex uses: the Window's composed content, from a
+   hand-written WinRT/Direct3D interop layer with no cgo (a dedicated
+   OS-locked capture thread, a free-threaded frame pool polled with a 2 s
+   budget, no event handlers — Codex's deadlock class never gets a
+   chance). While popups are open over the Window it defers to the next
+   method so they appear in the screenshot (on Windows 11 24H2+ it draws
+   popups within the Window itself);
+2. the **screen region** of the Window's visible bounds, widened with its
    overlapping owned popups (menus, tooltips, dropdowns), copied from the
    screen with BitBlt|CAPTUREBLT — so **menus and popups drawn over the
    Window appear in the screenshot** (but not the mouse cursor);
-2. `PrintWindow` (PW_RENDERFULLCONTENT), which reaches Windows that are
+3. `PrintWindow` (PW_RENDERFULLCONTENT), which reaches Windows that are
    partly off-screen but renders only the Window's own content.
 
 A near-black frame (the classic "nothing was rendered" failure) or an
 error falls through to the next method; only when every method fails does
-the command fail. Ticket 09 will prepend Windows.Graphics.Capture as the
-first method — the chain is the design point, and the fallbacks work on
-their own. Every method runs with the in-control overlay hidden, so
-winuse's own screenshots never contain it even while an Action runs.
+the command fail. Every method runs with the in-control overlay hidden, so
+winuse's own screenshots never contain it even while an Action runs. Which method captured each frame is written to the
+helper log (`%LOCALAPPDATA%\winuse\helper.log`), and two environment
+knobs control the first method for diagnosis: `WINUSE_WGC=off` disables
+it outright, `WINUSE_WGC_BUDGET=<duration>` bounds its wait (default 2 s) —
+both read by the helper process at start.
 
 The image is scaled so the **long edge is at most 1568 px** (a box filter,
 no aliasing), saved as **JPEG quality 80** into `%TEMP%\winuse`, and its
@@ -434,6 +452,7 @@ internal/keys/       Codex/X keysym key-name and chord parsing for press-key (pu
 internal/helper/     helper: serve loop, idle exit, stale-exit, command registry, window-state + record-tree + list-apps + launch-app commands
 internal/uia/        UI Automation: locked COM worker thread, bounded tree walk, Chromium/Electron lazy-tree retry, live-Element store (raw vtables, no cgo)
 internal/shot/       screenshots: frames, capture-method chain, box-filter scaling, the screenshot↔Window coordinate mapping and its per-Window store (pure, offline-tested)
+internal/wgc/        Windows.Graphics.Capture: hand-written WinRT/Direct3D interop (raw vtables, no cgo), the dedicated capture thread, the capture flow and its fallbacks
 internal/wstate/     Window State model: Element/Tree, Codex-format rendering, recorded-tree fixtures (seam 2)
 internal/cli/        CLI: subcommands, dial-or-spawn client state machine, output/exit-code policy
 internal/version/    binary version (stale-helper detection)

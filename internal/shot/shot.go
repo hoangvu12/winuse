@@ -4,7 +4,7 @@
 //
 // The mapping is deliberately pure data plus pure functions with no Win32
 // dependency, so it is offline-testable (spec, Testing Decisions) and
-// reusable: ticket 09's Windows.Graphics.Capture path and ticket 10's
+// reusable: the Windows.Graphics.Capture path (ticket 09) and ticket 10's
 // pointer actions (scroll, drag, hover) map through the same functions.
 //
 // # Coordinate spaces

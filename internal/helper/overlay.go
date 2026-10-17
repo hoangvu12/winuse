@@ -57,7 +57,7 @@ func (s Services) hideOverlay() {
 // hiddenDuringCapture wraps one capture method so it runs with the
 // indicator hidden (Overlay.HideWhile), whatever the method — the region
 // BitBlt where a layered window might be composited in, PrintWindow, and
-// the Windows.Graphics.Capture method ticket 09 will prepend. The
+// and the Windows.Graphics.Capture method (ticket 09). The
 // indicator is restored afterwards only if it was shown, so captures
 // between Actions are bracketed no-ops.
 type hiddenDuringCapture struct {
@@ -79,12 +79,12 @@ func (m hiddenDuringCapture) CaptureWindow(hwnd uint64) (shot.Frame, error) {
 	return frame, err
 }
 
-// captureMethods builds the capture chain's method list: the GDI
-// fallbacks (spec, Observation details; ticket 09 prepends
-// Windows.Graphics.Capture in front of them), each wrapped so it runs
-// with the indicator hidden when one is wired.
-func captureMethods(o Overlay) []shot.Method {
-	methods := []shot.Method{win.RegionMethod{}, win.PrintWindowMethod{}}
+// captureMethods builds the capture chain's method list: first (the
+// Windows.Graphics.Capture method in production, ticket 09), then the GDI
+// fallbacks (spec, Observation details), each wrapped so it runs with the
+// indicator hidden when one is wired.
+func captureMethods(o Overlay, first ...shot.Method) []shot.Method {
+	methods := append(append([]shot.Method{}, first...), win.RegionMethod{}, win.PrintWindowMethod{})
 	if o != nil {
 		for i := range methods {
 			methods[i] = hiddenDuringCapture{overlay: o, method: methods[i]}

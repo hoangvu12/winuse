@@ -8,8 +8,8 @@ package helper
 //
 // Everything capture-shaped is injected through Services (Capture, Shots,
 // FrameOrigin), so the offline tests fake it and never touch the screen;
-// Commands wires the real chain (screen region, then PrintWindow; ticket
-// 09 prepends Windows.Graphics.Capture).
+// Commands wires the real chain (Windows.Graphics.Capture, then the GDI
+// methods: screen region, then PrintWindow).
 
 import (
 	"bytes"
