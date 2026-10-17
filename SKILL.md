@@ -51,8 +51,9 @@ picks **More info → Run anyway**, or unblocks the file once with
 `Unblock-File "$env:LOCALAPPDATA\winuse\winuse.exe"`. Tell the user what to
 click — never turn off Defender or add antivirus exclusions on their
 behalf. Building from source is the code-visible alternative:
-`git clone https://github.com/hoangvu12/winuse`, then `CGO_ENABLED=0 go
-build -o winuse.exe ./cmd/winuse` with Go 1.27 or newer.
+`git clone https://github.com/hoangvu12/winuse`, then (PowerShell)
+`$env:CGO_ENABLED=0; go build -o winuse.exe ./cmd/winuse` with Go 1.27
+or newer.
 
 ## The loop: observe, then one Action, then observe again
 

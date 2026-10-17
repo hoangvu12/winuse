@@ -11,13 +11,49 @@ $dir = Join-Path $env:LOCALAPPDATA "winuse"
 New-Item -ItemType Directory -Force $dir | Out-Null
 $exe = Join-Path $dir "winuse.exe"
 
+# Download to a temporary file first: a failed or partial download must
+# never replace a working winuse.exe, and a running helper locks the old
+# binary's file (Windows refuses to overwrite a running executable).
+$tmp = Join-Path ([System.IO.Path]::GetTempPath()) "winuse-install-$([System.IO.Path]::GetRandomFileName()).exe"
+
 Write-Host "downloading $url"
 try {
-    Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $exe
-} catch {
-    Write-Host "error: download failed. If no release exists yet, build from source:" -ForegroundColor Red
-    Write-Host "  git clone https://github.com/$repo; cd winuse; CGO_ENABLED=0 go build -o winuse.exe ./cmd/winuse"
-    exit 1
+    try {
+        Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $tmp
+    } catch {
+        Write-Host "error: the download failed: $($_.Exception.Message)" -ForegroundColor Red
+        if (Test-Path $exe) {
+            Write-Host "the existing install at $exe was left unchanged"
+        } else {
+            Write-Host "no winuse is installed yet; if no release exists, build from source instead:"
+            Write-Host "  git clone https://github.com/$repo"
+            Write-Host '  cd winuse; $env:CGO_ENABLED=0; go build -o winuse.exe ./cmd/winuse'
+        }
+        exit 1
+    }
+
+    # Stop a running winuse helper so the old binary can be replaced: a
+    # Windows process locks its own executable file. The next winuse
+    # command starts a fresh helper automatically.
+    $running = Get-Process -Name winuse -ErrorAction SilentlyContinue
+    if ($running) {
+        Write-Host "stopping the running winuse helper (the next winuse command restarts it)"
+        $running | Stop-Process -Force
+        # give the OS a moment to release the file locks
+        Start-Sleep -Milliseconds 500
+    }
+
+    try {
+        Move-Item -Force -Path $tmp -Destination $exe
+    } catch {
+        Write-Host "error: replacing $exe failed: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "a winuse process may still hold the file; close it and rerun the installer"
+        exit 1
+    }
+} finally {
+    if (Test-Path $tmp) {
+        Remove-Item -Force $tmp -ErrorAction SilentlyContinue
+    }
 }
 
 # The v1 binary is unsigned. Strip the Mark of the Web so SmartScreen does

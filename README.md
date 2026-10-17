@@ -37,8 +37,12 @@ irm https://raw.githubusercontent.com/hoangvu12/winuse/main/install.ps1 | iex
 That downloads the release binary from GitHub Releases to
 `%LOCALAPPDATA%\winuse\winuse.exe`, removes its Mark of the Web, and adds
 it to your user PATH — restart the terminal once so the PATH is visible.
-To build from source instead: Go 1.27 or newer, then
-`CGO_ENABLED=0 go build -o winuse.exe ./cmd/winuse`.
+The download goes to a temporary file, a running winuse helper is
+stopped (Windows locks a running executable), and only then is the new
+binary moved into place — a failed download never replaces a working
+install.
+To build from source instead: Go 1.27 or newer, then (PowerShell)
+`$env:CGO_ENABLED=0; go build -o winuse.exe ./cmd/winuse`.
 
 **The skill** — so your agents load winuse's usage guidance. The skill is
 the `SKILL.md` at the repo root, and it installs into both Claude Code's
@@ -724,7 +728,7 @@ assertions never depend on pixels.
 ## Build
 
 ```
-CGO_ENABLED=0 go build -o winuse.exe ./cmd/winuse
+$env:CGO_ENABLED=0; go build -o winuse.exe ./cmd/winuse
 ```
 
 One static Go binary, no cgo: Win32 APIs are called directly through
