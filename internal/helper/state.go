@@ -119,7 +119,7 @@ type Services struct {
 // Commands() wires the real ones.
 //
 // Commands that activate a Window, inject input or show the overlay are
-// serialized on the helper-wide action mutex (finding 11): one winuse
+// serialized on the helper-wide action gate (finding 11): one winuse
 // command controls the desktop at a time, exactly what codex-parity's
 // "one request at a time" promises. Observation-only commands —
 // list-windows, get-window, list-apps, the plain tree read, record-tree,

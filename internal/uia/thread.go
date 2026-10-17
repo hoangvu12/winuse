@@ -116,11 +116,11 @@ func (w *worker) serve() {
 
 // send delivers one job to the worker thread. It reports false when the
 // worker is winding down or already gone. w.mu is never held across the
-// wait for a busy worker (finding 2, fixed here in its wgc form first: a
-// parked send holding the lock would block close — and with it the
-// watchdog's abandon — deadlocking every later request); instead senders
-// park in a select that also watches stop, so closing stop releases them.
-// jobs is never closed, so no send can panic.
+// wait for a busy worker — finding 2's lesson, from wgc's worker, where
+// a parked send holding the lock blocked close (and with it the
+// watchdog's abandon), deadlocking every later request; instead senders
+// park in a select that also watches stop, so closing stop releases
+// them. jobs is never closed, so no send can panic (finding 1).
 func (w *worker) send(job func()) bool {
 	w.mu.Lock()
 	if w.closed {
