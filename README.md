@@ -457,7 +457,9 @@ the same arguments as their standalone forms minus the Window).
 ## The in-control overlay
 
 While an Action runs, winuse shows what Codex shows: an on-screen
-indicator that the agent is driving the PC. A border frames the Window
+indicator that the agent is driving the PC. A Batch brackets its whole
+run — one indicator for the duration, not one blinking between its
+Actions. A border frames the Window
 being controlled and a pill banner at its top centre reads
 **“winuse is in control — press Esc to stop”** — and since ticket 12,
 pressing that key really does stop winuse (see the Esc section below).

@@ -127,6 +127,14 @@ type Services struct {
 // and zoom join the serialized set inside their handlers.
 func CommandsWith(s Services) map[string]Command {
 	s = defaultServices(s)
+	// The indicator's brackets nest (finding 12): a Batch brackets its
+	// whole run and the steps' own brackets ride inside without hiding
+	// the indicator between Actions. Wrapping before the commands are
+	// built wires every bracket (and every capture's HideWhile) through
+	// the nesting.
+	if s.Overlay != nil {
+		s.Overlay = newBracketOverlay(s.Overlay)
+	}
 	// The Start-apps listing is shared by list-apps and launch-app and
 	// cached for the helper's lifetime (it is a ~1 s PowerShell call).
 	store := &apps.StoreSource{Run: apps.GetStartApps}
@@ -149,10 +157,11 @@ func CommandsWith(s Services) map[string]Command {
 		"launch-app":               launchApp(store, s.Esc),
 	}
 	// The Batch dispatches its steps to the other commands, and brackets
-	// itself as one armed Esc scope around them (batch.go, tickets 11 and
-	// 12). It dispatches to the raw step commands: the batch as a whole is
-	// serialized below, and the action gate is not reentrant.
-	cmds["batch"] = batch(cmds, s.Esc)
+	// itself as one armed Esc scope and one overlay bracket around them
+	// (batch.go, tickets 11 and 12, finding 12). It dispatches to the raw
+	// step commands: the batch as a whole is serialized below, and the
+	// action gate is not reentrant.
+	cmds["batch"] = batch(cmds, s)
 
 	// The serialized registry: every control-path command runs alone.
 	out := make(map[string]Command, len(cmds))

@@ -42,7 +42,15 @@ const batchUsageHint = "usage: winuse batch <window> <action> [arguments] [then 
 // Action commands (protocol.BatchStepKinds); a step's arguments are the
 // standalone command's own, without the Window. A stopped Batch (the
 // user's Esc press) keeps the stop's exit code (130) and message.
-func batch(commands map[string]Command, esc EscWatch) Command {
+//
+// The Batch is one overlay bracket (finding 12): the indicator shows once
+// over the Batch's Window for the whole run — like the Esc arm scope —
+// and the steps' own brackets ride inside it (bracketOverlay) without
+// hiding the indicator between Actions. A Window that does not resolve
+// (the first step fails with the resolution error anyway) brackets
+// nothing.
+func batch(commands map[string]Command, s Services) Command {
+	esc := s.Esc
 	if esc == nil {
 		esc = noopEscWatch{}
 	}
@@ -96,9 +104,15 @@ func batch(commands map[string]Command, esc EscWatch) Command {
 		// code too, so an Esc stop keeps protocol.ExitEsc). The Batch is one
 		// armed Esc scope around the loop — a press anywhere in it (during a
 		// step, between steps, in the last step's tail) stops the Batch with
-		// the exit-130 stop, and the remaining steps never run.
+		// the exit-130 stop, and the remaining steps never run — and one
+		// overlay bracket (finding 12), raised over the Batch's Window when
+		// it resolves, so the indicator does not blink between Actions.
 		esc.Arm()
 		defer esc.Disarm()
+		if w, rerr := resolveWindow(s, a.Window); rerr == nil {
+			s.showOverlay(w)
+			defer s.hideOverlay()
+		}
 		for i, st := range steps {
 			if esc.Stopped() {
 				return "", escStopError()

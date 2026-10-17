@@ -322,7 +322,7 @@ func TestBatchExitCodeForwarding(t *testing.T) {
 				Exit: protocol.ExitEsc,
 			}
 		},
-	}, nil)
+	}, Services{Windows: func() ([]win.WindowInfo, error) { return fakeWindows(), nil }})
 	raw, err := json.Marshal(protocol.BatchArgs{
 		Window: "101",
 		Steps:  []protocol.Step{stepOf("press-key", protocol.PressKeyArgs{Key: "Return"})},
@@ -411,7 +411,7 @@ func TestBatchStepWithoutAnAction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, cmdErr := batch(map[string]Command{}, nil)(context.Background(), raw)
+	_, cmdErr := batch(map[string]Command{}, Services{Windows: func() ([]win.WindowInfo, error) { return fakeWindows(), nil }})(context.Background(), raw)
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "step 1 has no action") {
 		t.Fatalf("message = %v, want the no-action refusal", cmdErr)
 	}
@@ -454,7 +454,7 @@ func TestBatchStopsWhenTheRequestBudgetExpires(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, cmdErr := batch(cmds, nil)(ctx, raw)
+	_, cmdErr := batch(cmds, Services{Windows: func() ([]win.WindowInfo, error) { return fakeWindows(), nil }})(ctx, raw)
 	if cmdErr == nil {
 		t.Fatal("a Batch whose request expired must fail")
 	}

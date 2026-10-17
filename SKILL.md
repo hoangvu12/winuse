@@ -14,10 +14,11 @@ Ground rules that shape everything else:
 - It runs in the **foreground** on the user's own desktop, never in the
   background. The machine must stay unlocked and usable; the user may be
   watching, and may take over at any moment.
-- While an Action runs, an on-screen banner frames the window:
-  **"winuse is in control — press Esc to stop"**. The user pressing the
-  physical **Esc** key stops the running command immediately — that is the
-  designed way for the user to take back control (see
+- While an Action or Batch runs, an on-screen banner frames the window:
+  **"winuse is in control — press Esc to stop"** (one banner for a whole
+  Batch, not one per step). The user pressing the physical **Esc** key
+  stops the running command immediately — that is the designed way for
+  the user to take back control (see
   [When the user stops you](#when-the-user-stops-you-esc)).
 - The first command starts a small background helper automatically; later
   commands reuse it. Nothing to set up, nothing to manage.
