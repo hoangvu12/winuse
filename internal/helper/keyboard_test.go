@@ -320,3 +320,43 @@ func TestPressKeyAcceptsCodexDocumentedChords(t *testing.T) {
 }
 
 func contains(s, sub string) bool { return strings.Contains(s, sub) }
+
+func TestTypeTextStopsOnTheRequestDeadline(t *testing.T) {
+	// Finding 10: typing's between-batches checkpoint also returns on the
+	// request's deadline, so a timed-out request stops injecting text.
+	// The failure reports the budget (the server's central timeout
+	// policy), never a fake Esc stop; a real Esc press still wins.
+	spy := &keySpy{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	svc := spy.services()
+	spy.typeErr = win.ErrEscStopped // typing aborted at its checkpoint
+	svc.TypeText = func(text string, stopped func() bool) error {
+		spy.step("type")
+		spy.typedText = text
+		spy.stopped = stopped
+		// The deadline fires between typing's batches, mid-run: the real
+		// checkpoint sees it and typing aborts.
+		if stopped != nil && stopped() {
+			return win.ErrEscStopped
+		}
+		cancel() // spend the budget now
+		return win.ErrEscStopped
+	}
+	cmds := CommandsWith(svc)
+	c := cmds["type-text"]
+	_, cmdErr := c(ctx, typeTextArgs("101", "hello"))
+	if cmdErr == nil {
+		t.Fatal("typing past the request's deadline must fail")
+	}
+	if !strings.Contains(cmdErr.Msg, "the request's budget expired while typing") {
+		t.Fatalf("message = %q, want the budget-expired failure", cmdErr.Msg)
+	}
+	if cmdErr.Exit == protocol.ExitEsc {
+		t.Errorf("exit = 130, want 1: the deadline stopped the typing, not the user")
+	}
+	// The checkpoint type-text was called with reports the deadline.
+	if spy.stopped == nil || !spy.stopped() {
+		t.Error("the typing checkpoint must report the expired request deadline")
+	}
+}

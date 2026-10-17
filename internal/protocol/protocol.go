@@ -51,19 +51,11 @@ var commandTimeouts = map[string]time.Duration{
 	"batch":      BatchTimeout,
 }
 
-// TimeoutFor returns the request budget for a command (RequestTimeout for
-// everything without an explicit entry, e.g. launch-app's 15 s). The CLI
-// uses this for its deadlines; the helper starts from its own configured
-// requestTimeout and only explicit entries (CommandTimeout) override it.
-func TimeoutFor(cmd string) time.Duration {
-	if d, ok := commandTimeouts[cmd]; ok {
-		return d
-	}
-	return RequestTimeout
-}
-
 // CommandTimeout returns a command's explicitly configured budget, if it
-// has one (launch-app: 15 s).
+// has one (launch-app: 15 s, batch: 60 s). It is the one timeout helper
+// (finding 17): the CLI composes it with RequestTimeout for its
+// connection deadlines, and the helper overrides its configured default
+// with the explicit entries only.
 func CommandTimeout(cmd string) (time.Duration, bool) {
 	d, ok := commandTimeouts[cmd]
 	return d, ok
@@ -75,6 +67,13 @@ type Request struct {
 	Ver  string          `json:"ver"`            // CLI binary version; a helper from a different build exits (see Response.Stale)
 	Cmd  string          `json:"cmd"`            // command name, e.g. "list-windows"
 	Args json.RawMessage `json:"args,omitempty"` // command arguments, command-specific JSON
+}
+
+// GetWindowArgs are get-window's arguments: the Window to re-resolve and
+// print as one list-windows line — Codex's get_window "id"/"app" step
+// (winuse names the Window by Window ID or unambiguous App name).
+type GetWindowArgs struct {
+	Window string `json:"window"`
 }
 
 // LaunchArgs are launch-app's arguments: an App name from the catalog or
@@ -184,10 +183,11 @@ type PressKeyArgs struct {
 // name:/id: reference against the Window's latest Window State) and its
 // new value.
 type SetValueArgs struct {
-	Window       string `json:"window"`        // Window ID, or an App name when that App has exactly one Window
-	ElementIndex *int   `json:"element_index"` // the Element to set, from that Window's latest Window State
-	Ref          string `json:"ref,omitempty"` // name:<text> or id:<AutomationId>: the Element to set
-	Value        string `json:"value"`         // the new value (a string, or a number for range Elements)
+	Window       string `json:"window"`          // Window ID, or an App name when that App has exactly one Window
+	ElementIndex *int   `json:"element_index"`   // the Element to set, from that Window's latest Window State
+	Ref          string `json:"ref,omitempty"`   // name:<text> or id:<AutomationId>: the Element to set
+	Point        *Point `json:"point,omitempty"` // @x,y: the Element under a point of the Window's latest screenshot
+	Value        string `json:"value"`           // the new value (a string, or a number for range Elements)
 }
 
 // SecondaryActionArgs are perform-secondary-action's arguments — Codex's
@@ -195,10 +195,11 @@ type SetValueArgs struct {
 // form: the Element (an Index or a name:/id: reference) and one of its
 // Secondary Actions (case-insensitive).
 type SecondaryActionArgs struct {
-	Window       string `json:"window"`        // Window ID, or an App name when that App has exactly one Window
-	ElementIndex *int   `json:"element_index"` // the Element to act on, from that Window's latest Window State
-	Ref          string `json:"ref,omitempty"` // name:<text> or id:<AutomationId>: the Element to act on
-	Action       string `json:"action"`        // e.g. "Raise", "Scroll Down", "Expand", "Collapse", "Toggle", "Select"
+	Window       string `json:"window"`          // Window ID, or an App name when that App has exactly one Window
+	ElementIndex *int   `json:"element_index"`   // the Element to act on, from that Window's latest Window State
+	Ref          string `json:"ref,omitempty"`   // name:<text> or id:<AutomationId>: the Element to act on
+	Point        *Point `json:"point,omitempty"` // @x,y: the Element under a point of the Window's latest screenshot
+	Action       string `json:"action"`          // e.g. "Raise", "Scroll Down", "Expand", "Collapse", "Toggle", "Select"
 }
 
 // BatchArgs are batch's arguments (ticket 11): several Actions on one
@@ -281,7 +282,7 @@ func Errorf(exit int, format string, args ...any) Response {
 	return Response{OK: false, Err: fmt.Sprintf(format, args...), Exit: exit}
 }
 
-// OKf formats a success response carrying text for stdout.
-func OKf(out string) Response {
+// OK formats a success response carrying text for stdout.
+func OK(out string) Response {
 	return Response{OK: true, Out: out}
 }

@@ -10,7 +10,11 @@ package uia
 // Up/Down/Left/Right (ScrollPattern), Expand/Collapse
 // (ExpandCollapsePattern, offered per the current state) — plus winuse's
 // extensions Toggle (TogglePattern) and Select (SelectionItemPattern),
-// in that fixed order (orchestrator decision). The gating follows the
+// in that fixed order (orchestrator decision). One canonical table below
+// (finding 18) holds the names, the gating and the pattern calls: the
+// walk's listing, perform-secondary-action's dispatch, the expected-set
+// error and the CLI's usage text all read it, so the three sites cannot
+// drift apart. The gating follows the
 // Codex-parity reference renderer (research notes, codex-surface.md §2):
 //   - Raise when WindowPattern is available;
 //   - scroll actions when ScrollPattern is available: Scroll Up/Down when
@@ -35,13 +39,144 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// secondaryAction is one row of the canonical Secondary Actions table
+// (finding 18): every site that names, lists, validates or performs a
+// Secondary Action reads the table — the walk's listing through
+// patternFacts, perform-secondary-action's dispatch, the expected-set
+// error, the CLI's usage text — so the names, their gating and their
+// pattern calls can never drift apart. The table's order is the fixed
+// order the Window State prints them.
+type secondaryAction struct {
+	name    string                                   // the canonical name
+	offered func(f patternFacts) bool                // when an Element offers it
+	perform func(el comPtr, p *probedPatterns) error // how it is performed
+}
+
+// scrollOfferedV gates the vertical scroll pair: an Element that scrolls
+// vertically, or reports a ScrollPattern with no horizontal scrollability.
+func scrollOfferedV(f patternFacts) bool {
+	return f.ScrollV || (f.HasScroll && !f.ScrollH)
+}
+
+// secondaryActionTable is the one canonical list. The first seven entries
+// are Codex's set (Raise, the four scrolls, Expand, Collapse); Toggle and
+// Select are winuse extensions.
+var secondaryActionTable = []secondaryAction{
+	{
+		name:    "Raise",
+		offered: func(f patternFacts) bool { return f.HasWindow },
+		perform: func(el comPtr, p *probedPatterns) error {
+			// Codex's Raise: bring the Element (a window) to the foreground
+			// through UIA's SetFocus.
+			if hr := call(el, elSetFocus); hr.Failed() {
+				return callErr(hr, "raising the Element")
+			}
+			return nil
+		},
+	},
+	{
+		name:    "Scroll Up",
+		offered: scrollOfferedV,
+		perform: func(el comPtr, p *probedPatterns) error {
+			return scrollBy(p.scroll, scrollNoAmount, scrollLargeDecrement, "Scroll Up")
+		},
+	},
+	{
+		name:    "Scroll Down",
+		offered: scrollOfferedV,
+		perform: func(el comPtr, p *probedPatterns) error {
+			return scrollBy(p.scroll, scrollNoAmount, scrollLargeIncrement, "Scroll Down")
+		},
+	},
+	{
+		name:    "Scroll Left",
+		offered: func(f patternFacts) bool { return f.ScrollH },
+		perform: func(el comPtr, p *probedPatterns) error {
+			return scrollBy(p.scroll, scrollLargeDecrement, scrollNoAmount, "Scroll Left")
+		},
+	},
+	{
+		name:    "Scroll Right",
+		offered: func(f patternFacts) bool { return f.ScrollH },
+		perform: func(el comPtr, p *probedPatterns) error {
+			return scrollBy(p.scroll, scrollLargeIncrement, scrollNoAmount, "Scroll Right")
+		},
+	},
+	{
+		// Expand while collapsed (or unreadable or partial); a leaf node
+		// offers neither Expand nor Collapse.
+		name: "Expand",
+		offered: func(f patternFacts) bool {
+			return f.HasExpand && f.ExpandState != expandLeafNode &&
+				(f.ExpandState < 0 || f.ExpandState == expandCollapsed || f.ExpandState == expandPartiallyExpanded)
+		},
+		perform: func(el comPtr, p *probedPatterns) error {
+			if hr := call(p.expand, ecExpand); hr.Failed() {
+				return callErr(hr, "expanding the Element")
+			}
+			return nil
+		},
+	},
+	{
+		// Collapse while expanded (or unreadable or partial).
+		name: "Collapse",
+		offered: func(f patternFacts) bool {
+			return f.HasExpand && f.ExpandState != expandLeafNode &&
+				(f.ExpandState < 0 || f.ExpandState == expandExpanded || f.ExpandState == expandPartiallyExpanded)
+		},
+		perform: func(el comPtr, p *probedPatterns) error {
+			if hr := call(p.expand, ecCollapse); hr.Failed() {
+				return callErr(hr, "collapsing the Element")
+			}
+			return nil
+		},
+	},
+	{
+		name:    "Toggle",
+		offered: func(f patternFacts) bool { return f.HasToggle },
+		perform: func(el comPtr, p *probedPatterns) error {
+			if hr := call(p.toggle, toggleToggle); hr.Failed() {
+				return callErr(hr, "toggling the Element")
+			}
+			return nil
+		},
+	},
+	{
+		name:    "Select",
+		offered: func(f patternFacts) bool { return f.HasSelection },
+		perform: func(el comPtr, p *probedPatterns) error {
+			if hr := call(p.selection, siSelect); hr.Failed() {
+				return callErr(hr, "selecting the Element")
+			}
+			return nil
+		},
+	},
+}
+
 // SecondaryActionNames lists every Secondary Action winuse performs, in
 // the fixed order the Window State prints them and errors list the
-// expected set. The first seven are Codex's; Toggle and Select are
-// winuse extensions.
-var SecondaryActionNames = []string{
-	"Raise", "Scroll Up", "Scroll Down", "Scroll Left", "Scroll Right",
-	"Expand", "Collapse", "Toggle", "Select",
+// expected set: the canonical table's names. The first seven are Codex's;
+// Toggle and Select are winuse extensions.
+var SecondaryActionNames = secondaryActionNames()
+
+// secondaryActionNames derives the canonical name list from the table.
+func secondaryActionNames() []string {
+	names := make([]string, len(secondaryActionTable))
+	for i, a := range secondaryActionTable {
+		names[i] = a.name
+	}
+	return names
+}
+
+// secondaryActionRow finds the canonical row for action (already
+// canonicalized); nil when the name is not in the table.
+func secondaryActionRow(action string) *secondaryAction {
+	for i := range secondaryActionTable {
+		if secondaryActionTable[i].name == action {
+			return &secondaryActionTable[i]
+		}
+	}
+	return nil
 }
 
 // CanonicalSecondaryAction resolves an action name (case-insensitive,
@@ -96,6 +231,11 @@ func (e *UnavailableActionError) Error() string {
 	offered := strings.Join(e.Offered, ", ")
 	if offered == "" {
 		offered = "none"
+	}
+	if e.Index < 0 {
+		// The @x,y form: there is no Element Index to name.
+		return fmt.Sprintf("secondary action '%s' is not available for the Element at the point; available actions: %s",
+			e.Action, offered)
 	}
 	return fmt.Sprintf("secondary action '%s' is not available for element %d; available actions: %s",
 		e.Action, e.Index, offered)
@@ -222,37 +362,14 @@ func (d NodeData) patternFacts() patternFacts {
 }
 
 // secondaryActions lists the Secondary Actions the facts describe, in the
-// fixed printed order.
+// fixed printed order: the canonical table's rows whose offered gate the
+// facts satisfy.
 func (f patternFacts) secondaryActions() []string {
 	var out []string
-	if f.HasWindow {
-		out = append(out, "Raise")
-	}
-	if f.ScrollV || f.HasScroll {
-		if f.ScrollV || !f.ScrollH {
-			out = append(out, "Scroll Up", "Scroll Down")
+	for _, a := range secondaryActionTable {
+		if a.offered(f) {
+			out = append(out, a.name)
 		}
-		if f.ScrollH {
-			out = append(out, "Scroll Left", "Scroll Right")
-		}
-	}
-	if f.HasExpand {
-		// Expand while collapsed (or unreadable), Collapse while expanded;
-		// a partially expanded Element offers both, a leaf node neither.
-		expand := f.ExpandState < 0 || f.ExpandState == expandCollapsed || f.ExpandState == expandPartiallyExpanded
-		collapse := f.ExpandState < 0 || f.ExpandState == expandExpanded || f.ExpandState == expandPartiallyExpanded
-		if expand && f.ExpandState != expandLeafNode {
-			out = append(out, "Expand")
-		}
-		if collapse && f.ExpandState != expandLeafNode {
-			out = append(out, "Collapse")
-		}
-	}
-	if f.HasToggle {
-		out = append(out, "Toggle")
-	}
-	if f.HasSelection {
-		out = append(out, "Select")
 	}
 	return out
 }
@@ -335,16 +452,67 @@ func propString(el comPtr, prop uint32) string {
 // value parsed as a number.
 func (c *Client) SetValue(ctx context.Context, hwnd uint64, index int, value string) error {
 	var jobErr error
-	err := c.Run(ctx, func(w *worker) {
+	err := c.Run(ctx, func(w *worker, _ *run) {
 		el, lerr := c.lookup(hwnd, index)
 		if lerr != nil {
 			jobErr = lerr
 			return
 		}
+		// AddRef'd on hand-out (finding 4): release our reference after
+		// the action.
+		defer c.store.release(el)
 		if w.thread == nil {
 			return // fake workers carry no COM thread; tests exercise the miss paths
 		}
 		jobErr = w.thread.setValue(el, value)
+	})
+	if err != nil {
+		return err
+	}
+	return jobErr
+}
+
+// SetValueAtPoint writes value to the Element at the screen point (an
+// @x,y Element Reference, resolved through the Window's latest
+// screenshot's Mapping): the worker resolves the point to the live
+// Element under it and writes exactly like the Element Index form.
+func (c *Client) SetValueAtPoint(ctx context.Context, x, y int32, value string) error {
+	var jobErr error
+	err := c.Run(ctx, func(w *worker, _ *run) {
+		if w.thread == nil {
+			return // fake workers carry no COM thread; tests exercise the miss paths
+		}
+		el, herr := w.thread.elementFromPoint(x, y)
+		if herr != nil {
+			jobErr = herr
+			return
+		}
+		defer release(el)
+		jobErr = w.thread.setValue(el, value)
+	})
+	if err != nil {
+		return err
+	}
+	return jobErr
+}
+
+// PerformSecondaryActionAtPoint performs one Secondary Action on the
+// Element at the screen point (an @x,y Element Reference, resolved
+// through the Window's latest screenshot's Mapping). action must already
+// be canonical (CanonicalSecondaryAction).
+func (c *Client) PerformSecondaryActionAtPoint(ctx context.Context, x, y int32, action string) error {
+	var jobErr error
+	err := c.Run(ctx, func(w *worker, _ *run) {
+		if w.thread == nil {
+			return // fake workers carry no COM thread; tests exercise the miss paths
+		}
+		el, herr := w.thread.elementFromPoint(x, y)
+		if herr != nil {
+			jobErr = herr
+			return
+		}
+		defer release(el)
+		jobErr = w.thread.performSecondary(el, -1, action)
 	})
 	if err != nil {
 		return err
@@ -360,12 +528,15 @@ func (c *Client) SetValue(ctx context.Context, hwnd uint64, index int, value str
 // (CanonicalSecondaryAction).
 func (c *Client) PerformSecondaryAction(ctx context.Context, hwnd uint64, index int, action string) error {
 	var jobErr error
-	err := c.Run(ctx, func(w *worker) {
+	err := c.Run(ctx, func(w *worker, _ *run) {
 		el, lerr := c.lookup(hwnd, index)
 		if lerr != nil {
 			jobErr = lerr
 			return
 		}
+		// AddRef'd on hand-out (finding 4): release our reference after
+		// the action.
+		defer c.store.release(el)
 		if w.thread == nil {
 			return // fake workers carry no COM thread; tests exercise the miss paths
 		}
@@ -460,44 +631,14 @@ func (th *thread) performSecondary(el comPtr, index int, action string) error {
 		return err
 	}
 	defer p.release()
-	if !offers(f.secondaryActions(), action) {
-		return &UnavailableActionError{Action: action, Index: index, Offered: f.secondaryActions()}
-	}
-	switch action {
-	case "Raise":
-		// Codex's Raise: bring the Element (a window) to the foreground
-		// through UIA's SetFocus.
-		if hr := call(el, elSetFocus); hr.Failed() {
-			return callErr(hr, "raising the Element")
-		}
-	case "Scroll Up":
-		return scrollBy(p.scroll, scrollNoAmount, scrollLargeDecrement, action)
-	case "Scroll Down":
-		return scrollBy(p.scroll, scrollNoAmount, scrollLargeIncrement, action)
-	case "Scroll Left":
-		return scrollBy(p.scroll, scrollLargeDecrement, scrollNoAmount, action)
-	case "Scroll Right":
-		return scrollBy(p.scroll, scrollLargeIncrement, scrollNoAmount, action)
-	case "Expand":
-		if hr := call(p.expand, ecExpand); hr.Failed() {
-			return callErr(hr, "expanding the Element")
-		}
-	case "Collapse":
-		if hr := call(p.expand, ecCollapse); hr.Failed() {
-			return callErr(hr, "collapsing the Element")
-		}
-	case "Toggle":
-		if hr := call(p.toggle, toggleToggle); hr.Failed() {
-			return callErr(hr, "toggling the Element")
-		}
-	case "Select":
-		if hr := call(p.selection, siSelect); hr.Failed() {
-			return callErr(hr, "selecting the Element")
-		}
-	default:
+	row := secondaryActionRow(action)
+	if row == nil {
 		return fmt.Errorf("unsupported secondary action: %s; expected %s", action, ExpectedSecondaryActions())
 	}
-	return nil
+	if !row.offered(f) {
+		return &UnavailableActionError{Action: action, Index: index, Offered: f.secondaryActions()}
+	}
+	return row.perform(el, p)
 }
 
 // probeFacts reads an Element's pattern facts through live pattern
@@ -590,16 +731,6 @@ func patternState(pat comPtr, slot uintptr) int32 {
 	var v int32 = -1
 	call(pat, slot, uintptr(unsafe.Pointer(&v)))
 	return v
-}
-
-// offers reports whether the action list contains action.
-func offers(actions []string, action string) bool {
-	for _, a := range actions {
-		if a == action {
-			return true
-		}
-	}
-	return false
 }
 
 // callErr maps a failed COM call on a live element: stale elements fail

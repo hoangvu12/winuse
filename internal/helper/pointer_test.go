@@ -71,7 +71,7 @@ func newPointerSpy(t *testing.T) *pointerSpy {
 		s.scrolled = [5]int32{int32(target), x, y, dx, dy}
 		return s.scrollErr
 	}
-	s.svc.Drag = func(target uint64, fx, fy, tx, ty int32) error {
+	s.svc.Drag = func(target uint64, fx, fy, tx, ty int32, stopped func() bool) error {
 		s.dragged = [5]int32{int32(target), fx, fy, tx, ty}
 		return s.dragErr
 	}
@@ -440,5 +440,43 @@ func TestBatchRunsThePointerSteps(t *testing.T) {
 	// one the recorded screenshot's capture performed).
 	if s.activations != 4 {
 		t.Errorf("activations = %d, want 4 (one per step plus the screenshot's)", s.activations)
+	}
+}
+
+func TestDragStopsOnTheRequestDeadline(t *testing.T) {
+	// Finding 10: the drag's interpolation checkpoint also returns on the
+	// request's deadline, and the failure reports the budget (never a
+	// fake Esc stop — a real Esc press still wins, checked first).
+	s := newPointerSpy(t)
+	cmds := CommandsWith(s.svc)
+	s.recordScreenshot(t, cmds)
+	// The fake drag honors the checkpoint the command passes it, exactly
+	// like win.MouseDrag's interpolation loop: the deadline fires mid-drag.
+	stoppedByDeadline := false
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.svc.Drag = func(target uint64, fx, fy, tx, ty int32, stopped func() bool) error {
+		cancel() // the budget expires mid-drag
+		if stopped != nil && stopped() {
+			stoppedByDeadline = true
+			return win.ErrEscStopped
+		}
+		return nil
+	}
+	// Rebuild the registry over the changed services (they are copied by
+	// value at CommandsWith).
+	cmds = CommandsWith(s.svc)
+
+	c := cmds["drag"]
+	raw, _ := json.Marshal(protocol.DragArgs{Window: "101", FromX: 10, FromY: 10, ToX: 400, ToY: 300})
+	_, cmdErr := c(ctx, raw)
+	if cmdErr == nil {
+		t.Fatal("a drag past the request's deadline must fail")
+	}
+	if !strings.Contains(cmdErr.Msg, "the request's budget expired during the drag") {
+		t.Fatalf("message = %q, want the budget-expired failure", cmdErr.Msg)
+	}
+	if !stoppedByDeadline {
+		t.Error("the drag must receive the deadline-aware checkpoint")
 	}
 }

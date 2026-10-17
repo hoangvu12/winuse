@@ -38,6 +38,10 @@ type actorSpy struct {
 	actionHwnd      uint64
 	actionIndex     int
 	actionPerformed string
+
+	// The @x,y forms (finding 8): the recorded screen points.
+	valueAtX, valueAtY   int32
+	actionAtX, actionAtY int32
 }
 
 func newActorSpy() *actorSpy {
@@ -63,6 +67,21 @@ func (s *actorSpy) SetValue(ctx context.Context, hwnd uint64, index int, value s
 func (s *actorSpy) PerformSecondaryAction(ctx context.Context, hwnd uint64, index int, action string) error {
 	s.step("secondary")
 	s.actionHwnd, s.actionIndex, s.actionPerformed = hwnd, index, action
+	return s.secondaryErr
+}
+
+// SetValueAtPoint implements ElementActor's @x,y form (finding 8): the
+// recorded screen point and the configurable outcome.
+func (s *actorSpy) SetValueAtPoint(ctx context.Context, x, y int32, value string) error {
+	s.step("set-value-at-point")
+	s.valueAtX, s.valueAtY, s.valueValue = x, y, value
+	return s.setValueErr
+}
+
+// PerformSecondaryActionAtPoint implements ElementActor's @x,y form.
+func (s *actorSpy) PerformSecondaryActionAtPoint(ctx context.Context, x, y int32, action string) error {
+	s.step("secondary-at-point")
+	s.actionAtX, s.actionAtY, s.actionPerformed = x, y, action
 	return s.secondaryErr
 }
 
@@ -129,7 +148,7 @@ func TestSetValueValidation(t *testing.T) {
 		wantMsg string
 	}{
 		{"no arguments", nil, "set-value: arguments are required"},
-		{"missing element index", json.RawMessage(`{"window":"101","value":"x"}`), "set-value: an element index or a name:/id: reference is required"},
+		{"missing element index", json.RawMessage(`{"window":"101","value":"x"}`), "set-value: an element index, a name:/id: reference or @x,y coordinates are required"},
 		{"negative element index", setValueArgs("101", -1, "x"), "set-value: the element index must be a non-negative integer"},
 	}
 	for _, tc := range cases {
@@ -265,7 +284,7 @@ func TestPerformSecondaryActionValidation(t *testing.T) {
 		wantMsg string
 	}{
 		{"no arguments", nil, "perform-secondary-action: arguments are required"},
-		{"missing element index", json.RawMessage(`{"window":"101","action":"Expand"}`), "perform-secondary-action: an element index or a name:/id: reference is required"},
+		{"missing element index", json.RawMessage(`{"window":"101","action":"Expand"}`), "perform-secondary-action: an element index, a name:/id: reference or @x,y coordinates are required"},
 		{"negative element index", secondaryArgs("101", -1, "Expand"), "perform-secondary-action: the element index must be a non-negative integer"},
 		{"missing action", secondaryArgs("101", 1, ""), "perform-secondary-action: an action is required"},
 		{"unknown action lists the expected set", secondaryArgs("101", 1, "Fly"),

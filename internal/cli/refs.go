@@ -13,8 +13,30 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/wstate"
 )
+
+// parseElementTargetToken parses one Element Reference token into its
+// wire form: an Element Index (a non-negative integer), a name:/id:
+// reference (passed through verbatim — the helper matches it against the
+// Window State's names and AutomationIds, exactly as printed), or @x,y
+// coordinates in the Window's latest screenshot's pixel space. Every
+// Element-taking Action command (click, set-value,
+// perform-secondary-action) shares this parser, so the three forms are
+// accepted everywhere (finding 8); what an @x,y point means is the
+// command's own business.
+func parseElementTargetToken(token string) (index *int, ref string, point *protocol.Point, err error) {
+	if strings.HasPrefix(token, "@") || strings.HasPrefix(token, " @") {
+		x, y, perr := parsePointRef(token)
+		if perr != nil {
+			return nil, "", nil, perr
+		}
+		return nil, "", &protocol.Point{X: x, Y: y}, nil
+	}
+	index, ref, err = parseElementRefToken(token)
+	return index, ref, nil, err
+}
 
 // parseElementRefToken parses one Element Reference token into its wire
 // form: an Element Index (a non-negative integer) or a name:/id:

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"github.com/hoangvu12/winuse/internal/apps"
 	"image"
 	"log"
@@ -90,10 +91,12 @@ type Services struct {
 	// The pointer input (ticket 10). Nil values fall back to the real
 	// SendInput implementations; tests fake them. dx/dy are Codex's
 	// scroll amounts (positive right/down, wheel units — the win layer
-	// flips the vertical to wheel semantics).
-	Scroll func(target uint64, x, y, dx, dy int32) error   // wheel scroll at a point
-	Drag   func(target uint64, fx, fy, tx, ty int32) error // left-button drag, from point to point
-	Hover  func(target uint64, x, y int32) error           // move the pointer and leave it there
+	// flips the vertical to wheel semantics). Drag's stopped is the abort
+	// checkpoint between its interpolation steps (the Esc stop or the
+	// request's deadline, finding 10).
+	Scroll func(target uint64, x, y, dx, dy int32) error                        // wheel scroll at a point
+	Drag   func(target uint64, fx, fy, tx, ty int32, stopped func() bool) error // left-button drag, from point to point
+	Hover  func(target uint64, x, y int32) error                                // move the pointer and leave it there
 
 	// The in-control indicator (ticket 13): raised over the target Window
 	// for the duration of every Action, click-through, never focused, and
@@ -102,17 +105,42 @@ type Services struct {
 	// *win.Overlay, wired by Main; the Esc keyboard hook of ticket 12 will
 	// join its UI thread.
 	Overlay Overlay
+
+	// actionGate serializes every command that activates a Window, injects
+	// input or shows the overlay (finding 11): two concurrent CLI calls
+	// must never interleave control of the desktop. It is a capacity-1
+	// channel — a mutex whose wait is bounded by the waiting request's own
+	// budget. Created by defaultServices so one Services (one helper)
+	// shares one gate; observation-only commands skip it.
+	actionGate chan struct{}
 }
 
 // CommandsWith builds the command registry over the given services.
 // Commands() wires the real ones.
+//
+// Commands that activate a Window, inject input or show the overlay are
+// serialized on the helper-wide action gate (finding 11): one winuse
+// command controls the desktop at a time, exactly what codex-parity's
+// "one request at a time" promises. Observation-only commands —
+// list-windows, get-window, list-apps, the plain tree read, record-tree,
+// launch-app — stay concurrent; get-window-state's --screenshot branch
+// and zoom join the serialized set inside their handlers.
 func CommandsWith(s Services) map[string]Command {
 	s = defaultServices(s)
+	// The indicator's brackets nest (finding 12): a Batch brackets its
+	// whole run and the steps' own brackets ride inside without hiding
+	// the indicator between Actions. Wrapping before the commands are
+	// built wires every bracket (and every capture's HideWhile) through
+	// the nesting.
+	if s.Overlay != nil {
+		s.Overlay = newBracketOverlay(s.Overlay)
+	}
 	// The Start-apps listing is shared by list-apps and launch-app and
 	// cached for the helper's lifetime (it is a ~1 s PowerShell call).
 	store := &apps.StoreSource{Run: apps.GetStartApps}
 	cmds := map[string]Command{
 		"list-windows":             listWindows,
+		"get-window":               getWindow(s),
 		"get-window-state":         func(ctx context.Context, args json.RawMessage) (string, *Error) { return getWindowState(s, ctx, args) },
 		"record-tree":              func(ctx context.Context, args json.RawMessage) (string, *Error) { return recordTree(s, ctx, args) },
 		"zoom":                     zoom(s),
@@ -129,10 +157,69 @@ func CommandsWith(s Services) map[string]Command {
 		"launch-app":               launchApp(store, s.Esc),
 	}
 	// The Batch dispatches its steps to the other commands, and brackets
-	// itself as one armed Esc scope around them (batch.go, tickets 11 and
-	// 12).
-	cmds["batch"] = batch(cmds, s.Esc)
-	return cmds
+	// itself as one armed Esc scope and one overlay bracket around them
+	// (batch.go, tickets 11 and 12, finding 12). It dispatches to the raw
+	// step commands: the batch as a whole is serialized below, and the
+	// action gate is not reentrant.
+	cmds["batch"] = batch(cmds, s)
+
+	// The serialized registry: every control-path command runs alone.
+	out := make(map[string]Command, len(cmds))
+	for name, cmd := range cmds {
+		if observationOnlyCommand(name) {
+			out[name] = cmd
+			continue
+		}
+		out[name] = s.serialized(cmd)
+	}
+	return out
+}
+
+// observationOnlyCommand reports whether a command never activates a
+// Window, injects input or shows the overlay, so it may run concurrently
+// with a serialized one (finding 11). get-window-state is listed here for
+// its plain tree read; its --screenshot branch serializes inside the
+// handler. launch-app starts a process and watches for its Window — it
+// injects nothing.
+func observationOnlyCommand(name string) bool {
+	switch name {
+	case "list-windows", "get-window", "list-apps", "get-window-state", "record-tree", "launch-app":
+		return true
+	}
+	return false
+}
+
+// serialized wraps one command in the helper-wide action gate (finding
+// 11): the command runs alone — no other activating, injecting or
+// overlay-showing command interleaves with it. The wait for the gate is
+// bounded by the waiting request's own budget: a request queued behind
+// another Action until its budget expired fails instead of acting late
+// (the server's central timeout policy reports it).
+func (s Services) serialized(cmd Command) Command {
+	if s.actionGate == nil {
+		return cmd // a zero Services (no defaultServices): tests wrap nothing
+	}
+	gate := s.actionGate
+	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
+		select {
+		case gate <- struct{}{}:
+		case <-ctx.Done():
+			return "", queuedOutError()
+		}
+		defer func() { <-gate }()
+		if err := ctx.Err(); err != nil {
+			// The budget expired in the instant the gate opened.
+			return "", queuedOutError()
+		}
+		return cmd(ctx, args)
+	}
+}
+
+// queuedOutError is the failure a serialized command reports when its
+// request's budget expired while another Action held the desktop.
+func queuedOutError() *Error {
+	return Fail("another winuse Action was still running when this request's budget expired",
+		"retry once the other Action finishes")
 }
 
 // noopEscWatch is the Esc service when there is no watcher: no armed
@@ -218,6 +305,9 @@ func defaultServices(s Services) Services {
 	if s.FrameOrigin == nil {
 		s.FrameOrigin = win.FrameOrigin
 	}
+	if s.actionGate == nil {
+		s.actionGate = make(chan struct{}, 1)
+	}
 	return s
 }
 
@@ -244,7 +334,12 @@ func getWindowState(s Services, ctx context.Context, args json.RawMessage) (stri
 		return "", rerr
 	}
 	if a.Screenshot {
-		return windowStateScreenshot(s, ctx, w)
+		// The screenshot path activates the Window and captures: serialize
+		// it like an Action (finding 11), while the plain tree read stays
+		// concurrent.
+		return s.serialized(func(ctx context.Context, args json.RawMessage) (string, *Error) {
+			return windowStateScreenshot(s, ctx, w)
+		})(ctx, args)
 	}
 	tree, err := s.Trees.Capture(ctx, w.ID, w.Title, win.AppExeName(w), s.Budget)
 	if err != nil {

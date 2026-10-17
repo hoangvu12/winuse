@@ -34,12 +34,14 @@ the executable's FileDescription, falling back to the exe base name.
 
 | Parameter | Codex | winuse | Status |
 |---|---|---|---|
-| `id` | rehydrate a currently open window by id after losing a binding | every command's `<window>` argument resolves a Window ID (or an App name with exactly one Window); `get-window-state` re-reads it | intentionally different |
-| `app` | disambiguate the window by app | the App-name form of `<window>`; several Windows of one App fail listing the candidates | intentionally different |
+| `id` | rehydrate a currently open window by id after losing a binding | `winuse get-window <window>` re-resolves a Window by ID and prints its line; every command's `<window>` argument also resolves Window IDs directly (a stable ID needs no binding) | matched |
+| `app` | disambiguate the window by app | the App-name form of `<window>`; several Windows of one App fail listing the candidates | matched |
 
 Codex needs a rehydrate call because its window bindings live in the
-JS REPL; winuse's Window ID is stable across CLI calls, so the step
-folds into every command. Ambiguity is an error in both, never a guess.
+JS REPL; winuse's Window ID is stable across CLI calls, so resolution
+folds into every command — and `get-window` covers Codex's step
+explicitly (re-resolve by ID or App name, print the one line). Ambiguity
+is an error in both, never a guess.
 
 ### list_apps
 
@@ -123,7 +125,7 @@ it and winuse's code refuses it (see cross-cutting).
 | Parameter | Codex | winuse `set-value` | Status |
 |---|---|---|---|
 | `window` | the Window holding the Element | `<window>` | matched |
-| `element_index` | the Element to write | the Element Index or a `name:`/`id:` reference | matched (extended) |
+| `element_index` | the Element to write | the Element Index, a `name:`/`id:` reference, or `@x,y` (the Element UIA finds under the point of the latest screenshot) | matched (extended) |
 | `value` | the string to set | the value; numeric Elements (RangeValue) take it parsed as a number | matched |
 
 Non-settable Elements fail with Codex's `Cannot set a value for an
@@ -149,7 +151,7 @@ contract.
 | Parameter | Codex | winuse `perform-secondary-action` | Status |
 |---|---|---|---|
 | `window` | the Window holding the Element | `<window>` | matched |
-| `element_index` | the Element to act on | the Element Index or a `name:`/`id:` reference | matched (extended) |
+| `element_index` | the Element to act on | the Element Index, a `name:`/`id:` reference, or `@x,y` (as set-value's) | matched (extended) |
 | `action` | case-insensitive; only `Raise`, `Scroll Up/Down/Left/Right`, `Expand`, `Collapse`; unknown → `unsupported secondary action: {action}; expected …` | the same set and the same error listing the expected names, **plus** the `Toggle` and `Select` extensions | matched (extended) |
 
 An action the Element does not offer fails listing the ones it does,
@@ -179,9 +181,13 @@ preserved. **intentionally different**.
 
 ### timeouts
 
-10 s per request, 15 s for launching an App (a Batch gets 60 s, an
-extension), message style `winuse request timed out: <command>` next to
-Codex's `computer-use request timed out: <method>`. **matched**.
+10 s per request, 15 s for launching an App, message style `winuse
+request timed out: <command>` next to Codex's `computer-use request
+timed out: <method>`. **matched**. A Batch gets 60 s — an
+**intentionally different** bound recorded in decisions.md: one request
+runs many Actions in order (Codex has no batch tool, so its 10 s rule
+has no batch case), and each Action inside still behaves like a
+standalone one within the shared contract.
 
 ### esc stop
 
@@ -218,7 +224,11 @@ Window needs an elevated winuse. **intentionally different** (fix).
 
 Detected and refused with the same message shape ("Windows desktop is
 locked (input desktop is LockApp); unlock before using winuse"); the
-agent is told to stop and ask. **matched**.
+agent is told to stop and ask. The refusal is reported everywhere the
+lock can be met — at Action time, at the helper's startup, and at the
+CLI's early exit when the input desktop cannot be opened in an
+interactive session — so the agent always learns "locked" rather than a
+session-0 message. **matched**.
 
 ### owned dialogs
 
@@ -291,8 +301,14 @@ AUMIDs — `launch-app` never guesses between several distinct matches.
 ### one request at a time
 
 Codex's helper rejects concurrent requests ("already has an active
-request"); winuse's helper serializes every command through one
-UIA-locked thread. **matched**.
+request"); winuse's helper serializes every command that activates a
+Window, injects input or shows the overlay through one helper-wide
+action gate — one command controls the desktop at a time, and a request
+queued behind another Action until its own budget expired fails instead
+of acting late. Observation-only commands (list-windows, get-window,
+list-apps, the plain tree read, record-tree, launch-app) may answer
+concurrently; the UIA worker serializes everything that touches
+automation. **matched**.
 
 ### stale elements
 

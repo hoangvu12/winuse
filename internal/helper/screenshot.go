@@ -49,11 +49,7 @@ const zoomUsage = "usage: winuse zoom <window> <x>,<y>,<w>,<h>   (the region, in
 // fail-loudly behaviour): the agent re-observes.
 func windowStateScreenshot(s Services, ctx context.Context, w win.WindowInfo) (string, *Error) {
 	if locked, desktop := s.Locked(); locked {
-		msg := "Windows desktop is locked; unlock before using winuse"
-		if desktop != "" && desktop != "Default" {
-			msg = fmt.Sprintf("Windows desktop is locked (input desktop is %s); unlock before using winuse", desktop)
-		}
-		return "", Fail(msg, "stop and ask the user to unlock the desktop, then read a fresh Window State before acting")
+		return "", lockedDesktopFailure(desktop)
 	}
 	if err := s.Activate(w.ID); err != nil {
 		return "", activationError(err)
@@ -119,11 +115,7 @@ func zoom(s Services) Command {
 				"use a region within the screenshot; take a fresh get-window-state --screenshot if the Window changed")
 		}
 		if locked, desktop := s.Locked(); locked {
-			msg := "Windows desktop is locked; unlock before using winuse"
-			if desktop != "" && desktop != "Default" {
-				msg = fmt.Sprintf("Windows desktop is locked (input desktop is %s); unlock before using winuse", desktop)
-			}
-			return "", Fail(msg, "stop and ask the user to unlock the desktop, then read a fresh Window State before acting")
+			return "", lockedDesktopFailure(desktop)
 		}
 		if err := s.Activate(w.ID); err != nil {
 			return "", activationError(err)

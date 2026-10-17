@@ -12,12 +12,14 @@ package helper
 // Codex has no batch tool (codex-surface.md §1: the model chains calls in
 // a JS cell instead); winuse's Batch keeps Codex's output style — `ok`,
 // or a one-line failure with a recovery hint — and the failed step is
-// named: "batch stopped at step N (<action>): <message>".
+// named: "batch stopped at Action N (<action>): <message>".
 //
 // Ticket 12 (Esc stop) aborts a running Batch here: the run loop below is
 // the between-steps point (the Esc check at its top, before each step),
 // and a stopped step's own input pipeline is where mid-step input aborts;
-// remaining steps must not run after a stop. The whole Batch is one armed
+// remaining steps must not run after a stop. The request's deadline
+// stops the Batch at the same point (finding 10): a timed-out request
+// keeps no work running. The whole Batch is one armed
 // Esc scope around its steps' Actions, so a press between steps — or in
 // the last step's tail — is latched and stops the Batch, and the physical
 // key is swallowed for the Batch's duration.
@@ -36,11 +38,19 @@ const batchUsageHint = "usage: winuse batch <window> <action> [arguments] [then 
 
 // batch runs `winuse batch <window> <action> [arguments] [then <action>
 // [arguments]]...`: the Actions run in order on the one Window, and the
-// first failure stops the Batch with the failed step named. Steps are the
-// Action commands (protocol.BatchStepKinds); a step's arguments are the
+// first failure stops the Batch with the failed Action named. Steps are the
+// Action commands (protocol.BatchStepKinds); a Step's arguments are the
 // standalone command's own, without the Window. A stopped Batch (the
 // user's Esc press) keeps the stop's exit code (130) and message.
-func batch(commands map[string]Command, esc EscWatch) Command {
+//
+// The Batch is one overlay bracket (finding 12): the indicator shows once
+// over the Batch's Window for the whole run — like the Esc arm scope —
+// and the steps' own brackets ride inside it (bracketOverlay) without
+// hiding the indicator between Actions. A Window that does not resolve
+// (the first step fails with the resolution error anyway) brackets
+// nothing.
+func batch(commands map[string]Command, s Services) Command {
+	esc := s.Esc
 	if esc == nil {
 		esc = noopEscWatch{}
 	}
@@ -53,7 +63,7 @@ func batch(commands map[string]Command, esc EscWatch) Command {
 			return "", Fail("batch: a window reference is required", batchUsageHint)
 		}
 		if len(a.Steps) == 0 {
-			return "", Fail("batch: at least one action step is required", batchUsageHint)
+			return "", Fail("batch: at least one Action is required", batchUsageHint)
 		}
 
 		// Prepare every step before any input is sent: a step's Kind must
@@ -72,19 +82,19 @@ func batch(commands map[string]Command, esc EscWatch) Command {
 		steps := make([]prepared, 0, len(a.Steps))
 		for i, st := range a.Steps {
 			if st.Kind == "" {
-				return "", Fail(fmt.Sprintf("batch: step %d has no action", i+1), batchUsageHint)
+				return "", Fail(fmt.Sprintf("batch: Action %d has no action", i+1), batchUsageHint)
 			}
 			if !batchableStep(st.Kind) {
-				return "", Fail(fmt.Sprintf("batch: step %d (%s) is not a batchable action; expected one of %s",
+				return "", Fail(fmt.Sprintf("batch: Action %d (%s) is not a batchable action; expected one of %s",
 					i+1, st.Kind, strings.Join(protocol.BatchStepKinds, ", ")), batchUsageHint)
 			}
 			cmd, ok := commands[st.Kind]
 			if !ok {
-				return "", Fail(fmt.Sprintf("batch: step %d (%s) is unavailable", i+1, st.Kind), batchUsageHint)
+				return "", Fail(fmt.Sprintf("batch: Action %d (%s) is unavailable", i+1, st.Kind), batchUsageHint)
 			}
 			injected, err := withWindow(a.Window, st.Args)
 			if err != nil {
-				return "", Fail(fmt.Sprintf("batch: step %d (%s) has invalid arguments: %v", i+1, st.Kind, err), batchUsageHint)
+				return "", Fail(fmt.Sprintf("batch: Action %d (%s) has invalid arguments: %v", i+1, st.Kind, err), batchUsageHint)
 			}
 			steps = append(steps, prepared{kind: st.Kind, cmd: cmd, args: injected})
 		}
@@ -94,17 +104,30 @@ func batch(commands map[string]Command, esc EscWatch) Command {
 		// code too, so an Esc stop keeps protocol.ExitEsc). The Batch is one
 		// armed Esc scope around the loop — a press anywhere in it (during a
 		// step, between steps, in the last step's tail) stops the Batch with
-		// the exit-130 stop, and the remaining steps never run.
+		// the exit-130 stop, and the remaining steps never run — and one
+		// overlay bracket (finding 12), raised over the Batch's Window when
+		// it resolves, so the indicator does not blink between Actions.
 		esc.Arm()
 		defer esc.Disarm()
+		if w, rerr := resolveWindow(s, a.Window); rerr == nil {
+			s.showOverlay(w)
+			defer s.hideOverlay()
+		}
 		for i, st := range steps {
 			if esc.Stopped() {
 				return "", escStopError()
 			}
+			// The request's deadline stops the Batch between Actions
+			// (finding 10): the remaining Actions must not run, and the
+			// server reports the request timeout centrally.
+			if err := ctx.Err(); err != nil {
+				return "", Fail(fmt.Sprintf("the batch's request budget expired before Action %d (%s); the Actions that ran took effect", i+1, st.kind),
+					"re-observe the Window and continue in a fresh request")
+			}
 			_, err := st.cmd(ctx, st.args)
 			if err != nil {
 				return "", &Error{
-					Msg:  fmt.Sprintf("batch stopped at step %d (%s): %s", i+1, st.kind, err.Msg),
+					Msg:  fmt.Sprintf("batch stopped at Action %d (%s): %s", i+1, st.kind, err.Msg),
 					Hint: err.Hint,
 					Exit: err.Exit,
 				}

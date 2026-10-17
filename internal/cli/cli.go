@@ -7,18 +7,24 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/hoangvu12/winuse/internal/apps"
 	"github.com/hoangvu12/winuse/internal/protocol"
+	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/version"
 	"github.com/hoangvu12/winuse/internal/win"
 )
 
-// Usage is the short command surface (grows as tickets land).
-const Usage = `usage: winuse <command> [arguments]
+// usageHead and usageTail sandwich the Secondary Actions list in Usage
+// below (from uia's canonical table, finding 18: this text, the Window
+// State's listing and the Action validation share one source).
+const usageHead = `usage: winuse <command> [arguments]
 
 commands:
   list-windows                list visible Windows: Window ID, App and title
+  get-window <window>         print one Window's line (Window ID, App and title),
+                               resolved by Window ID or an unambiguous App name
   list-apps                   list running and recently used Apps, with their Windows
   launch-app <name|exe path>  start an App by name or executable path, report its Window
   get-window-state <window> [--screenshot]
@@ -38,17 +44,21 @@ commands:
   type-text <window> <text>    type Unicode text into the Window's focused Element
   press-key <window> <key>     press a key or key combination by Codex's key
                                names, e.g. Return, Tab, Control_L+a, Numpad_0
-  set-value <window> <element index | name: | id:> <value>
+  set-value <window> <element index | name: | id: | @x,y> <value>
                                set an Element's value directly (a settable
-                               edit or a numeric range)
-  perform-secondary-action <window> <element index | name: | id:> <action>
+                               edit or a numeric range); @x,y sets the
+                               Element under a point of the latest screenshot
+  perform-secondary-action <window> <element index | name: | id: | @x,y> <action>
                                perform one of the Element's Secondary Actions
-                               (Raise, Scroll Down, Expand, Collapse, Toggle,
-                               Select, ...)
+                               (`
+
+const usageTail = `);
+                               @x,y acts on the Element under a point of the
+                               latest screenshot
   batch <window> <action> [arguments] [then <action> [arguments]] ...
                                run several Actions on one Window in order,
                                stopping at the first failure (which names
-                               the failed step); e.g.
+                               the failed Action); e.g.
                                winuse batch 101 click name:File then type-text hello then press-key Return
   scroll <window> @x,y <dx> <dy>
                                scroll the Window at a point of its latest
@@ -63,9 +73,42 @@ commands:
   version                     print the winuse version
 
 a <window> is a Window ID, or an App name when that App has exactly one Window;
-an element index, name:<text>, id:<AutomationId> (and, for click, @x,y) name an
-Element of the Window's latest Window State
+an element index, name:<text>, id:<AutomationId> or @x,y (the latest
+screenshot's pixels) name an Element of the Window's latest Window State
 `
+
+// Usage is the short command surface (grows as tickets land). The
+// perform-secondary-action line lists the Secondary Actions from uia's
+// canonical table, so this text, the Window State's listing and the
+// Action validation share one source (finding 18).
+var Usage = usageHead + secondaryActionsPhrase() + usageTail
+
+// secondaryActionsPhrase renders the canonical Secondary Actions for the
+// usage text, comma-joined and wrapped at the usage's column.
+func secondaryActionsPhrase() string {
+	const (
+		indent = "                               "
+		width  = 72
+	)
+	var lines []string
+	line := ""
+	for i, name := range uia.SecondaryActionNames {
+		item := name
+		if i > 0 {
+			item = ", " + name
+		}
+		if line != "" && len(indent)+len(line)+len(item) > width {
+			lines = append(lines, line+",")
+			line = name
+			continue
+		}
+		line += item
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n"+indent)
+}
 
 // Main runs the CLI for args (without the program name) and returns the exit
 // code: 0 success, 1 command failure, 2 usage error. The first command
@@ -82,6 +125,8 @@ func Main(args []string) int {
 		return 0
 	case "list-windows":
 		return listWindowsCmd(args[1:])
+	case "get-window":
+		return getWindowCmd(args[1:])
 	case "get-window-state":
 		return getWindowStateCmd(args[1:])
 	case "record-tree":
@@ -126,6 +171,21 @@ func listWindowsCmd(args []string) int {
 		return 2
 	}
 	if err := runSimple("list-windows"); err != nil {
+		reportError(os.Stderr, err)
+		return ExitCode(err)
+	}
+	return 0
+}
+
+// getWindowCmd implements `winuse get-window <window>`: print the one
+// list-windows line of the resolved Window (Codex's get_window — the
+// re-resolve step after a helper restart or a stale Window ID).
+func getWindowCmd(args []string) int {
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: winuse get-window <window>")
+		return 2
+	}
+	if err := runWithArgs("get-window", protocol.GetWindowArgs{Window: args[0]}); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}
@@ -215,6 +275,21 @@ func launchAppCmd(args []string) int {
 	return 0
 }
 
+// inputDesktopExitError classifies an unavailable input desktop for the
+// CLI: an interactive session whose input desktop cannot be opened is the
+// lock screen / secure desktop, so the answer is the locked-desktop
+// refusal — the same message and hint the helper's Actions use, exit 1 —
+// never the session-0 message, which would send the agent looking for a
+// service that is not the problem.
+func inputDesktopExitError() error {
+	err := win.InputDesktopRefusal()
+	var locked *win.LockedDesktopError
+	if errors.As(err, &locked) {
+		return &exitError{msg: err.Error(), hint: win.LockedDesktopHint, code: 1}
+	}
+	return err
+}
+
 // runSimple sends a no-argument command to the helper and prints its
 // response Codex-style: output on stdout, a single-line failure with a
 // recovery hint on stderr, non-zero exit on failure.
@@ -226,7 +301,7 @@ func runSimple(cmd string) error {
 // prints its response Codex-style.
 func runWithArgs(cmd string, args any) error {
 	if !win.HasInputDesktop() {
-		return win.ErrNoDesktop
+		return inputDesktopExitError()
 	}
 	client, err := DefaultClient()
 	if err != nil {

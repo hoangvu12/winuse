@@ -43,10 +43,15 @@ func Main() int {
 		log.Printf("setting per-monitor-v2 DPI awareness: %v", err)
 	}
 
-	// The helper must live in the interactive desktop session.
+	// The helper must live in the interactive desktop session. In an
+	// interactive session an input desktop that cannot be opened is the
+	// lock screen / secure desktop: report the locked-desktop refusal (the
+	// same message Actions use), not the session-0 message — the agent
+	// must learn the desktop is locked, so it stops instead of acting.
 	if !win.HasInputDesktop() {
-		log.Printf("no input desktop available: %v", win.ErrNoDesktop)
-		fmt.Fprintln(os.Stderr, win.ErrNoDesktop)
+		err := win.InputDesktopRefusal()
+		log.Printf("no input desktop available: %v", err)
+		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
 

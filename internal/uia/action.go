@@ -42,12 +42,17 @@ type rect struct{ Left, Top, Right, Bottom int32 }
 func (c *Client) ElementPoint(ctx context.Context, hwnd uint64, index int) (Point, error) {
 	var pt Point
 	var jobErr error
-	err := c.Run(ctx, func(w *worker) {
+	err := c.Run(ctx, func(w *worker, _ *run) {
 		el, lerr := c.lookup(hwnd, index)
 		if lerr != nil {
 			jobErr = lerr
 			return
 		}
+		// The store AddRef'd the Element on hand-out (finding 4): release
+		// our reference after the action, so a newer Window State that
+		// replaced the stored one frees the Element exactly when the last
+		// user is done with it.
+		defer c.store.release(el)
 		if w.thread == nil {
 			return // fake workers carry no COM thread; tests exercise the miss paths
 		}
@@ -60,9 +65,12 @@ func (c *Client) ElementPoint(ctx context.Context, hwnd uint64, index int) (Poin
 }
 
 // lookup resolves an Element Index of hwnd's latest Window State to its
-// live element handle, on the worker thread. A Window with no cached
-// state fails as ErrNoState; an index beyond the stored one as ErrStale
-// (both with the read-the-state-again recovery, mapped by the helper).
+// live element handle, on the worker thread, AddRef'd for the caller (the
+// store's own reference can be released by a newer install while the
+// caller uses the Element; release it through the store when done). A
+// Window with no cached state fails as ErrNoState; an index beyond the
+// stored one as ErrStale (both with the read-the-state-again recovery,
+// mapped by the helper).
 func (c *Client) lookup(hwnd uint64, index int) (comPtr, error) {
 	el, ok := c.store.element(hwnd, index)
 	if ok {
@@ -107,6 +115,20 @@ func (th *thread) elementPoint(el comPtr) (Point, error) {
 		return Point{}, errors.New("the Element has no clickable point and no bounds")
 	}
 	return Point{X: (r.Left + r.Right) / 2, Y: (r.Top + r.Bottom) / 2}, nil
+}
+
+// elementFromPoint resolves a screen point to the live Element under it
+// (the topmost one), on the worker thread — the element-side resolution
+// of an @x,y Element Reference (IUIAutomation::ElementFromPoint; the
+// POINT travels by value in one register, uia-go notes §2). The caller
+// owns the returned Element.
+func (th *thread) elementFromPoint(x, y int32) (comPtr, error) {
+	var el comPtr
+	pt := uintptr(uint32(x)) | uintptr(uint32(y))<<32
+	if hr := call(th.auto, uiaElementFromPoint, pt, uintptr(unsafe.Pointer(&el))); hr.Failed() || el == nil {
+		return nil, fmt.Errorf("reading the Element at the point failed (HRESULT %s)", hr)
+	}
+	return el, nil
 }
 
 // scrollIntoView asks the Element's ScrollItem pattern to bring it on

@@ -37,8 +37,12 @@ irm https://raw.githubusercontent.com/hoangvu12/winuse/main/install.ps1 | iex
 That downloads the release binary from GitHub Releases to
 `%LOCALAPPDATA%\winuse\winuse.exe`, removes its Mark of the Web, and adds
 it to your user PATH — restart the terminal once so the PATH is visible.
-To build from source instead: Go 1.27 or newer, then
-`CGO_ENABLED=0 go build -o winuse.exe ./cmd/winuse`.
+The download goes to a temporary file, a running winuse helper is
+stopped (Windows locks a running executable), and only then is the new
+binary moved into place — a failed download never replaces a working
+install.
+To build from source instead: Go 1.27 or newer, then (PowerShell)
+`$env:CGO_ENABLED=0; go build -o winuse.exe ./cmd/winuse`.
 
 **The skill** — so your agents load winuse's usage guidance. The skill is
 the `SKILL.md` at the repo root, and it installs into both Claude Code's
@@ -260,8 +264,8 @@ Zoom: C:\Users\me\AppData\Local\Temp\winuse\winuse-zoom-101-....png (312x208 px)
 winuse click <window> <element index | name:<text> | id:<id> | @x,y> [--count 1|2|3] [--button left|middle|right]
 winuse type-text <window> <text>
 winuse press-key <window> <key>
-winuse set-value <window> <element index | name:<text> | id:<id>> <value>
-winuse perform-secondary-action <window> <element index | name:<text> | id:<id>> <action>
+winuse set-value <window> <element index | name:<text> | id:<id> | @x,y> <value>
+winuse perform-secondary-action <window> <element index | name:<text> | id:<id> | @x,y> <action>
 winuse scroll <window> @x,y <dx> <dy>
 winuse drag <window> @x,y @x,y
 winuse hover <window> @x,y
@@ -300,15 +304,25 @@ Every Element-taking Action (click, set-value, perform-secondary-action)
 accepts the same Element Reference forms: an **Element Index** (the
 number the Window State prints), **`name:<text>`** (the Element's name,
 the text before any `Description:`/`Value:`/`ID:` column), **`id:
-<AutomationId>`** (the `ID:` column), and — for click — **`@x,y`**
-(coordinates in the latest screenshot's space, see above):
+<AutomationId>`** (the `ID:` column), and **`@x,y`** (coordinates in the
+latest screenshot's space, see above):
 
 ```
 winuse click 101 name:OK
 winuse click 101 id:ParityButton
 winuse set-value 101 id:ParityBox "hello"
+winuse set-value 101 @412,88 "hello"
 winuse perform-secondary-action 101 name:Details expand
 ```
+
+For click (and scroll, drag, hover) `@x,y` is where the input lands; for
+set-value and perform-secondary-action it names the **Element under the
+point**, which the helper resolves live through UI Automation's
+`ElementFromPoint` — so a Window whose tree is sparse but whose
+screenshot is readable (canvas apps, some Electron windows) can still be
+operated by coordinates. The point is mapped through the screenshot's
+recorded scale and re-anchored to the Window's live bounds at Action
+time, exactly like a coordinate click.
 
 A reference resolves against the **Window's latest Window State**: the
 name or ID is matched against exactly what that tree printed
@@ -340,7 +354,7 @@ is optional, so `winuse type-text 101 hello world` and `winuse type-text
 101 "hello world"` type the same text. The text is injected as **Unicode
 key events** (KEYEVENTF_UNICODE, one UTF-16 unit per event, in small
 batches), so any script and emoji type correctly; newline and tab are
-injected as real Return/Tab keys, because many controls ignore Unicode
+injected as real Return/Tab keys, because many Elements ignore Unicode
 CR.
 
 `press-key` presses a key or a `+`-separated chord by **Codex's X keysym
@@ -362,9 +376,11 @@ only to be refused — winuse never sends it.
 filling a text field): the Element is focused first — Codex's `set_value`
 order — then its value is written through the UI Automation Value
 pattern, or through RangeValue with the value parsed as a number for
-numeric Elements (sliders). An Element that is not settable fails with
-Codex's `Cannot set a value for an element that is not settable` and a
-hint to click the Element and use `type-text` instead.
+numeric Elements (sliders). The Element is named by index, `name:`/`id:`
+reference or `@x,y` (the Element under the point of the latest
+screenshot). An Element that is not settable fails with Codex's `Cannot
+set a value for an element that is not settable` and a hint to click the
+Element and use `type-text` instead.
 
 `perform-secondary-action` performs one of the Element's Secondary
 Actions (case-insensitive): Codex's set — `Raise`, `Scroll Up`,
@@ -403,7 +419,7 @@ Indexes are only valid within the Window State that produced them.
 ### Batches
 
 A **Batch** runs several Actions on one Window in a single call, in
-order, stopping at the first failure and naming the failed step — so a
+order, stopping at the first failure and naming the failed Action — so a
 routine sequence (click a field, type into it, press Return, click OK)
 costs one round-trip instead of five:
 
@@ -411,41 +427,44 @@ costs one round-trip instead of five:
 winuse batch 101 click id:field then type-text hello world then press-key Return then click name:OK
 ```
 
-Steps are separated by `then` (the first needs no `then`), and each step
-is an Action command **without its Window argument** — the same arguments
-the standalone form takes: `click <ref> [options]`, `type-text <text>`,
-`press-key <key>`, `set-value <ref> <value>`,
+Actions are separated by `then` (the first needs no `then`), and each
+Action is an Action command **without its Window argument** — the same
+arguments the standalone form takes: `click <ref> [options]`,
+`type-text <text>`, `press-key <key>`, `set-value <ref> <value>`,
 `perform-secondary-action <ref> <action>`, `activate-window`. Variadic
-arguments (a step's text or value) join that step's remaining arguments
-with single spaces, so an unquoted `then` inside them still separates
-steps — quote the text to keep it. Every step runs through the same
-command the standalone form uses, so the full pipeline (window
-resolution, refusals, activate-and-verify) applies per step.
+arguments (an Action's text or value) join that Action's remaining
+arguments with single spaces, so an unquoted `then` inside them still
+separates Actions — quote the text to keep it. Every Action runs through
+the same command the standalone form uses, so the full pipeline (window
+resolution, refusals, activate-and-verify) applies per Action.
 
 A successful Batch prints `ok`, Codex-style (Codex has no batch tool; its
 model chains calls in one JS cell — winuse moves the chaining into one
-command). A failed step stops the Batch:
+command). A failed Action stops the Batch:
 
 ```
-batch stopped at step 2 (click): name "Twin" matches 2 elements in the cached Window State for window 101
+batch stopped at Action 2 (click): name "Twin" matches 2 elements in the cached Window State for window 101
 ```
 
-with that step's own recovery hint (here the candidate list) forwarded.
-Steps after the failure do not run, and the failure's exit code survives
-(an Esc stop exits 130, like a standalone Action). Malformed steps —
-an unknown action, a bad flag — are refused **before any input is sent**,
-so a mistyped Batch never half-runs. A Batch's request budget is 60 s
-(each step is fast, but a Batch of dozens of steps needs more than the
-10 s default). Pressing the physical Esc key aborts a running Batch at
-the next checkpoint — between a stopped step's input batches, between
-steps, in a step's tail — and the remaining steps do not run. The
-pointer Actions are Batch steps too (`scroll`, `drag`, `hover`, taking
-the same arguments as their standalone forms minus the Window).
+with that Action's own recovery hint (here the candidate list) forwarded.
+The Actions after the failure do not run, and the failure's exit code
+survives (an Esc stop exits 130, like a standalone Action). Malformed
+Actions — an unknown action, a bad flag — are refused **before any input
+is sent**, so a mistyped Batch never half-runs. A Batch's request budget
+is 60 s (each Action is fast, but a Batch of dozens of Actions needs
+more than the 10 s default). Pressing the physical Esc key aborts a
+running Batch at the next checkpoint — between a stopped Action's input
+batches, between Actions, in the last Action's tail — and the remaining
+Actions do not run. The pointer Actions are Batch steps too (`scroll`,
+`drag`, `hover`, taking the same arguments as their standalone forms
+minus the Window).
 
 ## The in-control overlay
 
 While an Action runs, winuse shows what Codex shows: an on-screen
-indicator that the agent is driving the PC. A border frames the Window
+indicator that the agent is driving the PC. A Batch brackets its whole
+run — one indicator for the duration, not one blinking between its
+Actions. A border frames the Window
 being controlled and a pill banner at its top centre reads
 **“winuse is in control — press Esc to stop”** — and since ticket 12,
 pressing that key really does stop winuse (see the Esc section below).
@@ -505,7 +524,7 @@ hint: stop your current task and ask the user how to proceed before sending more
 so the agent stops and asks instead of retrying. What counts:
 
 - The press is latched while winuse is in control — an Action, a whole
-  Batch (including the gaps between steps and a step's tail), or a
+  Batch (including the gaps between Actions and the last Action's tail), or a
   launch-app wait — and never leaks into the next command.
 - **Injected keys are ignored** (the hook checks `LLKHF_INJECTED`):
   `winuse press-key <window> Escape` types a plain Escape into the app
@@ -514,7 +533,7 @@ so the agent stops and asks instead of retrying. What counts:
   and while nothing runs the user's Esc passes through untouched.
 - A stop mid-typing aborts between the injection batches (what already
   landed, landed — the hint says so); a stop mid-Batch leaves the
-  remaining steps unrun; a stop during a launch-app wait reports the
+  remaining Actions unrun; a stop during a launch-app wait reports the
   stop, not the timeout, and the App that already started keeps running.
 
 ## How it works
@@ -563,6 +582,12 @@ Hidden, DWM-cloaked and tool windows are excluded; owned dialogs ("Save
 As") are listed as their own Window of the same App. UWP windows are
 attributed to their real app process, and the App name is the executable's
 FileDescription, falling back to the exe base name.
+
+`winuse get-window <window>` re-resolves exactly one Window — by Window
+ID or an unambiguous App name — and prints its one line: Codex's
+`get_window` re-resolve step, the cheap re-check after a helper restart
+or before acting on a Window that may have closed. Ambiguity and misses
+fail exactly like every other `<window>` argument, with the candidates.
 
 `winuse list-apps` prints the App catalog — every running App with its
 Windows, then recently used Apps (from Explorer's UserAssist tracking,
@@ -649,7 +674,7 @@ assertions never depend on pixels.
   nested scopes (`internal/win`), the typing abort between batches, the
   launch-app wait stop, every command's exit-130 mapping with the
   user-stopped-winuse message, Batch stops at every checkpoint (a stopped
-  step, between steps, the last step's tail), and the Esc stop outranking
+  Action, between Actions, the last Action's tail), and the Esc stop outranking
   the request timeout (`internal/apps`, `internal/helper`), plus the
   pointer Actions as Batch steps. A guard proves no offline test ever
   installs the real hook. The ticket-15 tests (`internal/skill`) guard the
@@ -704,7 +729,7 @@ assertions never depend on pixels.
 ## Build
 
 ```
-CGO_ENABLED=0 go build -o winuse.exe ./cmd/winuse
+$env:CGO_ENABLED=0; go build -o winuse.exe ./cmd/winuse
 ```
 
 One static Go binary, no cgo: Win32 APIs are called directly through

@@ -97,8 +97,9 @@ func drag(s Services) Command {
 			if serr != nil {
 				return "", serr
 			}
-			if err := s.Drag(w.ID, int32(from.X), int32(from.Y), int32(to.X), int32(to.Y)); err != nil {
-				return "", inputError(err)
+			if err := s.Drag(w.ID, int32(from.X), int32(from.Y), int32(to.X), int32(to.Y),
+				func() bool { return s.Esc.Stopped() || ctx.Err() != nil }); err != nil {
+				return "", inputAbortError(s, ctx, err, "during the drag")
 			}
 			return okOutput, nil
 		})

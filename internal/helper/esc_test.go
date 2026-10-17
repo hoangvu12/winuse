@@ -231,7 +231,7 @@ func TestEscStopsTheBatchInTheFailedStep(t *testing.T) {
 	if cmdErr.Exit != protocol.ExitEsc {
 		t.Errorf("exit = %d, want %d", cmdErr.Exit, protocol.ExitEsc)
 	}
-	want := "batch stopped at step 1 (click): " + escStopMessage
+	want := "batch stopped at Action 1 (click): " + escStopMessage
 	if cmdErr.Msg != want {
 		t.Errorf("message = %q, want %q", cmdErr.Msg, want)
 	}
@@ -260,7 +260,7 @@ func TestEscBetweenStepsStopsTheBatch(t *testing.T) {
 			return okOutput, nil
 		},
 	}
-	batchCmd := batch(cmds, e)
+	batchCmd := batch(cmds, Services{Esc: e, Windows: func() ([]win.WindowInfo, error) { return fakeWindows(), nil }})
 	raw, err := json.Marshal(protocol.BatchArgs{
 		Window: "101",
 		Steps: []protocol.Step{
@@ -295,7 +295,7 @@ func TestEscInTheLastStepsTailStopsTheBatch(t *testing.T) {
 			return okOutput, nil
 		},
 	}
-	batchCmd := batch(cmds, e)
+	batchCmd := batch(cmds, Services{Esc: e, Windows: func() ([]win.WindowInfo, error) { return fakeWindows(), nil }})
 	raw, err := json.Marshal(protocol.BatchArgs{
 		Window: "101",
 		Steps:  []protocol.Step{stepOf("activate-window", nil)},

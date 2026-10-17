@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/shot"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
@@ -326,5 +327,81 @@ func TestCommandsRegisteredWithoutOverlayByDefault(t *testing.T) {
 	cmds := CommandsWith(testServices(&fakeTrees{}))
 	if cmds["click"] == nil {
 		t.Error("click missing from the command registry")
+	}
+}
+
+// TestBatchShowsOneOverlayBracketForTheWholeRun pins finding 12: a Batch
+// raises the indicator once over its Window for the whole run, and the
+// steps' own brackets ride inside it — the real hide lands only when the
+// Batch ends, instead of blinking between every Action.
+func TestBatchShowsOneOverlayBracketForTheWholeRun(t *testing.T) {
+	spy := newBatchSpy()
+	spy.point = uia.Point{X: 100, Y: 200}
+	ov := &overlaySpy{}
+	ov.share = spy.step // one interleaved step list with the pipeline
+	spy.svc.Overlay = ov
+	cmds := CommandsWith(spy.svc)
+
+	out, cmdErr := runCommand(t, cmds, "batch", protocol.BatchArgs{
+		Window: "101",
+		Steps: []protocol.Step{
+			stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(1)}),
+			stepOf("type-text", protocol.TypeTextArgs{Text: "hello"}),
+			stepOf("activate-window", nil),
+		},
+	})
+	if cmdErr != nil {
+		t.Fatalf("batch: %v", cmdErr.Error())
+	}
+	if out != "ok\n" {
+		t.Errorf("output = %q, want ok", out)
+	}
+
+	// Exactly one real show over the Batch's Window and one real hide,
+	// after the last step — the steps' brackets did not blink it.
+	shows := 0
+	hides := 0
+	var steps []string
+	for _, st := range spy.recorded() {
+		steps = append(steps, st)
+		if strings.HasPrefix(st, "overlay-show(") {
+			shows++
+		}
+		if st == "overlay-hide" {
+			hides++
+		}
+	}
+	if shows != 1 || hides != 1 {
+		t.Errorf("the indicator was shown %d times and hidden %d times, want 1 and 1 (one bracket for the whole Batch): %v", shows, hides, steps)
+	}
+	if !strings.HasPrefix(steps[len(steps)-1], "overlay-hide") {
+		t.Errorf("the indicator must hide after the last step, got %v", steps)
+	}
+	// The bracket opened before the first step's own bracket: the show
+	// precedes the first step's locked check.
+	for i, st := range steps {
+		if strings.HasPrefix(st, "overlay-show(") {
+			if i > 0 && steps[i-1] != "locked" && steps[i-1] != "resolve" {
+				// The batch resolves the Window, then brackets, then the
+				// first step's pipeline starts.
+				t.Errorf("the Batch's overlay bracket opened at %d (%v), before the first step's pipeline", i, steps)
+			}
+			break
+		}
+	}
+
+	// A standalone Action still brackets exactly once (the nesting does
+	// not leak: the count returns to zero).
+	spy2 := &actionSpy{point: uia.Point{X: 1, Y: 2}}
+	ov2 := &overlaySpy{}
+	ov2.share = spy2.step
+	svc := spy2.services()
+	svc.Overlay = ov2
+	cmds2 := CommandsWith(svc)
+	if _, cmdErr := runCommand(t, cmds2, "click", clickArgs("101", 2, 1, "left")); cmdErr != nil {
+		t.Fatalf("standalone click: %v", cmdErr.Error())
+	}
+	if got := ov2.recorded(); len(got) != 2 || !strings.HasPrefix(got[0], "overlay-show(") || got[1] != "overlay-hide" {
+		t.Errorf("a standalone Action's overlay steps = %v, want one show and one hide", got)
 	}
 }

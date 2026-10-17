@@ -8,6 +8,7 @@ package helper
 
 import (
 	"log"
+	"sync"
 
 	"github.com/hoangvu12/winuse/internal/shot"
 	"github.com/hoangvu12/winuse/internal/win"
@@ -29,6 +30,59 @@ type Overlay interface {
 	// display-affinity support (win32.md flags it as unverified that
 	// WDA_EXCLUDEFROMCAPTURE also hides a layered window from GDI BitBlt).
 	HideWhile(f func())
+}
+
+// bracketOverlay nests Show/Hide brackets (finding 12): a Batch shows the
+// indicator once for its whole run, and every step's own bracket rides
+// inside it — the inner hides only decrement, and the actual hide lands
+// when the outermost bracket ends, like the Esc arm scope. A step's Show
+// over the same Window re-positions harmlessly (the inner Show is a
+// no-op while a bracket is open). HideWhile passes straight through: a
+// capture hides and restores the real indicator underneath, whatever the
+// bracket count.
+type bracketOverlay struct {
+	inner Overlay
+	mu    sync.Mutex
+	shown int // open brackets; the real hide runs when it returns to 0
+}
+
+// newBracketOverlay wraps inner so Show/Hide nest.
+func newBracketOverlay(inner Overlay) *bracketOverlay {
+	return &bracketOverlay{inner: inner}
+}
+
+// Show implements Overlay: the first bracket raises the indicator, inner
+// brackets only count (the caller still learns a Show failure).
+func (o *bracketOverlay) Show(r win.Rect) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.shown == 0 {
+		if err := o.inner.Show(r); err != nil {
+			return err
+		}
+	}
+	o.shown++
+	return nil
+}
+
+// Hide implements Overlay: the last open bracket hides the indicator.
+func (o *bracketOverlay) Hide() error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.shown == 0 {
+		return nil // nothing is shown; a stray hide is a no-op
+	}
+	o.shown--
+	if o.shown == 0 {
+		return o.inner.Hide()
+	}
+	return nil
+}
+
+// HideWhile implements Overlay: delegated to the real indicator, which
+// hides for the capture and restores its own visibility afterwards.
+func (o *bracketOverlay) HideWhile(f func()) {
+	o.inner.HideWhile(f)
 }
 
 // showOverlay raises the indicator over the Window an Action is about to

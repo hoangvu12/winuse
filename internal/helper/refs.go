@@ -14,10 +14,65 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
 	"github.com/hoangvu12/winuse/internal/wstate"
 )
+
+// elementTarget is the parsed Element Reference of one Element-taking
+// Action (finding 16's shared front half): exactly one form is set — an
+// Element Index, a name:/id: reference, or an @x,y point of the Window's
+// latest screenshot. What the point means is the Action's own step:
+// click/scroll/drag/hover aim input at the point itself, set-value and
+// perform-secondary-action act on the Element the UIA worker finds under
+// it.
+type elementTarget struct {
+	index *int            // the Element Index form
+	ref   string          // the name:<text> / id:<AutomationId> form
+	point *protocol.Point // the @x,y coordinate form
+}
+
+// elementRefRequiredHint is the shared recovery hint when no Element
+// Reference was supplied at all.
+const elementRefRequiredHint = "read a Window's Elements with winuse get-window-state <window>, then act on one by its Element Index, name: or id: reference, or @x,y from its latest screenshot"
+
+// parseElementTarget guards and validates the Element Reference forms of
+// one Element-taking Action: exactly one of an Element Index, a name:/id:
+// reference or @x,y coordinates must be present (several are a usage
+// failure naming the command; so are a negative index and negative
+// coordinates). It runs before the Action pipeline, so a bad target never
+// activates anything.
+func parseElementTarget(cmd string, index *int, ref string, point *protocol.Point, usage string) (elementTarget, *Error) {
+	if n := countRefForms(point != nil, index != nil, ref != ""); n > 1 {
+		return elementTarget{}, Fail(fmt.Sprintf("%s: pass an element index, a name:/id: reference or @x,y coordinates, not several", cmd), usage)
+	}
+	if index == nil && ref == "" && point == nil {
+		return elementTarget{}, Fail(fmt.Sprintf("%s: an element index, a name:/id: reference or @x,y coordinates are required", cmd), elementRefRequiredHint)
+	}
+	if index != nil && *index < 0 {
+		return elementTarget{}, Fail(fmt.Sprintf("%s: the element index must be a non-negative integer", cmd), usage)
+	}
+	if point != nil && (point.X < 0 || point.Y < 0) {
+		return elementTarget{}, Fail(fmt.Sprintf("%s: the @x,y coordinates must be non-negative integers", cmd), usage)
+	}
+	return elementTarget{index: index, ref: ref, point: point}, nil
+}
+
+// resolve turns the target into the Element Index the Action's step acts
+// on, inside the Action pipeline (the Window is resolved): a name:/id:
+// reference resolves against the Window's latest Window State (exactly
+// one match, never a guess); an Element Index stays; the point form is
+// left to the Action's own step (it is not an index).
+func (t elementTarget) resolve(s Services, w win.WindowInfo) (int, *Error) {
+	if t.ref != "" {
+		return resolveElementRef(s, w, t.ref)
+	}
+	if t.index != nil {
+		return *t.index, nil
+	}
+	return -1, nil
+}
 
 // ElementResolver resolves a name:/id: Element Reference against a
 // Window's latest Window State to its Element Index (ticket 11). The
@@ -65,7 +120,7 @@ func refError(err error, w win.WindowInfo) *Error {
 	var bad *wstate.BadRefError
 	if errors.As(err, &bad) {
 		return Fail(err.Error(),
-			"an Element Reference is an Element Index, name:<text>, id:<AutomationId> or @x,y (click)")
+			"an Element Reference is an Element Index, name:<text>, id:<AutomationId> or @x,y (the latest screenshot's pixels)")
 	}
 	if errors.Is(err, uia.ErrNoState) {
 		return Fail(fmt.Sprintf("no cached Window State is available for window %d", w.ID),

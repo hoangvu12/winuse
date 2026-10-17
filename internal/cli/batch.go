@@ -37,13 +37,13 @@ func batchKindsWord() string {
 // text still separates steps: quote the text to keep it.
 func parseBatchArgs(args []string) (window string, steps []protocol.Step, err error) {
 	if len(args) < 2 {
-		return "", nil, errors.New("batch takes a window reference and at least one action step")
+		return "", nil, errors.New("batch takes a window reference and at least one Action")
 	}
 	window, rest := args[0], args[1:]
 	var tokens []string
 	flush := func() error {
 		if len(tokens) == 0 {
-			return errors.New("a batch step is empty; write `then` only between two steps")
+			return errors.New("a batch Action is empty; write `then` only between two Actions")
 		}
 		step, serr := parseBatchStep(tokens)
 		if serr != nil {
@@ -86,7 +86,7 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 			if len(pos) > 1 && isRefToken(pos[0]) {
 				return protocol.Step{}, errors.New(unquotedRefHint(pos[0] + " " + pos[1]))
 			}
-			return protocol.Step{}, errors.New("a batch click step takes one element index, name:/id: reference or @x,y")
+			return protocol.Step{}, errors.New("a batch click Action takes one element index, name:/id: reference or @x,y")
 		}
 		target, terr := parseClickTargetToken(pos[0])
 		if terr != nil {
@@ -101,17 +101,17 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 		}
 	case "type-text":
 		if len(rest) == 0 {
-			return protocol.Step{}, errors.New("a batch type-text step needs text")
+			return protocol.Step{}, errors.New("a batch type-text Action needs text")
 		}
 		args = protocol.TypeTextArgs{Text: strings.Join(rest, " ")}
 	case "press-key":
 		if len(rest) == 0 {
-			return protocol.Step{}, errors.New("a batch press-key step needs a key")
+			return protocol.Step{}, errors.New("a batch press-key Action needs a key")
 		}
 		args = protocol.PressKeyArgs{Key: strings.Join(rest, " ")}
 	case "set-value":
 		if len(rest) < 2 {
-			return protocol.Step{}, errors.New("a batch set-value step takes an element index or name:/id: reference and a value")
+			return protocol.Step{}, errors.New("a batch set-value Action takes an element index, name:/id: reference or @x,y, and a value")
 		}
 		index, ref, err := parseElementRefToken(rest[0])
 		if err != nil {
@@ -120,7 +120,7 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 		args = protocol.SetValueArgs{ElementIndex: index, Ref: ref, Value: strings.Join(rest[1:], " ")}
 	case "perform-secondary-action":
 		if len(rest) < 2 {
-			return protocol.Step{}, errors.New("a batch perform-secondary-action step takes an element index or name:/id: reference and an action")
+			return protocol.Step{}, errors.New("a batch perform-secondary-action Action takes an element index, name:/id: reference or @x,y, and an action")
 		}
 		index, ref, err := parseElementRefToken(rest[0])
 		if err != nil {
@@ -129,7 +129,7 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 		args = protocol.SecondaryActionArgs{ElementIndex: index, Ref: ref, Action: strings.Join(rest[1:], " ")}
 	case "activate-window":
 		if len(rest) != 0 {
-			return protocol.Step{}, errors.New("a batch activate-window step takes no arguments")
+			return protocol.Step{}, errors.New("a batch activate-window Action takes no arguments")
 		}
 		return protocol.Step{Kind: kind}, nil // no arguments at all
 	case "scroll":
@@ -137,7 +137,7 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 		// from ticket 12): the same arguments the standalone commands take,
 		// minus the Window.
 		if len(rest) != 3 {
-			return protocol.Step{}, errors.New("a batch scroll step takes an @x,y point and two scroll amounts")
+			return protocol.Step{}, errors.New("a batch scroll Action takes an @x,y point and two scroll amounts")
 		}
 		x, y, err := parsePointRef(rest[0])
 		if err != nil {
@@ -154,7 +154,7 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 		args = protocol.ScrollArgs{X: x, Y: y, ScrollX: dx, ScrollY: dy}
 	case "drag":
 		if len(rest) != 2 {
-			return protocol.Step{}, errors.New("a batch drag step takes two @x,y points (from, to)")
+			return protocol.Step{}, errors.New("a batch drag Action takes two @x,y points (from, to)")
 		}
 		fromX, fromY, err := parsePointRef(rest[0])
 		if err != nil {
@@ -167,7 +167,7 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 		args = protocol.DragArgs{FromX: fromX, FromY: fromY, ToX: toX, ToY: toY}
 	case "hover":
 		if len(rest) != 1 {
-			return protocol.Step{}, errors.New("a batch hover step takes an @x,y point")
+			return protocol.Step{}, errors.New("a batch hover Action takes an @x,y point")
 		}
 		x, y, err := parsePointRef(rest[0])
 		if err != nil {
@@ -186,7 +186,7 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 
 // batchCmd implements `winuse batch <window> <action> [arguments]
 // [then <action> [arguments]]...`: run several Actions on one Window in
-// order, stopping at the first failure (which names the failed step). A
+// order, stopping at the first failure (which names the failed Action). A
 // successful Batch prints `ok`, Codex-style.
 func batchCmd(args []string) int {
 	window, steps, err := parseBatchArgs(args)

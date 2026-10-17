@@ -1,6 +1,6 @@
 ---
 name: winuse
-description: Control Windows desktop apps from the command line — list apps and windows, read a window's accessibility tree as text, click, type, set values, scroll, drag, hover, and screenshot on request. Use when a task needs operating a real Windows application — its windows, dialogs, menus, or web pages inside a browser window. Foreground-only, with an on-screen overlay and an Esc stop.
+description: Control Windows desktop apps from the command line — list Apps and Windows, read a Window's accessibility tree as text, click, type, set values, scroll, drag, hover, and screenshot on request. Use when a task needs operating a real Windows App — its Windows, dialogs, menus, or web pages inside a browser Window. Foreground-only, with an on-screen overlay and an Esc stop.
 ---
 
 # winuse
@@ -14,10 +14,11 @@ Ground rules that shape everything else:
 - It runs in the **foreground** on the user's own desktop, never in the
   background. The machine must stay unlocked and usable; the user may be
   watching, and may take over at any moment.
-- While an Action runs, an on-screen banner frames the window:
-  **"winuse is in control — press Esc to stop"**. The user pressing the
-  physical **Esc** key stops the running command immediately — that is the
-  designed way for the user to take back control (see
+- While an Action or Batch runs, an on-screen banner frames the window:
+  **"winuse is in control — press Esc to stop"** (one banner for a whole
+  Batch, not one per Action). The user pressing the physical **Esc** key
+  stops the running command immediately — that is the designed way for
+  the user to take back control (see
   [When the user stops you](#when-the-user-stops-you-esc)).
 - The first command starts a small background helper automatically; later
   commands reuse it. Nothing to set up, nothing to manage.
@@ -50,8 +51,9 @@ picks **More info → Run anyway**, or unblocks the file once with
 `Unblock-File "$env:LOCALAPPDATA\winuse\winuse.exe"`. Tell the user what to
 click — never turn off Defender or add antivirus exclusions on their
 behalf. Building from source is the code-visible alternative:
-`git clone https://github.com/hoangvu12/winuse`, then `CGO_ENABLED=0 go
-build -o winuse.exe ./cmd/winuse` with Go 1.27 or newer.
+`git clone https://github.com/hoangvu12/winuse`, then (PowerShell)
+`$env:CGO_ENABLED=0; go build -o winuse.exe ./cmd/winuse` with Go 1.27
+or newer.
 
 ## The loop: observe, then one Action, then observe again
 
@@ -60,7 +62,7 @@ This discipline is what makes computer use reliable; follow it strictly:
 1. **Observe** — `winuse get-window-state <window>` prints the Element
    tree.
 2. **Act** — perform **exactly one** Action, or send **one** Batch of
-   routine steps.
+   routine Actions.
 3. **Observe again** — read a fresh Window State before the next Action.
 
 - Element Indexes, `name:`/`id:` references and `@x,y` coordinates are
@@ -80,6 +82,7 @@ This discipline is what makes computer use reliable; follow it strictly:
 
 ```
 winuse list-windows                  # one line per Window: <Window ID>  <App>  <title>
+winuse get-window <window>           # one Window's line, re-resolved by ID or App name
 winuse list-apps                     # running and recent Apps, with their Windows
 winuse launch-app <name|exe path>    # start an App; prints the Window it opened
 ```
@@ -89,6 +92,9 @@ winuse launch-app <name|exe path>    # start an App; prints the Window it opened
   lists the candidates — pick from them, never guess.
 - Never reconstruct a Window from remembered or guessed fields; always use
   what `list-windows`, `list-apps` or `launch-app` actually returned.
+- `get-window` re-resolves one Window — by Window ID or unambiguous App
+  name — and prints its one line: the cheap re-check after a helper
+  restart, or before acting on a Window that may have closed.
 - If the App you need has no Window yet, `launch-app` it (by name, by the
   catalog's launch identifier, or by exe path) and use the Window line it
   prints; if it reports none, re-list before concluding the launch failed.
@@ -166,8 +172,12 @@ An Element is named by:
 - **`name:<text>`** — the Element's name exactly as the tree printed it:
   `click 101 name:OK` (quote names with spaces: `click 101 "name:Save As"`);
 - **`id:<AutomationId>`** — the `ID:` column: `click 101 id:okButton`;
-- **`@x,y`** — coordinates in the latest screenshot's pixel space (click,
-  scroll, drag, hover): `click 101 @412,88`.
+- **`@x,y`** — coordinates in the latest screenshot's pixel space:
+  `click 101 @412,88`. Click, scroll, drag and hover aim at the point
+  itself; set-value and perform-secondary-action act on the **Element
+  under the point** (winuse resolves it live), so a Window whose tree is
+  sparse but whose screenshot is readable can still be operated by
+  coordinates.
 
 Matching against the tree is exact and case-sensitive. A name or ID that
 matches several Elements **fails listing the candidates** — never work
@@ -192,15 +202,15 @@ around it; disambiguate with a different reference or a fresh read.
 
 `winuse batch <window> <action> [args] [then <action> [args]] …` runs a
 routine sequence in one call, in order, stopping at the first failure and
-naming the failed step:
+naming the failed Action:
 
 ```
 winuse batch 101 click id:field then type-text hello world then press-key Return then click name:OK
 ```
 
-Steps take the same arguments as the standalone commands minus the Window.
-Malformed Batches are refused before any input is sent. Keep Batches to
-routine, well-understood sequences; anything uncertain needs
+The Actions take the same arguments as the standalone commands minus the
+Window. Malformed Batches are refused before any input is sent. Keep
+Batches to routine, well-understood sequences; anything uncertain needs
 observe-act-observe with one Action at a time.
 
 ## When the user stops you: Esc
@@ -260,6 +270,8 @@ Esc is the hard stop; beyond it, judgment is yours. The rules that matter:
 
 ```
 winuse list-windows                  list visible Windows: Window ID, App and title
+winuse get-window <window>           print one Window's line, resolved by Window ID or
+                                     an unambiguous App name
 winuse list-apps                     list running and recently used Apps, with their Windows
 winuse launch-app <name|exe path>    start an App by name or path; prints the Window it opened
 winuse get-window-state <window> [--screenshot]
@@ -275,10 +287,12 @@ winuse type-text <window> <text>     type Unicode text into the focused Element
 winuse press-key <window> <key>      press a key or chord: Return, Tab, Escape, Down,
                                      Control_L+a, Control_L+Shift_L+period, Numpad_0
 winuse set-value <window> <ref> <value>
-                                     set a settable Element's value directly
+                                     set a settable Element's value directly;
+                                     @x,y sets the Element under the point
 winuse perform-secondary-action <window> <ref> <action>
                                      perform a Secondary Action: Raise, Scroll Up/Down/
-                                     Left/Right, Expand, Collapse, Toggle, Select
+                                     Left/Right, Expand, Collapse, Toggle, Select;
+                                     @x,y acts on the Element under the point
 winuse scroll <window> @x,y <dx> <dy>
                                      scroll at a point; one wheel notch is 120; positive
                                      dy scrolls down, positive dx right
@@ -287,15 +301,16 @@ winuse hover <window> @x,y           move the pointer to a point and leave it th
 winuse activate-window <window>      bring a Window to the foreground
 winuse batch <window> <action> [args] [then <action> [args]] …
                                      several Actions in order, stopping at the first
-                                     failure; the failed step is named
+                                     failure; the failed Action is named
 winuse record-tree <window> <file>   development only: record a tree fixture for
                                      winuse's own tests
 winuse version                       print the version
 
 <window> is a Window ID, or an App name when that App has exactly one
 Window. An Element reference is an Element Index, name:<text>,
-id:<AutomationId> or @x,y (click, scroll, drag, hover), resolved against
-the Window's latest Window State.
+id:<AutomationId> or @x,y (the latest screenshot's pixels), resolved
+against the Window's latest Window State; @x,y names the Element under
+the point for set-value and perform-secondary-action.
 ```
 
 ## Rules

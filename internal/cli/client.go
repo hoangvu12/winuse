@@ -182,7 +182,13 @@ func (c *Client) roundTrip(conn net.Conn, req *protocol.Request) (*protocol.Resp
 			return nil, fmt.Errorf("verifying helper: %w", err)
 		}
 	}
-	deadline := protocol.TimeoutFor(req.Cmd) + exchangeSlack
+	// The command's budget (the explicit entry, else the default) plus the
+	// exchange slack for the connection deadline.
+	budget := protocol.RequestTimeout
+	if d, ok := protocol.CommandTimeout(req.Cmd); ok {
+		budget = d
+	}
+	deadline := budget + exchangeSlack
 	if err := conn.SetDeadline(time.Now().Add(deadline)); err != nil {
 		return nil, err
 	}
