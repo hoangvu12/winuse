@@ -121,7 +121,7 @@ func TestSetValueAndSecondaryUsageErrors(t *testing.T) {
 
 func TestUsageMentionsTicket07Commands(t *testing.T) {
 	for _, cmd := range []string{"set-value", "perform-secondary-action"} {
-		if !strings.Contains(usage, cmd) {
+		if !strings.Contains(Usage, cmd) {
 			t.Errorf("usage text missing %q", cmd)
 		}
 	}

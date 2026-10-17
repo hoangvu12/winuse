@@ -15,7 +15,7 @@ import (
 )
 
 // Usage is the short command surface (grows as tickets land).
-const usage = `usage: winuse <command> [arguments]
+const Usage = `usage: winuse <command> [arguments]
 
 commands:
   list-windows                list visible Windows: Window ID, App and title
@@ -73,7 +73,7 @@ Element of the Window's latest Window State
 // it.
 func Main(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprint(os.Stderr, usage)
+		fmt.Fprint(os.Stderr, Usage)
 		return 2
 	}
 	switch args[0] {
@@ -113,7 +113,7 @@ func Main(args []string) int {
 	case "activate-window":
 		return activateWindowCmd(args[1:])
 	default:
-		fmt.Fprintf(os.Stderr, "winuse: unknown command %q\n\n%s", args[0], usage)
+		fmt.Fprintf(os.Stderr, "winuse: unknown command %q\n\n%s", args[0], Usage)
 		return 2
 	}
 }

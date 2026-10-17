@@ -285,7 +285,7 @@ func TestBatchUsageErrorsExit2WithoutDialing(t *testing.T) {
 
 func TestUsageMentionsBatch(t *testing.T) {
 	for _, want := range []string{"batch", "then"} {
-		if !strings.Contains(usage, want) {
+		if !strings.Contains(Usage, want) {
 			t.Errorf("usage text missing %q", want)
 		}
 	}

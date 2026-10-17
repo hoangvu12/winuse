@@ -196,7 +196,7 @@ func TestPointerUsageErrorsExit2WithoutDialing(t *testing.T) {
 
 func TestUsageMentionsPointerCommands(t *testing.T) {
 	for _, cmd := range []string{"scroll", "drag", "hover"} {
-		if !strings.Contains(usage, cmd) {
+		if !strings.Contains(Usage, cmd) {
 			t.Errorf("usage text missing %q", cmd)
 		}
 	}

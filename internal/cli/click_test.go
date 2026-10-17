@@ -140,7 +140,7 @@ func TestClickUsageErrorsExit2WithoutDialing(t *testing.T) {
 
 func TestUsageMentionsActionCommands(t *testing.T) {
 	for _, cmd := range []string{"click", "activate-window", "--count", "--button"} {
-		if !strings.Contains(usage, cmd) {
+		if !strings.Contains(Usage, cmd) {
 			t.Errorf("usage text missing %q", cmd)
 		}
 	}
