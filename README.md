@@ -5,204 +5,114 @@ run shell commands list Apps and Windows, read a Window State (accessibility
 tree as text, screenshots on request) and perform Actions — at the quality of
 Codex Computer Use, without being tied to Codex.
 
-**Status: tickets 01–14 of the v1 plan** (`.scratch/winuse-v1/`; the
-skill/installer and the Task Suite — 15 and 16 — remain) —
-background helper, `winuse list-windows`, the fixture app with its opt-in
-e2e runner, `winuse list-apps` and `winuse launch-app`, `winuse
-get-window-state`: the Window State as Codex's Element tree, read through UI
-Automation on a single locked COM thread, plus the recorder for seam-2
-fixtures; Chromium/Electron support (a near-empty first read is retried once
-after a short delay, so web content appears in the tree); the first
-Actions, `winuse click` (single, double, right click by Element Index) and
-`winuse activate-window`, with the shared Action pipeline every later Action
-reuses; keyboard input, `winuse type-text` (arbitrary Unicode text,
-typed as Unicode key events) and `winuse press-key` (keys and chords by
-Codex's X keysym names); and `winuse set-value` plus
-`winuse perform-secondary-action`, with the full Codex line grammar in the
-Window State: each Element's rich state (value, toggled, selected,
-expanded, settable) and its Secondary Actions (Raise, Scroll Down, Expand,
-Collapse, plus winuse's Toggle and Select); and screenshots (ticket 08):
-`get-window-state --screenshot` captures the Window through a fallback-proof method chain and saves a
-model-friendly image whose path is printed, `winuse zoom` returns a
-full-resolution crop of a region, and `@x,y` coordinate clicks land exactly
-where aimed at any display scaling and on any monitor; the pointer Actions
-(ticket 10): `winuse scroll` at a point of the latest screenshot (horizontal
-and vertical, Codex's signs, one wheel notch = 120 units), `winuse drag` from
-point to point with interpolated injected moves so apps register it, and
-`winuse hover`, which moves the pointer and leaves it there to reveal
-hover-only toolbars and tooltips. Windows.Graphics
-Capture (ticket 09) is the first capture method — Codex's own —
-implemented with hand-written WinRT and Direct3D interop (no cgo) on a
-dedicated capture thread, falling back to the GDI chain on any failure;
-and the in-control overlay (ticket 13): a Codex-style, click-through,
-never-focused indicator framing the Window while an Action runs, kept out
-of winuse's own screenshots; and ticket 11:
-`name:<text>` / `id:<AutomationId>` **Element References** — every
-Element-taking Action can name its Element instead of using an Index,
-resolving against the Window's latest Window State, with ambiguous
-matches failing listing the candidates — and `winuse batch`, several
-Actions on one Window in a single call, in order, stopping at the first
-failure and naming the failed step. The Esc stop (ticket 12) is live:
-pressing the **physical Esc key** while winuse acts — an Action, a Batch
-step or in between, a launch-app wait — immediately stops the command:
-remaining Batch steps do not run, the key itself is swallowed so the
-controlled app never sees it, and the command exits with Codex's
-interrupt code 130 and the message that the user stopped winuse with the
-physical Escape key, telling the agent to stop and ask. The watcher is a
-low-level keyboard hook (`WH_KEYBOARD_LL`) on the helper's UI thread —
-the overlay's — that ignores every injected keystroke (winuse's own
-`press-key Escape` types a plain Escape). The product spec and the domain
-language live in
-`.scratch/winuse-v1/spec.md` and `CONTEXT.md`.
+**Status: tickets 01–15 of the v1 plan** (`.scratch/winuse-v1/`; only the
+Task Suite — 16 — remains): the background helper and the full command
+surface — discovery (`list-windows`, `list-apps`, `launch-app`),
+observation (`get-window-state`, Codex's Element-tree format with opt-in
+screenshots and `zoom`) and every Action (`click`, `type-text`,
+`press-key`, `set-value`, `perform-secondary-action`, `scroll`, `drag`,
+`hover`, `activate-window`, `batch`), with Element References (index,
+`name:`, `id:`, `@x,y`), the Chromium/Electron lazy-tree retry, the
+in-control overlay, the Esc stop (exit 130), and the
+Windows.Graphics.Capture-first screenshot chain — plus, with ticket 15, the
+shipped agent skill, installer and release workflow. The product spec and
+the domain language live in `.scratch/winuse-v1/spec.md` and `CONTEXT.md`.
 
-Windows-only. MIT licensed (see `LICENSE`).
+Windows-only. MIT licensed (see `LICENSE`). No telemetry.
 
-## Build
+## Install
 
-```
-CGO_ENABLED=0 go build -o winuse.exe ./cmd/winuse
+**The binary** — Windows only, one PowerShell line, no Go toolchain
+needed:
+
+```powershell
+irm https://raw.githubusercontent.com/hoangvu12/winuse/main/install.ps1 | iex
 ```
 
-One static Go binary, no cgo: Win32 APIs are called directly through
-`golang.org/x/sys/windows` and hand-written syscall vtables; the named-pipe
-transport uses `github.com/Microsoft/go-winio`.
+That downloads the release binary from GitHub Releases to
+`%LOCALAPPDATA%\winuse\winuse.exe`, removes its Mark of the Web, and adds
+it to your user PATH — restart the terminal once so the PATH is visible.
+To build from source instead: Go 1.27 or newer, then
+`CGO_ENABLED=0 go build -o winuse.exe ./cmd/winuse`.
 
-The binary embeds a per-monitor DPI-aware (v2) manifest (the fix for
-Codex's 175%-scaling click-offset bug) and version info, generated from
-`winres/winres.json` into committed `.syso` files:
-
-```
-go run github.com/tc-hib/go-winres@latest make --arch amd64,arm64 --out cmd/winuse/rsrc
-```
-
-## Tests
-
-- **Default (offline, hermetic):** `go test ./...` — protocol framing,
-  window filtering/formatting and resolution, client state machine, helper
-  serving and idle exit, the fixture app's Element contract, **Codex's
-  key-name parsing** (`internal/keys`: every accepted name, alias and
-  chord; the `unsupported key:` and Windows-key refusals) and the
-  seam-2 Window State tests: recorded/hand-authored tree fixtures are
-  rendered and compared with expected text (including the rich state and
-  Secondary Actions columns ticket 07 populates), the bounded tree walk
-  (caps, time limit, truncation notes) is tested against a fake element
-  source, the Secondary Actions policy (Codex's set plus Toggle/Select)
-  and the set-value/perform-secondary-action argument handling are tested
-  offline, the Chromium/Electron sparse-tree detection (the
-  lazy-accessibility retry and its notes) is tested against recorded
-  Chromium/Electron trees (`internal/uia/testdata/`), and the in-control
-  overlay's brackets are tested with fakes: the show/hide bracket around
-  every Action (never shown for the pre-input refusals, always hidden
-  after, whatever the outcome) and the capture bracket every capture
-  method runs inside, plus the overlay's layout functions and the UI
-  thread's job mechanics (in order, on one locked thread, bounded waits).
-  The Windows.Graphics.Capture method's pure parts are offline-tested too
-  (`internal/wgc`: the GUID literals against the documented IIDs, the
-  by-value struct packing, the frame-size cross-check, the BGRA→RGBA
-  readback, the environment knobs); its WinRT/Direct3D calls are
-  exercised only by the user-run e2e suite.
-  The ticket-11
-  tests: **Element Reference resolution** (unique, ambiguous with its
-  candidate lines, missing, exact-match semantics) against tree fixtures
-  (`internal/wstate`), the reference resolution the helper performs
-  against the live-Element store's Window State (`internal/uia`), every
-  Element-taking Action's reference wiring and failure messages, and
-  **Batch parsing and execution** (step splitting at `then`, per-step
-  argument parsing, in-order execution stopping at the first failure that
-  names the step, malformed steps refused before any input, the Window
-  injected into every step) with every Win32 and element side faked
-  (`internal/helper`, `internal/cli`). The ticket-12 tests: **the Esc
-  stop** — the hook's decision table (physical vs injected keys, the
-  down/up swallow pairing, the not-armed pass-through) and the latch's
-  nested scopes (`internal/win`), the typing abort between batches, the
-  launch-app wait stop, every command's exit-130 mapping with the
-  user-stopped-winuse message, Batch stops at every checkpoint (a stopped
-  step, between steps, the last step's tail), and the Esc stop outranking
-  the request timeout (`internal/apps`, `internal/helper`), plus the
-  pointer Actions as Batch steps. A guard proves no offline test ever
-  installs the real hook. No desktop access,
-  no input injection, safe to run any time.
-- **End-to-end (seam 1):** `test/e2e` — the real binary and the fixture app
-  against the live desktop. Opt-in only, **started by the user, never by
-  an agent** (see `test/e2e/README.md` for the rules):
-
-  ```
-  set WINUSE_E2E=1
-  go test -tags e2e -v ./test/e2e
-  ```
-
-## How it works
-
-`winuse` is a thin CLI client plus a background **helper** process:
-
-- The first command spawns the helper **detached** (no console window, no
-  inherited pipes — safe inside harness job objects that kill children).
-- The helper listens on a named pipe `\\.\pipe\winuse-<user-SID>-<session>[-admin]`
-  with a DACL granting access **only to the current user's SID**; clients
-  verify the serving process really runs as that user (anti-squatting).
-  A `Local\` single-instance mutex deduplicates concurrent starts.
-- The CLI sends **one JSON line request per connection** and prints the
-  response text (see `internal/protocol`). Requests carry the binary
-  version; a helper from a different build answers "stale" and exits so
-  the CLI restarts a current one — upgrades never talk to an old helper.
-- The helper exits by itself after **5 minutes without requests**
-  (orchestrator decision; override with `WINUSE_HELPER_IDLE`, a duration
-  like `90s`); the next command restarts it transparently.
-- Requests time out after **10 s** (15 s for `launch-app`) and report
-  `winuse request timed out: <command>`;
-  Esc stops exit with code 130.
-- Helper logs go to `%LOCALAPPDATA%\winuse\helper.log` (its stderr is NUL).
-- The process is **per-monitor DPI aware v2** (manifest + runtime call) so
-  every coordinate is physical pixels from the start.
-- All **UI Automation work runs on one OS-locked, COM-initialised (MTA)
-  thread** in the helper (see `internal/uia`), reached through a job queue
-  — hand-written COM vtable calls, no cgo. Nothing else touches COM; there
-  is **no UIA event monitoring at all** (a known cause of Codex's
-  system-wide UIA freezes), and a wedged worker thread is abandoned and
-  replaced, never killed.
-- The helper also owns a **UI thread**: one more OS-locked thread, with a
-  Win32 message loop, that carries the **in-control overlay** window and
-  the **Esc keyboard hook** (`WH_KEYBOARD_LL`; injected keystrokes are
-  ignored, and the physical key is swallowed only while winuse is in
-  control). Input injection and UI Automation never run on it (ADR 0006,
-  ADR 0007).
-
-`winuse list-windows` prints one line per visible Window:
+**The skill** — so your agents load winuse's usage guidance. The skill is
+the `SKILL.md` at the repo root, and it installs into both Claude Code's
+and Pi's skill locations (and any other agent the [skills
+CLI](https://skills.sh) supports):
 
 ```
-<Window ID>\t<App>\t<title>
+npx skills add hoangvu12/winuse
 ```
 
-Hidden, DWM-cloaked and tool windows are excluded; owned dialogs ("Save
-As") are listed as their own Window of the same App. UWP windows are
-attributed to their real app process, and the App name is the executable's
-FileDescription, falling back to the exe base name.
+It is project-scoped by default (`.claude/skills/`, `.agents/skills/`);
+`-g` installs to the user-level directories (`~/.claude/skills/`,
+`~/.agents/skills/`). Pi discovers `.agents/skills/` from the working
+directory up through its ancestors, so a project install just works. The
+skill is self-contained: even when only its one `SKILL.md` file is
+installed, the guidance is complete.
 
-`winuse list-apps` prints the App catalog — every running App with its
-Windows, then recently used Apps (from Explorer's UserAssist tracking,
-most recent first, at most 30) marked `not running`:
+Then ask your agent to use it — e.g. *“open Notepad and type hello world
+using the winuse skill”*. The skill costs only its name and description in
+context until it is used.
+
+### Allowing the unsigned binary
+
+winuse is **unsigned for v1** (code signing is out of scope), so Windows
+may flag the freshly downloaded `winuse.exe`. All of these are false
+positives — the binary is built by [this
+workflow](.github/workflows/release.yml) from the tagged source in this
+repo, and you can always build it yourself instead:
+
+- **SmartScreen** — “Windows protected your PC” on the first run: choose
+  **More info → Run anyway**. This dialog comes from the Mark of the Web
+  that browsers put on downloaded files; the installer already strips it,
+  so you should rarely see this.
+- **Defender Antivirus** flags the file (rare): Windows Security →
+  Virus & threat protection → **Protection history** → open the winuse
+  detection → **Allow**. Allow that one file — don't disable real-time
+  protection.
+- A launch blocked with a zone error: run
+  `Unblock-File "$env:LOCALAPPDATA\winuse\winuse.exe"` once.
+
+## Quick start
+
+The working loop is **observe → one Action (or one Batch) → observe
+again**; the tree is the cheap read, screenshots are opt-in, and the
+physical Esc key stops anything winuse is doing:
 
 ```
-<App name>\t<state>\t<last used>\t<use count>\t<launch identifier>
-\t<Window ID>\t<title>      (one line per Window of a running App)
+C:\> winuse list-windows
+101     Example    Example App
+142     Notepad    *untitled - Notepad
+...
+
+C:\> winuse get-window-state 101
+Window: "Example", App: app.exe.
+	0 window Example Secondary Actions: Raise
+		1 edit (settable, string) Search ID: searchBox
+		2 button OK ID: okButton
+
+The focused UI element is 1 edit (settable, string) Search ID: searchBox.
+
+C:\> winuse set-value 101 id:searchBox "hello"
+ok
+C:\> winuse click 101 name:OK
+ok
+C:\> winuse batch 101 click id:field then type-text hello then press-key Return then click name:OK
+ok
 ```
 
-Window lines start with a tab, so App and Window lines are easy to tell
-apart. The launch identifier is exactly what `launch-app` accepts: an
-executable path, a Start-menu shortcut path, or an App User Model ID for
-packaged (Store) Apps (their running processes adopt it automatically).
+(Abridged; see the sections below for the real formats.) A `<window>` is
+a Window ID from `list-windows`, or an App name when that App has exactly
+one Window. Elements are named by index, `name:`, `id:` or — after a
+screenshot — `@x,y` coordinates. Actions print `ok` or a one-line failure
+with a recovery hint; the user pressing Esc exits 130 with a message that
+says so.
 
-`winuse launch-app <name|exe path>` starts an App — by name (matched
-case-insensitively against the catalog, installed Start-menu shortcuts and
-packaged Apps; several distinct matches are an error listing them, never a
-guess), or by an explicit identifier — and prints the Window it opened as
-one `list-windows`-style line, within the **15 s launch timeout**. Apps
-that open no Window fail with `launched app did not expose a targetable
-window: <app>` (Codex's message); a single-instance App that reuses an
-existing Window is recognized by that Window coming to the foreground.
-Name resolution reads the registry, the Start menu and (for packaged
-Apps, once per helper lifetime, best-effort) PowerShell's `Get-StartApps`;
-none of it sends input.
+The complete guidance your agents load — including the safety rules, the
+recovery ladder and the Esc contract — is [`SKILL.md`](SKILL.md); this
+README documents the same surface for humans and the internals for
+developers.
 
 ## Reading a Window State
 
@@ -254,9 +164,9 @@ override). A read that exceeds a limit returns the **partial tree** with a
 `(truncated: <limit>, omitted <n> children)` to the cut Element's line.
 
 The helper keeps the **live Elements behind the latest Window State** for
-each Window (a new read replaces them), so later Action tickets can
-resolve Element Indexes — and so indexes from an earlier Window State go
-stale instead of hitting the wrong Element.
+each Window (a new read replaces them), so Element Indexes resolve to the
+same Element across CLI calls — and indexes from an earlier Window State
+go stale instead of hitting the wrong Element.
 
 ### Chromium and Electron apps
 
@@ -304,7 +214,8 @@ captured through a **method chain** that never depends on one method:
 A near-black frame (the classic "nothing was rendered" failure) or an
 error falls through to the next method; only when every method fails does
 the command fail. Every method runs with the in-control overlay hidden, so
-winuse's own screenshots never contain it even while an Action runs. Which method captured each frame is written to the
+winuse's own screenshots never contain it even while an Action runs. Which
+method captured each frame is written to the
 helper log (`%LOCALAPPDATA%\winuse\helper.log`), and two environment
 knobs control the first method for diagnosis: `WINUSE_WGC=off` disables
 it outright, `WINUSE_WGC_BUDGET=<duration>` bounds its wait (default 2 s) —
@@ -353,8 +264,8 @@ winuse activate-window <window>
 winuse batch <window> <action> [arguments] [then <action> [arguments]] ...
 ```
 
-Every Action (this is the pipeline all later Action tickets reuse) does
-the same thing before its own step:
+Every Action (this is the pipeline all Action commands share) does the
+same thing before its own step:
 
 1. **resolve** the Window by Window ID or App name (exactly one match);
 2. **refuse a locked desktop** (`Windows desktop is locked (input desktop
@@ -523,9 +434,8 @@ so a mistyped Batch never half-runs. A Batch's request budget is 60 s
 10 s default). Pressing the physical Esc key aborts a running Batch at
 the next checkpoint — between a stopped step's input batches, between
 steps, in a step's tail — and the remaining steps do not run. The
-ticket-10 pointer Actions are Batch steps too (`scroll`, `drag`,
-`hover`, taking the same arguments as their standalone forms minus the
-Window):
+pointer Actions are Batch steps too (`scroll`, `drag`, `hover`, taking
+the same arguments as their standalone forms minus the Window).
 
 ## The in-control overlay
 
@@ -570,7 +480,8 @@ Captures a real Window's tree and saves it as a **fixture file** — the
 same JSON the renderer loads (`wstate.Tree`, format 1) — for the seam-2
 offline tests (`internal/wstate/testdata/`, `internal/uia/testdata/`).
 Hand-authored fixtures are written in the same format and marked as such
-in their `source` field.
+in their `source` field. Development only — it exists to maintain the
+offline fixtures, not for agents to use.
 
 ## The Esc stop
 
@@ -601,6 +512,79 @@ so the agent stops and asks instead of retrying. What counts:
   remaining steps unrun; a stop during a launch-app wait reports the
   stop, not the timeout, and the App that already started keeps running.
 
+## How it works
+
+`winuse` is a thin CLI client plus a background **helper** process:
+
+- The first command spawns the helper **detached** (no console window, no
+  inherited pipes — safe inside harness job objects that kill children).
+- The helper listens on a named pipe `\\.\pipe\winuse-<user-SID>-<session>[-admin]`
+  with a DACL granting access **only to the current user's SID**; clients
+  verify the serving process really runs as that user (anti-squatting).
+  A `Local\` single-instance mutex deduplicates concurrent starts.
+- The CLI sends **one JSON line request per connection** and prints the
+  response text (see `internal/protocol`). Requests carry the binary
+  version; a helper from a different build answers "stale" and exits so
+  the CLI restarts a current one — upgrades never talk to an old helper.
+- The helper exits by itself after **5 minutes without requests**
+  (orchestrator decision; override with `WINUSE_HELPER_IDLE`, a duration
+  like `90s`); the next command restarts it transparently.
+- Requests time out after **10 s** (15 s for `launch-app`, 60 s for a
+  Batch) and report `winuse request timed out: <command>`;
+  Esc stops exit with code 130.
+- Helper logs go to `%LOCALAPPDATA%\winuse\helper.log` (its stderr is NUL).
+- The process is **per-monitor DPI aware v2** (manifest + runtime call) so
+  every coordinate is physical pixels from the start.
+- All **UI Automation work runs on one OS-locked, COM-initialised (MTA)
+  thread** in the helper (see `internal/uia`), reached through a job queue
+  — hand-written COM vtable calls, no cgo. Nothing else touches COM; there
+  is **no UIA event monitoring at all** (a known cause of Codex's
+  system-wide UIA freezes), and a wedged worker thread is abandoned and
+  replaced, never killed.
+- The helper also owns a **UI thread**: one more OS-locked thread, with a
+  Win32 message loop, that carries the **in-control overlay** window and
+  the **Esc keyboard hook** (`WH_KEYBOARD_LL`; injected keystrokes are
+  ignored, and the physical key is swallowed only while winuse is in
+  control). Input injection and UI Automation never run on it (ADR 0006,
+  ADR 0007).
+
+`winuse list-windows` prints one line per visible Window:
+
+```
+<Window ID>\t<App>\t<title>
+```
+
+Hidden, DWM-cloaked and tool windows are excluded; owned dialogs ("Save
+As") are listed as their own Window of the same App. UWP windows are
+attributed to their real app process, and the App name is the executable's
+FileDescription, falling back to the exe base name.
+
+`winuse list-apps` prints the App catalog — every running App with its
+Windows, then recently used Apps (from Explorer's UserAssist tracking,
+most recent first, at most 30) marked `not running`:
+
+```
+<App name>\t<state>\t<last used>\t<use count>\t<launch identifier>
+\t<Window ID>\t<title>      (one line per Window of a running App)
+```
+
+Window lines start with a tab, so App and Window lines are easy to tell
+apart. The launch identifier is exactly what `launch-app` accepts: an
+executable path, a Start-menu shortcut path, or an App User Model ID for
+packaged (Store) Apps (their running processes adopt it automatically).
+
+`winuse launch-app <name|exe path>` starts an App — by name (matched
+case-insensitively against the catalog, installed Start-menu shortcuts and
+packaged Apps; several distinct matches are an error listing them, never a
+guess), or by an explicit identifier — and prints the Window it opened as
+one `list-windows`-style line, within the **15 s launch timeout**. Apps
+that open no Window fail with `launched app did not expose a targetable
+window: <app>` (Codex's message); a single-instance App that reuses an
+existing Window is recognized by that Window coming to the foreground.
+Name resolution reads the registry, the Start menu and (for packaged
+Apps, once per helper lifetime, best-effort) PowerShell's `Get-StartApps`;
+none of it sends input.
+
 ## The fixture app
 
 `cmd/winusefixture` is the e2e test target: a pure-Go, no-cgo Win32 app
@@ -618,9 +602,96 @@ contents, checkbox state, last button pressed, canvas clicks, …) as JSON
 to the file given by `-state`, rewritten atomically on every change, so
 assertions never depend on pixels.
 
+## Tests
+
+- **Default (offline, hermetic):** `go test ./...` — protocol framing,
+  window filtering/formatting and resolution, client state machine, helper
+  serving and idle exit, the fixture app's Element contract, **Codex's
+  key-name parsing** (`internal/keys`: every accepted name, alias and
+  chord; the `unsupported key:` and Windows-key refusals) and the
+  seam-2 Window State tests: recorded/hand-authored tree fixtures are
+  rendered and compared with expected text (including the rich state and
+  Secondary Actions columns ticket 07 populates), the bounded tree walk
+  (caps, time limit, truncation notes) is tested against a fake element
+  source, the Secondary Actions policy (Codex's set plus Toggle/Select)
+  and the set-value/perform-secondary-action argument handling are tested
+  offline, the Chromium/Electron sparse-tree detection (the
+  lazy-accessibility retry and its notes) is tested against recorded
+  Chromium/Electron trees (`internal/uia/testdata/`), and the in-control
+  overlay's brackets are tested with fakes: the show/hide bracket around
+  every Action (never shown for the pre-input refusals, always hidden
+  after, whatever the outcome) and the capture bracket every capture
+  method runs inside, plus the overlay's layout functions and the UI
+  thread's job mechanics (in order, on one locked thread, bounded waits).
+  The Windows.Graphics.Capture method's pure parts are offline-tested too
+  (`internal/wgc`: the GUID literals against the documented IIDs, the
+  by-value struct packing, the frame-size cross-check, the BGRA→RGBA
+  readback, the environment knobs); its WinRT/Direct3D calls are
+  exercised only by the user-run e2e suite.
+  The ticket-11
+  tests: **Element Reference resolution** (unique, ambiguous with its
+  candidate lines, missing, exact-match semantics) against tree fixtures
+  (`internal/wstate`), the reference resolution the helper performs
+  against the live-Element store's Window State (`internal/uia`), every
+  Element-taking Action's reference wiring and failure messages, and
+  **Batch parsing and execution** (step splitting at `then`, per-step
+  argument parsing, in-order execution stopping at the first failure that
+  names the step, malformed steps refused before any input, the Window
+  injected into every step) with every Win32 and element side faked
+  (`internal/helper`, `internal/cli`). The ticket-12 tests: **the Esc
+  stop** — the hook's decision table (physical vs injected keys, the
+  down/up swallow pairing, the not-armed pass-through) and the latch's
+  nested scopes (`internal/win`), the typing abort between batches, the
+  launch-app wait stop, every command's exit-130 mapping with the
+  user-stopped-winuse message, Batch stops at every checkpoint (a stopped
+  step, between steps, the last step's tail), and the Esc stop outranking
+  the request timeout (`internal/apps`, `internal/helper`), plus the
+  pointer Actions as Batch steps. A guard proves no offline test ever
+  installs the real hook. The ticket-15 tests (`internal/skill`) guard the
+  shipped skill: the frontmatter stays valid for `npx skills add`, the
+  SKILL.md keeps covering the full command surface (cross-checked against
+  the CLI's usage text), never mentions the tool it must not depend on,
+  and the installer's asset names stay in sync with the release workflow.
+  No desktop access, no input injection, safe to run any time.
+- **End-to-end (seam 1):** `test/e2e` — the real binary and the fixture app
+  against the live desktop. **Opt-in only, started by the user, never by
+  an agent** (see `test/e2e/README.md` for the rules):
+
+  ```
+  set WINUSE_E2E=1
+  go test -tags e2e -v ./test/e2e
+  ```
+
+  These tests take over the screen — they click, type, activate windows
+  and take screenshots while they run — so an agent must never enable the
+  opt-in, run them, or start the fixture app, without the user's explicit
+  go-ahead. `go test ./...` (above) is the only test command an agent may
+  run.
+
+## Build
+
+```
+CGO_ENABLED=0 go build -o winuse.exe ./cmd/winuse
+```
+
+One static Go binary, no cgo: Win32 APIs are called directly through
+`golang.org/x/sys/windows` and hand-written syscall vtables; the named-pipe
+transport uses `github.com/Microsoft/go-winio`.
+
+The binary embeds a per-monitor DPI-aware (v2) manifest (the fix for
+Codex's 175%-scaling click-offset bug) and version info, generated from
+`winres/winres.json` into committed `.syso` files:
+
+```
+go run github.com/tc-hib/go-winres@latest make --arch amd64,arm64 --out cmd/winuse/rsrc
+```
+
 ## Layout
 
 ```
+SKILL.md                the agent skill (installed by `npx skills add`; self-contained)
+install.ps1             one-line installer: release binary onto the user PATH
+.github/workflows/release.yml   builds the release binaries on a pushed tag
 cmd/winuse/          binary: CLI dispatch + hidden __helper entry (manifest .syso here)
 cmd/winusefixture/   the e2e fixture app's entry point (see The fixture app)
 internal/protocol/   CLI↔helper contract: JSON-lines request/response, timeouts, exit codes
@@ -634,6 +705,7 @@ internal/shot/       screenshots: frames, capture-method chain, box-filter scali
 internal/wgc/        Windows.Graphics.Capture: hand-written WinRT/Direct3D interop (raw vtables, no cgo), the dedicated capture thread, the capture flow and its fallbacks
 internal/wstate/     Window State model: Element/Tree, Codex-format rendering, name:/id: Element Reference resolution, recorded-tree fixtures (seam 2)
 internal/cli/        CLI: subcommands, dial-or-spawn client state machine, output/exit-code policy
+internal/skill/      guards the shipped SKILL.md / installer / release surface (offline tests)
 internal/version/    binary version (stale-helper detection)
 internal/fixture/    the fixture app: Element contract (elements.go), state file, UIA provider, Win32 app
 test/e2e/            opt-in end-to-end tests (user-run only; see test/e2e/README.md)
@@ -647,3 +719,22 @@ winres/              manifest + version-info source for the .syso files
 | golang.org/x/sys | BSD-3-Clause | Win32 API calls |
 | github.com/Microsoft/go-winio | MIT | named-pipe transport |
 | tc-hib/go-winres (tool, not imported) | 0BSD | manifest/version .syso generation |
+
+## Publishing a release
+
+Nothing publishes by itself; the workflow triggers only on a tag you
+push.
+
+1. Bump the version — `internal/version/version.go` (the stale-helper
+   check) and `winres/winres.json` — then regenerate the committed
+   `.syso` resources:
+   `go run github.com/tc-hib/go-winres@latest make --arch amd64,arm64 --out cmd/winuse/rsrc`.
+2. Commit, tag, push the tag:
+   `git tag v0.1.0 && git push origin v0.1.0`.
+3. GitHub Actions (`.github/workflows/release.yml`) cross-compiles
+   `winuse_windows_amd64.exe` and `winuse_windows_arm64.exe` and creates
+   the GitHub Release with generated notes. `install.ps1` always installs
+   from `releases/latest`.
+
+The binaries are unsigned (see
+[Allowing the unsigned binary](#allowing-the-unsigned-binary)).

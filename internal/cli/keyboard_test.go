@@ -138,7 +138,7 @@ func TestKeyboardUsageErrorsExit2WithoutDialing(t *testing.T) {
 
 func TestUsageMentionsKeyboardCommands(t *testing.T) {
 	for _, cmd := range []string{"type-text", "press-key", "Control_L+a", "Numpad_0", "Unicode"} {
-		if !strings.Contains(usage, cmd) {
+		if !strings.Contains(Usage, cmd) {
 			t.Errorf("usage text missing %q", cmd)
 		}
 	}

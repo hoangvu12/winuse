@@ -53,7 +53,7 @@ func TestMainUsageErrors(t *testing.T) {
 // accidental removal from the help text.
 func TestUsageMentionsWindowStateCommands(t *testing.T) {
 	for _, cmd := range []string{"list-windows", "get-window-state", "record-tree"} {
-		if !strings.Contains(usage, cmd) {
+		if !strings.Contains(Usage, cmd) {
 			t.Errorf("usage text missing %q", cmd)
 		}
 	}
