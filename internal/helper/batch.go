@@ -12,7 +12,7 @@ package helper
 // Codex has no batch tool (codex-surface.md §1: the model chains calls in
 // a JS cell instead); winuse's Batch keeps Codex's output style — `ok`,
 // or a one-line failure with a recovery hint — and the failed step is
-// named: "batch stopped at step N (<action>): <message>".
+// named: "batch stopped at Action N (<action>): <message>".
 //
 // Ticket 12 (Esc stop) aborts a running Batch here: the run loop below is
 // the between-steps point (the Esc check at its top, before each step),
@@ -38,8 +38,8 @@ const batchUsageHint = "usage: winuse batch <window> <action> [arguments] [then 
 
 // batch runs `winuse batch <window> <action> [arguments] [then <action>
 // [arguments]]...`: the Actions run in order on the one Window, and the
-// first failure stops the Batch with the failed step named. Steps are the
-// Action commands (protocol.BatchStepKinds); a step's arguments are the
+// first failure stops the Batch with the failed Action named. Steps are the
+// Action commands (protocol.BatchStepKinds); a Step's arguments are the
 // standalone command's own, without the Window. A stopped Batch (the
 // user's Esc press) keeps the stop's exit code (130) and message.
 //
@@ -63,7 +63,7 @@ func batch(commands map[string]Command, s Services) Command {
 			return "", Fail("batch: a window reference is required", batchUsageHint)
 		}
 		if len(a.Steps) == 0 {
-			return "", Fail("batch: at least one action step is required", batchUsageHint)
+			return "", Fail("batch: at least one Action is required", batchUsageHint)
 		}
 
 		// Prepare every step before any input is sent: a step's Kind must
@@ -82,19 +82,19 @@ func batch(commands map[string]Command, s Services) Command {
 		steps := make([]prepared, 0, len(a.Steps))
 		for i, st := range a.Steps {
 			if st.Kind == "" {
-				return "", Fail(fmt.Sprintf("batch: step %d has no action", i+1), batchUsageHint)
+				return "", Fail(fmt.Sprintf("batch: Action %d has no action", i+1), batchUsageHint)
 			}
 			if !batchableStep(st.Kind) {
-				return "", Fail(fmt.Sprintf("batch: step %d (%s) is not a batchable action; expected one of %s",
+				return "", Fail(fmt.Sprintf("batch: Action %d (%s) is not a batchable action; expected one of %s",
 					i+1, st.Kind, strings.Join(protocol.BatchStepKinds, ", ")), batchUsageHint)
 			}
 			cmd, ok := commands[st.Kind]
 			if !ok {
-				return "", Fail(fmt.Sprintf("batch: step %d (%s) is unavailable", i+1, st.Kind), batchUsageHint)
+				return "", Fail(fmt.Sprintf("batch: Action %d (%s) is unavailable", i+1, st.Kind), batchUsageHint)
 			}
 			injected, err := withWindow(a.Window, st.Args)
 			if err != nil {
-				return "", Fail(fmt.Sprintf("batch: step %d (%s) has invalid arguments: %v", i+1, st.Kind, err), batchUsageHint)
+				return "", Fail(fmt.Sprintf("batch: Action %d (%s) has invalid arguments: %v", i+1, st.Kind, err), batchUsageHint)
 			}
 			steps = append(steps, prepared{kind: st.Kind, cmd: cmd, args: injected})
 		}
@@ -127,7 +127,7 @@ func batch(commands map[string]Command, s Services) Command {
 			_, err := st.cmd(ctx, st.args)
 			if err != nil {
 				return "", &Error{
-					Msg:  fmt.Sprintf("batch stopped at step %d (%s): %s", i+1, st.kind, err.Msg),
+					Msg:  fmt.Sprintf("batch stopped at Action %d (%s): %s", i+1, st.kind, err.Msg),
 					Hint: err.Hint,
 					Exit: err.Exit,
 				}

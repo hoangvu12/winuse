@@ -192,7 +192,7 @@ func TestBatchStopsAtTheFirstFailure(t *testing.T) {
 		"then", "type-text", "must not appear",
 	})
 	assertActionFailed(t, "batch stops at the bad step", stdout, stderr, exit,
-		"batch stopped at step 2 (click): name \"Twin\" matches 2 elements")
+		"batch stopped at Action 2 (click): name \"Twin\" matches 2 elements")
 	if !strings.Contains(stderr, "candidates:") {
 		t.Errorf("stderr = %q, want the step's own failure and candidates", stderr)
 	}
@@ -213,7 +213,7 @@ func TestBatchUnknownWindowFailsStepOne(t *testing.T) {
 	// the failure names.
 	stdout, stderr, exit := runBatch(t, []string{"999999", "click", "id:x"})
 	assertActionFailed(t, "batch with an unknown window", stdout, stderr, exit,
-		"batch stopped at step 1 (click): no open Window with ID 999999")
+		"batch stopped at Action 1 (click): no open Window with ID 999999")
 }
 
 func TestBatchUsageErrorsExit2WithoutDialing(t *testing.T) {

@@ -231,7 +231,7 @@ func TestEscStopsTheBatchInTheFailedStep(t *testing.T) {
 	if cmdErr.Exit != protocol.ExitEsc {
 		t.Errorf("exit = %d, want %d", cmdErr.Exit, protocol.ExitEsc)
 	}
-	want := "batch stopped at step 1 (click): " + escStopMessage
+	want := "batch stopped at Action 1 (click): " + escStopMessage
 	if cmdErr.Msg != want {
 		t.Errorf("message = %q, want %q", cmdErr.Msg, want)
 	}

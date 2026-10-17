@@ -52,7 +52,7 @@ commands:
   batch <window> <action> [arguments] [then <action> [arguments]] ...
                                run several Actions on one Window in order,
                                stopping at the first failure (which names
-                               the failed step); e.g.
+                               the failed Action); e.g.
                                winuse batch 101 click name:File then type-text hello then press-key Return
   scroll <window> @x,y <dx> <dy>
                                scroll the Window at a point of its latest

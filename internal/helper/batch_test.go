@@ -176,7 +176,7 @@ func TestBatchStopsAtFirstFailureNamingTheStep(t *testing.T) {
 	if cmdErr == nil {
 		t.Fatal("a failed step must fail the Batch")
 	}
-	wantMsg := `batch stopped at step 2 (type-text): point (660, 430) is over "Something Else", not the target Window`
+	wantMsg := `batch stopped at Action 2 (type-text): point (660, 430) is over "Something Else", not the target Window`
 	if cmdErr.Msg != wantMsg {
 		t.Errorf("message = %q, want %q", cmdErr.Msg, wantMsg)
 	}
@@ -205,7 +205,7 @@ func TestBatchFirstStepFailureNamesStepOne(t *testing.T) {
 	if cmdErr == nil {
 		t.Fatal("an ambiguous Window must fail the Batch")
 	}
-	wantMsg := `batch stopped at step 1 (click): app "Chrome" has 2 open Windows; name the Window by its Window ID`
+	wantMsg := `batch stopped at Action 1 (click): app "Chrome" has 2 open Windows; name the Window by its Window ID`
 	if cmdErr.Msg != wantMsg {
 		t.Errorf("message = %q, want %q", cmdErr.Msg, wantMsg)
 	}
@@ -228,22 +228,22 @@ func TestBatchRefusesMalformedStepsBeforeAnyInput(t *testing.T) {
 		{
 			name:  "unknown action in a later step",
 			steps: []protocol.Step{stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(1)}), {Kind: "get-window-state"}},
-			want:  `step 2 (get-window-state) is not a batchable action`,
+			want:  `Action 2 (get-window-state) is not a batchable action`,
 		},
 		{
 			name:  "observation command",
 			steps: []protocol.Step{{Kind: "zoom"}},
-			want:  `step 1 (zoom) is not a batchable action`,
+			want:  `Action 1 (zoom) is not a batchable action`,
 		},
 		{
 			name:  "a nested batch",
 			steps: []protocol.Step{{Kind: "batch"}},
-			want:  `step 1 (batch) is not a batchable action`,
+			want:  `Action 1 (batch) is not a batchable action`,
 		},
 		{
 			name:  "arguments that are not an object",
 			steps: []protocol.Step{{Kind: "click", Args: json.RawMessage(`5`)}},
-			want:  `step 1 (click) has invalid arguments`,
+			want:  `Action 1 (click) has invalid arguments`,
 		},
 	}
 	for _, tc := range cases {
@@ -273,7 +273,7 @@ func TestBatchUsageFailures(t *testing.T) {
 		want string
 	}{
 		{"no window", `{"steps":[{"kind":"activate-window"}]}`, "a window reference is required"},
-		{"no steps", `{"window":"101"}`, "at least one action step is required"},
+		{"no steps", `{"window":"101"}`, "at least one Action is required"},
 		{"not JSON", `{"window":`, "invalid arguments"},
 	}
 	for _, tc := range cases {
@@ -337,7 +337,7 @@ func TestBatchExitCodeForwarding(t *testing.T) {
 	if cmdErr.Exit != protocol.ExitEsc {
 		t.Errorf("exit = %d, want %d forwarded from the step", cmdErr.Exit, protocol.ExitEsc)
 	}
-	if !strings.HasPrefix(cmdErr.Msg, "batch stopped at step 1 (press-key): the user stopped winuse") {
+	if !strings.HasPrefix(cmdErr.Msg, "batch stopped at Action 1 (press-key): the user stopped winuse") {
 		t.Errorf("message = %q, want the step named with its message", cmdErr.Msg)
 	}
 	if cmdErr.Hint != "stop and ask the user" {
@@ -412,7 +412,7 @@ func TestBatchStepWithoutAnAction(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, cmdErr := batch(map[string]Command{}, Services{Windows: func() ([]win.WindowInfo, error) { return fakeWindows(), nil }})(context.Background(), raw)
-	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "step 1 has no action") {
+	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "Action 1 has no action") {
 		t.Fatalf("message = %v, want the no-action refusal", cmdErr)
 	}
 }

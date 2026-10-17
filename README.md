@@ -354,7 +354,7 @@ is optional, so `winuse type-text 101 hello world` and `winuse type-text
 101 "hello world"` type the same text. The text is injected as **Unicode
 key events** (KEYEVENTF_UNICODE, one UTF-16 unit per event, in small
 batches), so any script and emoji type correctly; newline and tab are
-injected as real Return/Tab keys, because many controls ignore Unicode
+injected as real Return/Tab keys, because many Elements ignore Unicode
 CR.
 
 `press-key` presses a key or a `+`-separated chord by **Codex's X keysym
@@ -419,7 +419,7 @@ Indexes are only valid within the Window State that produced them.
 ### Batches
 
 A **Batch** runs several Actions on one Window in a single call, in
-order, stopping at the first failure and naming the failed step — so a
+order, stopping at the first failure and naming the failed Action — so a
 routine sequence (click a field, type into it, press Return, click OK)
 costs one round-trip instead of five:
 
@@ -427,36 +427,37 @@ costs one round-trip instead of five:
 winuse batch 101 click id:field then type-text hello world then press-key Return then click name:OK
 ```
 
-Steps are separated by `then` (the first needs no `then`), and each step
-is an Action command **without its Window argument** — the same arguments
-the standalone form takes: `click <ref> [options]`, `type-text <text>`,
-`press-key <key>`, `set-value <ref> <value>`,
+Actions are separated by `then` (the first needs no `then`), and each
+Action is an Action command **without its Window argument** — the same
+arguments the standalone form takes: `click <ref> [options]`,
+`type-text <text>`, `press-key <key>`, `set-value <ref> <value>`,
 `perform-secondary-action <ref> <action>`, `activate-window`. Variadic
-arguments (a step's text or value) join that step's remaining arguments
-with single spaces, so an unquoted `then` inside them still separates
-steps — quote the text to keep it. Every step runs through the same
-command the standalone form uses, so the full pipeline (window
-resolution, refusals, activate-and-verify) applies per step.
+arguments (an Action's text or value) join that Action's remaining
+arguments with single spaces, so an unquoted `then` inside them still
+separates Actions — quote the text to keep it. Every Action runs through
+the same command the standalone form uses, so the full pipeline (window
+resolution, refusals, activate-and-verify) applies per Action.
 
 A successful Batch prints `ok`, Codex-style (Codex has no batch tool; its
 model chains calls in one JS cell — winuse moves the chaining into one
-command). A failed step stops the Batch:
+command). A failed Action stops the Batch:
 
 ```
-batch stopped at step 2 (click): name "Twin" matches 2 elements in the cached Window State for window 101
+batch stopped at Action 2 (click): name "Twin" matches 2 elements in the cached Window State for window 101
 ```
 
-with that step's own recovery hint (here the candidate list) forwarded.
-Steps after the failure do not run, and the failure's exit code survives
-(an Esc stop exits 130, like a standalone Action). Malformed steps —
-an unknown action, a bad flag — are refused **before any input is sent**,
-so a mistyped Batch never half-runs. A Batch's request budget is 60 s
-(each step is fast, but a Batch of dozens of steps needs more than the
-10 s default). Pressing the physical Esc key aborts a running Batch at
-the next checkpoint — between a stopped step's input batches, between
-steps, in a step's tail — and the remaining steps do not run. The
-pointer Actions are Batch steps too (`scroll`, `drag`, `hover`, taking
-the same arguments as their standalone forms minus the Window).
+with that Action's own recovery hint (here the candidate list) forwarded.
+The Actions after the failure do not run, and the failure's exit code
+survives (an Esc stop exits 130, like a standalone Action). Malformed
+Actions — an unknown action, a bad flag — are refused **before any input
+is sent**, so a mistyped Batch never half-runs. A Batch's request budget
+is 60 s (each Action is fast, but a Batch of dozens of Actions needs
+more than the 10 s default). Pressing the physical Esc key aborts a
+running Batch at the next checkpoint — between a stopped Action's input
+batches, between Actions, in the last Action's tail — and the remaining
+Actions do not run. The pointer Actions are Batch steps too (`scroll`,
+`drag`, `hover`, taking the same arguments as their standalone forms
+minus the Window).
 
 ## The in-control overlay
 
@@ -523,7 +524,7 @@ hint: stop your current task and ask the user how to proceed before sending more
 so the agent stops and asks instead of retrying. What counts:
 
 - The press is latched while winuse is in control — an Action, a whole
-  Batch (including the gaps between steps and a step's tail), or a
+  Batch (including the gaps between Actions and the last Action's tail), or a
   launch-app wait — and never leaks into the next command.
 - **Injected keys are ignored** (the hook checks `LLKHF_INJECTED`):
   `winuse press-key <window> Escape` types a plain Escape into the app
@@ -532,7 +533,7 @@ so the agent stops and asks instead of retrying. What counts:
   and while nothing runs the user's Esc passes through untouched.
 - A stop mid-typing aborts between the injection batches (what already
   landed, landed — the hint says so); a stop mid-Batch leaves the
-  remaining steps unrun; a stop during a launch-app wait reports the
+  remaining Actions unrun; a stop during a launch-app wait reports the
   stop, not the timeout, and the App that already started keeps running.
 
 ## How it works
@@ -673,7 +674,7 @@ assertions never depend on pixels.
   nested scopes (`internal/win`), the typing abort between batches, the
   launch-app wait stop, every command's exit-130 mapping with the
   user-stopped-winuse message, Batch stops at every checkpoint (a stopped
-  step, between steps, the last step's tail), and the Esc stop outranking
+  Action, between Actions, the last Action's tail), and the Esc stop outranking
   the request timeout (`internal/apps`, `internal/helper`), plus the
   pointer Actions as Batch steps. A guard proves no offline test ever
   installs the real hook. The ticket-15 tests (`internal/skill`) guard the

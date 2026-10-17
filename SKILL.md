@@ -1,6 +1,6 @@
 ---
 name: winuse
-description: Control Windows desktop apps from the command line — list apps and windows, read a window's accessibility tree as text, click, type, set values, scroll, drag, hover, and screenshot on request. Use when a task needs operating a real Windows application — its windows, dialogs, menus, or web pages inside a browser window. Foreground-only, with an on-screen overlay and an Esc stop.
+description: Control Windows desktop apps from the command line — list Apps and Windows, read a Window's accessibility tree as text, click, type, set values, scroll, drag, hover, and screenshot on request. Use when a task needs operating a real Windows App — its Windows, dialogs, menus, or web pages inside a browser Window. Foreground-only, with an on-screen overlay and an Esc stop.
 ---
 
 # winuse
@@ -16,7 +16,7 @@ Ground rules that shape everything else:
   watching, and may take over at any moment.
 - While an Action or Batch runs, an on-screen banner frames the window:
   **"winuse is in control — press Esc to stop"** (one banner for a whole
-  Batch, not one per step). The user pressing the physical **Esc** key
+  Batch, not one per Action). The user pressing the physical **Esc** key
   stops the running command immediately — that is the designed way for
   the user to take back control (see
   [When the user stops you](#when-the-user-stops-you-esc)).
@@ -62,7 +62,7 @@ This discipline is what makes computer use reliable; follow it strictly:
 1. **Observe** — `winuse get-window-state <window>` prints the Element
    tree.
 2. **Act** — perform **exactly one** Action, or send **one** Batch of
-   routine steps.
+   routine Actions.
 3. **Observe again** — read a fresh Window State before the next Action.
 
 - Element Indexes, `name:`/`id:` references and `@x,y` coordinates are
@@ -202,15 +202,15 @@ around it; disambiguate with a different reference or a fresh read.
 
 `winuse batch <window> <action> [args] [then <action> [args]] …` runs a
 routine sequence in one call, in order, stopping at the first failure and
-naming the failed step:
+naming the failed Action:
 
 ```
 winuse batch 101 click id:field then type-text hello world then press-key Return then click name:OK
 ```
 
-Steps take the same arguments as the standalone commands minus the Window.
-Malformed Batches are refused before any input is sent. Keep Batches to
-routine, well-understood sequences; anything uncertain needs
+The Actions take the same arguments as the standalone commands minus the
+Window. Malformed Batches are refused before any input is sent. Keep
+Batches to routine, well-understood sequences; anything uncertain needs
 observe-act-observe with one Action at a time.
 
 ## When the user stops you: Esc
@@ -301,7 +301,7 @@ winuse hover <window> @x,y           move the pointer to a point and leave it th
 winuse activate-window <window>      bring a Window to the foreground
 winuse batch <window> <action> [args] [then <action> [args]] …
                                      several Actions in order, stopping at the first
-                                     failure; the failed step is named
+                                     failure; the failed Action is named
 winuse record-tree <window> <file>   development only: record a tree fixture for
                                      winuse's own tests
 winuse version                       print the version
