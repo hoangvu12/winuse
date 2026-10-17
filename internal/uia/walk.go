@@ -72,6 +72,16 @@ const DefaultTreeBudget = 8 * time.Second
 // on a screenshot instead (spec user story 22).
 const nearEmptyNodes = 3
 
+// nearEmptyNote is the note the walk appends to a sparse tree: an uncut
+// tree of at most nearEmptyNodes elements with no partial-tree note. The
+// retry policy (retry.go) detects a sparse read by this exact note, and
+// recorded fixtures carry it, so the text is a shared contract.
+const nearEmptyNote = "this Window's tree is nearly empty; the app may expose little to UI Automation"
+
+// partialNotePrefix is the fixed start of the walk's partial-tree note.
+// The retry policy uses it to recognise a partial (cut) read.
+const partialNotePrefix = "this Window State is partial:"
+
 // WalkResult is one completed walk.
 type WalkResult[T any] struct {
 	// Elements is the tree's elements, depth-first pre-order; the slice
@@ -132,7 +142,7 @@ func Walk[T any](src TreeSource[T], cfg WalkConfig) (WalkResult[T], error) {
 	} else if !w.truncated && len(res.Elements) <= nearEmptyNodes {
 		// Only an uncut tree this small is "nearly empty": a tree cut by a
 		// budget is partial, not sparse (its note already says so).
-		res.Notes = append(res.Notes, "this Window's tree is nearly empty; the app may expose little to UI Automation")
+		res.Notes = append(res.Notes, nearEmptyNote)
 	}
 	return res, nil
 }
@@ -248,7 +258,7 @@ func (w *walker[T]) reasonNote() (string, bool) {
 	if len(parts) == 0 {
 		return "", false
 	}
-	return "this Window State is partial: " + strings.Join(parts, "; "), true
+	return partialNotePrefix + " " + strings.Join(parts, "; "), true
 }
 
 // elementFrom builds the renderable Element from one node's cached data.

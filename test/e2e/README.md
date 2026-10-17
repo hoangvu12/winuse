@@ -86,3 +86,17 @@ launched process by Window); a bogus name fails with `app not found`; a
 windowless executable fails with `launched app did not expose a targetable
 window` after the 15 s timeout. `parsing_test.go` (no build tag) unit-tests
 the listing-output parsing offline.
+
+The ticket-14 test (`chromium_test.go`) covers the Chromium path: it starts
+Edge (and Chrome, when installed) with an **isolated profile in a temp
+directory** — the user's real browser profile is never touched, and a
+separate user-data-dir means a fresh browser process even when the user's
+own browser is running — opens the local HTML fixture page
+(`testdata/chromium-fixture.html`), waits for its Window to appear in
+`list-windows`, and asserts the page's link, button, input and checkbox
+Elements show up in one `get-window-state` call (the lazy-accessibility
+retry path: Chromium enables its tree at the first UI Automation contact,
+so the first read is nearly empty and the retry must surface the page). It
+skips when no Chromium browser is installed. Offline, the retry and the
+sparse-tree notes are tested against recorded Chromium/Electron trees in
+`internal/uia/testdata/` (see `internal/uia/retry_test.go`).

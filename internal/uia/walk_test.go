@@ -330,6 +330,11 @@ func TestWalkNearEmptyTreeNote(t *testing.T) {
 	if len(res.Notes) != 1 || !strings.Contains(res.Notes[0], "nearly empty") {
 		t.Errorf("Notes = %v, want the nearly-empty note", res.Notes)
 	}
+	// The note text is a shared contract: the retry policy (retry.go)
+	// detects a sparse read by it, and recorded fixtures carry it.
+	if res.Notes[0] != nearEmptyNote {
+		t.Errorf("near-empty note = %q, want the exact nearEmptyNote constant", res.Notes[0])
+	}
 }
 
 func TestWalkRootErrorPropagates(t *testing.T) {
