@@ -9,6 +9,7 @@ import (
 
 	"github.com/hoangvu12/winuse/internal/pipe"
 	"github.com/hoangvu12/winuse/internal/protocol"
+	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/version"
 	"github.com/hoangvu12/winuse/internal/win"
 )
@@ -81,12 +82,27 @@ func Main() int {
 	}
 	log.Printf("listening on %s (idle timeout %s)", pipe.Name(id), idle)
 
-	server := New(version.Version, idle, protocol.RequestTimeout, Commands(), nil)
+	// The UI Automation client owns the single OS-locked COM thread all
+	// tree reads run on; it starts lazily, so a helper that only serves
+	// list-windows never touches COM. The window-state commands keep the
+	// live Elements behind the latest Window State in it.
+	trees := uia.New()
+	budget, err := treeBudgetFromEnv(uia.DefaultTreeBudget)
+	if err != nil {
+		log.Printf("invalid WINUSE_TREE_BUDGET, using default %s: %v", uia.DefaultTreeBudget, err)
+		budget = uia.DefaultTreeBudget
+	}
+
+	server := New(version.Version, idle, protocol.RequestTimeout, CommandsWith(Services{
+		Trees:  trees,
+		Budget: budget,
+	}), nil)
 	err = server.Serve(ln)
 	if err != nil {
 		log.Printf("helper server: %v", err)
 		return 1
 	}
+	trees.Close()
 	log.Printf("helper exiting")
 	return 0
 }
@@ -94,7 +110,20 @@ func Main() int {
 // idleFromEnv parses WINUSE_HELPER_IDLE: a Go duration ("90s", "2m") or a
 // plain number of seconds. Empty means the default.
 func idleFromEnv(def time.Duration) (time.Duration, error) {
-	v := os.Getenv("WINUSE_HELPER_IDLE")
+	return durationFromEnv("WINUSE_HELPER_IDLE", def)
+}
+
+// treeBudgetFromEnv parses WINUSE_TREE_BUDGET the same way: the soft time
+// limit for one tree read (a partial tree with a note is returned when a
+// read exceeds it). Mainly a testing knob for the e2e suite.
+func treeBudgetFromEnv(def time.Duration) (time.Duration, error) {
+	return durationFromEnv("WINUSE_TREE_BUDGET", def)
+}
+
+// durationFromEnv parses an env var as a Go duration or a plain number of
+// seconds; empty means the default.
+func durationFromEnv(name string, def time.Duration) (time.Duration, error) {
+	v := os.Getenv(name)
 	if v == "" {
 		return def, nil
 	}
@@ -105,7 +134,7 @@ func idleFromEnv(def time.Duration) (time.Duration, error) {
 	if _, err := fmt.Sscanf(v, "%d", &secs); err == nil {
 		return time.Duration(secs) * time.Second, nil
 	}
-	return 0, fmt.Errorf("WINUSE_HELPER_IDLE=%q is neither a duration nor a number of seconds", v)
+	return 0, fmt.Errorf("%s=%q is neither a duration nor a number of seconds", name, v)
 }
 
 // openLog opens %LOCALAPPDATA%\winuse\helper.log, truncating it once it

@@ -8,13 +8,13 @@ import (
 )
 
 // Commands is the helper's command registry: the wire-name-to-handler map
-// the CLI's subcommands mirror. Later tickets add the observation and action
-// commands here (get-window-state, click, ...); handlers that need UI
-// Automation will run their COM work on the helper's single locked thread.
+// the CLI's subcommands mirror, wired to the real services (live desktop
+// enumeration, UI Automation). Tests inject fakes through CommandsWith
+// (state.go). Later tickets add the action commands here (click,
+// set-value, ...); their handlers reuse the UIA worker and the live-Element
+// store the window-state commands create.
 func Commands() map[string]Command {
-	return map[string]Command{
-		"list-windows": listWindows,
-	}
+	return CommandsWith(Services{})
 }
 
 // listWindows answers with one line per visible Window:

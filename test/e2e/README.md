@@ -67,7 +67,11 @@ and kills it when the test ends.
 4. Assert on stdout/stderr/exit code and on the fixture's state file.
 
 Current tests: the ticket-01 helper/list-windows contract tests
-(`list_windows_test.go`) and `TestListWindowsShowsFixtureWindow`
+(`list_windows_test.go`), `TestListWindowsShowsFixtureWindow`
 (`fixture_test.go`) — the first seam-1 test: `winuse list-windows` must list
 the fixture's Window, identified by the exact Window ID and title the
-fixture reports in its state file.
+fixture reports in its state file — and the ticket-03 Window State tests
+(`get_window_state_test.go`): the full Element tree by Window ID and by App
+name, ambiguous-App and unknown-Window failures, the partial-tree-with-note
+behaviour under a tiny `WINUSE_TREE_BUDGET`, and the recorder writing a
+loadable seam-2 fixture.

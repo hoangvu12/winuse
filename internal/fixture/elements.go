@@ -158,6 +158,10 @@ type Spec struct {
 // id:status. This is the fixture's only dynamic name (documented so).
 const StatusNamePrefix = "Status: "
 
+// InitialStatus is the status text a freshly started fixture reports (the
+// status Element's Name at startup is StatusNamePrefix + InitialStatus).
+const InitialStatus = "ready"
+
 // Specs is the complete Element table. Order matters: it is the control-view
 // order the provider reports (siblings are returned in this order), and it
 // doubles as the documentation of the tree. Elements with conditional
