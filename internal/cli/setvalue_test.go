@@ -14,27 +14,27 @@ import (
 
 func TestParseSetValueArgs(t *testing.T) {
 	// Two arguments: usage error.
-	if _, _, _, _, err := parseSetValueArgs([]string{"101", "3"}); err == nil {
+	if _, _, _, _, _, err := parseSetValueArgs([]string{"101", "3"}); err == nil {
 		t.Error("missing value must be a usage error")
 	}
 	// A bad element reference is a usage error.
-	if _, _, _, _, err := parseSetValueArgs([]string{"101", "x", "v"}); err == nil {
+	if _, _, _, _, _, err := parseSetValueArgs([]string{"101", "x", "v"}); err == nil {
 		t.Error("a non-numeric index must be a usage error")
 	}
-	if _, _, _, _, err := parseSetValueArgs([]string{"101", "-1", "v"}); err == nil {
+	if _, _, _, _, _, err := parseSetValueArgs([]string{"101", "-1", "v"}); err == nil {
 		t.Error("a negative index must be a usage error")
 	}
 	// The value is every remaining argument joined with single spaces.
-	window, index, _, value, err := parseSetValueArgs([]string{"101", "3", "hello"})
+	window, index, _, _, value, err := parseSetValueArgs([]string{"101", "3", "hello"})
 	if err != nil || window != "101" || index == nil || *index != 3 || value != "hello" {
 		t.Fatalf("parse = %q, %v, %q, %v", window, index, value, err)
 	}
-	_, _, _, value, err = parseSetValueArgs([]string{"notepad", "0", "hello", "world", "  twice"})
+	_, _, _, _, value, err = parseSetValueArgs([]string{"notepad", "0", "hello", "world", "  twice"})
 	if err != nil || value != "hello world   twice" {
 		t.Fatalf("joined value = %q, %v; want the arguments joined with single spaces", value, err)
 	}
 	// A value that looks like a flag or a negative number is a value.
-	_, _, _, value, err = parseSetValueArgs([]string{"101", "2", "--not-a-flag"})
+	_, _, _, _, value, err = parseSetValueArgs([]string{"101", "2", "--not-a-flag"})
 	if err != nil || value != "--not-a-flag" {
 		t.Fatalf("value = %q, %v; want the raw argument", value, err)
 	}
@@ -43,37 +43,46 @@ func TestParseSetValueArgs(t *testing.T) {
 func TestParseSetValueArgsElementReferences(t *testing.T) {
 	// name: and id: references pass through verbatim for the helper to
 	// resolve against the Window's latest Window State.
-	window, index, ref, value, err := parseSetValueArgs([]string{"101", "name:Text Field", "hello"})
+	window, index, ref, _, value, err := parseSetValueArgs([]string{"101", "name:Text Field", "hello"})
 	if err != nil || window != "101" || index != nil || ref != "name:Text Field" || value != "hello" {
 		t.Fatalf("parse = %q, %v, %q, %q, %v", window, index, ref, value, err)
 	}
-	_, _, ref, _, err = parseSetValueArgs([]string{"101", "id:text-field", "42"})
+	_, _, ref, _, _, err = parseSetValueArgs([]string{"101", "id:text-field", "42"})
 	if err != nil || ref != "id:text-field" {
 		t.Fatalf("id: reference = %q, %v", ref, err)
 	}
+	// The @x,y form parses into the point (finding 8).
+	if window, index, ref, point, value, err := parseSetValueArgs([]string{"101", "@400,235", "hello"}); err != nil ||
+		window != "101" || index != nil || ref != "" || point == nil || point.X != 400 || point.Y != 235 || value != "hello" {
+		t.Fatalf("parse @x,y = %q, %v, %q, %v, %q, %v", window, index, ref, point, value, err)
+	}
 	// A reference with an empty text is a usage error.
 	for _, bad := range []string{"name:", "id:"} {
-		if _, _, _, _, err := parseSetValueArgs([]string{"101", bad, "v"}); err == nil {
+		if _, _, _, _, _, err := parseSetValueArgs([]string{"101", bad, "v"}); err == nil {
 			t.Errorf("%q must be a usage error", bad)
 		}
 	}
 }
 
 func TestParseSecondaryActionArgs(t *testing.T) {
-	if _, _, _, _, err := parseSecondaryActionArgs([]string{"101", "3"}); err == nil {
+	if _, _, _, _, _, err := parseSecondaryActionArgs([]string{"101", "3"}); err == nil {
 		t.Error("missing action must be a usage error")
 	}
-	if _, _, _, _, err := parseSecondaryActionArgs([]string{"101", "x", "Expand"}); err == nil {
+	if _, _, _, _, _, err := parseSecondaryActionArgs([]string{"101", "x", "Expand"}); err == nil {
 		t.Error("a non-numeric index must be a usage error")
 	}
 	// An unquoted two-word action joins into one action name.
-	window, index, _, action, err := parseSecondaryActionArgs([]string{"101", "3", "scroll", "down"})
+	window, index, _, _, action, err := parseSecondaryActionArgs([]string{"101", "3", "scroll", "down"})
 	if err != nil || window != "101" || index == nil || *index != 3 || action != "scroll down" {
 		t.Fatalf("parse = %q, %v, %q, %v", window, index, action, err)
 	}
+	if _, _, _, point, action, err := parseSecondaryActionArgs([]string{"101", "@10,20", "Toggle"}); err != nil ||
+		point == nil || point.X != 10 || point.Y != 20 || action != "Toggle" {
+		t.Fatalf("parse secondary @x,y = point %v, action %q, err %v", point, action, err)
+	}
 	// A name: reference names the Element.
-	_, _, ref, action, err := parseSecondaryActionArgs([]string{"101", "name:File", "expand"})
-	if err != nil || ref != "name:File" || action != "expand" {
+	if _, _, ref, _, action, err := parseSecondaryActionArgs([]string{"101", "name:File", "expand"}); err != nil ||
+		ref != "name:File" || action != "expand" {
 		t.Fatalf("parse = %q, %q, %v", ref, action, err)
 	}
 }

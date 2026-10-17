@@ -170,8 +170,12 @@ An Element is named by:
 - **`name:<text>`** — the Element's name exactly as the tree printed it:
   `click 101 name:OK` (quote names with spaces: `click 101 "name:Save As"`);
 - **`id:<AutomationId>`** — the `ID:` column: `click 101 id:okButton`;
-- **`@x,y`** — coordinates in the latest screenshot's pixel space (click,
-  scroll, drag, hover): `click 101 @412,88`.
+- **`@x,y`** — coordinates in the latest screenshot's pixel space:
+  `click 101 @412,88`. Click, scroll, drag and hover aim at the point
+  itself; set-value and perform-secondary-action act on the **Element
+  under the point** (winuse resolves it live), so a Window whose tree is
+  sparse but whose screenshot is readable can still be operated by
+  coordinates.
 
 Matching against the tree is exact and case-sensitive. A name or ID that
 matches several Elements **fails listing the candidates** — never work
@@ -281,10 +285,12 @@ winuse type-text <window> <text>     type Unicode text into the focused Element
 winuse press-key <window> <key>      press a key or chord: Return, Tab, Escape, Down,
                                      Control_L+a, Control_L+Shift_L+period, Numpad_0
 winuse set-value <window> <ref> <value>
-                                     set a settable Element's value directly
+                                     set a settable Element's value directly;
+                                     @x,y sets the Element under the point
 winuse perform-secondary-action <window> <ref> <action>
                                      perform a Secondary Action: Raise, Scroll Up/Down/
-                                     Left/Right, Expand, Collapse, Toggle, Select
+                                     Left/Right, Expand, Collapse, Toggle, Select;
+                                     @x,y acts on the Element under the point
 winuse scroll <window> @x,y <dx> <dy>
                                      scroll at a point; one wheel notch is 120; positive
                                      dy scrolls down, positive dx right
@@ -300,8 +306,9 @@ winuse version                       print the version
 
 <window> is a Window ID, or an App name when that App has exactly one
 Window. An Element reference is an Element Index, name:<text>,
-id:<AutomationId> or @x,y (click, scroll, drag, hover), resolved against
-the Window's latest Window State.
+id:<AutomationId> or @x,y (the latest screenshot's pixels), resolved
+against the Window's latest Window State; @x,y names the Element under
+the point for set-value and perform-secondary-action.
 ```
 
 ## Rules

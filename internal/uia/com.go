@@ -88,6 +88,7 @@ var (
 // IUIAutomation / IUIAutomation2 vtable slots (verified against SDK
 // 10.0.26100.0; see uia-go.md §2). Never call slots 32–41 (event handlers).
 const (
+	uiaElementFromPoint            = 7  // ElementFromPoint(POINT, **el)
 	uiaElementFromHandleBuildCache = 10 // ElementFromHandleBuildCache(hwnd, req, **el)
 	uiaGetControlViewCondition     = 18 // get_ControlViewCondition(**cond)
 	uiaCreateCacheRequest          = 20 // CreateCacheRequest(**req)

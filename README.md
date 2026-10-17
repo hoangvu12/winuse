@@ -260,8 +260,8 @@ Zoom: C:\Users\me\AppData\Local\Temp\winuse\winuse-zoom-101-....png (312x208 px)
 winuse click <window> <element index | name:<text> | id:<id> | @x,y> [--count 1|2|3] [--button left|middle|right]
 winuse type-text <window> <text>
 winuse press-key <window> <key>
-winuse set-value <window> <element index | name:<text> | id:<id>> <value>
-winuse perform-secondary-action <window> <element index | name:<text> | id:<id>> <action>
+winuse set-value <window> <element index | name:<text> | id:<id> | @x,y> <value>
+winuse perform-secondary-action <window> <element index | name:<text> | id:<id> | @x,y> <action>
 winuse scroll <window> @x,y <dx> <dy>
 winuse drag <window> @x,y @x,y
 winuse hover <window> @x,y
@@ -300,15 +300,25 @@ Every Element-taking Action (click, set-value, perform-secondary-action)
 accepts the same Element Reference forms: an **Element Index** (the
 number the Window State prints), **`name:<text>`** (the Element's name,
 the text before any `Description:`/`Value:`/`ID:` column), **`id:
-<AutomationId>`** (the `ID:` column), and — for click — **`@x,y`**
-(coordinates in the latest screenshot's space, see above):
+<AutomationId>`** (the `ID:` column), and **`@x,y`** (coordinates in the
+latest screenshot's space, see above):
 
 ```
 winuse click 101 name:OK
 winuse click 101 id:ParityButton
 winuse set-value 101 id:ParityBox "hello"
+winuse set-value 101 @412,88 "hello"
 winuse perform-secondary-action 101 name:Details expand
 ```
+
+For click (and scroll, drag, hover) `@x,y` is where the input lands; for
+set-value and perform-secondary-action it names the **Element under the
+point**, which the helper resolves live through UI Automation's
+`ElementFromPoint` — so a Window whose tree is sparse but whose
+screenshot is readable (canvas apps, some Electron windows) can still be
+operated by coordinates. The point is mapped through the screenshot's
+recorded scale and re-anchored to the Window's live bounds at Action
+time, exactly like a coordinate click.
 
 A reference resolves against the **Window's latest Window State**: the
 name or ID is matched against exactly what that tree printed
@@ -362,9 +372,11 @@ only to be refused — winuse never sends it.
 filling a text field): the Element is focused first — Codex's `set_value`
 order — then its value is written through the UI Automation Value
 pattern, or through RangeValue with the value parsed as a number for
-numeric Elements (sliders). An Element that is not settable fails with
-Codex's `Cannot set a value for an element that is not settable` and a
-hint to click the Element and use `type-text` instead.
+numeric Elements (sliders). The Element is named by index, `name:`/`id:`
+reference or `@x,y` (the Element under the point of the latest
+screenshot). An Element that is not settable fails with Codex's `Cannot
+set a value for an element that is not settable` and a hint to click the
+Element and use `type-text` instead.
 
 `perform-secondary-action` performs one of the Element's Secondary
 Actions (case-insensitive): Codex's set — `Raise`, `Scroll Up`,

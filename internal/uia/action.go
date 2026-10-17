@@ -117,6 +117,20 @@ func (th *thread) elementPoint(el comPtr) (Point, error) {
 	return Point{X: (r.Left + r.Right) / 2, Y: (r.Top + r.Bottom) / 2}, nil
 }
 
+// elementFromPoint resolves a screen point to the live Element under it
+// (the topmost one), on the worker thread — the element-side resolution
+// of an @x,y Element Reference (IUIAutomation::ElementFromPoint; the
+// POINT travels by value in one register, uia-go notes §2). The caller
+// owns the returned Element.
+func (th *thread) elementFromPoint(x, y int32) (comPtr, error) {
+	var el comPtr
+	pt := uintptr(uint32(x)) | uintptr(uint32(y))<<32
+	if hr := call(th.auto, uiaElementFromPoint, pt, uintptr(unsafe.Pointer(&el))); hr.Failed() || el == nil {
+		return nil, fmt.Errorf("reading the Element at the point failed (HRESULT %s)", hr)
+	}
+	return el, nil
+}
+
 // scrollIntoView asks the Element's ScrollItem pattern to bring it on
 // screen, best effort: a stale Element surfaces (the caller fails as
 // stale), but any other failure is ignored — the clickable point or the

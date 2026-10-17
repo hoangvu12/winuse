@@ -187,6 +187,7 @@ type Client struct {
 	factory func() (*worker, error) // startWorker; faked in tests
 	store   *store
 }
+
 // New creates a client. The worker thread starts lazily on first use, so a
 // helper that only ever lists windows never initialises COM.
 func New() *Client {
@@ -454,9 +455,9 @@ func walkConfig(ctx context.Context, budget time.Duration) WalkConfig {
 type store struct {
 	mu      sync.Mutex
 	byHwnd  map[uint64]*windowState
-	next    uint64          // read sequence counter
-	addRef  func(comPtr)    // addRef, injectable for tests
-	release func(comPtr)    // release, injectable for tests
+	next    uint64       // read sequence counter
+	addRef  func(comPtr) // addRef, injectable for tests
+	release func(comPtr) // release, injectable for tests
 }
 
 // windowState is one Window's stored live Elements, the Window State

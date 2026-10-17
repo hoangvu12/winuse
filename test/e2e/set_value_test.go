@@ -295,3 +295,32 @@ func TestSetValueStaleElementIndex(t *testing.T) {
 		t.Errorf("the stale failure must instruct a fresh Window State read: %q", stderr)
 	}
 }
+
+func TestSetValueByPoint(t *testing.T) {
+	// The @x,y Element Reference (finding 8): the point of the latest
+	// screenshot names the Element under it — here the text field's
+	// centre — and set-value writes into that Element without any index.
+	optIn(t)
+	fix, window, info := startFixtureForShots(t)
+
+	r, _ := fixture.Rect(fixture.ElemTextField, 0)
+	shotX, shotY := shotCoordsOfClient(t, fix, window, info.scale, (r.Left+r.Right)/2, (r.Top+r.Bottom)/2)
+	stdout, stderr, exit := runWinuse(t, []string{"set-value", window, fmt.Sprintf("@%d,%d", shotX, shotY), "typed at a point"},
+		"WINUSE_HELPER_IDLE="+e2eIdle)
+	assertActionOK(t, "set-value @x,y", stdout, stderr, exit)
+	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.Text == "typed at a point" })
+}
+
+func TestPerformSecondaryActionByPoint(t *testing.T) {
+	// The @x,y form for perform-secondary-action: the checkbox's centre
+	// names the Element under it, and Toggle flips it.
+	optIn(t)
+	fix, window, info := startFixtureForShots(t)
+
+	r, _ := fixture.Rect(fixture.ElemCheckboxNotify, 0)
+	shotX, shotY := shotCoordsOfClient(t, fix, window, info.scale, (r.Left+r.Right)/2, (r.Top+r.Bottom)/2)
+	stdout, stderr, exit := runWinuse(t, []string{"perform-secondary-action", window, fmt.Sprintf("@%d,%d", shotX, shotY), "Toggle"},
+		"WINUSE_HELPER_IDLE="+e2eIdle)
+	assertActionOK(t, "perform-secondary-action @x,y", stdout, stderr, exit)
+	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.Checkbox })
+}

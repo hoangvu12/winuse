@@ -11,6 +11,12 @@ package helper
 // The commands reach the element side through ElementActor, a type
 // assertion on Services.Actions — ticket 05's ElementPointer stays
 // untouched, so later Action tickets can extend the same way.
+//
+// The Element Reference front half (the guard, the argument validation,
+// the name:/id: resolution) is the shared elementTarget (refs.go,
+// finding 16); the @x,y form (finding 8) resolves the point through the
+// Window's latest screenshot Mapping (shotPoint) and acts on the Element
+// the UIA worker finds under it (ElementFromPoint).
 
 import (
 	"context"
@@ -24,11 +30,11 @@ import (
 )
 
 // setValueUsageHint is the recovery hint for set-value's argument failures.
-const setValueUsageHint = "usage: winuse set-value <window> <element index> <value>"
+const setValueUsageHint = "usage: winuse set-value <window> <element index | name:<text> | id:<id> | @x,y> <value>"
 
 // secondaryUsageHint is the recovery hint for perform-secondary-action's
 // argument failures.
-const secondaryUsageHint = "usage: winuse perform-secondary-action <window> <element index> <action>"
+const secondaryUsageHint = "usage: winuse perform-secondary-action <window> <element index | name:<text> | id:<id> | @x,y> <action>"
 
 // ElementActor is the element-side half of ticket 07's Actions: setting an
 // Element's value and performing its Secondary Actions, on the UIA worker.
@@ -42,45 +48,58 @@ type ElementActor interface {
 	// PerformSecondaryAction performs one Secondary Action (already
 	// canonicalized) on the Element behind the index.
 	PerformSecondaryAction(ctx context.Context, hwnd uint64, index int, action string) error
+	// SetValueAtPoint writes value to the Element at the screen point
+	// (an @x,y Element Reference): UIA's ElementFromPoint under the
+	// mapped point, then the same write as SetValue.
+	SetValueAtPoint(ctx context.Context, x, y int32, value string) error
+	// PerformSecondaryActionAtPoint performs one Secondary Action (already
+	// canonicalized) on the Element at the screen point.
+	PerformSecondaryActionAtPoint(ctx context.Context, x, y int32, action string) error
 }
 
-// setValue runs `winuse set-value <window> <element index or name:/id:
-// reference> <value>`: the shared Action pipeline, then the Element's
-// value is written through its value pattern (focused first, Codex's
-// set_value order). A name:/id: reference (ticket 11) resolves against
-// the Window's latest Window State to the Element Index to set.
+// setValue runs `winuse set-value <window> <element index | name:/id:
+// reference | @x,y> <value>`: the shared Action pipeline, then the
+// Element's value is written through its value pattern (focused first,
+// Codex's set_value order). A name:/id: reference (ticket 11) resolves
+// against the Window's latest Window State to the Element Index to set;
+// an @x,y reference (finding 8) resolves through the Window's latest
+// screenshot to the screen point, and the Element the UIA worker finds
+// under it is set — so a Window whose tree is poor but whose screenshot
+// is readable can still be filled by coordinates.
 func setValue(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.SetValueArgs
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("set-value: "+err.Error(), setValueUsageHint)
 		}
-		if a.ElementIndex == nil && a.Ref == "" {
-			return "", Fail("set-value: an element index or a name:/id: reference is required",
-				"read a Window's Elements with winuse get-window-state <window>, then set one by its Element Index, name: or id: reference")
-		}
-		if a.ElementIndex != nil && *a.ElementIndex < 0 {
-			return "", Fail("set-value: the element index must be a non-negative integer", setValueUsageHint)
-		}
-		if forms := countRefForms(false, a.ElementIndex != nil, a.Ref != ""); forms > 1 {
-			return "", Fail("set-value: pass an element index or a name:/id: reference, not several", setValueUsageHint)
+		target, terr := parseElementTarget("set-value", a.ElementIndex, a.Ref, a.Point, setValueUsageHint)
+		if terr != nil {
+			return "", terr
 		}
 		actor, ok := s.Actions.(ElementActor)
 		if !ok {
 			return "", Fail("set-value is unavailable: no UIA client", "")
 		}
 
-		index, ref := -1, a.Ref
-		if a.ElementIndex != nil {
-			index = *a.ElementIndex
+		if target.point != nil {
+			// The @x,y form: the point is mapped from the latest
+			// screenshot, and the Element under it is set.
+			x, y := target.point.X, target.point.Y
+			return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
+				pt, serr := shotPoint(s, w, x, y, "set-value")
+				if serr != nil {
+					return "", serr
+				}
+				if err := actor.SetValueAtPoint(ctx, int32(pt.X), int32(pt.Y), a.Value); err != nil {
+					return "", valueError(err, w, -1)
+				}
+				return okOutput, nil
+			})
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-			if ref != "" {
-				i, rerr := resolveElementRef(s, w, ref)
-				if rerr != nil {
-					return "", rerr
-				}
-				index = i
+			index, rerr := target.resolve(s, w)
+			if rerr != nil {
+				return "", rerr
 			}
 			if err := actor.SetValue(ctx, w.ID, index, a.Value); err != nil {
 				return "", valueError(err, w, index)
@@ -91,27 +110,23 @@ func setValue(s Services) Command {
 }
 
 // performSecondaryAction runs `winuse perform-secondary-action <window>
-// <element index or name:/id: reference> <action>`: the action name is
-// validated against winuse's Secondary Actions (case-insensitive) before
-// the pipeline runs, then the Element's own Secondary Actions are probed
-// live and the requested one is performed through its pattern. A
+// <element index | name:/id: reference | @x,y> <action>`: the action name
+// is validated against winuse's Secondary Actions (case-insensitive)
+// before the pipeline runs, then the Element's own Secondary Actions are
+// probed live and the requested one is performed through its pattern. A
 // name:/id: reference (ticket 11) resolves against the Window's latest
-// Window State to the Element Index to act on.
+// Window State to the Element Index to act on; an @x,y reference
+// (finding 8) acts on the Element the UIA worker finds under the mapped
+// point.
 func performSecondaryAction(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.SecondaryActionArgs
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("perform-secondary-action: "+err.Error(), secondaryUsageHint)
 		}
-		if a.ElementIndex == nil && a.Ref == "" {
-			return "", Fail("perform-secondary-action: an element index or a name:/id: reference is required",
-				"read a Window's Elements with winuse get-window-state <window>, then act on one by its Element Index, name: or id: reference")
-		}
-		if a.ElementIndex != nil && *a.ElementIndex < 0 {
-			return "", Fail("perform-secondary-action: the element index must be a non-negative integer", secondaryUsageHint)
-		}
-		if forms := countRefForms(false, a.ElementIndex != nil, a.Ref != ""); forms > 1 {
-			return "", Fail("perform-secondary-action: pass an element index or a name:/id: reference, not several", secondaryUsageHint)
+		target, terr := parseElementTarget("perform-secondary-action", a.ElementIndex, a.Ref, a.Point, secondaryUsageHint)
+		if terr != nil {
+			return "", terr
 		}
 		if a.Action == "" {
 			return "", Fail("perform-secondary-action: an action is required", secondaryUsageHint)
@@ -126,17 +141,26 @@ func performSecondaryAction(s Services) Command {
 			return "", Fail("perform-secondary-action is unavailable: no UIA client", "")
 		}
 
-		index, ref := -1, a.Ref
-		if a.ElementIndex != nil {
-			index = *a.ElementIndex
+		if target.point != nil {
+			// The @x,y form: the point is mapped from the latest
+			// screenshot, and the Secondary Action runs on the Element
+			// under it.
+			x, y := target.point.X, target.point.Y
+			return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
+				pt, serr := shotPoint(s, w, x, y, "perform-secondary-action")
+				if serr != nil {
+					return "", serr
+				}
+				if err := actor.PerformSecondaryActionAtPoint(ctx, int32(pt.X), int32(pt.Y), action); err != nil {
+					return "", secondaryError(err, w, -1)
+				}
+				return okOutput, nil
+			})
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-			if ref != "" {
-				i, rerr := resolveElementRef(s, w, ref)
-				if rerr != nil {
-					return "", rerr
-				}
-				index = i
+			index, rerr := target.resolve(s, w)
+			if rerr != nil {
+				return "", rerr
 			}
 			if err := actor.PerformSecondaryAction(ctx, w.ID, index, action); err != nil {
 				return "", secondaryError(err, w, index)

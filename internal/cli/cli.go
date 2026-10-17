@@ -40,13 +40,15 @@ commands:
   type-text <window> <text>    type Unicode text into the Window's focused Element
   press-key <window> <key>     press a key or key combination by Codex's key
                                names, e.g. Return, Tab, Control_L+a, Numpad_0
-  set-value <window> <element index | name: | id:> <value>
+  set-value <window> <element index | name: | id: | @x,y> <value>
                                set an Element's value directly (a settable
-                               edit or a numeric range)
-  perform-secondary-action <window> <element index | name: | id:> <action>
+                               edit or a numeric range); @x,y sets the
+                               Element under a point of the latest screenshot
+  perform-secondary-action <window> <element index | name: | id: | @x,y> <action>
                                perform one of the Element's Secondary Actions
                                (Raise, Scroll Down, Expand, Collapse, Toggle,
-                               Select, ...)
+                               Select, ...); @x,y acts on the Element under
+                               a point of the latest screenshot
   batch <window> <action> [arguments] [then <action> [arguments]] ...
                                run several Actions on one Window in order,
                                stopping at the first failure (which names
@@ -65,8 +67,8 @@ commands:
   version                     print the winuse version
 
 a <window> is a Window ID, or an App name when that App has exactly one Window;
-an element index, name:<text>, id:<AutomationId> (and, for click, @x,y) name an
-Element of the Window's latest Window State
+an element index, name:<text>, id:<AutomationId> or @x,y (the latest
+screenshot's pixels) name an Element of the Window's latest Window State
 `
 
 // Main runs the CLI for args (without the program name) and returns the exit

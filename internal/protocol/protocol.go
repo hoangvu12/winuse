@@ -191,10 +191,11 @@ type PressKeyArgs struct {
 // name:/id: reference against the Window's latest Window State) and its
 // new value.
 type SetValueArgs struct {
-	Window       string `json:"window"`        // Window ID, or an App name when that App has exactly one Window
-	ElementIndex *int   `json:"element_index"` // the Element to set, from that Window's latest Window State
-	Ref          string `json:"ref,omitempty"` // name:<text> or id:<AutomationId>: the Element to set
-	Value        string `json:"value"`         // the new value (a string, or a number for range Elements)
+	Window       string `json:"window"`          // Window ID, or an App name when that App has exactly one Window
+	ElementIndex *int   `json:"element_index"`   // the Element to set, from that Window's latest Window State
+	Ref          string `json:"ref,omitempty"`   // name:<text> or id:<AutomationId>: the Element to set
+	Point        *Point `json:"point,omitempty"` // @x,y: the Element under a point of the Window's latest screenshot
+	Value        string `json:"value"`           // the new value (a string, or a number for range Elements)
 }
 
 // SecondaryActionArgs are perform-secondary-action's arguments — Codex's
@@ -202,10 +203,11 @@ type SetValueArgs struct {
 // form: the Element (an Index or a name:/id: reference) and one of its
 // Secondary Actions (case-insensitive).
 type SecondaryActionArgs struct {
-	Window       string `json:"window"`        // Window ID, or an App name when that App has exactly one Window
-	ElementIndex *int   `json:"element_index"` // the Element to act on, from that Window's latest Window State
-	Ref          string `json:"ref,omitempty"` // name:<text> or id:<AutomationId>: the Element to act on
-	Action       string `json:"action"`        // e.g. "Raise", "Scroll Down", "Expand", "Collapse", "Toggle", "Select"
+	Window       string `json:"window"`          // Window ID, or an App name when that App has exactly one Window
+	ElementIndex *int   `json:"element_index"`   // the Element to act on, from that Window's latest Window State
+	Ref          string `json:"ref,omitempty"`   // name:<text> or id:<AutomationId>: the Element to act on
+	Point        *Point `json:"point,omitempty"` // @x,y: the Element under a point of the Window's latest screenshot
+	Action       string `json:"action"`          // e.g. "Raise", "Scroll Down", "Expand", "Collapse", "Toggle", "Select"
 }
 
 // BatchArgs are batch's arguments (ticket 11): several Actions on one

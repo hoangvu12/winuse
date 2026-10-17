@@ -97,6 +97,11 @@ func (e *UnavailableActionError) Error() string {
 	if offered == "" {
 		offered = "none"
 	}
+	if e.Index < 0 {
+		// The @x,y form: there is no Element Index to name.
+		return fmt.Sprintf("secondary action '%s' is not available for the Element at the point; available actions: %s",
+			e.Action, offered)
+	}
 	return fmt.Sprintf("secondary action '%s' is not available for element %d; available actions: %s",
 		e.Action, e.Index, offered)
 }
@@ -348,6 +353,54 @@ func (c *Client) SetValue(ctx context.Context, hwnd uint64, index int, value str
 			return // fake workers carry no COM thread; tests exercise the miss paths
 		}
 		jobErr = w.thread.setValue(el, value)
+	})
+	if err != nil {
+		return err
+	}
+	return jobErr
+}
+
+// SetValueAtPoint writes value to the Element at the screen point (an
+// @x,y Element Reference, resolved through the Window's latest
+// screenshot's Mapping): the worker resolves the point to the live
+// Element under it and writes exactly like the Element Index form.
+func (c *Client) SetValueAtPoint(ctx context.Context, x, y int32, value string) error {
+	var jobErr error
+	err := c.Run(ctx, func(w *worker, _ *run) {
+		if w.thread == nil {
+			return // fake workers carry no COM thread; tests exercise the miss paths
+		}
+		el, herr := w.thread.elementFromPoint(x, y)
+		if herr != nil {
+			jobErr = herr
+			return
+		}
+		defer release(el)
+		jobErr = w.thread.setValue(el, value)
+	})
+	if err != nil {
+		return err
+	}
+	return jobErr
+}
+
+// PerformSecondaryActionAtPoint performs one Secondary Action on the
+// Element at the screen point (an @x,y Element Reference, resolved
+// through the Window's latest screenshot's Mapping). action must already
+// be canonical (CanonicalSecondaryAction).
+func (c *Client) PerformSecondaryActionAtPoint(ctx context.Context, x, y int32, action string) error {
+	var jobErr error
+	err := c.Run(ctx, func(w *worker, _ *run) {
+		if w.thread == nil {
+			return // fake workers carry no COM thread; tests exercise the miss paths
+		}
+		el, herr := w.thread.elementFromPoint(x, y)
+		if herr != nil {
+			jobErr = herr
+			return
+		}
+		defer release(el)
+		jobErr = w.thread.performSecondary(el, -1, action)
 	})
 	if err != nil {
 		return err

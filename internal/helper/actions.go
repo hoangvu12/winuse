@@ -72,11 +72,6 @@ func click(s Services) Command {
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("click: "+err.Error(), clickUsageHint)
 		}
-		// Exactly one Element Reference form: an Element Index, a name:/id:
-		// reference, or @x,y coordinates.
-		if forms := countRefForms(a.Point != nil, a.ElementIndex != nil, a.Ref != ""); forms > 1 {
-			return "", Fail("click: pass an element index, a name:/id: reference or @x,y coordinates, not several", clickUsageHint)
-		}
 		count := a.ClickCount
 		if count == 0 {
 			count = 1
@@ -95,12 +90,17 @@ func click(s Services) Command {
 			return "", Fail(fmt.Sprintf("%s %s click is not supported", buttonWord(button), clickWord(count)), "")
 		}
 
-		if a.Point != nil {
-			// The coordinate form (@x,y, ticket 08).
-			if a.Point.X < 0 || a.Point.Y < 0 {
-				return "", Fail("click: @x,y coordinates must be non-negative integers", clickUsageHint)
-			}
-			x, y := a.Point.X, a.Point.Y
+		// Exactly one Element Reference form: an Element Index, a name:/id:
+		// reference, or @x,y coordinates (the shared guard, finding 16).
+		target, terr := parseElementTarget("click", a.ElementIndex, a.Ref, a.Point, clickUsageHint)
+		if terr != nil {
+			return "", terr
+		}
+
+		if target.point != nil {
+			// The coordinate form (@x,y, ticket 08): input at the point
+			// itself.
+			x, y := target.point.X, target.point.Y
 			return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
 				pt, serr := shotPoint(s, w, x, y, "click")
 				if serr != nil {
@@ -116,28 +116,13 @@ func click(s Services) Command {
 		// The Element forms: an Element Index (ticket 05) or a name:/id:
 		// reference (ticket 11), resolved against the Window's latest
 		// Window State to the Element Index to click.
-		if a.ElementIndex == nil && a.Ref == "" {
-			return "", Fail("click: an element index, a name:/id: reference or @x,y coordinates are required",
-				"read a Window's Elements with winuse get-window-state <window> and click one by its Element Index, name: or id: reference, or click @x,y from its latest screenshot")
-		}
-		if a.ElementIndex != nil && *a.ElementIndex < 0 {
-			return "", Fail("click: the element index must be a non-negative integer", clickUsageHint)
-		}
 		if s.Actions == nil {
 			return "", Fail("click is unavailable: no UIA client", "")
 		}
-
-		index, ref := -1, a.Ref
-		if a.ElementIndex != nil {
-			index = *a.ElementIndex
-		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-			if ref != "" {
-				i, rerr := resolveElementRef(s, w, ref)
-				if rerr != nil {
-					return "", rerr
-				}
-				index = i
+			index, rerr := target.resolve(s, w)
+			if rerr != nil {
+				return "", rerr
 			}
 			pt, err := s.Actions.ElementPoint(ctx, w.ID, index)
 			if err != nil {

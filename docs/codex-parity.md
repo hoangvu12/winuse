@@ -125,7 +125,7 @@ it and winuse's code refuses it (see cross-cutting).
 | Parameter | Codex | winuse `set-value` | Status |
 |---|---|---|---|
 | `window` | the Window holding the Element | `<window>` | matched |
-| `element_index` | the Element to write | the Element Index or a `name:`/`id:` reference | matched (extended) |
+| `element_index` | the Element to write | the Element Index, a `name:`/`id:` reference, or `@x,y` (the Element UIA finds under the point of the latest screenshot) | matched (extended) |
 | `value` | the string to set | the value; numeric Elements (RangeValue) take it parsed as a number | matched |
 
 Non-settable Elements fail with Codex's `Cannot set a value for an
@@ -151,7 +151,7 @@ contract.
 | Parameter | Codex | winuse `perform-secondary-action` | Status |
 |---|---|---|---|
 | `window` | the Window holding the Element | `<window>` | matched |
-| `element_index` | the Element to act on | the Element Index or a `name:`/`id:` reference | matched (extended) |
+| `element_index` | the Element to act on | the Element Index, a `name:`/`id:` reference, or `@x,y` (as set-value's) | matched (extended) |
 | `action` | case-insensitive; only `Raise`, `Scroll Up/Down/Left/Right`, `Expand`, `Collapse`; unknown → `unsupported secondary action: {action}; expected …` | the same set and the same error listing the expected names, **plus** the `Toggle` and `Select` extensions | matched (extended) |
 
 An action the Element does not offer fails listing the ones it does,

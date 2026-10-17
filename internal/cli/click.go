@@ -118,24 +118,16 @@ func parseClickFlags(args []string) (pos []string, o clickOptions, err error) {
 	return pos, o, nil
 }
 
-// parseClickTargetToken interprets click's target token: an @x,y
-// coordinate of the Window's latest screenshot, or an Element Reference
-// (an Element Index, name:<text> or id:<AutomationId>) the helper
-// resolves against the Window's latest Window State.
+// parseClickTargetToken interprets click's target token through the
+// shared Element Reference parser (refs.go): an @x,y coordinate of the
+// Window's latest screenshot, or an Element Index or name:/id: reference
+// the helper resolves against the Window's latest Window State.
 func parseClickTargetToken(token string) (target clickTarget, err error) {
-	if strings.HasPrefix(token, "@") || strings.HasPrefix(token, " @") {
-		x, y, perr := parsePointRef(token)
-		if perr != nil {
-			return target, perr
-		}
-		target.point = &protocol.Point{X: x, Y: y}
-		return target, nil
-	}
-	index, ref, rerr := parseElementRefToken(token)
+	index, ref, point, rerr := parseElementTargetToken(token)
 	if rerr != nil {
 		return target, rerr
 	}
-	target.index, target.ref = index, ref
+	target.index, target.ref, target.point = index, ref, point
 	return target, nil
 }
 
