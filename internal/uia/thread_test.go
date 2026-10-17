@@ -167,13 +167,13 @@ func TestStoreInstallReplacesPreviousWindowState(t *testing.T) {
 	})
 
 	// A newer read's install replaces the previous state's Elements.
-	s.install(101, s.beginRead(), []comPtr{p1})
+	s.install(101, s.beginRead(), []comPtr{p1}, nil)
 	if got := released[p1]; got != 0 {
 		t.Fatalf("p1 released %d times before any replacement, want 0", got)
 	}
 	// A different Window does not disturb the first.
-	s.install(202, s.beginRead(), []comPtr{p2})
-	s.install(101, s.beginRead(), []comPtr{p3})
+	s.install(202, s.beginRead(), []comPtr{p2}, nil)
+	s.install(101, s.beginRead(), []comPtr{p3}, nil)
 	if got := released[p1]; got != 1 {
 		t.Fatalf("the previous state's element was released %d times, want 1", got)
 	}
@@ -217,14 +217,14 @@ func TestStoreInstallRejectsSupersededRead(t *testing.T) {
 	// completes first — the state the agent actually saw.
 	read1 := s.beginRead()
 	read2 := s.beginRead()
-	s.install(101, read2, []comPtr{p2})
+	s.install(101, read2, []comPtr{p2}, nil)
 	if e, ok := s.element(101, 0); !ok || e != p2 {
 		t.Fatalf("element(101, 0) = %v, %v; want read 2's element", e, ok)
 	}
 
 	// Read 1's job finally completes: superseded, it releases its own
 	// Elements and leaves read 2's state untouched.
-	s.install(101, read1, []comPtr{p1, p3})
+	s.install(101, read1, []comPtr{p1, p3}, nil)
 	if e, ok := s.element(101, 0); !ok || e != p2 {
 		t.Fatalf("element(101, 0) = %v, %v; the late read must not clobber it", e, ok)
 	}
@@ -239,7 +239,7 @@ func TestStoreInstallRejectsSupersededRead(t *testing.T) {
 	}
 
 	// A read starting now is the latest and installs normally.
-	s.install(101, s.beginRead(), []comPtr{p1})
+	s.install(101, s.beginRead(), []comPtr{p1}, nil)
 	if e, ok := s.element(101, 0); !ok || e != p1 {
 		t.Fatalf("element(101, 0) = %v, %v; want the newest read's element", e, ok)
 	}

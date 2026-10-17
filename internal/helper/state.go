@@ -84,7 +84,7 @@ func CommandsWith(s Services) map[string]Command {
 	// The Start-apps listing is shared by list-apps and launch-app and
 	// cached for the helper's lifetime (it is a ~1 s PowerShell call).
 	store := &apps.StoreSource{Run: apps.GetStartApps}
-	return map[string]Command{
+	cmds := map[string]Command{
 		"list-windows":             listWindows,
 		"get-window-state":         func(ctx context.Context, args json.RawMessage) (string, *Error) { return getWindowState(s, ctx, args) },
 		"record-tree":              func(ctx context.Context, args json.RawMessage) (string, *Error) { return recordTree(s, ctx, args) },
@@ -98,6 +98,10 @@ func CommandsWith(s Services) map[string]Command {
 		"list-apps":                listApps(store),
 		"launch-app":               launchApp(store),
 	}
+	// The Batch dispatches its steps to the other commands, so it is wired
+	// to the registry itself (batch.go, ticket 11).
+	cmds["batch"] = batch(cmds)
+	return cmds
 }
 
 // defaultServices fills a Services' zero values with the real

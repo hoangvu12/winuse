@@ -44,29 +44,44 @@ type ElementActor interface {
 	PerformSecondaryAction(ctx context.Context, hwnd uint64, index int, action string) error
 }
 
-// setValue runs `winuse set-value <window> <element index> <value>`: the
-// shared Action pipeline, then the Element's value is written through its
-// value pattern (focused first, Codex's set_value order).
+// setValue runs `winuse set-value <window> <element index or name:/id:
+// reference> <value>`: the shared Action pipeline, then the Element's
+// value is written through its value pattern (focused first, Codex's
+// set_value order). A name:/id: reference (ticket 11) resolves against
+// the Window's latest Window State to the Element Index to set.
 func setValue(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.SetValueArgs
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("set-value: "+err.Error(), setValueUsageHint)
 		}
-		if a.ElementIndex == nil {
-			return "", Fail("set-value: an element index is required",
-				"read a Window's Element Indexes with winuse get-window-state <window>")
+		if a.ElementIndex == nil && a.Ref == "" {
+			return "", Fail("set-value: an element index or a name:/id: reference is required",
+				"read a Window's Elements with winuse get-window-state <window>, then set one by its Element Index, name: or id: reference")
 		}
-		if *a.ElementIndex < 0 {
+		if a.ElementIndex != nil && *a.ElementIndex < 0 {
 			return "", Fail("set-value: the element index must be a non-negative integer", setValueUsageHint)
+		}
+		if forms := countRefForms(false, a.ElementIndex != nil, a.Ref != ""); forms > 1 {
+			return "", Fail("set-value: pass an element index or a name:/id: reference, not several", setValueUsageHint)
 		}
 		actor, ok := s.Actions.(ElementActor)
 		if !ok {
 			return "", Fail("set-value is unavailable: no UIA client", "")
 		}
 
-		index := *a.ElementIndex
+		index, ref := -1, a.Ref
+		if a.ElementIndex != nil {
+			index = *a.ElementIndex
+		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
+			if ref != "" {
+				i, rerr := resolveElementRef(s, w, ref)
+				if rerr != nil {
+					return "", rerr
+				}
+				index = i
+			}
 			if err := actor.SetValue(ctx, w.ID, index, a.Value); err != nil {
 				return "", valueError(err, w, index)
 			}
@@ -76,22 +91,27 @@ func setValue(s Services) Command {
 }
 
 // performSecondaryAction runs `winuse perform-secondary-action <window>
-// <element index> <action>`: the action name is validated against winuse's
-// Secondary Actions (case-insensitive) before the pipeline runs, then the
-// Element's own Secondary Actions are probed live and the requested one is
-// performed through its pattern.
+// <element index or name:/id: reference> <action>`: the action name is
+// validated against winuse's Secondary Actions (case-insensitive) before
+// the pipeline runs, then the Element's own Secondary Actions are probed
+// live and the requested one is performed through its pattern. A
+// name:/id: reference (ticket 11) resolves against the Window's latest
+// Window State to the Element Index to act on.
 func performSecondaryAction(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.SecondaryActionArgs
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("perform-secondary-action: "+err.Error(), secondaryUsageHint)
 		}
-		if a.ElementIndex == nil {
-			return "", Fail("perform-secondary-action: an element index is required",
-				"read a Window's Element Indexes with winuse get-window-state <window>")
+		if a.ElementIndex == nil && a.Ref == "" {
+			return "", Fail("perform-secondary-action: an element index or a name:/id: reference is required",
+				"read a Window's Elements with winuse get-window-state <window>, then act on one by its Element Index, name: or id: reference")
 		}
-		if *a.ElementIndex < 0 {
+		if a.ElementIndex != nil && *a.ElementIndex < 0 {
 			return "", Fail("perform-secondary-action: the element index must be a non-negative integer", secondaryUsageHint)
+		}
+		if forms := countRefForms(false, a.ElementIndex != nil, a.Ref != ""); forms > 1 {
+			return "", Fail("perform-secondary-action: pass an element index or a name:/id: reference, not several", secondaryUsageHint)
 		}
 		if a.Action == "" {
 			return "", Fail("perform-secondary-action: an action is required", secondaryUsageHint)
@@ -106,8 +126,18 @@ func performSecondaryAction(s Services) Command {
 			return "", Fail("perform-secondary-action is unavailable: no UIA client", "")
 		}
 
-		index := *a.ElementIndex
+		index, ref := -1, a.Ref
+		if a.ElementIndex != nil {
+			index = *a.ElementIndex
+		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
+			if ref != "" {
+				i, rerr := resolveElementRef(s, w, ref)
+				if rerr != nil {
+					return "", rerr
+				}
+				index = i
+			}
 			if err := actor.PerformSecondaryAction(ctx, w.ID, index, action); err != nil {
 				return "", secondaryError(err, w, index)
 			}

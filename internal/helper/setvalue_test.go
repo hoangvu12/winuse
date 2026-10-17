@@ -129,7 +129,7 @@ func TestSetValueValidation(t *testing.T) {
 		wantMsg string
 	}{
 		{"no arguments", nil, "set-value: arguments are required"},
-		{"missing element index", json.RawMessage(`{"window":"101","value":"x"}`), "set-value: an element index is required"},
+		{"missing element index", json.RawMessage(`{"window":"101","value":"x"}`), "set-value: an element index or a name:/id: reference is required"},
 		{"negative element index", setValueArgs("101", -1, "x"), "set-value: the element index must be a non-negative integer"},
 	}
 	for _, tc := range cases {
@@ -265,7 +265,7 @@ func TestPerformSecondaryActionValidation(t *testing.T) {
 		wantMsg string
 	}{
 		{"no arguments", nil, "perform-secondary-action: arguments are required"},
-		{"missing element index", json.RawMessage(`{"window":"101","action":"Expand"}`), "perform-secondary-action: an element index is required"},
+		{"missing element index", json.RawMessage(`{"window":"101","action":"Expand"}`), "perform-secondary-action: an element index or a name:/id: reference is required"},
 		{"negative element index", secondaryArgs("101", -1, "Expand"), "perform-secondary-action: the element index must be a non-negative integer"},
 		{"missing action", secondaryArgs("101", 1, ""), "perform-secondary-action: an action is required"},
 		{"unknown action lists the expected set", secondaryArgs("101", 1, "Fly"),

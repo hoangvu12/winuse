@@ -39,9 +39,9 @@ func TestParseClickArgs(t *testing.T) {
 			wantWindow: "-c", wantIndex: 2, wantCount: 1, wantButton: "right"},
 
 		{name: "too few positionals", args: []string{"101"},
-			wantErr: "click takes a window reference and an element index or @x,y"},
+			wantErr: "click takes a window reference and an element index, name:/id: reference or @x,y"},
 		{name: "too many positionals", args: []string{"101", "1", "2"},
-			wantErr: "click takes a window reference and an element index or @x,y"},
+			wantErr: "click takes a window reference and an element index, name:/id: reference or @x,y"},
 		{name: "unknown flag", args: []string{"--speed", "fast", "101", "1"},
 			wantErr: "unknown flag --speed"},
 		{name: "count without a value", args: []string{"101", "1", "--count"},
@@ -53,11 +53,11 @@ func TestParseClickArgs(t *testing.T) {
 		{name: "button without a value", args: []string{"101", "1", "--button"},
 			wantErr: "--button needs a value"},
 		{name: "index is not a number", args: []string{"101", "x"},
-			wantErr: `the element index must be a non-negative integer, got "x"`},
+			wantErr: `the element reference must be a non-negative element index, name:<text> or id:<AutomationId>, got "x"`},
 		{name: "negative index is not a flag", args: []string{"101", "-3"},
-			wantErr: `the element index must be a non-negative integer, got "-3"`},
+			wantErr: `the element reference must be a non-negative element index, name:<text> or id:<AutomationId>, got "-3"`},
 		{name: "no arguments", args: nil,
-			wantErr: "click takes a window reference and an element index or @x,y"},
+			wantErr: "click takes a window reference and an element index, name:/id: reference or @x,y"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -106,9 +106,9 @@ func TestClickUsageErrorsExit2WithoutDialing(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"click with no arguments", []string{"click"}, "usage: winuse click <window> <element index | @x,y>"},
+		{"click with no arguments", []string{"click"}, "usage: winuse click <window> <element index | name:<text> | id:<id> | @x,y>"},
 		{"click with an unknown flag", []string{"click", "101", "1", "--speed", "5"}, "unknown flag --speed"},
-		{"click with a bad index", []string{"click", "101", "abc"}, "the element index must be a non-negative integer"},
+		{"click with a bad index", []string{"click", "101", "abc"}, "the element reference must be a non-negative element index"},
 		{"activate-window with no window", []string{"activate-window"}, "usage: winuse activate-window <window>"},
 		{"activate-window with two windows", []string{"activate-window", "101", "102"}, "usage: winuse activate-window <window>"},
 	}
@@ -151,5 +151,66 @@ func TestClickUnknownCommandStillExits2(t *testing.T) {
 	// command keeps the usage failure.
 	if code := Main([]string{"clickx"}); code != 2 {
 		t.Errorf("exit = %d, want 2", code)
+	}
+}
+
+func TestParseClickArgsElementReferences(t *testing.T) {
+	// The name: and id: forms pass through verbatim (the helper resolves
+	// them against the Window's latest Window State); an Element Index
+	// still parses as an index.
+	cases := []struct {
+		args     []string
+		wantRef  string
+		wantIdx  int
+		wantNone bool // neither form set
+	}{
+		{args: []string{"101", "name:OK"}, wantRef: "name:OK"},
+		{args: []string{"101", "name:Save As"}, wantRef: "name:Save As"},
+		{args: []string{"notepad", "id:ParityBox"}, wantRef: "id:ParityBox"},
+		{args: []string{"101", "id:14681076"}, wantRef: "id:14681076"},
+		{args: []string{"101", "7"}, wantIdx: 7},
+		{args: []string{"101", "name:"}, wantNone: true}, // empty text
+		{args: []string{"101", "id:"}, wantNone: true},
+	}
+	for _, tc := range cases {
+		window, target, _, err := parseClickArgs(tc.args)
+		if tc.wantNone {
+			if err == nil {
+				t.Errorf("parseClickArgs(%q) succeeded; an empty reference must fail", tc.args)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("parseClickArgs(%q): %v", tc.args, err)
+			continue
+		}
+		if window != tc.args[0] || target.point != nil {
+			t.Errorf("parseClickArgs(%q) window/point = %q/%v", tc.args, window, target.point)
+		}
+		if tc.wantRef != "" {
+			if target.ref != tc.wantRef || target.index != nil {
+				t.Errorf("parseClickArgs(%q) = ref %q, index %v; want ref %q only", tc.args, target.ref, target.index, tc.wantRef)
+			}
+		} else if target.index == nil || *target.index != tc.wantIdx || target.ref != "" {
+			t.Errorf("parseClickArgs(%q) = index %v, ref %q; want index %d only", tc.args, target.index, target.ref, tc.wantIdx)
+		}
+	}
+
+	// A reference the shell split (unquoted multi-word name) gets the
+	// quoting hint instead of a generic arity error.
+	_, _, _, err := parseClickArgs([]string{"101", "name:New", "Document"})
+	if err == nil || !strings.Contains(err.Error(), "must be one argument") || !strings.Contains(err.Error(), `name:New Document`) {
+		t.Errorf("unquoted name error = %v, want the quoting hint naming the reference", err)
+	}
+}
+
+func TestParseClickTargetTokenForms(t *testing.T) {
+	// @x,y still parses as the coordinate form; every other token goes
+	// through the shared element-reference parser.
+	if target, err := parseClickTargetToken("@400,235"); err != nil || target.point == nil || target.point.X != 400 || target.point.Y != 235 {
+		t.Errorf("parseClickTargetToken(@400,235) = %+v, %v", target, err)
+	}
+	if target, err := parseClickTargetToken("name:OK"); err != nil || target.ref != "name:OK" {
+		t.Errorf("parseClickTargetToken(name:OK) = %+v, %v", target, err)
 	}
 }

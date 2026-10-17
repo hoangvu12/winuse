@@ -205,3 +205,23 @@ target (a Notepad menu, a browser tooltip) is worth one manual
 `get-window-state --screenshot` check as well: the fixture's dropdown is
 painted inside its own window, so the popup-union path is only exercised
 by real menus.
+
+The ticket-11 tests (`batch_test.go`) cover `name:`/`id:` Element
+References and Batches: clicking the button by `name:`, the Save As button
+by `id:`; the deliberately ambiguous fixture Elements fail never-guess
+(`name:Twin` and `id:solo` each list their two candidates, and no input
+reaches the app); a missing name fails pointing at a fresh Window State
+read; a reference resolves against the latest Window State (expanding the
+File menu exposes `name:New`, which the previous read did not contain);
+`set-value` and `perform-secondary-action` accept references too. Batch
+tests: the acceptance flow — one Batch that clicks the text field by
+`id:`, types into it and clicks a button by `name:` — succeeds and prints
+`ok`; a Batch with a bad step (the ambiguous `name:Twin`) stops exactly
+there, steps after it never run, and the failure names step 2 with the
+candidates; an unknown Window fails step 1; a Batch on the Save As dialog
+sets the file name and clicks Save in one call; usage errors (no steps,
+an empty step, an unknown action) exit 2 without dialing. Reference
+resolution (parsing, matching semantics, candidate lines) and Batch
+parsing are offline-tested in `internal/wstate`, `internal/uia`,
+`internal/helper` and `internal/cli`; these tests pin the live wiring
+only.

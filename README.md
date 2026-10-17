@@ -5,7 +5,7 @@ run shell commands list Apps and Windows, read a Window State (accessibility
 tree as text, screenshots on request) and perform Actions — at the quality of
 Codex Computer Use, without being tied to Codex.
 
-**Status: tickets 01–09, 13 and 14 of the v1 plan** (`.scratch/winuse-v1/`) —
+**Status: tickets 01–09, 11, 13 and 14 of the v1 plan** (`.scratch/winuse-v1/`) —
 background helper, `winuse list-windows`, the fixture app with its opt-in
 e2e runner, `winuse list-apps` and `winuse launch-app`, `winuse
 get-window-state`: the Window State as Codex's Element tree, read through UI
@@ -30,8 +30,15 @@ implemented with hand-written WinRT and Direct3D interop (no cgo) on a
 dedicated capture thread, falling back to the GDI chain on any failure;
 and the in-control overlay (ticket 13): a Codex-style, click-through,
 never-focused indicator framing the Window while an Action runs, kept out
-of winuse's own screenshots. Later tickets add more Actions and the Esc
-stop. The product spec and the domain language live in
+of winuse's own screenshots; and ticket 11:
+`name:<text>` / `id:<AutomationId>` **Element References** — every
+Element-taking Action can name its Element instead of using an Index,
+resolving against the Window's latest Window State, with ambiguous
+matches failing listing the candidates — and `winuse batch`, several
+Actions on one Window in a single call, in order, stopping at the first
+failure and naming the failed step. Later tickets add more Actions
+(scroll, drag, hover) and the Esc stop. The product spec and the domain
+language live in
 `.scratch/winuse-v1/spec.md` and `CONTEXT.md`.
 
 Windows-only. MIT licensed (see `LICENSE`).
@@ -79,7 +86,18 @@ go run github.com/tc-hib/go-winres@latest make --arch amd64,arm64 --out cmd/winu
   (`internal/wgc`: the GUID literals against the documented IIDs, the
   by-value struct packing, the frame-size cross-check, the BGRA→RGBA
   readback, the environment knobs); its WinRT/Direct3D calls are
-  exercised only by the user-run e2e suite. No desktop access,
+  exercised only by the user-run e2e suite.
+  The ticket-11
+  tests: **Element Reference resolution** (unique, ambiguous with its
+  candidate lines, missing, exact-match semantics) against tree fixtures
+  (`internal/wstate`), the reference resolution the helper performs
+  against the live-Element store's Window State (`internal/uia`), every
+  Element-taking Action's reference wiring and failure messages, and
+  **Batch parsing and execution** (step splitting at `then`, per-step
+  argument parsing, in-order execution stopping at the first failure that
+  names the step, malformed steps refused before any input, the Window
+  injected into every step) with every Win32 and element side faked
+  (`internal/helper`, `internal/cli`). No desktop access,
   no input injection, safe to run any time.
 - **End-to-end (seam 1):** `test/e2e` — the real binary and the fixture app
   against the live desktop. Opt-in only, **started by the user, never by
@@ -297,12 +315,13 @@ Zoom: C:\Users\me\AppData\Local\Temp\winuse\winuse-zoom-101-....png (312x208 px)
 ## Acting on a Window
 
 ```
-winuse click <window> <element index | @x,y> [--count 1|2|3] [--button left|middle|right]
+winuse click <window> <element index | name:<text> | id:<id> | @x,y> [--count 1|2|3] [--button left|middle|right]
 winuse type-text <window> <text>
 winuse press-key <window> <key>
-winuse set-value <window> <element index> <value>
-winuse perform-secondary-action <window> <element index> <action>
+winuse set-value <window> <element index | name:<text> | id:<id>> <value>
+winuse perform-secondary-action <window> <element index | name:<text> | id:<id>> <action>
 winuse activate-window <window>
+winuse batch <window> <action> [arguments] [then <action> [arguments]] ...
 ```
 
 Every Action (this is the pipeline all later Action tickets reuse) does
@@ -329,6 +348,45 @@ actually reached that point and that the point is over the target's
 window group — and only then injects the click through **SendInput**
 (pixel-exact under per-monitor-v2, no DPI offsets), one batch so double
 and triple clicks register.
+
+### Element References
+
+Every Element-taking Action (click, set-value, perform-secondary-action)
+accepts the same Element Reference forms: an **Element Index** (the
+number the Window State prints), **`name:<text>`** (the Element's name,
+the text before any `Description:`/`Value:`/`ID:` column), **`id:
+<AutomationId>`** (the `ID:` column), and — for click — **`@x,y`**
+(coordinates in the latest screenshot's space, see above):
+
+```
+winuse click 101 name:OK
+winuse click 101 id:ParityButton
+winuse set-value 101 id:ParityBox "hello"
+winuse perform-secondary-action 101 name:Details expand
+```
+
+A reference resolves against the **Window's latest Window State**: the
+name or ID is matched against exactly what that tree printed
+(whitespace-collapsed, otherwise **exact and case-sensitive**), so a
+reference copied from the tree resolves to the Element behind that line.
+Exactly one match must resolve — a name or ID matching several Elements
+fails listing the candidates as tree lines, never guessing:
+
+```
+name "Twin" matches 2 elements in the cached Window State for window 101
+hint: candidates:
+1 button Twin ID: twin-a
+2 button Twin ID: twin-b
+```
+
+and no match fails with the instruction to read the Window State again.
+Like an Element Index, a reference is only valid within the Window State
+that produced it — the Element behind it can go stale, and a re-read of
+the Window State is the recovery. The advantage over an Index is
+stability across re-reads: the Element keeps its name and ID while its
+Index shifts as the UI changes. A reference with spaces is one argument
+(`winuse click 101 "name:Save As"`); an unquoted one is caught with a
+hint that says to quote it.
 
 `type-text` types into the Window's focused Element (check the Window
 State's focused-element line first, Codex's guidance). Every argument
@@ -378,6 +436,45 @@ the shared request budget (10 s). An Element Index whose Element no longer
 exists (or a Window with no cached state, e.g. after a helper restart)
 fails as **stale** and instructs a fresh `get-window-state` — Element
 Indexes are only valid within the Window State that produced them.
+
+### Batches
+
+A **Batch** runs several Actions on one Window in a single call, in
+order, stopping at the first failure and naming the failed step — so a
+routine sequence (click a field, type into it, press Return, click OK)
+costs one round-trip instead of five:
+
+```
+winuse batch 101 click id:field then type-text hello world then press-key Return then click name:OK
+```
+
+Steps are separated by `then` (the first needs no `then`), and each step
+is an Action command **without its Window argument** — the same arguments
+the standalone form takes: `click <ref> [options]`, `type-text <text>`,
+`press-key <key>`, `set-value <ref> <value>`,
+`perform-secondary-action <ref> <action>`, `activate-window`. Variadic
+arguments (a step's text or value) join that step's remaining arguments
+with single spaces, so an unquoted `then` inside them still separates
+steps — quote the text to keep it. Every step runs through the same
+command the standalone form uses, so the full pipeline (window
+resolution, refusals, activate-and-verify) applies per step.
+
+A successful Batch prints `ok`, Codex-style (Codex has no batch tool; its
+model chains calls in one JS cell — winuse moves the chaining into one
+command). A failed step stops the Batch:
+
+```
+batch stopped at step 2 (click): name "Twin" matches 2 elements in the cached Window State for window 101
+```
+
+with that step's own recovery hint (here the candidate list) forwarded.
+Steps after the failure do not run, and the failure's exit code survives
+(an Esc stop will exit 130, like a standalone Action). Malformed steps —
+an unknown action, a bad flag — are refused **before any input is sent**,
+so a mistyped Batch never half-runs. A Batch's request budget is 60 s
+(each step is fast, but a Batch of dozens of steps needs more than the
+10 s default). Ticket 12's Esc stop will abort a running Batch: the
+remaining steps will not run.
 
 ## The in-control overlay
 
@@ -449,11 +546,11 @@ internal/pipe/       named pipe: naming per user/session, user-only DACL, dial, 
 internal/win/        Win32 layer: identity, DPI awareness, window enumeration, process/App names, window resolution, helper spawn, and the Actions' Win32 side: SendInput clicks, keyboard (Unicode text and key chords), foreground activation, integrity/locked-desktop refusals; the UI thread and the in-control overlay window (ADR 0006)
 internal/apps/       App catalog and launching: list-apps (UserAssist, Start menu, store Apps), launch-app (CreateProcess/ShellExecuteExW + Window polling)
 internal/keys/       Codex/X keysym key-name and chord parsing for press-key (pure Go, fully covered offline)
-internal/helper/     helper: serve loop, idle exit, stale-exit, command registry, window-state + record-tree + list-apps + launch-app commands
-internal/uia/        UI Automation: locked COM worker thread, bounded tree walk, Chromium/Electron lazy-tree retry, live-Element store (raw vtables, no cgo)
+internal/helper/     helper: serve loop, idle exit, stale-exit, command registry, window-state + record-tree + list-apps + launch-app commands, the Action pipeline and its commands (click, type-text, press-key, set-value, perform-secondary-action, activate-window, batch) and name:/id: reference resolution
+internal/uia/        UI Automation: locked COM worker thread, bounded tree walk, Chromium/Electron lazy-tree retry, live-Element store with its Window State (the name:/id: reference space) (raw vtables, no cgo)
 internal/shot/       screenshots: frames, capture-method chain, box-filter scaling, the screenshot↔Window coordinate mapping and its per-Window store (pure, offline-tested)
 internal/wgc/        Windows.Graphics.Capture: hand-written WinRT/Direct3D interop (raw vtables, no cgo), the dedicated capture thread, the capture flow and its fallbacks
-internal/wstate/     Window State model: Element/Tree, Codex-format rendering, recorded-tree fixtures (seam 2)
+internal/wstate/     Window State model: Element/Tree, Codex-format rendering, name:/id: Element Reference resolution, recorded-tree fixtures (seam 2)
 internal/cli/        CLI: subcommands, dial-or-spawn client state machine, output/exit-code policy
 internal/version/    binary version (stale-helper detection)
 internal/fixture/    the fixture app: Element contract (elements.go), state file, UIA provider, Win32 app

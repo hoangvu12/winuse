@@ -29,12 +29,19 @@ import (
 const okOutput = "ok\n"
 
 // clickUsageHint is the recovery hint for click's argument failures.
-const clickUsageHint = "usage: winuse click <window> <element index | @x,y> [--count 1|2|3] [--button left|middle|right]"
+const clickUsageHint = "usage: winuse click <window> <element index | name:<text> | id:<id> | @x,y> [--count 1|2|3] [--button left|middle|right]"
 
 // click runs `winuse click <window> <element index>`: the Window is
 // activated and verified in the foreground, the Element behind the index
 // is scrolled into view if needed, and the click (single, double, right)
 // is injected at its clickable point or bounds centre.
+//
+// `winuse click <window> name:<text>` and `id:<AutomationId>` (ticket 11)
+// name the Element by its Name or AutomationId instead of its Index: the
+// reference resolves against the Window's latest Window State to one
+// Element Index (several matches are an error listing the candidates,
+// never a guess), and the click then runs exactly like the Index form —
+// so a reference still fails as stale when its Element is gone.
 //
 // `winuse click <window> @x,y` (ticket 08) aims at a coordinate of the
 // Window's latest screenshot instead: the Mapping turns the screenshot
@@ -48,8 +55,10 @@ func click(s Services) Command {
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("click: "+err.Error(), clickUsageHint)
 		}
-		if a.Point != nil && a.ElementIndex != nil {
-			return "", Fail("click: pass an element index or @x,y coordinates, not both", clickUsageHint)
+		// Exactly one Element Reference form: an Element Index, a name:/id:
+		// reference, or @x,y coordinates.
+		if forms := countRefForms(a.Point != nil, a.ElementIndex != nil, a.Ref != ""); forms > 1 {
+			return "", Fail("click: pass an element index, a name:/id: reference or @x,y coordinates, not several", clickUsageHint)
 		}
 		count := a.ClickCount
 		if count == 0 {
@@ -87,20 +96,32 @@ func click(s Services) Command {
 			})
 		}
 
-		// The Element Index form (ticket 05).
-		if a.ElementIndex == nil {
-			return "", Fail("click: an element index or @x,y coordinates are required",
-				"read a Window's Element Indexes with winuse get-window-state <window>, or click @x,y from its latest screenshot")
+		// The Element forms: an Element Index (ticket 05) or a name:/id:
+		// reference (ticket 11), resolved against the Window's latest
+		// Window State to the Element Index to click.
+		if a.ElementIndex == nil && a.Ref == "" {
+			return "", Fail("click: an element index, a name:/id: reference or @x,y coordinates are required",
+				"read a Window's Elements with winuse get-window-state <window> and click one by its Element Index, name: or id: reference, or click @x,y from its latest screenshot")
 		}
-		if *a.ElementIndex < 0 {
+		if a.ElementIndex != nil && *a.ElementIndex < 0 {
 			return "", Fail("click: the element index must be a non-negative integer", clickUsageHint)
 		}
 		if s.Actions == nil {
 			return "", Fail("click is unavailable: no UIA client", "")
 		}
 
-		index := *a.ElementIndex
+		index, ref := -1, a.Ref
+		if a.ElementIndex != nil {
+			index = *a.ElementIndex
+		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
+			if ref != "" {
+				i, rerr := resolveElementRef(s, w, ref)
+				if rerr != nil {
+					return "", rerr
+				}
+				index = i
+			}
 			pt, err := s.Actions.ElementPoint(ctx, w.ID, index)
 			if err != nil {
 				return "", elementError(err, w, index)
@@ -210,6 +231,18 @@ func inputError(err error) *Error {
 		return Fail(err.Error(), "another window covers the target Element; dismiss or move it, then read a fresh Window State and retry")
 	}
 	return Fail(err.Error(), "")
+}
+
+// countRefForms counts how many Element Reference forms were supplied
+// (an Action taking one must reject any combination).
+func countRefForms(point, index, ref bool) int {
+	n := 0
+	for _, b := range []bool{point, index, ref} {
+		if b {
+			n++
+		}
+	}
+	return n
 }
 
 // parseMouseButton canonicalizes Codex's mouse_button values; "" means

@@ -260,7 +260,7 @@ func TestSetValueLookupPaths(t *testing.T) {
 	}
 	// Fake element pointers seeded through the real beginRead/install path.
 	a, b := 1, 2
-	c.store.install(101, c.store.beginRead(), []comPtr{comPtr(&a), comPtr(&b)})
+	c.store.install(101, c.store.beginRead(), []comPtr{comPtr(&a), comPtr(&b)}, nil)
 	for _, index := range []int{2, 100, -1} {
 		if err := c.SetValue(context.Background(), 101, index, "x"); !errors.Is(err, ErrStale) {
 			t.Fatalf("index %d: error = %v, want ErrStale", index, err)
@@ -284,7 +284,7 @@ func TestPerformSecondaryActionLookupPaths(t *testing.T) {
 		t.Fatalf("error = %v, want ErrNoState", err)
 	}
 	a := 1
-	c.store.install(101, c.store.beginRead(), []comPtr{comPtr(&a)})
+	c.store.install(101, c.store.beginRead(), []comPtr{comPtr(&a)}, nil)
 	if err := c.PerformSecondaryAction(context.Background(), 101, 9, "Expand"); !errors.Is(err, ErrStale) {
 		t.Fatalf("error = %v, want ErrStale", err)
 	}

@@ -10,7 +10,7 @@ func TestRegistryHasEveryCLICommand(t *testing.T) {
 	for _, name := range []string{
 		"list-windows", "list-apps", "launch-app", "get-window-state", "record-tree",
 		"zoom", "click", "activate-window", "type-text", "press-key",
-		"set-value", "perform-secondary-action",
+		"set-value", "perform-secondary-action", "batch",
 	} {
 		if _, ok := cmds[name]; !ok {
 			t.Errorf("command %q is not registered in CommandsWith", name)

@@ -33,6 +33,13 @@ const RequestTimeout = 10 * time.Second
 // 15 s instead of the default 10 s (orchestrator decision).
 const LaunchTimeout = 15 * time.Second
 
+// BatchTimeout is the batch budget: one request runs several Actions in
+// order, each with the activate-and-verify pipeline, so a Batch needs
+// more than the default 10 s. Codex has no batch tool to follow here
+// (codex-surface.md §1); 60 s is winuse's own bound, enough for dozens
+// of steps while keeping a stuck Batch bounded.
+const BatchTimeout = 60 * time.Second
+
 // MaxLine bounds one JSON line in either direction (a Window State tree can
 // be large, but not unbounded).
 const MaxLine = 4 << 20
@@ -41,6 +48,7 @@ const MaxLine = 4 << 20
 // RequestTimeout.
 var commandTimeouts = map[string]time.Duration{
 	"launch-app": LaunchTimeout,
+	"batch":      BatchTimeout,
 }
 
 // TimeoutFor returns the request budget for a command (RequestTimeout for
@@ -78,10 +86,12 @@ type LaunchArgs struct {
 
 // ClickArgs are click's arguments — Codex's click parameters. Ticket 05
 // implements the Element Index form; ticket 08 adds the `@x,y` coordinate
-// form (Point). Later tickets add Element References (name:, id:).
+// form (Point); ticket 11 adds the name:/id: Element Reference form (Ref).
+// The three forms are mutually exclusive.
 type ClickArgs struct {
 	Window       string `json:"window"`                 // Window ID, or an App name when that App has exactly one Window
 	ElementIndex *int   `json:"element_index"`          // the Element to click, from that Window's latest Window State
+	Ref          string `json:"ref,omitempty"`          // name:<text> or id:<AutomationId>: the Element to click, resolved against the Window's latest Window State
 	Point        *Point `json:"point,omitempty"`        // @x,y: coordinates in the latest screenshot's coordinate space
 	ClickCount   int    `json:"click_count,omitempty"`  // 1 (default), 2 (double click) or 3 (triple click)
 	MouseButton  string `json:"mouse_button,omitempty"` // "left" (default), "right" or "middle"; aliases l, r, m
@@ -133,21 +143,51 @@ type PressKeyArgs struct {
 	Key    string `json:"key"`
 }
 
-// SetValueArgs are set-value's arguments — Codex's set_value parameters:
-// the Element Index of a settable Element and its new value.
+// SetValueArgs are set-value's arguments — Codex's set_value parameters
+// with ticket 11's Element Reference form: the Element (an Index or a
+// name:/id: reference against the Window's latest Window State) and its
+// new value.
 type SetValueArgs struct {
 	Window       string `json:"window"`        // Window ID, or an App name when that App has exactly one Window
 	ElementIndex *int   `json:"element_index"` // the Element to set, from that Window's latest Window State
+	Ref          string `json:"ref,omitempty"` // name:<text> or id:<AutomationId>: the Element to set
 	Value        string `json:"value"`         // the new value (a string, or a number for range Elements)
 }
 
 // SecondaryActionArgs are perform-secondary-action's arguments — Codex's
-// perform_secondary_action parameters: an Element Index and one of the
-// Element's Secondary Actions (case-insensitive).
+// perform_secondary_action parameters with ticket 11's Element Reference
+// form: the Element (an Index or a name:/id: reference) and one of its
+// Secondary Actions (case-insensitive).
 type SecondaryActionArgs struct {
 	Window       string `json:"window"`        // Window ID, or an App name when that App has exactly one Window
 	ElementIndex *int   `json:"element_index"` // the Element to act on, from that Window's latest Window State
+	Ref          string `json:"ref,omitempty"` // name:<text> or id:<AutomationId>: the Element to act on
 	Action       string `json:"action"`        // e.g. "Raise", "Scroll Down", "Expand", "Collapse", "Toggle", "Select"
+}
+
+// BatchArgs are batch's arguments (ticket 11): several Actions on one
+// Window in a single call, run in order, stopping at the first failure.
+type BatchArgs struct {
+	Window string `json:"window"` // the one Window every step acts on (Window ID, or an App name when that App has exactly one Window)
+	Steps  []Step `json:"steps"`  // the Actions to run, in order
+}
+
+// Step is one Batch step: an Action and its arguments — the same
+// arguments the standalone command takes, without the Window (the Batch
+// names the Window once; the helper injects it into every step). Kind
+// must be one of BatchStepKinds.
+type Step struct {
+	Kind string          `json:"kind"`           // the Action's command name, e.g. "click"
+	Args json.RawMessage `json:"args,omitempty"` // that command's arguments (window omitted)
+}
+
+// BatchStepKinds are the Action commands a Batch step can be — the
+// commands that act on one Window and print nothing but `ok`. Ticket 10
+// extends the list with scroll, drag and hover. The CLI's batch step
+// parser and the helper's step dispatch share this list so the two ends
+// of the wire never disagree about what a Batch can run.
+var BatchStepKinds = []string{
+	"click", "type-text", "press-key", "set-value", "perform-secondary-action", "activate-window",
 }
 
 // Response is the helper's answer.
