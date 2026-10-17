@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "source": "hand-authored prediction of a persistently sparse Electron window: an app whose web content is never exposed to UI Automation, so the tree stays nearly empty across the retry (spec user story 22: canvas apps, some Electron apps). A live capture needs a user-run recording.",
+  "title": "winuse e2e electron app",
+  "app": "electronapp.exe",
+  "focusedIndex": -1,
+  "elements": [
+    { "depth": 0, "role": "window", "name": "winuse e2e electron app" },
+    { "depth": 1, "role": "custom" }
+  ],
+  "notes": [
+    "this Window's tree is nearly empty; the app may expose little to UI Automation"
+  ]
+}

@@ -14,11 +14,20 @@ import (
 // (uia-go notes §5).
 const maxTransactionTimeout = 2 * time.Second
 
+// captureResult is one completed tree read on the worker thread: the
+// Window State, the live elements behind it (the caller moves them into
+// the live-Element store), and the root element's ClassName.
+type captureResult struct {
+	tree      *wstate.Tree
+	live      []comPtr
+	rootClass string // the root element's UIA ClassName, for Chromium/Electron detection
+}
+
 // capture reads one Window's tree on the worker thread: it builds the cache
 // request scoped to the Window, walks it through Walk, releases everything
 // not kept live, and returns the Window State plus the live elements
 // parallel to its Element Indexes.
-func (th *thread) capture(hwnd uintptr, title, app string, cfg WalkConfig) (*wstate.Tree, []comPtr, error) {
+func (th *thread) capture(hwnd uintptr, title, app string, cfg WalkConfig) (*captureResult, error) {
 	src := &comSource{th: th, hwnd: hwnd}
 	defer src.dispose()
 
@@ -29,16 +38,19 @@ func (th *thread) capture(hwnd uintptr, title, app string, cfg WalkConfig) (*wst
 		release(p)
 	}
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	tree := &wstate.Tree{
-		Title:        title,
-		App:          app,
-		Elements:     res.Elements,
-		FocusedIndex: res.FocusedIndex,
-		Notes:        res.Notes,
-	}
-	return tree, res.Live, nil
+	return &captureResult{
+		tree: &wstate.Tree{
+			Title:        title,
+			App:          app,
+			Elements:     res.Elements,
+			FocusedIndex: res.FocusedIndex,
+			Notes:        res.Notes,
+		},
+		live:      res.Live,
+		rootClass: src.rootClass,
+	}, nil
 }
 
 // comSource is the TreeSource over raw COM calls. Its methods run on the
@@ -51,9 +63,10 @@ func (th *thread) capture(hwnd uintptr, title, app string, cfg WalkConfig) (*wst
 // app pumps messages between chunks — never a single bulk Subtree read
 // (Codex's freeze class).
 type comSource struct {
-	th   *thread
-	hwnd uintptr
-	req  comPtr // cache request, created on first use
+	th        *thread
+	hwnd      uintptr
+	req       comPtr // cache request, created on first use
+	rootClass string // the root element's ClassName, read in Root (Chromium/Electron detection)
 }
 
 // ensureRequest lazily builds the cache request: the properties of the basic
@@ -98,7 +111,10 @@ func (s *comSource) dispose() {
 }
 
 // Root returns the Window's root element with its properties cached,
-// scoped to the target HWND.
+// scoped to the target HWND. It also records the root element's ClassName:
+// Chromium-derived apps (Chrome, Edge, Electron) build their main windows
+// with Win32 classes like "Chrome_WidgetWin_1", which is what the retry
+// policy (retry.go) keys its Chromium detection on.
 func (s *comSource) Root() (comPtr, NodeData, error) {
 	if err := s.ensureRequest(); err != nil {
 		return nil, NodeData{}, err
@@ -107,6 +123,7 @@ func (s *comSource) Root() (comPtr, NodeData, error) {
 	if hr := call(s.th.auto, uiaElementFromHandleBuildCache, s.hwnd, uintptr(unsafe.Pointer(&s.req)), uintptr(unsafe.Pointer(&el))); hr.Failed() || el == nil {
 		return nil, NodeData{}, fmt.Errorf("%w: reading the Window's tree failed (HRESULT %s)", ErrWindowGone, hr)
 	}
+	s.rootClass = cachedBSTR(el, elCachedClassName)
 	return el, s.data(el), nil
 }
 

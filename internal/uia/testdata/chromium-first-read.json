@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "source": "hand-authored prediction of the first read of a Chrome window before Chromium has enabled its accessibility tree (accessibility turns on lazily at the first UI Automation contact, so the first read is nearly empty; see internal/uia/retry.go). A live two-phase capture needs a user-run recording. The page is the e2e HTML fixture (test/e2e/testdata/chromium-fixture.html).",
+  "title": "winuse e2e page 14 - Google Chrome",
+  "app": "chrome.exe",
+  "focusedIndex": -1,
+  "elements": [
+    { "depth": 0, "role": "window", "name": "winuse e2e page 14 - Google Chrome" },
+    { "depth": 1, "role": "pane" }
+  ],
+  "notes": [
+    "this Window's tree is nearly empty; the app may expose little to UI Automation"
+  ]
+}

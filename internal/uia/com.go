@@ -95,6 +95,7 @@ const (
 	elCachedHasKeyboardFocus = 58 // get_CachedHasKeyboardFocus(*BOOL)
 	elCachedIsEnabled        = 60 // get_CachedIsEnabled(*BOOL)
 	elCachedAutomationId     = 61 // get_CachedAutomationId(*BSTR)
+	elCachedClassName        = 62 // get_CachedClassName(*BSTR)
 	elCachedHelpText         = 63 // get_CachedHelpText(*BSTR)
 )
 
@@ -117,6 +118,7 @@ var treeProperties = []uint32{
 	30008, // HasKeyboardFocus
 	30010, // IsEnabled
 	30011, // AutomationId
+	30012, // ClassName (the root's, for Chromium/Electron detection; ticket 14)
 	30013, // HelpText
 }
 

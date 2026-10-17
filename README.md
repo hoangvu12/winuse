@@ -5,11 +5,14 @@ run shell commands list Apps and Windows, read a Window State (accessibility
 tree as text, screenshots on request) and perform Actions — at the quality of
 Codex Computer Use, without being tied to Codex.
 
-**Status: tickets 01–04 of the v1 plan** (`.scratch/winuse-v1/`) — background
-helper, `winuse list-windows`, the fixture app with its opt-in e2e runner,
-`winuse list-apps` and `winuse launch-app`, and `winuse get-window-state`:
-the Window State as Codex's Element tree, read through UI Automation on a
-single locked COM thread, plus the recorder for seam-2 fixtures. Later
+**Status: tickets 01–04 and 14 of the v1 plan** (`.scratch/winuse-v1/`)
+— background helper, `winuse list-windows`, the fixture app with its
+opt-in e2e runner, `winuse list-apps` and `winuse launch-app`,
+`winuse get-window-state`: the Window State as Codex's Element tree, read
+through UI Automation on a single locked COM thread, plus the recorder for
+seam-2 fixtures — and Chromium/Electron support: a near-empty first read
+is retried once after a short delay, so Chrome, Edge and Electron apps
+expose their web content in the tree. Later
 tickets add actions, screenshots, the overlay and the Esc stop. The product
 spec and the domain language live in `.scratch/winuse-v1/spec.md` and
 `CONTEXT.md`.
@@ -40,9 +43,12 @@ go run github.com/tc-hib/go-winres@latest make --arch amd64,arm64 --out cmd/winu
   window filtering/formatting and resolution, client state machine, helper
   serving and idle exit, the fixture app's Element contract, and the
   seam-2 Window State tests: recorded/hand-authored tree fixtures are
-  rendered and compared with expected text, and the bounded tree walk
+  rendered and compared with expected text, the bounded tree walk
   (caps, time limit, truncation notes) is tested against a fake element
-  source. No desktop access, no input injection, safe to run any time.
+  source, and the Chromium/Electron sparse-tree detection (the
+  lazy-accessibility retry and its notes) is tested against recorded
+  Chromium/Electron trees (`internal/uia/testdata/`). No desktop access,
+  no input injection, safe to run any time.
 - **End-to-end (seam 1):** `test/e2e` — the real binary and the fixture app
   against the live desktop. Opt-in only, **started by the user, never by
   an agent** (see `test/e2e/README.md` for the rules):
@@ -163,6 +169,21 @@ each Window (a new read replaces them), so later Action tickets can
 resolve Element Indexes — and so indexes from an earlier Window State go
 stale instead of hitting the wrong Element.
 
+### Chromium and Electron apps
+
+Chrome, Edge and Electron apps (Discord, VS Code, …) expose their web
+content through UI Automation too, but **lazily**: Chromium enables its
+accessibility tree only when a UI Automation client first appears, so the
+very first read of such a Window is often nearly empty — the read itself
+is what turns the tree on. A nearly empty first read is therefore retried
+once after a short delay (500 ms), which is long enough for Chromium to
+build the tree, so the same `get-window-state` call returns the page's
+links, buttons and inputs. A Chromium/Electron Window whose tree is
+complete but carries no document Element (the web content's root) gets the
+same one retry. A tree that stays nearly empty after the retry — canvas
+apps, some Electron apps — carries a note saying so and pointing the agent
+at a screenshot instead.
+
 ### Recorder
 
 ```
@@ -171,8 +192,9 @@ winuse record-tree <window> <file.json>
 
 Captures a real Window's tree and saves it as a **fixture file** — the
 same JSON the renderer loads (`wstate.Tree`, format 1) — for the seam-2
-offline tests (`internal/wstate/testdata/`). Hand-authored fixtures are
-written in the same format and marked as such in their `source` field.
+offline tests (`internal/wstate/testdata/`, `internal/uia/testdata/`).
+Hand-authored fixtures are written in the same format and marked as such
+in their `source` field.
 
 ## The fixture app
 
@@ -201,7 +223,7 @@ internal/pipe/       named pipe: naming per user/session, user-only DACL, dial, 
 internal/win/        Win32 layer: identity, DPI awareness, window enumeration, process/App names, window resolution, helper spawn
 internal/apps/       App catalog and launching: list-apps (UserAssist, Start menu, store Apps), launch-app (CreateProcess/ShellExecuteExW + Window polling)
 internal/helper/     helper: serve loop, idle exit, stale-exit, command registry, window-state + record-tree + list-apps + launch-app commands
-internal/uia/        UI Automation: locked COM worker thread, bounded tree walk, live-Element store (raw vtables, no cgo)
+internal/uia/        UI Automation: locked COM worker thread, bounded tree walk, Chromium/Electron lazy-tree retry, live-Element store (raw vtables, no cgo)
 internal/wstate/     Window State model: Element/Tree, Codex-format rendering, recorded-tree fixtures (seam 2)
 internal/cli/        CLI: subcommands, dial-or-spawn client state machine, output/exit-code policy
 internal/version/    binary version (stale-helper detection)

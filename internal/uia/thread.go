@@ -197,41 +197,37 @@ func (c *Client) Run(ctx context.Context, job func(w *worker)) error {
 // an earlier Window State can no longer resolve — they fail as stale in
 // later tickets instead of pointing at the wrong Element.
 //
+// A nearly empty first read is retried once after a short delay
+// (Chromium/Electron enable their accessibility tree lazily, at the first
+// UI Automation contact; see retry.go), so the Window State of Chrome,
+// Edge and Electron apps includes their web content, and a tree that
+// stays nearly empty carries a note pointing the agent at a screenshot.
+//
 // title and app fill the Window State's header (the resolved Window's title
 // and executable file name).
 func (c *Client) Capture(ctx context.Context, hwnd uint64, title, app string, budget time.Duration) (*wstate.Tree, error) {
-	cfg := WalkConfig{
-		MaxNodes:    DefaultMaxNodes,
-		MaxDepth:    DefaultMaxDepth,
-		MaxChildren: DefaultMaxChildren,
-		Budget:      budget,
-	}
-	// The walk's soft limit also respects the request's hard deadline,
-	// minus a margin to render and answer within it.
-	if d, ok := ctx.Deadline(); ok {
-		if slack := time.Until(d) - responseMargin; slack > 0 && slack < cfg.Budget {
-			cfg.Budget = slack
+	// One read is one job on the COM thread; the retry delay is spent on
+	// the caller's goroutine so the worker stays free. Each successful read
+	// replaces the Window's live Elements, so the store ends up holding the
+	// Elements behind the Window State that is returned.
+	read := func(cfg WalkConfig) (*readResult, error) {
+		var res *captureResult
+		var jobErr error
+		runErr := c.Run(ctx, func(w *worker) {
+			res, jobErr = w.thread.capture(uintptr(hwnd), title, app, cfg)
+			if jobErr == nil {
+				c.store.replace(hwnd, res.live)
+			}
+		})
+		if runErr != nil {
+			return nil, runErr
 		}
-	}
-	if cfg.Budget <= 0 {
-		cfg.Budget = time.Millisecond // a non-positive budget still walks the root
-	}
-	var tree *wstate.Tree
-	var jobErr error
-	runErr := c.Run(ctx, func(w *worker) {
-		var live []comPtr
-		tree, live, jobErr = w.thread.capture(uintptr(hwnd), title, app, cfg)
-		if jobErr == nil {
-			c.store.replace(hwnd, live)
+		if jobErr != nil {
+			return nil, jobErr
 		}
-	})
-	if runErr != nil {
-		return nil, runErr
+		return &readResult{tree: res.tree, rootClass: res.rootClass}, nil
 	}
-	if jobErr != nil {
-		return nil, jobErr
-	}
-	return tree, nil
+	return readTree(ctx, app, budget, read, sleepCtx)
 }
 
 // Element returns the live element behind (hwnd, elementIndex) from the
@@ -244,6 +240,28 @@ func (c *Client) Element(hwnd uint64, elementIndex int) (comPtr, bool) {
 // responseMargin is kept between the walk's budget and the request deadline
 // so a partial tree still renders and answers in time.
 const responseMargin = 500 * time.Millisecond
+
+// walkConfig bounds one tree read. The walk's soft limit (budget) also
+// respects the request's hard deadline, minus the response margin to
+// render and answer within it. It is re-derived per read, so the retry's
+// second read gets whatever time the request has left.
+func walkConfig(ctx context.Context, budget time.Duration) WalkConfig {
+	cfg := WalkConfig{
+		MaxNodes:    DefaultMaxNodes,
+		MaxDepth:    DefaultMaxDepth,
+		MaxChildren: DefaultMaxChildren,
+		Budget:      budget,
+	}
+	if d, ok := ctx.Deadline(); ok {
+		if slack := time.Until(d) - responseMargin; slack > 0 && slack < cfg.Budget {
+			cfg.Budget = slack
+		}
+	}
+	if cfg.Budget <= 0 {
+		cfg.Budget = time.Millisecond // a non-positive budget still walks the root
+	}
+	return cfg
+}
 
 // store keeps the live Elements behind each Window's latest Window State.
 // It is client-level (not worker-level): live UIA elements belong to the
