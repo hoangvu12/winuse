@@ -30,15 +30,26 @@ type thread struct {
 // pump, and UIA calls should come from a thread that owns no HWND (uia-go
 // notes §6).
 type worker struct {
-	jobs   chan func() // unbuffered: one job in flight at a time
+	jobs   chan func()   // unbuffered: one job in flight at a time; never closed
+	stop   chan struct{} // closed to wind the thread down; senders watch it
 	exited chan struct{}
 	thread *thread // set before the worker answers ready; read by jobs
+
+	mu     sync.Mutex // guards closed; never held across the job wait
+	closed bool
 }
+
+// ErrWorkerGone reports that the UIA worker is winding down — it was
+// abandoned after a wedged provider call outlasted a request's budget, or
+// the client is closing — so a job cannot be delivered to it. The next
+// request starts a replacement worker; the recovery is to retry the
+// command.
+var ErrWorkerGone = errors.New("the UIA worker is winding down after being abandoned; retry the command")
 
 // startWorker starts a fresh worker thread. It returns only after the
 // thread has initialised COM and created IUIAutomation2 (or failed).
 func startWorker() (*worker, error) {
-	w := &worker{jobs: make(chan func()), exited: make(chan struct{})}
+	w := &worker{jobs: make(chan func()), stop: make(chan struct{}), exited: make(chan struct{})}
 	ready := make(chan error, 1)
 	go func() {
 		runtime.LockOSThread()
@@ -62,21 +73,103 @@ func startWorker() (*worker, error) {
 		call(auto, uia2PutConnectionTimeout, 1000)
 		w.thread = &thread{auto: auto}
 		ready <- nil
-		for job := range w.jobs {
-			job()
-		}
-		// Order: release the automation object while the MTA is alive, then
-		// leave COM. Stored elements live in the client-level store and are
-		// only ever used from a live worker (run ensures one exists), so the
-		// MTA is never uninitialised under them.
-		release(auto)
-		coUninitialize()
-		close(w.exited)
+		w.serve()
 	}()
 	if err := <-ready; err != nil {
 		return nil, err
 	}
 	return w, nil
+}
+
+// serve is the worker thread's job loop. The wind-down signal is stop,
+// never a close of jobs: a sender can be parked on jobs the moment an
+// abandon fires, and a send on a closed channel would panic the helper
+// (finding 1 of the review). A job whose send completed in the same
+// instant stop closed still runs — its sender already returned true and
+// is waiting for it — so the stop branch drains what was delivered before
+// releasing the COM state.
+func (w *worker) serve() {
+	for {
+		select {
+		case job := <-w.jobs:
+			job()
+		case <-w.stop:
+			for {
+				select {
+				case job := <-w.jobs:
+					job()
+				default:
+					// Order: release the automation object while the MTA is
+					// alive, then leave COM. Stored elements live in the
+					// client-level store and are only ever used from a live
+					// worker (run ensures one exists), so the MTA is never
+					// uninitialised under them.
+					release(w.thread.auto)
+					coUninitialize()
+					close(w.exited)
+					return
+				}
+			}
+		}
+	}
+}
+
+// send delivers one job to the worker thread. It reports false when the
+// worker is winding down or already gone. w.mu is never held across the
+// wait for a busy worker (finding 2, fixed here in its wgc form first: a
+// parked send holding the lock would block close — and with it the
+// watchdog's abandon — deadlocking every later request); instead senders
+// park in a select that also watches stop, so closing stop releases them.
+// jobs is never closed, so no send can panic.
+func (w *worker) send(job func()) bool {
+	w.mu.Lock()
+	if w.closed {
+		w.mu.Unlock()
+		return false
+	}
+	w.mu.Unlock()
+	select {
+	case w.jobs <- job:
+		return true
+	case <-w.stop:
+		return false
+	case <-w.exited:
+		return false
+	}
+}
+
+// sendCtx is send bounded by ctx: it reports the delivery, ctx's error
+// when the deadline fired first (the caller abandons the worker), or
+// ErrWorkerGone when the worker is winding down.
+func (w *worker) sendCtx(ctx context.Context, job func()) (bool, error) {
+	w.mu.Lock()
+	closed := w.closed
+	w.mu.Unlock()
+	if closed {
+		return false, ErrWorkerGone
+	}
+	select {
+	case w.jobs <- job:
+		return true, nil
+	case <-ctx.Done():
+		return false, ctx.Err()
+	case <-w.stop:
+		return false, ErrWorkerGone
+	case <-w.exited:
+		return false, ErrWorkerGone
+	}
+}
+
+// close winds the worker down: senders learn through stop and the thread
+// leaves its loop after its current job (or is leaked if that job never
+// returns). Idempotent; jobs is never closed.
+func (w *worker) close() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.closed {
+		w.closed = true
+		close(w.stop)
+	}
 }
 
 // Client is the helper's UI Automation client: it owns the current worker
@@ -114,16 +207,25 @@ func (c *Client) Close() {
 		return
 	}
 	// Release stored elements on a COM thread (Release on MTA objects from
-	// an uninitialized thread is not allowed).
+	// an uninitialized thread is not allowed). Delivery is bounded: a
+	// worker still busy past the bound is wedged, and it is leaked with
+	// whatever elements remain rather than hanging the shutdown.
+	delivered := make(chan struct{})
+	go func() {
+		if w.send(func() { c.store.releaseAll() }) {
+			close(delivered)
+		}
+	}()
 	select {
-	case w.jobs <- func() { c.store.releaseAll() }:
+	case <-delivered:
 	case <-w.exited:
+	case <-time.After(2 * time.Second):
 	}
-	close(w.jobs)
+	w.close()
 	select {
 	case <-w.exited:
 	case <-time.After(2 * time.Second):
-		// Worker wedged: leak it.
+		// Worker wedged: leak it; the process exit reclaims it.
 	}
 }
 
@@ -145,20 +247,23 @@ func (c *Client) ensureWorker() (*worker, error) {
 }
 
 // abandon gives up on w: it is detached so the next Run starts a
-// replacement, and its job channel is closed so the thread winds down after
-// its current job (the abandoned job's results are discarded).
+// replacement, and stop is closed so the thread winds down after its
+// current job (or is leaked if that job never returns; the abandoned
+// job's results are discarded).
 func (c *Client) abandon(w *worker) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.w == w {
 		c.w = nil
-		close(w.jobs)
+		w.close()
 	}
 }
 
 // Run executes job on the worker's COM thread, bounded by ctx. A job that
 // does not finish before ctx expires abandons the worker (its result is
-// discarded) and returns ctx's error.
+// discarded) and returns ctx's error. A worker already winding down (an
+// earlier abandon) answers ErrWorkerGone: the next Run starts a
+// replacement, so the caller can retry.
 func (c *Client) Run(ctx context.Context, job func(w *worker)) error {
 	w, err := c.ensureWorker()
 	if err != nil {
@@ -176,16 +281,28 @@ func (c *Client) Run(ctx context.Context, job func(w *worker)) error {
 		}()
 		job(w)
 	}
-	select {
-	case w.jobs <- j:
-	case <-ctx.Done():
+	delivered, serr := w.sendCtx(ctx, j)
+	if !delivered {
+		if errors.Is(serr, ErrWorkerGone) {
+			return serr
+		}
+		// ctx expired while waiting for the worker (another request's job
+		// holds it): give up on the worker, like a job that overruns.
 		c.abandon(w)
-		return ctx.Err()
+		return serr
 	}
 	select {
 	case <-done:
 		return perr
 	case <-ctx.Done():
+		// The job may have finished in the same instant the deadline fired;
+		// its result wins over the timeout (the server delivers output
+		// produced past the budget).
+		select {
+		case <-done:
+			return perr
+		default:
+		}
 		c.abandon(w)
 		return ctx.Err()
 	}

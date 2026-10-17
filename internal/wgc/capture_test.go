@@ -257,3 +257,109 @@ func TestNameIsChainReady(t *testing.T) {
 		t.Errorf("Name() = %q, want %q", got, want)
 	}
 }
+
+// newFakeWorker builds a worker whose jobs are served by a plain
+// goroutine (no WinRT, no COM): the offline stand-in for the capture
+// thread's job mechanics.
+func newFakeWorker() *worker {
+	w := &worker{jobs: make(chan func()), stop: make(chan struct{}), exited: make(chan struct{})}
+	go func() {
+		for {
+			select {
+			case job := <-w.jobs:
+				job()
+			case <-w.stop:
+				for {
+					select {
+					case job := <-w.jobs:
+						job()
+					default:
+						close(w.exited)
+						return
+					}
+				}
+			}
+		}
+	}()
+	return w
+}
+
+// TestWorkerSendDoesNotDeadlockAgainstClose reproduces finding 2: send
+// used to hold w.mu while parked waiting for a wedged worker, so the
+// watchdog's abandon → close — which needs w.mu — blocked forever, and
+// with it every later capture (ensureWorker kept returning the wedged
+// worker). A close racing a parked send must complete, and the parked
+// sender must learn the worker is gone instead of hanging.
+func TestWorkerSendDoesNotDeadlockAgainstClose(t *testing.T) {
+	w := &worker{jobs: make(chan func()), stop: make(chan struct{}), exited: make(chan struct{})}
+	taken := make(chan struct{})
+	go func() {
+		// The worker takes one job and wedges inside it (a provider or the
+		// GPU stuck in a call); like a real abandon, its thread is leaked.
+		job := <-w.jobs
+		_ = job
+		close(taken)
+		select {} // never returns: the abandoned worker's leaked thread
+	}()
+	if !w.send(func() {}) { // the job the worker is busy with
+		t.Fatal("the first send must be delivered to the healthy worker")
+	}
+	<-taken
+
+	gone := make(chan bool, 1)
+	go func() { gone <- w.send(func() {}) }() // parks: the worker is wedged
+	time.Sleep(5 * time.Millisecond)          // let the send park
+
+	closed := make(chan struct{})
+	go func() {
+		w.close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("close deadlocked against a parked send: the watchdog could never abandon the wedged worker")
+	}
+	select {
+	case ok := <-gone:
+		if ok {
+			t.Fatal("the parked send must report the worker gone")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the parked send never returned after the close")
+	}
+	// A later capture learns the worker is gone instead of queueing on it
+	// forever.
+	if w.send(func() {}) {
+		t.Fatal("a send after the close must be refused")
+	}
+}
+
+// TestWorkerServesJobsAndWindsDown pins the healthy path's mechanics: jobs
+// run one at a time, close stops serving, and the thread reports exited.
+func TestWorkerServesJobsAndWindsDown(t *testing.T) {
+	w := newFakeWorker()
+	ran := make(chan int, 3)
+	for i := 0; i < 3; i++ {
+		i := i
+		if !w.send(func() { ran <- i }) {
+			t.Fatalf("send %d refused on a healthy worker", i)
+		}
+	}
+	for i := 0; i < 3; i++ {
+		select {
+		case got := <-ran:
+			if got != i {
+				t.Errorf("job %d ran out of order: got %d", i, got)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("job %d never ran", i)
+		}
+	}
+	w.close()
+	select {
+	case <-w.exited:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the worker never wound down after close")
+	}
+}

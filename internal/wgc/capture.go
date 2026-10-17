@@ -234,8 +234,8 @@ func (m *Method) ensureWorker() (*worker, error) {
 }
 
 // abandon gives up on w: it is detached so the next capture starts a
-// replacement, and its job channel is closed so the thread winds down
-// after its current job (or is leaked if that job never returns).
+// replacement, and stop is closed so the thread winds down after its
+// current job (or is leaked if that job never returns).
 func (m *Method) abandon(w *worker) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -249,45 +249,55 @@ func (m *Method) abandon(w *worker) {
 // The thread owns no window and pumps no messages: the free-threaded
 // frame pool needs neither.
 type worker struct {
-	jobs   chan func()
+	jobs   chan func()   // unbuffered: one job in flight at a time; never closed
+	stop   chan struct{} // closed to wind the thread down; senders watch it
 	exited chan struct{}
 	th     *thread // set before the worker answers ready
 
-	mu     sync.Mutex // guards jobs' closure against concurrent sends
+	mu     sync.Mutex // guards closed; never held across the job wait
 	closed bool
 }
 
 // send delivers one job to the worker thread, reporting false when the
-// worker is already winding down.
+// worker is already winding down. w.mu is never held across the wait for
+// a busy worker (finding 2 of the review): a parked send holding the
+// lock would block close — and with it the watchdog's abandon —
+// permanently deadlocking every later capture. Instead senders park in a
+// select that also watches stop, so closing it releases them. jobs is
+// never closed, so no send can panic either.
 func (w *worker) send(job func()) bool {
 	w.mu.Lock()
-	defer w.mu.Unlock()
 	if w.closed {
+		w.mu.Unlock()
 		return false
 	}
+	w.mu.Unlock()
 	select {
 	case w.jobs <- job:
 		return true
+	case <-w.stop:
+		return false
 	case <-w.exited:
 		return false
 	}
 }
 
-// close winds the worker down: its job channel is closed so the thread
-// releases its COM state after the current job and exits.
+// close winds the worker down: senders learn through stop and the thread
+// leaves its loop after its current job (or is leaked if that job never
+// returns). Idempotent; jobs is never closed.
 func (w *worker) close() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if !w.closed {
 		w.closed = true
-		close(w.jobs)
+		close(w.stop)
 	}
 }
 
 // startWorker starts the capture thread. It returns only after the thread
 // has entered the MTA (or failed).
 func startWorker() (*worker, error) {
-	w := &worker{jobs: make(chan func()), exited: make(chan struct{})}
+	w := &worker{jobs: make(chan func()), stop: make(chan struct{}), exited: make(chan struct{})}
 	ready := make(chan error, 1)
 	go func() {
 		runtime.LockOSThread()
@@ -308,16 +318,33 @@ func startWorker() (*worker, error) {
 		}
 		w.th = &thread{}
 		ready <- nil
-		for job := range w.jobs {
-			job()
+		// The wind-down signal is stop, never a close of jobs (a sender can
+		// be parked on jobs the moment an abandon fires — a send on a
+		// closed channel would panic). A job whose send completed in the
+		// same instant still runs, so the stop branch drains what was
+		// delivered before disposing the COM state.
+		for {
+			select {
+			case job := <-w.jobs:
+				job()
+			case <-w.stop:
+				for {
+					select {
+					case job := <-w.jobs:
+						job()
+					default:
+						// Wind-down: drop the cached factories and device while
+						// the apartment is still alive, then leave it.
+						w.th.dispose()
+						if uninit {
+							procRoUninitialize.Call()
+						}
+						close(w.exited)
+						return
+					}
+				}
+			}
 		}
-		// Wind-down: drop the cached factories and device while the
-		// apartment is still alive, then leave it.
-		w.th.dispose()
-		if uninit {
-			procRoUninitialize.Call()
-		}
-		close(w.exited)
 	}()
 	if err := <-ready; err != nil {
 		return nil, err

@@ -2,20 +2,35 @@ package uia
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
 )
 
 // startFakeWorker returns a worker whose jobs are served by a plain
-// goroutine (no COM); it mimics the real worker's lifecycle.
+// goroutine (no COM); it mimics the real worker's lifecycle: jobs run
+// one at a time, stop is the wind-down signal, and a delivered job
+// always runs before the wind-down.
 func startFakeWorker() *worker {
-	w := &worker{jobs: make(chan func()), exited: make(chan struct{})}
+	w := &worker{jobs: make(chan func()), stop: make(chan struct{}), exited: make(chan struct{})}
 	go func() {
-		for job := range w.jobs {
-			job()
+		for {
+			select {
+			case job := <-w.jobs:
+				job()
+			case <-w.stop:
+				for {
+					select {
+					case job := <-w.jobs:
+						job()
+					default:
+						close(w.exited)
+						return
+					}
+				}
+			}
 		}
-		close(w.exited)
 	}()
 	return w
 }
@@ -23,7 +38,7 @@ func startFakeWorker() *worker {
 // hangWorker returns a worker that never serves jobs (the wedged-thread
 // scenario: a provider stuck inside a call).
 func hangWorker() *worker {
-	return &worker{jobs: make(chan func()), exited: make(chan struct{})}
+	return &worker{jobs: make(chan func()), stop: make(chan struct{}), exited: make(chan struct{})}
 }
 
 func testClient(factory func() (*worker, error)) *Client {
@@ -71,16 +86,15 @@ func TestClientRunAbandonsWedgedWorkerAndReplacesIt(t *testing.T) {
 		t.Fatal("run against a wedged worker must fail with the context error")
 	}
 
-	// The wedged worker was abandoned: its job channel is closed (a
-	// receive yields immediately with no job) and the next run is served by
-	// a replacement.
+	// The wedged worker was abandoned: stop is closed (senders learn the
+	// worker is gone) and the next run is served by a replacement.
 	select {
-	case j, ok := <-wedged.jobs:
-		if ok || j != nil {
-			t.Fatal("the wedged worker's job channel must be closed and empty")
-		}
+	case <-wedged.stop:
 	default:
-		t.Fatal("the wedged worker's job channel must be closed")
+		t.Fatal("the wedged worker must be winding down (stop closed)")
+	}
+	if wedged.send(func() {}) {
+		t.Fatal("a send to the abandoned worker must refuse the job")
 	}
 	ran := false
 	if err := c.Run(context.Background(), func(w *worker) { ran = true }); err != nil {
@@ -138,6 +152,94 @@ func TestClientRunAfterCloseFails(t *testing.T) {
 	c.Close()
 	if err := c.Run(context.Background(), func(w *worker) {}); err == nil {
 		t.Fatal("run after Close must fail")
+	}
+}
+
+// TestClientRunConcurrentTimeoutsNeverPanic reproduces finding 1's race:
+// concurrent requests against one worker plus a timeout that abandons it.
+// The old design closed w.jobs from abandon while other Runs were sending
+// on it, so the helper could panic with a send on a closed channel. The
+// channel is now never closed (stop is the wind-down signal senders
+// watch), so every Run must return an orderly error — the context error,
+// ErrWorkerGone or success — never a panic — and a replacement worker must
+// serve the next request.
+func TestClientRunConcurrentTimeoutsNeverPanic(t *testing.T) {
+	factory := func() (*worker, error) {
+		w := &worker{jobs: make(chan func()), stop: make(chan struct{}), exited: make(chan struct{})}
+		go func() {
+			for {
+				select {
+				case job := <-w.jobs:
+					time.Sleep(20 * time.Millisecond) // busy: senders queue up
+					job()
+				case <-w.stop:
+					close(w.exited)
+					return
+				}
+			}
+		}()
+		return w, nil
+	}
+	c := testClient(factory)
+	defer c.Close()
+
+	const n = 8
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+			defer cancel()
+			_ = c.Run(ctx, func(w *worker) {}) // the error is checked below
+		}()
+	}
+	wg.Wait()
+
+	// After the storm, a fresh request is served (by a replacement worker
+	// or a surviving one) without hanging.
+	ran := make(chan error, 1)
+	go func() { ran <- c.Run(context.Background(), func(w *worker) {}) }()
+	select {
+	case err := <-ran:
+		if err != nil && !errors.Is(err, ErrWorkerGone) {
+			t.Errorf("run after the concurrent storm: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a run after the concurrent storm never returned")
+	}
+}
+
+// TestWorkerDeliveredJobRunsDespiteConcurrentClose pins the drain rule: a
+// job whose send completed in the same instant close fired still runs —
+// its sender already returned true and is waiting on it.
+func TestWorkerDeliveredJobRunsDespiteConcurrentClose(t *testing.T) {
+	w := &worker{jobs: make(chan func()), stop: make(chan struct{}), exited: make(chan struct{})}
+	go func() {
+		for {
+			select {
+			case job := <-w.jobs:
+				job()
+			case <-w.stop:
+				close(w.exited)
+				return
+			}
+		}
+	}()
+	// Send and close at the same time; the worker may take either branch.
+	w.close()
+	ran := make(chan struct{})
+	if w.send(func() { close(ran) }) {
+		select {
+		case <-ran:
+		case <-time.After(5 * time.Second):
+			t.Fatal("the delivered job never ran after the concurrent close")
+		}
+	}
+	select {
+	case <-w.exited:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the worker never wound down")
 	}
 }
 
