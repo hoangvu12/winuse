@@ -4,10 +4,10 @@
 
 **Blocked by:** 08 — Screenshots (fallback methods) + coordinate clicks + zoom
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Scroll works horizontally and vertically at a point
-- [ ] Drag moves from start to end with intermediate moves so apps register it
-- [ ] Hover leaves the pointer at the point so hover-only UI appears
-- [ ] Offline tests cover argument parsing and coordinate mapping
+- [x] Scroll works horizontally and vertically at a point
+- [x] Drag moves from start to end with intermediate moves so apps register it
+- [x] Hover leaves the pointer at the point so hover-only UI appears
+- [x] Offline tests cover argument parsing and coordinate mapping
 - [ ] End-to-end: scroll the fixture list, drag on the canvas, reveal the hover-only toolbar (verified by user run)
