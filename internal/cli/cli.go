@@ -7,15 +7,19 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/hoangvu12/winuse/internal/apps"
 	"github.com/hoangvu12/winuse/internal/protocol"
+	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/version"
 	"github.com/hoangvu12/winuse/internal/win"
 )
 
-// Usage is the short command surface (grows as tickets land).
-const Usage = `usage: winuse <command> [arguments]
+// usageHead and usageTail sandwich the Secondary Actions list in Usage
+// below (from uia's canonical table, finding 18: this text, the Window
+// State's listing and the Action validation share one source).
+const usageHead = `usage: winuse <command> [arguments]
 
 commands:
   list-windows                list visible Windows: Window ID, App and title
@@ -46,9 +50,11 @@ commands:
                                Element under a point of the latest screenshot
   perform-secondary-action <window> <element index | name: | id: | @x,y> <action>
                                perform one of the Element's Secondary Actions
-                               (Raise, Scroll Down, Expand, Collapse, Toggle,
-                               Select, ...); @x,y acts on the Element under
-                               a point of the latest screenshot
+                               (`
+
+const usageTail = `);
+                               @x,y acts on the Element under a point of the
+                               latest screenshot
   batch <window> <action> [arguments] [then <action> [arguments]] ...
                                run several Actions on one Window in order,
                                stopping at the first failure (which names
@@ -70,6 +76,39 @@ a <window> is a Window ID, or an App name when that App has exactly one Window;
 an element index, name:<text>, id:<AutomationId> or @x,y (the latest
 screenshot's pixels) name an Element of the Window's latest Window State
 `
+
+// Usage is the short command surface (grows as tickets land). The
+// perform-secondary-action line lists the Secondary Actions from uia's
+// canonical table, so this text, the Window State's listing and the
+// Action validation share one source (finding 18).
+var Usage = usageHead + secondaryActionsPhrase() + usageTail
+
+// secondaryActionsPhrase renders the canonical Secondary Actions for the
+// usage text, comma-joined and wrapped at the usage's column.
+func secondaryActionsPhrase() string {
+	const (
+		indent = "                               "
+		width  = 72
+	)
+	var lines []string
+	line := ""
+	for i, name := range uia.SecondaryActionNames {
+		item := name
+		if i > 0 {
+			item = ", " + name
+		}
+		if line != "" && len(indent)+len(line)+len(item) > width {
+			lines = append(lines, line+",")
+			line = name
+			continue
+		}
+		line += item
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n"+indent)
+}
 
 // Main runs the CLI for args (without the program name) and returns the exit
 // code: 0 success, 1 command failure, 2 usage error. The first command

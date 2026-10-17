@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
 )
 
@@ -115,5 +116,17 @@ func TestInputDesktopExitErrorReportsLocked(t *testing.T) {
 	}
 	if code := ExitCode(err); code != 1 {
 		t.Errorf("exit = %d, want 1", code)
+	}
+}
+
+// TestUsageListsTheCanonicalSecondaryActions pins finding 18's wiring:
+// the usage text's Secondary Actions list is built from uia's canonical
+// table, so the CLI can never drift from the Window State's listing and
+// the Action validation.
+func TestUsageListsTheCanonicalSecondaryActions(t *testing.T) {
+	for _, name := range uia.SecondaryActionNames {
+		if !strings.Contains(Usage, name) {
+			t.Errorf("usage text missing the Secondary Action %q", name)
+		}
 	}
 }
