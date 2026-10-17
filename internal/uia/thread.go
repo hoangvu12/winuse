@@ -187,7 +187,6 @@ type Client struct {
 	factory func() (*worker, error) // startWorker; faked in tests
 	store   *store
 }
-
 // New creates a client. The worker thread starts lazily on first use, so a
 // helper that only ever lists windows never initialises COM.
 func New() *Client {
@@ -259,16 +258,48 @@ func (c *Client) abandon(w *worker) {
 	}
 }
 
+// run tracks one Run: whether the worker it ran on was abandoned while
+// the job was still in flight. A job that completes after its run was
+// abandoned — a wedged provider call eventually returning on a worker
+// already winding down — must not install its results anywhere shared:
+// Run marks the run before abandoning, and the job's tail checks it under
+// the same mutex (finding 5 of the review).
+type run struct {
+	mu        sync.Mutex
+	abandoned bool
+}
+
+// wasAbandoned reports whether Run gave up on this run's worker. It is
+// read on the worker thread together with the decision that depends on
+// it, under mu, so the flag cannot flip between the check and the
+// decision.
+func (r *run) wasAbandoned() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.abandoned
+}
+
+// markAbandoned is called by Run before it abandons the worker — never
+// after a job that already finished keeps its results.
+func (r *run) markAbandoned() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.abandoned = true
+}
+
 // Run executes job on the worker's COM thread, bounded by ctx. A job that
 // does not finish before ctx expires abandons the worker (its result is
-// discarded) and returns ctx's error. A worker already winding down (an
-// earlier abandon) answers ErrWorkerGone: the next Run starts a
-// replacement, so the caller can retry.
-func (c *Client) Run(ctx context.Context, job func(w *worker)) error {
+// discarded) and returns ctx's error — the run is marked abandoned first,
+// so a job still executing on the abandoned worker refuses to install its
+// results anywhere shared. A worker already winding down (an earlier
+// abandon) answers ErrWorkerGone: the next Run starts a replacement, so
+// the caller can retry.
+func (c *Client) Run(ctx context.Context, job func(w *worker, r *run)) error {
 	w, err := c.ensureWorker()
 	if err != nil {
 		return err
 	}
+	r := &run{}
 	done := make(chan struct{})
 	var perr error
 	j := func() {
@@ -279,7 +310,7 @@ func (c *Client) Run(ctx context.Context, job func(w *worker)) error {
 				c.abandon(w) // its COM state is suspect; replace it
 			}
 		}()
-		job(w)
+		job(w, r)
 	}
 	delivered, serr := w.sendCtx(ctx, j)
 	if !delivered {
@@ -303,6 +334,7 @@ func (c *Client) Run(ctx context.Context, job func(w *worker)) error {
 			return perr
 		default:
 		}
+		r.markAbandoned()
 		c.abandon(w)
 		return ctx.Err()
 	}
@@ -338,10 +370,10 @@ func (c *Client) Capture(ctx context.Context, hwnd uint64, title, app string, bu
 		seq := c.store.beginRead()
 		var res *captureResult
 		var jobErr error
-		runErr := c.Run(ctx, func(w *worker) {
+		runErr := c.Run(ctx, func(w *worker, r *run) {
 			res, jobErr = w.thread.capture(uintptr(hwnd), title, app, cfg)
 			if jobErr == nil {
-				c.store.install(hwnd, seq, res.live, res.tree.Elements)
+				c.installRead(hwnd, seq, res, r)
 			}
 		})
 		if runErr != nil {
@@ -353,6 +385,25 @@ func (c *Client) Capture(ctx context.Context, hwnd uint64, title, app string, bu
 		return &readResult{tree: res.tree, rootClass: res.rootClass}, nil
 	}
 	return readTree(ctx, app, budget, read, sleepCtx)
+}
+
+// installRead installs a completed read's Elements as hwnd's live Window
+// State — unless the run was abandoned between the read and this point
+// (finding 5): an abandoned worker is winding down and will leave COM, and
+// Elements created on its apartment would dangle after CoUninitialize, so
+// the read releases its own Elements instead, whatever the stored
+// generation. The abandoned flag and the install decision share the run's
+// mutex, so the mark cannot land between the check and the install.
+func (c *Client) installRead(hwnd uint64, seq uint64, res *captureResult, r *run) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.abandoned {
+		for _, p := range res.live {
+			c.store.release(p)
+		}
+		return
+	}
+	c.store.install(hwnd, seq, res.live, res.tree.Elements)
 }
 
 // Element returns the live element behind (hwnd, elementIndex) from the

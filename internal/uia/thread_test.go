@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/hoangvu12/winuse/internal/wstate"
 )
 
 // startFakeWorker returns a worker whose jobs are served by a plain
@@ -49,7 +51,7 @@ func TestClientRunExecutesJobOnWorker(t *testing.T) {
 	ran := make(chan struct{}, 1)
 	c := testClient(func() (*worker, error) { return startFakeWorker(), nil })
 	defer c.Close()
-	if err := c.Run(context.Background(), func(w *worker) {
+	if err := c.Run(context.Background(), func(w *worker, _ *run) {
 		if w.thread != nil {
 			t.Error("fake workers carry no thread")
 		}
@@ -82,7 +84,7 @@ func TestClientRunAbandonsWedgedWorkerAndReplacesIt(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if err := c.Run(ctx, func(w *worker) { t.Error("the job must never reach the wedged worker") }); err == nil {
+	if err := c.Run(ctx, func(w *worker, _ *run) { t.Error("the job must never reach the wedged worker") }); err == nil {
 		t.Fatal("run against a wedged worker must fail with the context error")
 	}
 
@@ -97,7 +99,7 @@ func TestClientRunAbandonsWedgedWorkerAndReplacesIt(t *testing.T) {
 		t.Fatal("a send to the abandoned worker must refuse the job")
 	}
 	ran := false
-	if err := c.Run(context.Background(), func(w *worker) { ran = true }); err != nil {
+	if err := c.Run(context.Background(), func(w *worker, _ *run) { ran = true }); err != nil {
 		t.Fatalf("run on the replacement: %v", err)
 	}
 	if !ran {
@@ -118,11 +120,11 @@ func TestClientRunAbandonsWorkerOnSlowJob(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if err := c.Run(ctx, func(w *worker) { time.Sleep(10 * time.Second) }); err == nil {
+	if err := c.Run(ctx, func(w *worker, _ *run) { time.Sleep(10 * time.Second) }); err == nil {
 		t.Fatal("run must fail with the context error")
 	}
 	ran := make(chan struct{})
-	if err := c.Run(context.Background(), func(w *worker) { close(ran) }); err != nil {
+	if err := c.Run(context.Background(), func(w *worker, _ *run) { close(ran) }); err != nil {
 		t.Fatalf("run on the replacement: %v", err)
 	}
 	select {
@@ -135,11 +137,11 @@ func TestClientRunAbandonsWorkerOnSlowJob(t *testing.T) {
 func TestClientRunRecoversFromPanickingJob(t *testing.T) {
 	c := testClient(func() (*worker, error) { return startFakeWorker(), nil })
 	defer c.Close()
-	if err := c.Run(context.Background(), func(w *worker) { panic("boom") }); err == nil {
+	if err := c.Run(context.Background(), func(w *worker, _ *run) { panic("boom") }); err == nil {
 		t.Fatal("a panicking job must surface as an error")
 	}
 	ran := false
-	if err := c.Run(context.Background(), func(w *worker) { ran = true }); err != nil {
+	if err := c.Run(context.Background(), func(w *worker, _ *run) { ran = true }); err != nil {
 		t.Fatalf("run after the panic: %v", err)
 	}
 	if !ran {
@@ -150,7 +152,7 @@ func TestClientRunRecoversFromPanickingJob(t *testing.T) {
 func TestClientRunAfterCloseFails(t *testing.T) {
 	c := testClient(func() (*worker, error) { return startFakeWorker(), nil })
 	c.Close()
-	if err := c.Run(context.Background(), func(w *worker) {}); err == nil {
+	if err := c.Run(context.Background(), func(w *worker, _ *run) {}); err == nil {
 		t.Fatal("run after Close must fail")
 	}
 }
@@ -191,7 +193,7 @@ func TestClientRunConcurrentTimeoutsNeverPanic(t *testing.T) {
 			defer wg.Done()
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
 			defer cancel()
-			_ = c.Run(ctx, func(w *worker) {}) // the error is checked below
+			_ = c.Run(ctx, func(w *worker, _ *run) {}) // the error is checked below
 		}()
 	}
 	wg.Wait()
@@ -199,7 +201,7 @@ func TestClientRunConcurrentTimeoutsNeverPanic(t *testing.T) {
 	// After the storm, a fresh request is served (by a replacement worker
 	// or a surviving one) without hanging.
 	ran := make(chan error, 1)
-	go func() { ran <- c.Run(context.Background(), func(w *worker) {}) }()
+	go func() { ran <- c.Run(context.Background(), func(w *worker, _ *run) {}) }()
 	select {
 	case err := <-ran:
 		if err != nil && !errors.Is(err, ErrWorkerGone) {
@@ -245,12 +247,12 @@ func TestWorkerDeliveredJobRunsDespiteConcurrentClose(t *testing.T) {
 
 func TestClientFactoryErrorSurfaces(t *testing.T) {
 	c := testClient(func() (*worker, error) { return nil, ErrInit })
-	if err := c.Run(context.Background(), func(w *worker) {}); err == nil {
+	if err := c.Run(context.Background(), func(w *worker, _ *run) {}); err == nil {
 		t.Fatal("the factory error must surface")
 	}
 	// Not closed by the failure: a later factory success still works.
 	c.factory = func() (*worker, error) { return startFakeWorker(), nil }
-	if err := c.Run(context.Background(), func(w *worker) {}); err != nil {
+	if err := c.Run(context.Background(), func(w *worker, _ *run) {}); err != nil {
 		t.Fatalf("run after a transient factory failure: %v", err)
 	}
 }
@@ -347,5 +349,86 @@ func TestStoreInstallRejectsSupersededRead(t *testing.T) {
 	}
 	if released[p2] != 1 {
 		t.Fatalf("the replaced state's element released %d times, want 1", released[p2])
+	}
+}
+
+// TestRunMarksAbandonedBeforeGivingUp pins finding 5's precondition: a
+// job that outlives its request's deadline and completes late on the
+// abandoned worker must see its run marked abandoned — Run sets the flag
+// before it abandons the worker, so the job's tail can refuse to install
+// its results.
+func TestRunMarksAbandonedBeforeGivingUp(t *testing.T) {
+	seen := make(chan bool, 1)
+	w := &worker{jobs: make(chan func()), stop: make(chan struct{}), exited: make(chan struct{})}
+	go func() {
+		// A worker whose current job outlives the request: the job runs
+		// well after Run has given up on it.
+		job := <-w.jobs
+		time.Sleep(50 * time.Millisecond)
+		job()
+	}()
+	c := testClient(func() (*worker, error) { return w, nil })
+	defer c.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	if err := c.Run(ctx, func(w *worker, r *run) {
+		seen <- r.wasAbandoned()
+	}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("run: %v, want the context error", err)
+	}
+	select {
+	case got := <-seen:
+		if !got {
+			t.Fatal("the late-completing job must see its run marked abandoned")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the job never completed")
+	}
+}
+
+// TestInstallReadRefusesAbandonedRuns pins finding 5: an abandoned read
+// that completes late installs nothing from the abandoned worker's
+// apartment (the thread is winding down and its Elements would dangle
+// after CoUninitialize), even when no newer read superseded it — the read
+// releases its own Elements instead, and the stored Window State is left
+// untouched.
+func TestInstallReadRefusesAbandonedRuns(t *testing.T) {
+	a, b := 1, 2
+	p1, p2 := comPtr(&a), comPtr(&b)
+	var mu sync.Mutex
+	released := map[comPtr]int{}
+	c := testClient(func() (*worker, error) { return startFakeWorker(), nil })
+	defer c.Close()
+	c.store.release = func(p comPtr) {
+		mu.Lock()
+		released[p]++
+		mu.Unlock()
+	}
+
+	// A healthy read installs its Elements as the Window's state.
+	res := &captureResult{live: []comPtr{p1}, tree: &wstate.Tree{}}
+	c.installRead(101, c.store.beginRead(), res, &run{})
+	if e, ok := c.store.element(101, 0); !ok || e != p1 {
+		t.Fatalf("element(101, 0) = %v, %v; want the healthy read's element", e, ok)
+	}
+	if got := released[p1]; got != 0 {
+		t.Fatalf("the healthy read's element was released %d times, want 0", got)
+	}
+
+	// An abandoned run's late read: its own Elements are released, and the
+	// stored state (a newer read's, or the last one) is untouched.
+	r := &run{}
+	r.markAbandoned()
+	res2 := &captureResult{live: []comPtr{p2}, tree: &wstate.Tree{}}
+	c.installRead(101, c.store.beginRead(), res2, r)
+	if e, ok := c.store.element(101, 0); !ok || e != p1 {
+		t.Fatalf("element(101, 0) = %v, %v; the abandoned read must not change it", e, ok)
+	}
+	if got := released[p2]; got != 1 {
+		t.Fatalf("the abandoned read's element was released %d times, want 1", got)
+	}
+	if got := released[p1]; got != 0 {
+		t.Fatalf("the stored state's element was released %d times, want 0", got)
 	}
 }
