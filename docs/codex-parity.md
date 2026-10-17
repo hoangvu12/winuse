@@ -181,9 +181,13 @@ preserved. **intentionally different**.
 
 ### timeouts
 
-10 s per request, 15 s for launching an App (a Batch gets 60 s, an
-extension), message style `winuse request timed out: <command>` next to
-Codex's `computer-use request timed out: <method>`. **matched**.
+10 s per request, 15 s for launching an App, message style `winuse
+request timed out: <command>` next to Codex's `computer-use request
+timed out: <method>`. **matched**. A Batch gets 60 s — an
+**intentionally different** bound recorded in decisions.md: one request
+runs many Actions in order (Codex has no batch tool, so its 10 s rule
+has no batch case), and each Action inside still behaves like a
+standalone one within the shared contract.
 
 ### esc stop
 
