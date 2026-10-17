@@ -4,10 +4,10 @@
 
 **Blocked by:** 08 — Screenshots (fallback methods) + coordinate clicks + zoom
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Windows.Graphics.Capture produces the Window screenshot when available
-- [ ] Failure, black frames or timeout fall back automatically to the screen-region / `PrintWindow` path
-- [ ] Coordinate mapping from ticket 08 remains exact with this capture path
-- [ ] No cgo introduced
+- [x] Windows.Graphics.Capture produces the Window screenshot when available
+- [x] Failure, black frames or timeout fall back automatically to the screen-region / `PrintWindow` path
+- [x] Coordinate mapping from ticket 08 remains exact with this capture path
+- [x] No cgo introduced
 - [ ] End-to-end: a screenshot of the fixture via this path matches expectations; a forced failure triggers the fallback (verified by user run)
