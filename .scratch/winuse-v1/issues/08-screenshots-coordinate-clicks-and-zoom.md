@@ -4,11 +4,11 @@
 
 **Blocked by:** 05 — Click by Element Index
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Screenshot is taken only when requested; the file path is printed
-- [ ] Popups and menus overlapping the Window appear in the screenshot
-- [ ] `@x,y` clicks land on the intended pixel at 100%, 150% and 175% scaling and on a secondary monitor
-- [ ] `zoom` produces a full-resolution crop of the requested region
-- [ ] Offline tests cover coordinate mapping between screenshot space and screen space
+- [x] Screenshot is taken only when requested; the file path is printed
+- [x] Popups and menus overlapping the Window appear in the screenshot
+- [x] `@x,y` clicks land on the intended pixel at 100%, 150% and 175% scaling and on a secondary monitor
+- [x] `zoom` produces a full-resolution crop of the requested region
+- [x] Offline tests cover coordinate mapping between screenshot space and screen space
 - [ ] End-to-end: a coordinate click on the fixture canvas registers at the expected point (verified by user run)
