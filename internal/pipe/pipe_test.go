@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -146,11 +147,43 @@ func TestListenTwiceFails(t *testing.T) {
 	}
 }
 
+// TestVerifyServerRejectsForeignSID pins the anti-squatting refusal.
+// It hung once for the package's whole 10-minute budget under load
+// (followups.md, ticket 04's report), so the body now runs under its own
+// deadline: a hang fails fast and named instead of silently poisoning
+// the package run. The body reports through a channel and never touches
+// t, so a late unwinding after the deadline cannot panic the test.
 func TestVerifyServerRejectsForeignSID(t *testing.T) {
-	id := testIdentity(t)
+	const deadline = 30 * time.Second
+	errc := make(chan error, 1)
+	go func() {
+		errc <- verifyServerRejectsForeignSID()
+	}()
+	select {
+	case err := <-errc:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(deadline):
+		t.Fatalf("the test exceeded its %s deadline (it hung once for 600 s under load)", deadline)
+	}
+}
+
+// verifyServerRejectsForeignSID is the test's body: a pipe served by
+// this process must be refused when a foreign SID is requested.
+func verifyServerRejectsForeignSID() error {
+	id, err := win.CurrentIdentity()
+	if err != nil {
+		return fmt.Errorf("CurrentIdentity: %v", err)
+	}
+	// The same uniquifying testIdentity applies: a random session id keeps
+	// pipe names unique per run while the DACL stays ours.
+	id.Session = uint32(time.Now().UnixNano() % 900000)
+	id.Elevated = false
+
 	ln, err := Listen(id)
 	if err != nil {
-		t.Fatalf("Listen: %v", err)
+		return fmt.Errorf("Listen: %v", err)
 	}
 	defer ln.Close()
 
@@ -168,17 +201,18 @@ func TestVerifyServerRejectsForeignSID(t *testing.T) {
 	defer cancel()
 	conn, err := Dial(ctx, id)
 	if err != nil {
-		t.Fatalf("Dial: %v", err)
+		return fmt.Errorf("Dial: %v", err)
 	}
 
 	// The check must fail while the connection is live: the SID the pipe
 	// is served by is ours, not the requested foreign one.
 	err = VerifyServer(conn, "S-1-5-21-definitely-not-us")
 	if err == nil || !strings.Contains(err.Error(), "different user") {
-		t.Fatalf("want a different-user refusal, got %v", err)
+		return fmt.Errorf("want a different-user refusal, got %v", err)
 	}
 	conn.Close()
 	<-serverDone
+	return nil
 }
 
 func TestAcquireSingleton(t *testing.T) {
