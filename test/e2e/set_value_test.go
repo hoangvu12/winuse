@@ -184,7 +184,7 @@ func TestSecondaryActionExpandsAndCollapsesTheMenu(t *testing.T) {
 	// Elements (the menu items are in the tree now), so the index comes
 	// from the expanded tree's contract.
 	expandedIdx := elementIndexes(fixture.BuildTree(fixture.State{OpenMenu: string(fixture.ElemMenuFile)}),
-		fixture.ElemWindow)[fixture.ElemMenuFile]
+		fixture.ElemWindow, mainFrameElements)[fixture.ElemMenuFile]
 	stdout, stderr, exit = runSecondary(t, window, expandedIdx, "Collapse")
 	assertActionOK(t, "perform-secondary-action collapse", stdout, stderr, exit)
 
@@ -221,16 +221,17 @@ func TestSecondaryActionScrollsTheListDown(t *testing.T) {
 	fix, window := startFixtureWithState(t)
 
 	// The list offers Scroll Down (it scrolls vertically); one large step
-	// moves a viewport of items.
+	// moves a viewport of items, clamped at the last full viewport.
 	idx := mainElementIndexes()[fixture.ElemItemList]
 	stdout, stderr, exit := runSecondary(t, window, idx, "Scroll Down")
 	assertActionOK(t, "perform-secondary-action scroll down", stdout, stderr, exit)
 
+	want := min(fixture.ListVisibleItems, len(fixture.ListItems)-fixture.ListVisibleItems)
 	st := fix.waitState(t, 5*time.Second, func(s *fixture.State) bool {
-		return s.ListFirstVisible == fixture.ListVisibleItems
+		return s.ListFirstVisible == want
 	})
-	if st.ListFirstVisible != fixture.ListVisibleItems {
-		t.Fatalf("list scroll position = %d, want %d", st.ListFirstVisible, fixture.ListVisibleItems)
+	if st.ListFirstVisible != want {
+		t.Fatalf("list scroll position = %d, want %d", st.ListFirstVisible, want)
 	}
 }
 

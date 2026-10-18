@@ -72,7 +72,7 @@ var (
 	procSetBkMode                = gdi32.NewProc("SetBkMode")
 	procRoundRect                = gdi32.NewProc("RoundRect")
 	procCreateSolidBrush         = gdi32.NewProc("CreateSolidBrush")
-	procCreatePenW               = gdi32.NewProc("CreatePenW")
+	procCreatePen                = gdi32.NewProc("CreatePen")
 	procCreateFontW              = gdi32.NewProc("CreateFontW")
 )
 
@@ -382,7 +382,7 @@ func roundRectOverlay(hdc uintptr, r Rect, brush uintptr) {
 	if r.Width() <= 0 || r.Height() <= 0 {
 		return
 	}
-	pen, _, _ := procCreatePenW.Call(0 /*PS_SOLID*/, 1, uintptr(overlayPillColor))
+	pen, _, _ := procCreatePen.Call(0 /*PS_SOLID*/, 1, uintptr(overlayPillColor))
 	if pen == 0 {
 		return
 	}

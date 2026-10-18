@@ -914,7 +914,7 @@ func keyName(vk uint32) string {
 	}
 	const hex = "0123456789abcdef"
 	s := "vk-0x"
-	for shift := 24; shift >= 0; shift -= 4 {
+	for shift := 28; shift >= 0; shift -= 4 {
 		s += string(hex[(vk>>uint(shift))&0xf])
 	}
 	return s

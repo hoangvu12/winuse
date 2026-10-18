@@ -183,11 +183,11 @@ while a long type-text Action runs against the fixture, the overlay
 window appears in the desktop's window list raised exactly over the
 fixture Window, carrying the layered/click-through/topmost/tool-window/
 no-activate styles; the fixture stays the foreground window (the overlay
-never takes focus); a `@x,y` click aimed through the pill banner still
-lands on the fixture Window (winuse's own occlusion check would fail
-loudly if the overlay ate it); a `get-window-state --screenshot` taken
-concurrently contains none of the overlay's accent colour (the capture
-bracket hides it) and the overlay comes back afterwards; when the Action
+never takes focus); the system hit-tests the fixture Window, not the
+overlay, under the pill banner (click-through, asked of the desktop
+directly because winuse serializes Actions); a concurrent
+`get-window-state --screenshot` queues behind the Action and contains
+none of the overlay's accent colour; when the Action
 ends the overlay is gone and the fixture's text field holds exactly the
 typed text — input was delivered under it. A second test pins that
 observation commands never raise the indicator. The overlay's brackets

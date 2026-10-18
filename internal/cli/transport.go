@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"errors"
-	"fmt"
 	"net"
 
 	"github.com/hoangvu12/winuse/internal/pipe"
@@ -18,12 +17,19 @@ func dialHelper(ctx context.Context, id win.Identity) (net.Conn, error) {
 	conn, err := pipe.Dial(ctx, id)
 	if err != nil {
 		if errors.Is(err, pipe.ErrNoHelper) {
-			return nil, fmt.Errorf("%w", err)
+			return nil, &noHelperError{err: err}
 		}
 		return nil, err
 	}
 	return conn, nil
 }
+
+// noHelperError keeps the pipe's message ("winuse helper is not running:
+// <pipe>") while matching both cli.ErrNoHelper and pipe.ErrNoHelper.
+type noHelperError struct{ err error }
+
+func (e *noHelperError) Error() string   { return e.err.Error() }
+func (e *noHelperError) Unwrap() []error { return []error{ErrNoHelper, e.err} }
 
 // verifyHelper checks the serving process runs as the current user
 // (anti-squatting).

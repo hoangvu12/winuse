@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/hoangvu12/winuse/internal/fixture"
 )
 
@@ -63,6 +65,7 @@ type fixtureProc struct {
 // the desktop: this function must only be called from opt-in tests.
 func startFixture(t *testing.T) *fixtureProc {
 	t.Helper()
+	parkPointer(t)
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	cmd := exec.Command(fixtureBinary(t), "-state", statePath)
 	if err := cmd.Start(); err != nil {
@@ -75,6 +78,44 @@ func startFixture(t *testing.T) *fixtureProc {
 		_, _ = proc.Wait()
 	})
 	return fp
+}
+
+var (
+	user32               = windows.NewLazySystemDLL("user32.dll")
+	procSetCursorPos     = user32.NewProc("SetCursorPos")
+	procGetSystemMetrics = user32.NewProc("GetSystemMetrics")
+	procWindowFromPoint  = user32.NewProc("WindowFromPoint")
+	procGetAncestor      = user32.NewProc("GetAncestor")
+)
+
+// rootWindowAt returns the top-level window the system hit-tests at the
+// screen point (WindowFromPoint, normalized with GA_ROOT) — read-only.
+func rootWindowAt(x, y int32) uint64 {
+	const gaRoot = 2
+	h, _, _ := procWindowFromPoint.Call(uintptr(uint32(x)) | uintptr(uint32(y))<<32)
+	if h == 0 {
+		return 0
+	}
+	r, _, _ := procGetAncestor.Call(h, gaRoot)
+	if r == 0 {
+		return uint64(h)
+	}
+	return uint64(r)
+}
+
+// parkPointer moves the pointer to the middle of the primary monitor's
+// right edge, away from where the fixture window opens. The pointer stays
+// wherever the previous test's Action left it; over the fixture's hover
+// band it would reveal the hover-only toolbar and shift the Element
+// Indexes the tests derive from the initial state.
+func parkPointer(t *testing.T) {
+	t.Helper()
+	const smCxScreen, smCyScreen = 0, 1
+	w, _, _ := procGetSystemMetrics.Call(smCxScreen)
+	h, _, _ := procGetSystemMetrics.Call(smCyScreen)
+	if r, _, err := procSetCursorPos.Call(w-2, h/2); r == 0 {
+		t.Logf("parking the pointer failed: %v", err)
+	}
 }
 
 // waitState polls the fixture's state file until pred holds or the timeout

@@ -41,7 +41,7 @@ const (
 )
 
 var (
-	procGetModuleHandleW   = user32.NewProc("GetModuleHandleW")
+	procGetModuleHandleW   = windows.NewLazySystemDLL("kernel32.dll").NewProc("GetModuleHandleW")
 	procRegisterClassExW   = user32.NewProc("RegisterClassExW")
 	procCreateWindowExW    = user32.NewProc("CreateWindowExW")
 	procDefWindowProcW     = user32.NewProc("DefWindowProcW")

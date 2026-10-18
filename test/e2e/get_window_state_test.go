@@ -39,6 +39,7 @@ func runGetWindowState(t *testing.T, window string, extraEnv ...string) (string,
 func expectedLines() []string {
 	state := fixture.State{}
 	nodes := fixture.NewTreeMap(fixture.BuildTree(state))
+	indexes := mainElementIndexes() // reserves the OS caption subtree's indexes
 	var lines []string
 	var walk func(e fixture.Elem, depth int)
 	walk = func(e fixture.Elem, depth int) {
@@ -47,7 +48,7 @@ func expectedLines() []string {
 			return
 		}
 		line := strings.Repeat("\t", depth+1) +
-			fmt.Sprintf("%d %s", len(lines), wstate.RoleName(int32(spec.Role)))
+			fmt.Sprintf("%d %s", indexes[e], wstate.RoleName(int32(spec.Role)))
 		// Codex's state list, between role and name: selectable, selected,
 		// disabled, collapsed/expanded, settable.
 		var states []string
@@ -125,10 +126,15 @@ func assertFixtureTree(t *testing.T, stdout string) {
 	for _, l := range lines[1:] {
 		output[l] = true
 	}
+	missing := false
 	for _, want := range expectedLines() {
 		if !output[want] {
 			t.Errorf("missing Element line %q", want)
+			missing = true
 		}
+	}
+	if missing {
+		t.Logf("live Window State:\n%s", stdout)
 	}
 
 	// Indexes are depth-first and sequential from 0 (the root window).
@@ -245,14 +251,17 @@ func TestGetWindowStateAppWithNoWindows(t *testing.T) {
 // once).
 func TestGetWindowStateTinyBudgetIsPartialWithNote(t *testing.T) {
 	optIn(t)
-	time.Sleep(6 * time.Second) // > e2eIdle (5s) from earlier tests' helpers
+	// The budget is read when the helper starts: begin with a fresh one,
+	// and don't leave the 1 ms helper to the next test.
+	killHelper(t)
+	t.Cleanup(func() { killHelper(t) })
 	id, err := win.CurrentIdentity()
 	if err != nil {
 		t.Fatalf("identity: %v", err)
 	}
 	if conn, err := dialHelper(id); err == nil {
 		conn.Close()
-		t.Fatal("a helper is still serving; its idle period should have passed")
+		t.Fatal("a helper is still serving after it was killed")
 	}
 	fix := startFixture(t)
 	st := fix.waitState(t, 15*time.Second, func(s *fixture.State) bool { return s.WindowID != 0 })
@@ -299,9 +308,14 @@ func TestRecordTreeWritesFixture(t *testing.T) {
 	// The recorded tree of the fixture's initial state renders the expected
 	// Element lines.
 	rendered := wstate.Render(tree)
+	missing := false
 	for _, want := range expectedLines() {
 		if !strings.Contains(rendered, want) {
 			t.Errorf("rendered recording missing %q", want)
+			missing = true
 		}
+	}
+	if missing {
+		t.Logf("rendered recording:\n%s", rendered)
 	}
 }

@@ -133,7 +133,7 @@ const (
 
 func TestOverlayDuringAction(t *testing.T) {
 	optIn(t)
-	fix, window, info := startFixtureForShots(t)
+	fix, window, _ := startFixtureForShots(t)
 
 	// The long Action: a text long enough that typing runs for several
 	// seconds (16 runes per batch, a pause between batches, and the fixture
@@ -180,42 +180,37 @@ func TestOverlayDuringAction(t *testing.T) {
 		t.Errorf("the overlay took focus: the foreground window is %d, want the fixture %d", fg, mustWindowID(t, window))
 	}
 
-	// Click-through in practice: a click aimed through the pill banner
-	// (the overlay's most opaque pixels, at the top centre) must land on
-	// the fixture Window — winuse's own occlusion check fails loudly if
-	// any window eats the point.
+	// Click-through in practice: the pill banner (the overlay's most
+	// opaque pixels, at the top centre) must be transparent to hit-testing
+	// — the window under that point is the fixture's, so a click there
+	// lands on it. Asked of the desktop directly: winuse serializes
+	// Actions, so a winuse click would only run once the typing ended.
 	pillX := (ov.Bounds.Left + ov.Bounds.Right) / 2
 	pillY := ov.Bounds.Top + 32 // inside the pill at display scalings 100–250%
-	shotX, shotY := shotCoordsOfScreen(t, window, info.scale, pillX, pillY)
-	stdout, stderr, exit := runClickPoint(t, window, shotX, shotY)
-	assertActionOK(t, "click through the overlay's pill", stdout, stderr, exit)
-
-	// Absent from winuse's own screenshots: a capture taken while the
-	// Action (and with it the overlay) is still running. The capture
-	// bracket hides the indicator for the capture's duration.
-	stdout, stderr, exit = runGetWindowStateScreenshot(t, window)
-	if exit != 0 {
-		t.Fatalf("get-window-state --screenshot during an Action: exit %d, stderr:\n%s", exit, stderr)
-	}
-	during := decodeImage(t, parseScreenshotLine(t, stdout).path)
-	if n := countAccentPixels(during); n > 0 {
-		t.Errorf("the overlay appears in winuse's own screenshot: %d pixels of its accent colour", n)
+	if got := rootWindowAt(pillX, pillY); got != mustWindowID(t, window) {
+		t.Errorf("the window under the overlay's pill at (%d, %d) is %d, want the fixture %d (the overlay must be click-through)",
+			pillX, pillY, got, mustWindowID(t, window))
 	}
 
-	// The overlay is restored after the capture hid it (the Action is
-	// still running, so the indicator must be back up).
+	// winuse's own screenshots never contain the overlay: a screenshot is
+	// serialized behind the running Action (finding 11), so it is taken
+	// once the indicator is down — it must not finish before the Action.
+	shot := runActionAsync(t, []string{"get-window-state", window, "--screenshot"}, "WINUSE_HELPER_IDLE="+e2eIdle)
+	var res, shotRes actionResult
 	select {
-	case res := <-bg:
-		// The Action already ended (a slow machine): the restore is not
-		// observable any more; the remaining assertions still hold.
-		assertActionOK(t, "type-text under the overlay", res.stdout, res.stderr, res.exit)
-		t.Log("the Action finished before the restore check could run; skipping it")
-	default:
-		if _, ok := overlayWindow(t); !ok {
-			t.Error("the overlay did not come back after the capture hid it")
-		}
-		res := <-bg
-		assertActionOK(t, "type-text under the overlay", res.stdout, res.stderr, res.exit)
+	case shotRes = <-shot:
+		t.Errorf("the screenshot finished while the Action still ran; it must queue behind it")
+		res = <-bg
+	case res = <-bg:
+		shotRes = <-shot
+	}
+	assertActionOK(t, "type-text under the overlay", res.stdout, res.stderr, res.exit)
+	if shotRes.exit != 0 {
+		t.Fatalf("get-window-state --screenshot queued behind an Action: exit %d, stderr:\n%s", shotRes.exit, shotRes.stderr)
+	}
+	after := decodeImage(t, parseScreenshotLine(t, shotRes.stdout).path)
+	if n := countAccentPixels(after); n > 0 {
+		t.Errorf("the overlay appears in winuse's own screenshot: %d pixels of its accent colour", n)
 	}
 
 	// The input was delivered while the indicator covered the Window,
