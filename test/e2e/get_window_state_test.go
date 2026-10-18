@@ -126,10 +126,15 @@ func assertFixtureTree(t *testing.T, stdout string) {
 	for _, l := range lines[1:] {
 		output[l] = true
 	}
+	missing := false
 	for _, want := range expectedLines() {
 		if !output[want] {
 			t.Errorf("missing Element line %q", want)
+			missing = true
 		}
+	}
+	if missing {
+		t.Logf("live Window State:\n%s", stdout)
 	}
 
 	// Indexes are depth-first and sequential from 0 (the root window).
@@ -300,9 +305,14 @@ func TestRecordTreeWritesFixture(t *testing.T) {
 	// The recorded tree of the fixture's initial state renders the expected
 	// Element lines.
 	rendered := wstate.Render(tree)
+	missing := false
 	for _, want := range expectedLines() {
 		if !strings.Contains(rendered, want) {
 			t.Errorf("rendered recording missing %q", want)
+			missing = true
 		}
+	}
+	if missing {
+		t.Logf("rendered recording:\n%s", rendered)
 	}
 }
