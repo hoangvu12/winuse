@@ -120,7 +120,7 @@ func (s *comSource) Root() (comPtr, NodeData, error) {
 		return nil, NodeData{}, err
 	}
 	var el comPtr
-	if hr := call(s.th.auto, uiaElementFromHandleBuildCache, s.hwnd, uintptr(unsafe.Pointer(&s.req)), uintptr(unsafe.Pointer(&el))); hr.Failed() || el == nil {
+	if hr := call(s.th.auto, uiaElementFromHandleBuildCache, s.hwnd, uintptr(s.req), uintptr(unsafe.Pointer(&el))); hr.Failed() || el == nil {
 		return nil, NodeData{}, fmt.Errorf("%w: reading the Window's tree failed (HRESULT %s)", ErrWindowGone, hr)
 	}
 	s.rootClass = cachedBSTR(el, elCachedClassName)
@@ -146,7 +146,7 @@ func (s *comSource) Children(node comPtr, remaining time.Duration) ([]comPtr, []
 	call(s.th.auto, uia2PutTransactionTimeout, uintptr(uint32(tx.Milliseconds())))
 
 	var fresh comPtr
-	if hr := call(node, elBuildUpdatedCache, uintptr(unsafe.Pointer(&s.req)), uintptr(unsafe.Pointer(&fresh))); hr.Failed() || fresh == nil {
+	if hr := call(node, elBuildUpdatedCache, uintptr(s.req), uintptr(unsafe.Pointer(&fresh))); hr.Failed() || fresh == nil {
 		if hr == uiaErrTimeout {
 			return nil, nil, fmt.Errorf("%w (HRESULT %s)", ErrChunkTimedOut, hr)
 		}
