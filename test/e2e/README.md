@@ -216,9 +216,12 @@ proven to send no input by the state generation staying put.
 scaling the machine has. To accept ticket 08's `@x,y` criterion at
 100%, 150% and 175% and on a secondary monitor, re-run the suite with
 the display scaling changed between runs (Settings → System → Display →
-Scale), and once with the fixture's window moved to a secondary monitor
+Scale), and once with the fixture's window on a secondary monitor
 (`TestCoordinateClickLandsOnAimedPoint` is the one that proves it); the
-assertions are scale-independent on purpose. A real Win32 popup over the
+assertions are scale-independent on purpose. Every test starts a fresh
+fixture, so place it with `WINUSE_FIXTURE_ORIGIN=x,y` (screen pixels of
+the main window's top-left, e.g. `2100,120` for a 1920-wide monitor to
+the right of the primary; the fixture inherits the test's environment). A real Win32 popup over the
 target (a Notepad menu, a browser tooltip) is worth one manual
 `get-window-state --screenshot` check as well: the fixture's dropdown is
 painted inside its own window, so the popup-union path is only exercised
