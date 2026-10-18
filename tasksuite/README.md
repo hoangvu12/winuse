@@ -110,9 +110,14 @@ For each task, in a fixed order:
    limit, killing the process tree if it runs out.
 6. Runs the task's `check.ps1`. Exit 0 = the task passed; anything else
    = failed, and the script's first output line is the reason.
-7. Cleans up: every process the task started (apps, winuse's helper) is
-   killed — never the shell, never anything that was already running.
-   The task prompts also ask the agent to close what it opened.
+7. Cleans up: the processes the task started are killed one by one —
+   the Harness's descendants (recorded while it runs), the run's own
+   winuse helper, and new processes of the task's declared apps (not
+   children of the user's already-running copy). Processes the machine
+   starts meanwhile (browser renderers, sync clients, your tools) are
+   not the task's and are left alone; so is the shell and anything that
+   was already running. The task prompts also ask the agent to close
+   what it opened.
 
 Then it prints the table — pass/fail with **steps and time** per task:
 
