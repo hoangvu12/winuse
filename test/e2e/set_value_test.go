@@ -184,7 +184,7 @@ func TestSecondaryActionExpandsAndCollapsesTheMenu(t *testing.T) {
 	// Elements (the menu items are in the tree now), so the index comes
 	// from the expanded tree's contract.
 	expandedIdx := elementIndexes(fixture.BuildTree(fixture.State{OpenMenu: string(fixture.ElemMenuFile)}),
-		fixture.ElemWindow)[fixture.ElemMenuFile]
+		fixture.ElemWindow, mainFrameElements)[fixture.ElemMenuFile]
 	stdout, stderr, exit = runSecondary(t, window, expandedIdx, "Collapse")
 	assertActionOK(t, "perform-secondary-action collapse", stdout, stderr, exit)
 

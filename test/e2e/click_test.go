@@ -21,15 +21,33 @@ import (
 	"github.com/hoangvu12/winuse/internal/fixture"
 )
 
+// Windows' non-client proxy adds the caption subtree as the first
+// children of every captioned window root, ahead of the fixture's own
+// Elements: title bar → System menu bar → System menu item, then the
+// caption buttons. The main window has Minimize, Maximize and Close (6
+// Elements); the Save As dialog only Close (4). They are the OS's, not
+// the fixture contract's, so the derivations below only reserve their
+// indexes (observed live; not asserted verbatim).
+const (
+	mainFrameElements   = 6
+	dialogFrameElements = 4
+)
+
 // elementIndexes flattens one window's tree in winuse's depth-first
 // order — the order the Window State numbers — returning Element →
-// Element Index.
-func elementIndexes(nodes []fixture.Node, root fixture.Elem) map[fixture.Elem]int {
+// Element Index. frame indexes after the root belong to the OS caption
+// subtree.
+func elementIndexes(nodes []fixture.Node, root fixture.Elem, frame int) map[fixture.Elem]int {
 	m := fixture.NewTreeMap(nodes)
 	indexes := map[fixture.Elem]int{}
+	next := 0
 	var visit func(e fixture.Elem)
 	visit = func(e fixture.Elem) {
-		indexes[e] = len(indexes)
+		indexes[e] = next
+		next++
+		if e == root {
+			next += frame
+		}
 		for _, kid := range m.Children(e) {
 			visit(kid)
 		}
@@ -41,13 +59,13 @@ func elementIndexes(nodes []fixture.Node, root fixture.Elem) map[fixture.Elem]in
 // mainElementIndexes returns the Element Indexes of the fixture's initial
 // main-window tree (no menu open, toolbar hidden, details collapsed).
 func mainElementIndexes() map[fixture.Elem]int {
-	return elementIndexes(fixture.BuildTree(fixture.State{}), fixture.ElemWindow)
+	return elementIndexes(fixture.BuildTree(fixture.State{}), fixture.ElemWindow, mainFrameElements)
 }
 
 // dialogElementIndexes returns the Element Indexes of the Save As
 // dialog's tree.
 func dialogElementIndexes() map[fixture.Elem]int {
-	return elementIndexes(fixture.DialogTree(fixture.State{}), fixture.DialogRootElem)
+	return elementIndexes(fixture.DialogTree(fixture.State{}), fixture.DialogRootElem, dialogFrameElements)
 }
 
 // runClick invokes `winuse click ...` with the suite's short helper idle

@@ -39,6 +39,7 @@ func runGetWindowState(t *testing.T, window string, extraEnv ...string) (string,
 func expectedLines() []string {
 	state := fixture.State{}
 	nodes := fixture.NewTreeMap(fixture.BuildTree(state))
+	indexes := mainElementIndexes() // reserves the OS caption subtree's indexes
 	var lines []string
 	var walk func(e fixture.Elem, depth int)
 	walk = func(e fixture.Elem, depth int) {
@@ -47,7 +48,7 @@ func expectedLines() []string {
 			return
 		}
 		line := strings.Repeat("\t", depth+1) +
-			fmt.Sprintf("%d %s", len(lines), wstate.RoleName(int32(spec.Role)))
+			fmt.Sprintf("%d %s", indexes[e], wstate.RoleName(int32(spec.Role)))
 		// Codex's state list, between role and name: selectable, selected,
 		// disabled, collapsed/expanded, settable.
 		var states []string
