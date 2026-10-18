@@ -46,10 +46,19 @@ type app struct {
 
 var theApp *app
 
+// Origin is an optional screen position (physical pixels) for the main
+// window's top-left corner; the zero value lets Windows place it.
+type Origin struct {
+	X, Y int32
+	Set  bool
+}
+
 // Main runs the fixture app: creates the windows, pumps messages until the
 // app closes, and keeps the state file current. It must be called once from
-// the process entry point on a locked thread.
-func Main(statePath string) int {
+// the process entry point on a locked thread. origin places the main window
+// (e.g. on a secondary monitor, for the display acceptance runs); the
+// dialog keeps its offset from it.
+func Main(statePath string, origin Origin) int {
 	runtime.LockOSThread()
 	if err := windows.CoInitializeEx(0, windows.COINIT_APARTMENTTHREADED); err == nil {
 		defer windows.CoUninitialize()
@@ -61,7 +70,7 @@ func Main(statePath string) int {
 
 	a := &app{state: initial(), statePath: statePath, focusMain: ElemTextField, status: "ready"}
 	theApp = a
-	if err := a.createWindows(); err != nil {
+	if err := a.createWindows(origin); err != nil {
 		os.Stderr.WriteString("winusefixture: " + err.Error() + "\n")
 		return 1
 	}
@@ -73,7 +82,7 @@ func Main(statePath string) int {
 // createWindows registers the two window classes and creates both windows.
 // The dialog starts hidden: it becomes a visible owned top-level Window
 // only when opened.
-func (a *app) createWindows() error {
+func (a *app) createWindows(origin Origin) error {
 	hmod, _, err := procGetModuleHandleW.Call(0)
 	if hmod == 0 {
 		return err
@@ -94,9 +103,15 @@ func (a *app) createWindows() error {
 	const wsFixed = wsOverlapped | wsCaption | wsSysMenu | wsMinimizeBox
 	const cwUseDefault = 0x80000000
 	mw, mh := windowSizeFor(wsFixed, ClientWidth, ClientHeight)
+	mx, my := uintptr(cwUseDefault), uintptr(cwUseDefault)
+	dx, dy := uintptr(60), uintptr(60)
+	if origin.Set {
+		mx, my = uintptr(uint32(origin.X)), uintptr(uint32(origin.Y))
+		dx, dy = uintptr(uint32(origin.X-18)), uintptr(uint32(origin.Y-18))
+	}
 	title, class := utf16Ptr(WindowTitle), utf16Ptr(MainWindowClass)
 	h, _, err := procCreateWindowExW.Call(0, uintptr(unsafe.Pointer(class)), uintptr(unsafe.Pointer(title)),
-		uintptr(wsFixed), uintptr(cwUseDefault), uintptr(cwUseDefault), mw, mh,
+		uintptr(wsFixed), mx, my, mw, mh,
 		0, 0, hmod, 0)
 	if h == 0 {
 		return err
@@ -110,7 +125,7 @@ func (a *app) createWindows() error {
 	const wsDialog = wsPopup | wsCaption | wsSysMenu
 	dw, dht := windowSizeFor(wsDialog, DialogClientWidth, DialogClientHeight)
 	dh, _, err := procCreateWindowExW.Call(0, uintptr(unsafe.Pointer(dClass)), uintptr(unsafe.Pointer(dTitle)),
-		uintptr(wsDialog), 60, 60, dw, dht,
+		uintptr(wsDialog), dx, dy, dw, dht,
 		h, 0, hmod, 0)
 	if dh == 0 {
 		return err
