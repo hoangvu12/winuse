@@ -239,6 +239,22 @@ func TestParseClaudeResultPrettyPrinted(t *testing.T) {
 	}
 }
 
+func TestParseClaudeResultVerboseEventArray(t *testing.T) {
+	// Found live (the first Task Suite run failed its preflight): with
+	// --verbose, --output-format json prints one JSON array of every
+	// event, the result object last.
+	stdout := `[{"type":"system","subtype":"init","session_id":"s"},` +
+		`{"type":"assistant","message":{"content":[{"type":"text","text":"ready"}]}},` +
+		`{"type":"result","subtype":"success","is_error":false,"num_turns":1,"result":"ready"}]`
+	out, err := ParseClaudeResult(stdout)
+	if err != nil {
+		t.Fatalf("ParseClaudeResult: %v", err)
+	}
+	if out.Steps != 1 || out.FinalText != "ready" || out.Err != "" {
+		t.Errorf("outcome = %+v", out)
+	}
+}
+
 func TestParseClaudeResultErrorResult(t *testing.T) {
 	stdout := `{"type":"result","subtype":"error_during_execution","is_error":true,"num_turns":3,"result":""}`
 	out, err := ParseClaudeResult(stdout)
