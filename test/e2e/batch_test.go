@@ -224,9 +224,9 @@ func TestBatchUsageErrorsExit2WithoutDialing(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"no steps", []string{"101"}, "batch takes a window reference and at least one action step"},
-		{"empty step", []string{"101", "then", "click", "1"}, "a batch step is empty"},
-		{"unknown action", []string{"101", "scroll", "down"}, "unknown batch action"},
+		{"no steps", []string{"101"}, "batch takes a window reference and at least one Action"},
+		{"empty step", []string{"101", "then", "click", "1"}, "a batch Action is empty"},
+		{"unknown action", []string{"101", "zoom", "1,2,3,4"}, "unknown batch action"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
