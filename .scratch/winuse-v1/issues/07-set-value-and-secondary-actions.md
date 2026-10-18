@@ -4,10 +4,14 @@
 
 **Blocked by:** 05 — Click by Element Index
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Window State lines show Secondary Actions and Element state in Codex's format
-- [ ] `set-value` works on settable Elements; non-settable Elements fail with a hint to use `type-text`
-- [ ] Unsupported Secondary Actions fail listing the ones the Element offers
-- [ ] Offline tests cover rendering of Secondary Actions and state from recorded trees
-- [ ] End-to-end: set the fixture's text field, toggle its checkbox, expand its menu (verified by user run)
+- [x] Window State lines show Secondary Actions and Element state in Codex's format
+- [x] `set-value` works on settable Elements; non-settable Elements fail with a hint to use `type-text`
+- [x] Unsupported Secondary Actions fail listing the ones the Element offers
+- [x] Offline tests cover rendering of Secondary Actions and state from recorded trees
+- [x] End-to-end: set the fixture's text field, toggle its checkbox, expand its menu (verified by user run)
+
+## Comments
+
+- 2026-10-18 — live e2e run (Windows 11, 100% scaling, primary monitor, after the live-fixes merge into winuse-v1): TestSetValueSetsTheTextField, TestSecondaryActionTogglesTheCheckbox and TestSecondaryActionExpandsAndCollapsesTheMenu passed; the @x,y forms (TestSetValueByPoint, TestPerformSecondaryActionByPoint) pass since the fixture implements ElementProviderFromPoint.

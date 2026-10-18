@@ -1,0 +1,288 @@
+// Package protocol defines the request/response contract between the winuse
+// CLI and the background helper.
+//
+// Transport is a named pipe (see internal/pipe) carrying JSON lines, one
+// request per connection: the CLI dials, writes a single Request line, reads
+// a single Response line and closes. There is no multiplexing; cancellation
+// (the Esc key) is detected by the helper itself and reported through
+// Response.Exit.
+package protocol
+
+import (
+	"bufio"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"time"
+)
+
+// Version is the wire protocol version. The helper refuses mismatching
+// requests with a version error.
+const Version = 1
+
+// ExitEsc is the exit code reported when the user pressed Esc to stop an
+// Action or Batch (Codex's interrupt code).
+const ExitEsc = 130
+
+// RequestTimeout is the default per-request time limit (~10 s, Codex-like).
+// The client's connection deadline adds slack on top.
+const RequestTimeout = 10 * time.Second
+
+// LaunchTimeout is the launch-app budget: Codex gives launching an App
+// 15 s instead of the default 10 s (orchestrator decision).
+const LaunchTimeout = 15 * time.Second
+
+// BatchTimeout is the batch budget: one request runs several Actions in
+// order, each with the activate-and-verify pipeline, so a Batch needs
+// more than the default 10 s. Codex has no batch tool to follow here
+// (codex-surface.md §1); 60 s is winuse's own bound, enough for dozens
+// of steps while keeping a stuck Batch bounded.
+const BatchTimeout = 60 * time.Second
+
+// MaxLine bounds one JSON line in either direction (a Window State tree can
+// be large, but not unbounded).
+const MaxLine = 4 << 20
+
+// commandTimeouts holds the per-command request budgets that differ from
+// RequestTimeout.
+var commandTimeouts = map[string]time.Duration{
+	"launch-app": LaunchTimeout,
+	"batch":      BatchTimeout,
+}
+
+// CommandTimeout returns a command's explicitly configured budget, if it
+// has one (launch-app: 15 s, batch: 60 s). It is the one timeout helper
+// (finding 17): the CLI composes it with RequestTimeout for its
+// connection deadlines, and the helper overrides its configured default
+// with the explicit entries only.
+func CommandTimeout(cmd string) (time.Duration, bool) {
+	d, ok := commandTimeouts[cmd]
+	return d, ok
+}
+
+// Request is one command sent by the CLI.
+type Request struct {
+	V    int             `json:"v"`              // wire protocol version
+	Ver  string          `json:"ver"`            // CLI binary version; a helper from a different build exits (see Response.Stale)
+	Cmd  string          `json:"cmd"`            // command name, e.g. "list-windows"
+	Args json.RawMessage `json:"args,omitempty"` // command arguments, command-specific JSON
+}
+
+// GetWindowArgs are get-window's arguments: the Window to re-resolve and
+// print as one list-windows line — Codex's get_window "id"/"app" step
+// (winuse names the Window by Window ID or unambiguous App name).
+type GetWindowArgs struct {
+	Window string `json:"window"`
+}
+
+// LaunchArgs are launch-app's arguments: an App name from the catalog or
+// an explicit identifier (executable path, shortcut path, App User Model
+// ID) — Codex's launch_app "app" parameter.
+type LaunchArgs struct {
+	App string `json:"app"`
+}
+
+// ClickArgs are click's arguments — Codex's click parameters. Ticket 05
+// implements the Element Index form; ticket 08 adds the `@x,y` coordinate
+// form (Point); ticket 11 adds the name:/id: Element Reference form (Ref).
+// The three forms are mutually exclusive.
+type ClickArgs struct {
+	Window       string `json:"window"`                 // Window ID, or an App name when that App has exactly one Window
+	ElementIndex *int   `json:"element_index"`          // the Element to click, from that Window's latest Window State
+	Ref          string `json:"ref,omitempty"`          // name:<text> or id:<AutomationId>: the Element to click, resolved against the Window's latest Window State
+	Point        *Point `json:"point,omitempty"`        // @x,y: coordinates in the latest screenshot's coordinate space
+	ClickCount   int    `json:"click_count,omitempty"`  // 1 (default), 2 (double click) or 3 (triple click)
+	MouseButton  string `json:"mouse_button,omitempty"` // "left" (default), "right" or "middle"; aliases l, r, m
+}
+
+// Point is a coordinate Element Reference: a point in the coordinate space
+// of a Window's latest screenshot (`@x,y`). Screenshot pixels are mapped
+// back to the Window's physical pixels through the recorded scale, so the
+// reference is exact at any display scaling and on any monitor.
+type Point struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+}
+
+// Region is a rectangle in the latest screenshot's coordinate space
+// (x, y: top-left; w, h: size, in screenshot pixels): zoom's crop request.
+type Region struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+	W int `json:"w"`
+	H int `json:"h"`
+}
+
+// ScrollArgs are scroll's arguments — Codex's scroll parameters: a
+// point plus horizontal and vertical amounts. The point is a coordinate
+// Element Reference: x, y in the coordinate space of the Window's latest
+// screenshot. Positive scrollY scrolls down, negative up; positive
+// scrollX scrolls right, negative left (Codex: "scrollY: 600 scrolls
+// down ... Negative scrolls up or left"). Amounts are in wheel units:
+// one notch is 120.
+type ScrollArgs struct {
+	Window  string `json:"window"`
+	X       int    `json:"x"`
+	Y       int    `json:"y"`
+	ScrollX int    `json:"scrollX"`
+	ScrollY int    `json:"scrollY"`
+}
+
+// DragArgs are drag's arguments — Codex's drag parameters: from and to
+// points, both coordinate Element References in the latest screenshot's
+// coordinate space.
+type DragArgs struct {
+	Window string `json:"window"`
+	FromX  int    `json:"from_x"`
+	FromY  int    `json:"from_y"`
+	ToX    int    `json:"to_x"`
+	ToY    int    `json:"to_y"`
+}
+
+// HoverArgs are hover's arguments: the point to move the pointer to,
+// a coordinate Element Reference in the latest screenshot's coordinate
+// space. Hover is a winuse extension (Codex has no hover); the parameter
+// names follow Codex's coordinate parameters.
+type HoverArgs struct {
+	Window string `json:"window"`
+	X      int    `json:"x"`
+	Y      int    `json:"y"`
+}
+
+// ZoomArgs are zoom's arguments.
+type ZoomArgs struct {
+	Window string `json:"window"`
+	Region Region `json:"region"`
+}
+
+// ActivateArgs are activate-window's arguments: the Window to bring to
+// the foreground.
+type ActivateArgs struct {
+	Window string `json:"window"`
+}
+
+// TypeTextArgs are type-text's arguments — Codex's type_text parameters:
+// the text is typed into the Window's focused Element (the Window is
+// activated first, like every Action).
+type TypeTextArgs struct {
+	Window string `json:"window"`
+	Text   string `json:"text"`
+}
+
+// PressKeyArgs are press-key's arguments — Codex's press_key parameters:
+// a key or `+`-separated chord in Codex's X keysym-style names (Return,
+// Tab, Control_L+a, Numpad_0).
+type PressKeyArgs struct {
+	Window string `json:"window"`
+	Key    string `json:"key"`
+}
+
+// SetValueArgs are set-value's arguments — Codex's set_value parameters
+// with ticket 11's Element Reference form: the Element (an Index or a
+// name:/id: reference against the Window's latest Window State) and its
+// new value.
+type SetValueArgs struct {
+	Window       string `json:"window"`          // Window ID, or an App name when that App has exactly one Window
+	ElementIndex *int   `json:"element_index"`   // the Element to set, from that Window's latest Window State
+	Ref          string `json:"ref,omitempty"`   // name:<text> or id:<AutomationId>: the Element to set
+	Point        *Point `json:"point,omitempty"` // @x,y: the Element under a point of the Window's latest screenshot
+	Value        string `json:"value"`           // the new value (a string, or a number for range Elements)
+}
+
+// SecondaryActionArgs are perform-secondary-action's arguments — Codex's
+// perform_secondary_action parameters with ticket 11's Element Reference
+// form: the Element (an Index or a name:/id: reference) and one of its
+// Secondary Actions (case-insensitive).
+type SecondaryActionArgs struct {
+	Window       string `json:"window"`          // Window ID, or an App name when that App has exactly one Window
+	ElementIndex *int   `json:"element_index"`   // the Element to act on, from that Window's latest Window State
+	Ref          string `json:"ref,omitempty"`   // name:<text> or id:<AutomationId>: the Element to act on
+	Point        *Point `json:"point,omitempty"` // @x,y: the Element under a point of the Window's latest screenshot
+	Action       string `json:"action"`          // e.g. "Raise", "Scroll Down", "Expand", "Collapse", "Toggle", "Select"
+}
+
+// BatchArgs are batch's arguments (ticket 11): several Actions on one
+// Window in a single call, run in order, stopping at the first failure.
+type BatchArgs struct {
+	Window string `json:"window"` // the one Window every step acts on (Window ID, or an App name when that App has exactly one Window)
+	Steps  []Step `json:"steps"`  // the Actions to run, in order
+}
+
+// Step is one Batch step: an Action and its arguments — the same
+// arguments the standalone command takes, without the Window (the Batch
+// names the Window once; the helper injects it into every step). Kind
+// must be one of BatchStepKinds.
+type Step struct {
+	Kind string          `json:"kind"`           // the Action's command name, e.g. "click"
+	Args json.RawMessage `json:"args,omitempty"` // that command's arguments (window omitted)
+}
+
+// BatchStepKinds are the Action commands a Batch step can be — the
+// commands that act on one Window and print nothing but `ok`. Ticket 10
+// extends the list with scroll, drag and hover. The CLI's batch step
+// parser and the helper's step dispatch share this list so the two ends
+// of the wire never disagree about what a Batch can run.
+var BatchStepKinds = []string{
+	"click", "type-text", "press-key", "set-value", "perform-secondary-action", "activate-window",
+	"scroll", "drag", "hover",
+}
+
+// Response is the helper's answer.
+type Response struct {
+	OK    bool   `json:"ok"`
+	Stale bool   `json:"stale,omitempty"` // helper is from a different winuse build: it exits after answering; the CLI restarts one and retries
+	Out   string `json:"out,omitempty"`   // text the CLI prints on stdout
+	Err   string `json:"err,omitempty"`   // single-line error message
+	Hint  string `json:"hint,omitempty"`  // recovery hint printed after the error
+	Exit  int    `json:"exit,omitempty"`  // exit code the CLI should use on failure
+}
+
+// ErrLineTooLarge is returned when a line exceeds MaxLine.
+var ErrLineTooLarge = errors.New("winuse: message exceeds line limit")
+
+// WriteLine encodes v as one JSON line (json.Encoder terminates with '\n').
+func WriteLine(w io.Writer, v any) error {
+	return json.NewEncoder(w).Encode(v)
+}
+
+// ReadLine reads one '\n'-terminated JSON line capped at MaxLine and
+// unmarshals it into v.
+func ReadLine(r *bufio.Reader, v any) error {
+	var buf []byte
+	for {
+		chunk, err := r.ReadSlice('\n')
+		buf = append(buf, chunk...)
+		if errors.Is(err, bufio.ErrBufferFull) {
+			if len(buf) > MaxLine {
+				return ErrLineTooLarge
+			}
+			continue
+		}
+		if err != nil {
+			return err // EOF or connection error before a full line
+		}
+		break
+	}
+	if len(buf) > MaxLine {
+		return ErrLineTooLarge
+	}
+	return json.Unmarshal(trimEOL(buf), v)
+}
+
+func trimEOL(b []byte) []byte {
+	for len(b) > 0 && (b[len(b)-1] == '\n' || b[len(b)-1] == '\r') {
+		b = b[:len(b)-1]
+	}
+	return b
+}
+
+// Errorf formats a failure response.
+func Errorf(exit int, format string, args ...any) Response {
+	return Response{OK: false, Err: fmt.Sprintf(format, args...), Exit: exit}
+}
+
+// OK formats a success response carrying text for stdout.
+func OK(out string) Response {
+	return Response{OK: true, Out: out}
+}

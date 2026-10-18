@@ -4,11 +4,11 @@
 
 **Blocked by:** 15 — Skill, installer, README
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] About 10 tasks, each with setup in a scratch folder and a Check script
-- [ ] Checks inspect files, settings or app state only; no model grading
-- [ ] Runner uses `claude -p` with Opus 5.5 and prints a pass/fail table with steps and time
-- [ ] Text-only subset runs through Pi with glm-5.3
-- [ ] Runner refuses to start unless the user explicitly launches it
-- [ ] Codex parity checklist covers every Codex Windows tool and parameter, marking each as matched or intentionally different
+- [x] About 10 tasks, each with setup in a scratch folder and a Check script
+- [x] Checks inspect files, settings or app state only; no model grading
+- [x] Runner uses `claude -p` with Opus 5.5 and prints a pass/fail table with steps and time
+- [x] Text-only subset runs through Pi with glm-5.3
+- [x] Runner refuses to start unless the user explicitly launches it
+- [x] Codex parity checklist covers every Codex Windows tool and parameter, marking each as matched or intentionally different

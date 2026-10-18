@@ -4,10 +4,14 @@
 
 **Blocked by:** 02 — Fixture app + opt-in end-to-end tests
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `list-apps` lists running Apps with their Windows, plus recently used Apps marked not running
-- [ ] `launch-app` accepts an App name or an executable path
-- [ ] `launch-app` reports the new Window's ID, or a clear error on failure or timeout
-- [ ] Offline tests cover App name matching and output formatting
-- [ ] End-to-end: launching the fixture by path yields its Window (verified by user run)
+- [x] `list-apps` lists running Apps with their Windows, plus recently used Apps marked not running
+- [x] `launch-app` accepts an App name or an executable path
+- [x] `launch-app` reports the new Window's ID, or a clear error on failure or timeout
+- [x] Offline tests cover App name matching and output formatting
+- [x] End-to-end: launching the fixture by path yields its Window (verified by user run)
+
+## Comments
+
+- 2026-10-18 — live e2e run (Windows 11, 100% scaling, primary monitor, after the live-fixes merge into winuse-v1): TestLaunchAppByPathOpensFixtureWindow passed (also TestListAppsShowsFixtureApp, TestLaunchAppNotFound, TestLaunchAppNoWindowTimesOut).

@@ -1,0 +1,17 @@
+Window: "Report q4 - Word", App: WINWORD.EXE.
+	0 window Report q4 - Word Secondary Actions: Raise ID: Document1
+		1 title bar Report q4 - Word
+		2 toolbar Ribbon Description: Ribbon toolbar ID: Ribbon
+			3 split button (disabled) Cannot undo ID: Undo
+			4 tab list Ribbon tabs ID: RibbonTabs
+				5 tab (selectable, selected) Home ID: TabHome
+				6 tab (selectable) Insert ID: TabInsert
+			7 group (expanded) Clipboard Secondary Actions: Collapse ID: Clipboard
+				8 edit (settable, string) File name Value: report q4.docx ID: edit-file
+			9 check box Notify me on ID: notify
+			10 tree item (collapsed) Favorites Secondary Actions: Expand ID: favorites
+		11 pane Page view Secondary Actions: Scroll Down, Scroll Right ID: page-view
+			12 list Comments ID: comments (truncated: 1000, omitted 12 children)
+
+The focused UI element is 8 edit (settable, string) File name Value: report q4.docx ID: edit-file.
+Note: this Window State is partial: the tree read exceeded the 8s time limit.

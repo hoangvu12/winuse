@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "source": "hand-authored prediction of the same Chrome window after Chromium has enabled its accessibility tree: browser chrome plus the page's web content under a document Element. A live two-phase capture needs a user-run recording. The page is the e2e HTML fixture (test/e2e/testdata/chromium-fixture.html).",
+  "title": "winuse e2e page 14 - Google Chrome",
+  "app": "chrome.exe",
+  "focusedIndex": -1,
+  "elements": [
+    { "depth": 0, "role": "window", "name": "winuse e2e page 14 - Google Chrome" },
+    { "depth": 1, "role": "pane" },
+    { "depth": 2, "role": "tab list", "name": "Tabs" },
+    { "depth": 3, "role": "tab", "name": "winuse e2e page 14" },
+    { "depth": 2, "role": "toolbar", "name": "Address and search bar" },
+    { "depth": 2, "role": "document", "name": "winuse e2e page 14" },
+    { "depth": 3, "role": "link", "name": "winuse e2e link" },
+    { "depth": 3, "role": "button", "name": "winuse e2e button" },
+    { "depth": 3, "role": "edit", "name": "winuse e2e input" },
+    { "depth": 3, "role": "check box", "name": "winuse e2e checkbox" }
+  ]
+}

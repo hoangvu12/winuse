@@ -1,0 +1,202 @@
+package helper
+
+import (
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/hoangvu12/winuse/internal/pipe"
+	"github.com/hoangvu12/winuse/internal/protocol"
+	"github.com/hoangvu12/winuse/internal/uia"
+	"github.com/hoangvu12/winuse/internal/version"
+	"github.com/hoangvu12/winuse/internal/win"
+)
+
+// Defaults for the real helper (orchestrator decision: idle exit is
+// 5 minutes of no requests). The next command restarts it transparently.
+// Overridable with WINUSE_HELPER_IDLE (a Go duration like "90s", or a
+// plain number of seconds).
+const DefaultIdle = 5 * time.Minute
+
+// logMaxSize truncates the log once it passes 1 MiB.
+const logMaxSize = 1 << 20
+
+// Main is the helper entry point (winuse __helper). It returns the process
+// exit code.
+func Main() int {
+	logFile, err := openLog()
+	if err == nil {
+		defer logFile.Close()
+		log.SetOutput(logFile)
+	} else {
+		log.Printf("opening helper log: %v", err)
+	}
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+	log.Printf("winuse helper %s starting (pid %d)", version.Version, os.Getpid())
+
+	// Per-monitor DPI awareness v2 before any window call, so every later
+	// coordinate is in physical pixels. The manifest covers the installed
+	// binary; this covers go run. Already-set (manifest) is success.
+	if err := win.SetPerMonitorV2DPIAwareness(); err != nil {
+		log.Printf("setting per-monitor-v2 DPI awareness: %v", err)
+	}
+
+	// The helper must live in the interactive desktop session. In an
+	// interactive session an input desktop that cannot be opened is the
+	// lock screen / secure desktop: report the locked-desktop refusal (the
+	// same message Actions use), not the session-0 message — the agent
+	// must learn the desktop is locked, so it stops instead of acting.
+	if !win.HasInputDesktop() {
+		err := win.InputDesktopRefusal()
+		log.Printf("no input desktop available: %v", err)
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+
+	id, err := win.CurrentIdentity()
+	if err != nil {
+		log.Printf("reading process identity: %v", err)
+		return 1
+	}
+
+	// Single instance per user/session/integrity level. The loser of a
+	// start race exits quietly; the winner serves.
+	releaseMutex, err := pipe.AcquireSingleton(id)
+	if err != nil {
+		if err == pipe.ErrAlreadyRunning {
+			log.Printf("another helper is already running, exiting")
+			return 0
+		}
+		log.Printf("acquiring helper mutex: %v", err)
+		return 1
+	}
+	defer releaseMutex()
+
+	ln, err := pipe.Listen(id)
+	if err != nil {
+		log.Printf("listening on pipe %s: %v", pipe.Name(id), err)
+		return 1
+	}
+
+	idle, err := idleFromEnv(DefaultIdle)
+	if err != nil {
+		log.Printf("invalid WINUSE_HELPER_IDLE, using default %s: %v", DefaultIdle, err)
+		idle = DefaultIdle
+	}
+	log.Printf("listening on %s (idle timeout %s)", pipe.Name(id), idle)
+
+	// The UI Automation client owns the single OS-locked COM thread all
+	// tree reads run on; it starts lazily, so a helper that only serves
+	// list-windows never touches COM. The window-state commands keep the
+	// live Elements behind the latest Window State in it.
+	trees := uia.New()
+	budget, err := treeBudgetFromEnv(uia.DefaultTreeBudget)
+	if err != nil {
+		log.Printf("invalid WINUSE_TREE_BUDGET, using default %s: %v", uia.DefaultTreeBudget, err)
+		budget = uia.DefaultTreeBudget
+	}
+
+	// The in-control indicator (ticket 13) lives on the helper's UI
+	// thread: one OS-locked thread with a message loop that owns the
+	// overlay window now and the Esc keyboard hook in ticket 12. An
+	// indicator that cannot start disables itself — Actions run without
+	// it rather than failing.
+	overlay, oerr := win.NewOverlay()
+	if oerr != nil {
+		log.Printf("the in-control overlay is unavailable, Actions will run without it: %v", oerr)
+	} else {
+		defer overlay.Close()
+	}
+
+	// The Esc stop (ticket 12): the low-level keyboard hook joins the
+	// overlay's UI thread when there is one (ADR 0006: hook and overlay
+	// share the pumping thread), and otherwise gets its own — a helper
+	// whose indicator could not start must still stop on Esc. A watcher
+	// that cannot start disables itself the same way: commands run, the
+	// user just cannot stop them with the physical Esc key.
+	var esc *win.EscWatcher
+	if overlay != nil {
+		esc, err = win.NewEscWatcherOnUI(overlay.Do)
+	} else {
+		esc, err = win.NewEscWatcher()
+	}
+	if err != nil {
+		log.Printf("the Esc stop is unavailable, commands will run without Esc stopping them: %v", err)
+		esc = nil
+	} else {
+		// Closed before the overlay's thread stops (deferred LIFO), so the
+		// hook is unhooked while its thread still pumps.
+		defer esc.Close()
+	}
+
+	svc := Services{
+		Trees:  trees,
+		Budget: budget,
+	}
+	if overlay != nil {
+		svc.Overlay = overlay
+	}
+	if esc != nil {
+		svc.Esc = esc
+	}
+	server := New(version.Version, idle, protocol.RequestTimeout, CommandsWith(svc), nil)
+	err = server.Serve(ln)
+	if err != nil {
+		log.Printf("helper server: %v", err)
+		return 1
+	}
+	trees.Close()
+	log.Printf("helper exiting")
+	return 0
+}
+
+// idleFromEnv parses WINUSE_HELPER_IDLE: a Go duration ("90s", "2m") or a
+// plain number of seconds. Empty means the default.
+func idleFromEnv(def time.Duration) (time.Duration, error) {
+	return durationFromEnv("WINUSE_HELPER_IDLE", def)
+}
+
+// treeBudgetFromEnv parses WINUSE_TREE_BUDGET the same way: the soft time
+// limit for one tree read (a partial tree with a note is returned when a
+// read exceeds it). Mainly a testing knob for the e2e suite.
+func treeBudgetFromEnv(def time.Duration) (time.Duration, error) {
+	return durationFromEnv("WINUSE_TREE_BUDGET", def)
+}
+
+// durationFromEnv parses an env var as a Go duration or a plain number of
+// seconds; empty means the default.
+func durationFromEnv(name string, def time.Duration) (time.Duration, error) {
+	v := os.Getenv(name)
+	if v == "" {
+		return def, nil
+	}
+	if d, err := time.ParseDuration(v); err == nil {
+		return d, nil
+	}
+	var secs int
+	if _, err := fmt.Sscanf(v, "%d", &secs); err == nil {
+		return time.Duration(secs) * time.Second, nil
+	}
+	return 0, fmt.Errorf("%s=%q is neither a duration nor a number of seconds", name, v)
+}
+
+// openLog opens %LOCALAPPDATA%\winuse\helper.log, truncating it once it
+// passes logMaxSize. The helper is detached: stderr goes to NUL, so this
+// file is the only diagnostic surface.
+func openLog() (*os.File, error) {
+	dir := os.Getenv("LOCALAPPDATA")
+	if dir == "" {
+		return nil, fmt.Errorf("LOCALAPPDATA is not set")
+	}
+	dir = filepath.Join(dir, "winuse")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(dir, "helper.log")
+	if fi, err := os.Stat(path); err == nil && fi.Size() > logMaxSize {
+		os.Remove(path)
+	}
+	return os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+}

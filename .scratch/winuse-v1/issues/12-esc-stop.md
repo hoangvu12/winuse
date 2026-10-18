@@ -4,9 +4,14 @@
 
 **Blocked by:** 11 — `name:` / `id:` references + Batches
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Physical Esc aborts the in-progress Action or Batch; remaining Batch steps do not run
-- [ ] Injected Esc (e.g. `press-key Escape`) does not trigger the stop
-- [ ] Stopped commands exit 130 with a message saying the user stopped winuse
-- [ ] End-to-end: a long Batch against the fixture is interrupted by pressing Esc (verified by user run)
+- [x] Physical Esc aborts the in-progress Action or Batch; remaining Batch steps do not run
+- [x] Injected Esc (e.g. `press-key Escape`) does not trigger the stop
+- [x] Stopped commands exit 130 with a message saying the user stopped winuse
+- [x] End-to-end: a long Batch against the fixture is interrupted by pressing Esc (verified by user run)
+
+## Comments
+
+- 2026-10-18 — live e2e run (Windows 11, 100% scaling, primary monitor, after the live-fixes merge into winuse-v1): TestInjectedEscDoesNotStopTheBatch passed. TestEscStopsTheLongBatch (the physical Esc press) has not been run yet; it needs the user at the keyboard.
+- 2026-10-18 — TestEscStopsTheLongBatch passed with the user pressing the physical Esc key: the long Batch stopped (exit 130, stop-and-ask message), typing aborted as a prefix, the app never saw Escape, and the overlay was gone.

@@ -1,0 +1,265 @@
+{
+  "started": "2026-10-18T00:55:41.6062033Z",
+  "harness": "claude",
+  "model": "claude-opus-5-5",
+  "winuse": "0.1.0",
+  "results": [
+    {
+      "Task": {
+        "ID": "edge-bookmark",
+        "Title": "Open two pages in tabs and bookmark one in Edge",
+        "Category": "chromium",
+        "Tags": [
+          "tabs",
+          "address-bar",
+          "bookmark"
+        ],
+        "Apps": [
+          "msedge"
+        ],
+        "TextOnly": false,
+        "HTTP": true,
+        "TimeLimit": 0,
+        "Body": "Start Edge with an isolated profile by running this command:\n\n    \"{{.EdgePath}}\" --user-data-dir=\"{{.ScratchDir}}\\edge-profile\" --no-first-run --no-default-browser-check --window-size=1200,900 \"{{.BaseURL}}/page-a.html\"\n\nIf a welcome or sign-in page appears, dismiss it; no sign-in is needed.\n\nThen:\n\n1. In a new tab, open {{.BaseURL}}/page-b.html (type the address in the\n   address bar).\n2. Bookmark the page in that tab, naming the bookmark \"Field guide\".\n\nClose the browser when you are done (closing flushes the profile's\nbookmarks).\n",
+        "Dir": "C:\\Users\\ADMIN\\Desktop\\nguyenvu\\winuse\\tasksuite\\tasks\\edge-bookmark"
+      },
+      "Status": "SKIP",
+      "Steps": -1,
+      "Seconds": 0,
+      "Reason": "requires Microsoft Edge (msedge.exe was not found)",
+      "ScratchDir": "C:\\Users\\ADMIN\\AppData\\Local\\Temp\\winuse-tasks-20261018-074634\\edge-bookmark\\scratch"
+    },
+    {
+      "Task": {
+        "ID": "edge-download",
+        "Title": "Change the download setting and save a download in a specific folder",
+        "Category": "chromium",
+        "Tags": [
+          "settings",
+          "address-bar",
+          "native-dialog",
+          "download"
+        ],
+        "Apps": [
+          "msedge"
+        ],
+        "TextOnly": false,
+        "HTTP": true,
+        "TimeLimit": 0,
+        "Body": "Start Edge with an isolated profile by running this command:\n\n    \"{{.EdgePath}}\" --user-data-dir=\"{{.ScratchDir}}\\edge-profile\" --no-first-run --no-default-browser-check --window-size=1200,900 about:blank\n\nIf a welcome or sign-in page appears, dismiss it; no sign-in is needed.\n\nThen:\n\n1. In the address bar, go to edge://settings/downloads and turn on \"Ask\n   where to save each file before downloading\".\n2. Open {{.BaseURL}}/download.html and download the report file linked\n   there. In the save dialog, save it as\n   \"{{.ScratchDir}}\\report.bin\".\n\nClose the browser when you are done.\n",
+        "Dir": "C:\\Users\\ADMIN\\Desktop\\nguyenvu\\winuse\\tasksuite\\tasks\\edge-download"
+      },
+      "Status": "SKIP",
+      "Steps": -1,
+      "Seconds": 0,
+      "Reason": "requires Microsoft Edge (msedge.exe was not found)",
+      "ScratchDir": "C:\\Users\\ADMIN\\AppData\\Local\\Temp\\winuse-tasks-20261018-074634\\edge-download\\scratch"
+    },
+    {
+      "Task": {
+        "ID": "edge-form",
+        "Title": "Fill and submit a web form in Edge",
+        "Category": "chromium",
+        "Tags": [
+          "web-form",
+          "select",
+          "radio",
+          "checkbox",
+          "submit"
+        ],
+        "Apps": [
+          "msedge"
+        ],
+        "TextOnly": true,
+        "HTTP": true,
+        "TimeLimit": 0,
+        "Body": "Start Edge with an isolated profile by running this command:\n\n    \"{{.EdgePath}}\" --user-data-dir=\"{{.ScratchDir}}\\edge-profile\" --no-first-run --no-default-browser-check --window-size=1200,900 \"{{.BaseURL}}/form.html\"\n\nIf a welcome or sign-in page appears, dismiss or navigate past it; no\nsign-in is needed. The browser should show a \"Team registration\" form.\n\nFill the form with exactly these values:\n\n- Full name: Marina Ionescu\n- Email: marina.ionescu@example.org\n- Team: Cascade\n- Role: Operations\n- Send me the newsletter: checked\n- Notes: I can bring a spare keyboard to the meetup.\n\nThen click Register. The page should confirm your registration. Close\nthe browser when you are done.\n",
+        "Dir": "C:\\Users\\ADMIN\\Desktop\\nguyenvu\\winuse\\tasksuite\\tasks\\edge-form"
+      },
+      "Status": "SKIP",
+      "Steps": -1,
+      "Seconds": 0,
+      "Reason": "requires Microsoft Edge (msedge.exe was not found)",
+      "ScratchDir": "C:\\Users\\ADMIN\\AppData\\Local\\Temp\\winuse-tasks-20261018-074634\\edge-form\\scratch"
+    },
+    {
+      "Task": {
+        "ID": "explorer-organize",
+        "Title": "Organize an invoice folder in File Explorer",
+        "Category": "ordinary",
+        "Tags": [
+          "files",
+          "new-folder",
+          "move",
+          "rename"
+        ],
+        "Apps": [
+          "explorer"
+        ],
+        "TextOnly": true,
+        "HTTP": false,
+        "TimeLimit": 0,
+        "Body": "Open File Explorer showing the folder \"{{.ScratchDir}}\\Invoices\" (for\nexample by running: explorer \"{{.ScratchDir}}\\Invoices\").\n\nIn that folder:\n\n1. Create a new folder named \"2024\".\n2. Move all six invoice files (invoice-2024-01.txt through\n   invoice-2024-06.txt) into the 2024 folder.\n3. Rename draft-summary.txt to summary.txt.\n4. Leave notes.txt where it is.\n\nClose the Explorer window when you are done. Everything must stay inside\nthe Invoices folder, and the files' contents must not change.\n",
+        "Dir": "C:\\Users\\ADMIN\\Desktop\\nguyenvu\\winuse\\tasksuite\\tasks\\explorer-organize"
+      },
+      "Status": "PASS",
+      "Steps": 18,
+      "Seconds": 77.2855092,
+      "Reason": "",
+      "ScratchDir": "C:\\Users\\ADMIN\\AppData\\Local\\Temp\\winuse-tasks-20261018-074634\\explorer-organize\\scratch"
+    },
+    {
+      "Task": {
+        "ID": "explorer-zip",
+        "Title": "Create a ZIP archive of the report files",
+        "Category": "ordinary",
+        "Tags": [
+          "selection",
+          "context-menu",
+          "archive"
+        ],
+        "Apps": [
+          "explorer"
+        ],
+        "TextOnly": false,
+        "HTTP": false,
+        "TimeLimit": 0,
+        "Body": "Open File Explorer showing the folder \"{{.ScratchDir}}\\Reports\" (for\nexample by running: explorer \"{{.ScratchDir}}\\Reports\").\n\nSelect the three .txt files in the folder and create a ZIP archive from\nthe selection (right-click \u003e \"Compress to ZIP file\", or the equivalent\nthe system offers). Name the archive \"reports.zip\" (rename it if the\nsystem gives it a different name) and leave it inside the Reports\nfolder.\n\nClose the Explorer window when you are done. The three original files\nmust remain in the folder.\n",
+        "Dir": "C:\\Users\\ADMIN\\Desktop\\nguyenvu\\winuse\\tasksuite\\tasks\\explorer-zip"
+      },
+      "Status": "PASS",
+      "Steps": 26,
+      "Seconds": 100.5632794,
+      "Reason": "",
+      "ScratchDir": "C:\\Users\\ADMIN\\AppData\\Local\\Temp\\winuse-tasks-20261018-074634\\explorer-zip\\scratch"
+    },
+    {
+      "Task": {
+        "ID": "notepad-note",
+        "Title": "Type a note in Notepad and save it through the Save As dialog",
+        "Category": "ordinary",
+        "Tags": [
+          "typing",
+          "dialog",
+          "save-as"
+        ],
+        "Apps": [
+          "notepad"
+        ],
+        "TextOnly": true,
+        "HTTP": false,
+        "TimeLimit": 0,
+        "Body": "Open Notepad and type this note exactly:\n\nMuseum visit notes\n\nThe natural history museum opens at 9:30 on weekdays.\nThe planetarium show costs 12 euros and runs at 11:00 and 14:00.\nRemember: no flash photography in the gem hall.\n\nTodo after the visit: buy the guidebook and email Anna the photos.\n\nSave the note as \"museum-notes.txt\" inside \"{{.ScratchDir}}\" using\nNotepad's Save As dialog, then close Notepad.\n",
+        "Dir": "C:\\Users\\ADMIN\\Desktop\\nguyenvu\\winuse\\tasksuite\\tasks\\notepad-note"
+      },
+      "Status": "PASS",
+      "Steps": 41,
+      "Seconds": 301.8982224,
+      "Reason": "",
+      "ScratchDir": "C:\\Users\\ADMIN\\AppData\\Local\\Temp\\winuse-tasks-20261018-074634\\notepad-note\\scratch"
+    },
+    {
+      "Task": {
+        "ID": "notepad-replace",
+        "Title": "Open a file in Notepad and replace every DRAFT marker",
+        "Category": "ordinary",
+        "Tags": [
+          "open-dialog",
+          "find-and-replace",
+          "save"
+        ],
+        "Apps": [
+          "notepad"
+        ],
+        "TextOnly": true,
+        "HTTP": false,
+        "TimeLimit": 0,
+        "Body": "Open the file \"{{.ScratchDir}}\\project-log.txt\" in Notepad (use Notepad's\nOpen dialog).\n\nUse Notepad's Replace feature to replace every occurrence of \"DRAFT\"\nwith \"FINAL\". Save the file, then close Notepad.\n",
+        "Dir": "C:\\Users\\ADMIN\\Desktop\\nguyenvu\\winuse\\tasksuite\\tasks\\notepad-replace"
+      },
+      "Status": "PASS",
+      "Steps": 19,
+      "Seconds": 62.0909663,
+      "Reason": "",
+      "ScratchDir": "C:\\Users\\ADMIN\\AppData\\Local\\Temp\\winuse-tasks-20261018-074634\\notepad-replace\\scratch"
+    },
+    {
+      "Task": {
+        "ID": "paint-draw",
+        "Title": "Draw a line on the Paint canvas and save the drawing",
+        "Category": "canvas",
+        "Tags": [
+          "canvas",
+          "drag",
+          "sparse-tree",
+          "save-as"
+        ],
+        "Apps": [
+          "mspaint"
+        ],
+        "TextOnly": false,
+        "HTTP": false,
+        "TimeLimit": 0,
+        "Body": "Open Paint (mspaint). Select the Pencil tool and draw one continuous\nline across the canvas, starting near the top-left corner and ending\nnear the bottom-right corner.\n\nSave the drawing as \"line.png\" inside \"{{.ScratchDir}}\" (a PNG image),\nthen close Paint.\n",
+        "Dir": "C:\\Users\\ADMIN\\Desktop\\nguyenvu\\winuse\\tasksuite\\tasks\\paint-draw"
+      },
+      "Status": "SKIP",
+      "Steps": -1,
+      "Seconds": 0.0019044,
+      "Reason": "requires mspaint, which was not found on PATH",
+      "ScratchDir": "C:\\Users\\ADMIN\\AppData\\Local\\Temp\\winuse-tasks-20261018-074634\\paint-draw\\scratch"
+    },
+    {
+      "Task": {
+        "ID": "paint-rect",
+        "Title": "Draw a rectangle in Paint and save the drawing",
+        "Category": "canvas",
+        "Tags": [
+          "canvas",
+          "shapes",
+          "sparse-tree",
+          "save-as"
+        ],
+        "Apps": [
+          "mspaint"
+        ],
+        "TextOnly": false,
+        "HTTP": false,
+        "TimeLimit": 0,
+        "Body": "Open Paint (mspaint). Using the rectangle shape tool, draw a rectangle\nroughly a quarter of the canvas in size, in the middle of the canvas.\n\nSave the drawing as \"rect.png\" inside \"{{.ScratchDir}}\" (a PNG image),\nthen close Paint.\n",
+        "Dir": "C:\\Users\\ADMIN\\Desktop\\nguyenvu\\winuse\\tasksuite\\tasks\\paint-rect"
+      },
+      "Status": "SKIP",
+      "Steps": -1,
+      "Seconds": 0.0005325,
+      "Reason": "requires mspaint, which was not found on PATH",
+      "ScratchDir": "C:\\Users\\ADMIN\\AppData\\Local\\Temp\\winuse-tasks-20261018-074634\\paint-rect\\scratch"
+    },
+    {
+      "Task": {
+        "ID": "vscode-edit",
+        "Title": "Create a file in VS Code and save it",
+        "Category": "electron",
+        "Tags": [
+          "editor",
+          "new-file",
+          "save-dialog",
+          "workspace-trust"
+        ],
+        "Apps": [
+          "code"
+        ],
+        "TextOnly": false,
+        "HTTP": false,
+        "TimeLimit": 0,
+        "Body": "Start VS Code opening the project folder by running this command:\n\n    code \"{{.ScratchDir}}\\project\"\n\nIf VS Code asks whether you trust the authors of this folder, choose the\noption that lets you work with it. If a welcome page or tour opens,\nclose it.\n\nIn the project folder, create a new file named \"checklist.md\"\ncontaining exactly:\n\nSetup checklist\n\n- confirm the display cable is seated\n- label the two spare SSDs\n- update the meeting room calendar\n\nSave the file, then close VS Code.\n",
+        "Dir": "C:\\Users\\ADMIN\\Desktop\\nguyenvu\\winuse\\tasksuite\\tasks\\vscode-edit"
+      },
+      "Status": "SKIP",
+      "Steps": -1,
+      "Seconds": 0.0010826,
+      "Reason": "requires code, which was not found on PATH",
+      "ScratchDir": "C:\\Users\\ADMIN\\AppData\\Local\\Temp\\winuse-tasks-20261018-074634\\vscode-edit\\scratch"
+    }
+  ]
+}

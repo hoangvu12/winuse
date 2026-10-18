@@ -35,7 +35,7 @@ _Avoid_: Element ID, ref
 ### Operation
 
 **Action**:
-A single operation the agent performs on a Window: click, set value, secondary action, scroll, drag, press key or type text.
+A single operation the agent performs on a Window: click, set value, secondary action, scroll, drag, hover, press key or type text.
 _Avoid_: Command, step, tool call
 
 **Secondary Action**:
@@ -49,6 +49,10 @@ _Avoid_: Selector, locator
 **Batch**:
 Several Actions sent in one call and run in order, stopping at the first one that fails.
 _Avoid_: Script, macro, sequence
+
+**Esc stop**:
+The user pressing the physical Escape key while winuse is acting: the running command stops immediately, its key never reaching the controlled app, and the agent is told the user stopped winuse (exit code 130).
+_Avoid_: Interrupt, cancel, kill switch
 
 **Harness**:
 The coding-agent program the user runs (Claude Code, Pi, ...) that drives winuse on the model's behalf.

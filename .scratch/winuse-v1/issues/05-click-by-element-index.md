@@ -4,13 +4,17 @@
 
 **Blocked by:** 03 — Window State text tree
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Single, double and right click on an Element by Element Index
-- [ ] Target Window is activated and verified in front before input; `activate-window` works standalone
-- [ ] Administrator Windows are refused with an explanation (no input sent)
-- [ ] Locked desktop is detected and refused
-- [ ] Stale Element Index fails with an instruction to read the Window State again
-- [ ] Output is `ok` or a one-line failure; failures exit non-zero
-- [ ] Offline tests cover the output contract and error messages
-- [ ] End-to-end: clicking the fixture's button and checkbox changes fixture state; the "Save As" dialog appears as a new Window (verified by user run)
+- [x] Single, double and right click on an Element by Element Index
+- [x] Target Window is activated and verified in front before input; `activate-window` works standalone
+- [x] Administrator Windows are refused with an explanation (no input sent)
+- [x] Locked desktop is detected and refused
+- [x] Stale Element Index fails with an instruction to read the Window State again
+- [x] Output is `ok` or a one-line failure; failures exit non-zero
+- [x] Offline tests cover the output contract and error messages
+- [x] End-to-end: clicking the fixture's button and checkbox changes fixture state; the "Save As" dialog appears as a new Window (verified by user run)
+
+## Comments
+
+- 2026-10-18 — live e2e run (Windows 11, 100% scaling, primary monitor, after the live-fixes merge into winuse-v1): TestClickButtonChangesFixtureState, TestClickCheckboxTogglesState and TestClickOpensSaveAsDialogAsNewWindow passed (the dialog click needed the GA_ROOT fix in the occlusion check).
