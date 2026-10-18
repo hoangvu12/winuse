@@ -306,8 +306,16 @@ func (rs *runState) runTask(t Task) TaskResult {
 	cmd.Stdout = io.MultiWriter(stdoutF, &stdoutBuf)
 	cmd.Stderr = io.MultiWriter(stderrF, &stderrBuf)
 	var timedOut bool
+	var tracker *procTracker
 	runErr := cmd.Start()
 	if runErr == nil {
+		// Record the Harness's descendants while it runs: only they (and
+		// the task's own apps) are the cleanup's to kill.
+		tracker = newProcTracker(before, uint32(cmd.Process.Pid))
+		stopPoll := make(chan struct{})
+		pollDone := make(chan struct{})
+		go func() { tracker.poll(250*time.Millisecond, stopPoll); close(pollDone) }()
+		defer func() { close(stopPoll); <-pollDone }()
 		done := make(chan error, 1)
 		go func() { done <- cmd.Wait() }()
 		select {
@@ -353,11 +361,22 @@ func (rs *runState) runTask(t Task) TaskResult {
 		}
 	}
 
-	// Cleanup: everything the task started goes away (apps, the winuse
-	// helper); the user's own processes were in `before`.
+	// Cleanup: what the task started goes away (apps, the winuse helper);
+	// processes the machine started meanwhile are not the task's and are
+	// left alone (see TaskProcesses).
 	if after, aerr := snapshotProcesses(); aerr == nil {
-		pids, names := NewProcesses(before, after, uint32(os.Getpid()))
-		CleanupNewProcesses(pids, names, func(msg string) {
+		owned := map[uint32]string{}
+		if tracker != nil {
+			tracker.observe(after)
+			owned = tracker.Owned()
+		}
+		runBin := strings.ToLower(filepath.Join(rs.binDir, "winuse.exe"))
+		isRunBinary := func(pid uint32) bool {
+			p, ok := processPath(pid)
+			return ok && strings.HasSuffix(p, runBin)
+		}
+		pids, names := TaskProcesses(before, after, owned, appExeNames(t.Apps), isRunBinary, uint32(os.Getpid()))
+		CleanupTaskProcesses(pids, names, func(msg string) {
 			fmt.Fprintf(rs.out, "        %s\n", msg)
 		})
 	}
