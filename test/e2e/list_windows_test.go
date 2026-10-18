@@ -60,6 +60,9 @@ func TestHelperIsReusedAcrossInvocations(t *testing.T) {
 // noticing.
 func TestHelperIdleExitAndTransparentRestart(t *testing.T) {
 	optIn(t)
+	// The idle period is read when the helper starts: a helper left by an
+	// earlier test (with e2eIdle) would outlive the wait below.
+	killHelper(t)
 	if _, _, exit := runListWindows(t, "WINUSE_HELPER_IDLE="+idleForRestart); exit != 0 {
 		t.Fatalf("first invocation failed (exit %d)", exit)
 	}
