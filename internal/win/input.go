@@ -176,7 +176,7 @@ func checkOverTarget(target uint64, x, y int32) error {
 // rootWindow returns h's root window (GetAncestor GA_ROOT; h itself when
 // h is top-level), falling back to h when the call fails.
 func rootWindow(h uintptr) uintptr {
-	const gaRoot = 3
+	const gaRoot = 2 // GA_ROOT; 3 is GA_ROOTOWNER, which would skip past owned popups
 	r, _, _ := procGetAncestor.Call(h, gaRoot)
 	if r == 0 {
 		return h
