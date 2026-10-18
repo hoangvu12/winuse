@@ -204,8 +204,9 @@ func TestCoordinateClickExactViaWGC(t *testing.T) {
 
 	st = fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return len(s.CanvasClicks) > 0 })
 	last := st.CanvasClicks[len(st.CanvasClicks)-1]
-	if abs32(last.X-targetX) > 1 || abs32(last.Y-targetY) > 1 {
-		t.Errorf("click @%d,%d (from a WGC screenshot) landed at canvas (%d, %d), wanted screen (%d, %d) within 1 px",
+	// Canvas clicks are recorded in canvas coordinates.
+	if abs32(last.X+cr[0]-targetX) > 1 || abs32(last.Y+cr[1]-targetY) > 1 {
+		t.Errorf("click @%d,%d (from a WGC screenshot) landed at screen (%d, %d), wanted screen (%d, %d) within 1 px",
 			shotX, shotY, last.X+cr[0], last.Y+cr[1], targetX, targetY)
 	}
 }
