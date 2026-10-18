@@ -11,3 +11,7 @@
 - [x] A persistently sparse tree produces a note in the Window State
 - [x] Offline tests cover sparse-tree detection on recorded Chromium/Electron trees
 - [ ] End-to-end: the local HTML fixture page in Edge exposes its Elements (verified by user run)
+
+## Comments
+
+- 2026-10-18 — live e2e run (Windows 11, 100% scaling, primary monitor, after the live-fixes merge into winuse-v1): TestChromiumWebContentInWindowState passed against Chrome (isolated temp profile). Edge is not installed on this machine, so the Edge criterion is still open.

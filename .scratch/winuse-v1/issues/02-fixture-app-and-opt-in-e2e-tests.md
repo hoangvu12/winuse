@@ -10,4 +10,8 @@
 - [x] Fixture can report its end state (text field contents, checkbox state, last button pressed, canvas clicks) for assertions
 - [x] End-to-end tests are skipped unless the user explicitly opts in (e.g. an environment variable)
 - [x] Agents must not enable the opt-in; this rule is stated in the test runner's documentation
-- [ ] First end-to-end test: `list-windows` lists the fixture Window (verified by user run)
+- [x] First end-to-end test: `list-windows` lists the fixture Window (verified by user run)
+
+## Comments
+
+- 2026-10-18 — live e2e run (Windows 11, 100% scaling, primary monitor, after the live-fixes merge into winuse-v1): TestListWindowsShowsFixtureWindow passed.

@@ -10,4 +10,8 @@
 - [x] `launch-app` accepts an App name or an executable path
 - [x] `launch-app` reports the new Window's ID, or a clear error on failure or timeout
 - [x] Offline tests cover App name matching and output formatting
-- [ ] End-to-end: launching the fixture by path yields its Window (verified by user run)
+- [x] End-to-end: launching the fixture by path yields its Window (verified by user run)
+
+## Comments
+
+- 2026-10-18 — live e2e run (Windows 11, 100% scaling, primary monitor, after the live-fixes merge into winuse-v1): TestLaunchAppByPathOpensFixtureWindow passed (also TestListAppsShowsFixtureApp, TestLaunchAppNotFound, TestLaunchAppNoWindowTimesOut).

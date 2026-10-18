@@ -13,4 +13,8 @@
 - [x] Stale Element Index fails with an instruction to read the Window State again
 - [x] Output is `ok` or a one-line failure; failures exit non-zero
 - [x] Offline tests cover the output contract and error messages
-- [ ] End-to-end: clicking the fixture's button and checkbox changes fixture state; the "Save As" dialog appears as a new Window (verified by user run)
+- [x] End-to-end: clicking the fixture's button and checkbox changes fixture state; the "Save As" dialog appears as a new Window (verified by user run)
+
+## Comments
+
+- 2026-10-18 — live e2e run (Windows 11, 100% scaling, primary monitor, after the live-fixes merge into winuse-v1): TestClickButtonChangesFixtureState, TestClickCheckboxTogglesState and TestClickOpensSaveAsDialogAsNewWindow passed (the dialog click needed the GA_ROOT fix in the occlusion check).

@@ -10,3 +10,7 @@
 - [x] Injected Esc (e.g. `press-key Escape`) does not trigger the stop
 - [x] Stopped commands exit 130 with a message saying the user stopped winuse
 - [ ] End-to-end: a long Batch against the fixture is interrupted by pressing Esc (verified by user run)
+
+## Comments
+
+- 2026-10-18 — live e2e run (Windows 11, 100% scaling, primary monitor, after the live-fixes merge into winuse-v1): TestInjectedEscDoesNotStopTheBatch passed. TestEscStopsTheLongBatch (the physical Esc press) has not been run yet; it needs the user at the keyboard.

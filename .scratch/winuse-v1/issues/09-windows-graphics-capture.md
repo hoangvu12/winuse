@@ -10,4 +10,8 @@
 - [x] Failure, black frames or timeout fall back automatically to the screen-region / `PrintWindow` path
 - [x] Coordinate mapping from ticket 08 remains exact with this capture path
 - [x] No cgo introduced
-- [ ] End-to-end: a screenshot of the fixture via this path matches expectations; a forced failure triggers the fallback (verified by user run)
+- [x] End-to-end: a screenshot of the fixture via this path matches expectations; a forced failure triggers the fallback (verified by user run)
+
+## Comments
+
+- 2026-10-18 — live e2e run (Windows 11, 100% scaling, primary monitor, after the live-fixes merge into winuse-v1): TestWGCScreenshotCapturedViaWindowsGraphicsCapture, TestWGCDisabledFallsBackToGDI, TestWGCTimeoutFallsBackToGDI, TestCoordinateClickExactViaWGC and TestWGCZoomStillFullResolution passed (none skipped).

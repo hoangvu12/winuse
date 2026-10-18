@@ -9,4 +9,8 @@
 - [x] Unicode text (including non-Latin scripts and emoji) is typed correctly
 - [x] Key names and combinations match Codex's accepted names; unknown names fail with a hint
 - [x] Offline tests cover key-name parsing
-- [ ] End-to-end: typing into the fixture's text field, then `Control_L+a` and a replacement key, leaves the expected text (verified by user run)
+- [x] End-to-end: typing into the fixture's text field, then `Control_L+a` and a replacement key, leaves the expected text (verified by user run)
+
+## Comments
+
+- 2026-10-18 — live e2e run (Windows 11, 100% scaling, primary monitor, after the live-fixes merge into winuse-v1): TestTypeTextSelectAllAndReplace and TestTypeTextBackspaceReplacesSelection passed, with the rest of type_text_test.go.

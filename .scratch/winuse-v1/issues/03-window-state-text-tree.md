@@ -12,4 +12,8 @@
 - [x] Naming a Window by App resolves only when exactly one Window matches; otherwise an error lists the candidates
 - [x] Recorder captures a real Window's tree to a fixture file
 - [x] Offline tests render recorded trees and compare with expected text
-- [ ] End-to-end: the fixture's Elements appear with expected roles, names and IDs (verified by user run)
+- [x] End-to-end: the fixture's Elements appear with expected roles, names and IDs (verified by user run)
+
+## Comments
+
+- 2026-10-18 — live e2e run (Windows 11, 100% scaling, primary monitor, after the live-fixes merge into winuse-v1): TestGetWindowStateByWindowID and TestGetWindowStateByAppName passed. The live tree also contains the OS caption subtree (title bar, System menu, caption buttons) right after the root; the e2e index derivation reserves those indexes.
