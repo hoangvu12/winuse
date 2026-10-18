@@ -25,20 +25,23 @@ package fixture
 // that pumps messages and returned the root from WM_GETOBJECT), the same
 // thread all app state lives on, so no locking is needed anywhere.
 //
-// One ABI limitation, documented rather than worked around: Go's Windows
-// callback trampoline forwards only the integer argument registers, so
-// methods whose parameters are doubles by value (ElementProviderFromPoint,
-// IScrollProvider::SetScrollPercent) cannot read their arguments.
-// ElementProviderFromPoint therefore always reports "no element at point"
-// (legal: pRetVal is optional-out), and SetScrollPercent returns
-// E_NOTIMPL (Scroll with enum amounts — which winuse uses for "Scroll
-// Down" — works). Nothing in winuse's v1 surface needs either.
+// One ABI limitation: Go's Windows callback trampoline forwards only the
+// integer argument registers, so methods whose parameters are doubles by
+// value cannot read them directly. ElementProviderFromPoint is needed (the
+// @x,y Element Reference resolves through UIA ElementFromPoint), so on
+// amd64 a small assembly thunk (frompoint_amd64.s) moves the doubles into
+// the integer slots first. IScrollProvider::SetScrollPercent is not
+// needed and returns E_NOTIMPL (Scroll with enum amounts — which winuse
+// uses for "Scroll Down" — works).
 
 import (
+	"math"
 	"unicode/utf16"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 // ---- constants (verified against the SDK headers) ----
@@ -300,7 +303,7 @@ func init() {
 		newCallback(fragmentGetFragmentRoot),
 	)
 	vt(ifaceFragmentRoot,
-		newCallback(rootElementProviderFromPoint),
+		fromPointEntry(),
 		newCallback(rootGetFocus),
 	)
 	vt(ifaceInvoke, newCallback(invokeInvoke))
@@ -760,32 +763,61 @@ func fragmentGetBoundingRectangle(this, pRect uintptr) uintptr {
 	r := (*uiaRect)(cptr(pRect))
 	*r = uiaRect{}
 
-	if node.dialog {
-		if node.elem == DialogRootElem {
-			r.Left, r.Top, r.Width, r.Height = a.windowRect(a.dialogHwnd)
-			return hrOK()
+	if node.elem == providerRootElem(node.dialog) {
+		hwnd := a.mainHwnd
+		if node.dialog {
+			hwnd = a.dialogHwnd
 		}
-		dr, ok := dialogRect(node.elem)
-		if !ok {
-			return hrOK()
-		}
-		ox, oy := a.clientOrigin(a.dialogHwnd)
-		r.Left, r.Top = float64(ox+dr.Left), float64(oy+dr.Top)
-		r.Width, r.Height = float64(dr.Right-dr.Left), float64(dr.Bottom-dr.Top)
+		r.Left, r.Top, r.Width, r.Height = a.windowRect(hwnd)
 		return hrOK()
 	}
-	if node.elem == ElemWindow {
-		r.Left, r.Top, r.Width, r.Height = a.windowRect(a.mainHwnd)
-		return hrOK()
-	}
-	mr, ok := Rect(node.elem, a.state.ListFirstVisible)
+	sr, ok := a.screenRect(node.dialog, node.elem)
 	if !ok {
 		return hrOK()
 	}
-	ox, oy := a.clientOrigin(a.mainHwnd)
-	r.Left, r.Top = float64(ox+mr.Left), float64(oy+mr.Top)
-	r.Width, r.Height = float64(mr.Right-mr.Left), float64(mr.Bottom-mr.Top)
+	r.Left, r.Top = float64(sr.Left), float64(sr.Top)
+	r.Width, r.Height = float64(sr.Right-sr.Left), float64(sr.Bottom-sr.Top)
 	return hrOK()
+}
+
+// screenRect returns a non-root Element's rectangle in screen pixels.
+func (a *app) screenRect(dialog bool, e Elem) (win.Rect, bool) {
+	hwnd := a.mainHwnd
+	cr, ok := Rect(e, a.state.ListFirstVisible)
+	if dialog {
+		hwnd = a.dialogHwnd
+		cr, ok = dialogRect(e)
+	}
+	if !ok {
+		return win.Rect{}, false
+	}
+	ox, oy := a.clientOrigin(hwnd)
+	return win.Rect{Left: ox + cr.Left, Top: oy + cr.Top, Right: ox + cr.Right, Bottom: oy + cr.Bottom}, true
+}
+
+// elementAtScreen returns the deepest Element of the window's current tree
+// under the screen point (later siblings first: they paint on top), or ""
+// when only the window root is there.
+func (a *app) elementAtScreen(dialog bool, x, y int32) Elem {
+	m := a.treeMap(dialog)
+	var find func(e Elem) Elem
+	find = func(e Elem) Elem {
+		kids := m.Children(e)
+		for i := len(kids) - 1; i >= 0; i-- {
+			if hit := find(kids[i]); hit != "" {
+				return hit
+			}
+		}
+		if a.offscreen(e) {
+			return "" // scrolled-out list items keep rects outside the list
+		}
+		if r, ok := a.screenRect(dialog, e); ok && inRect(x, y, r) {
+			return e
+		}
+		return ""
+	}
+	// The root has no layout rect of its own, so find never returns it.
+	return find(providerRootElem(dialog))
 }
 
 func fragmentGetEmbeddedFragmentRoots(this, ppSA uintptr) uintptr {
@@ -824,14 +856,29 @@ func fragmentGetFragmentRoot(this, ppRoot uintptr) uintptr {
 
 // ---- IRawElementProviderFragmentRoot ----
 
-// rootElementProviderFromPoint always reports "no element": its arguments
-// are doubles by value, which Go callback trampolines cannot receive (see
-// the file comment). pRetVal is optional-out, so NULL is legal.
-func rootElementProviderFromPoint(this, x, y, ppFrag uintptr) uintptr {
+// rootElementProviderFromPoint hit-tests the window's current tree. x and
+// y are the screen point's doubles, delivered as raw bits by the amd64
+// thunk (frompoint_amd64.s); elsewhere it reports "no element" (pRetVal is
+// optional-out, so NULL is legal and UIA falls back to the root).
+func rootElementProviderFromPoint(this, xBits, yBits, ppFrag uintptr) uintptr {
 	if ppFrag == 0 {
 		return hrFail(ePointer)
 	}
 	*(*unsafe.Pointer)(cptr(ppFrag)) = nil
+	if !fromPointHasArgs {
+		return hrOK()
+	}
+	node := comNode(this)
+	a := appState()
+	u := providers()
+	if node == nil || a == nil || u == nil {
+		return hrOK()
+	}
+	x := math.Floor(math.Float64frombits(uint64(xBits)))
+	y := math.Floor(math.Float64frombits(uint64(yBits)))
+	if e := a.elementAtScreen(node.dialog, int32(x), int32(y)); e != "" {
+		*(*unsafe.Pointer)(cptr(ppFrag)) = cptr(u.window(node.dialog).obj(e, ifaceFragment))
+	}
 	return hrOK()
 }
 
