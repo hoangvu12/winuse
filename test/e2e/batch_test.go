@@ -253,9 +253,13 @@ func TestBatchAgainstTheDialog(t *testing.T) {
 	if _, _, exit := runClick(t, []string{window, "id:button-save-as"}); exit != 0 {
 		t.Fatalf("click id:button-save-as: exit %d", exit)
 	}
-	st := fix.waitState(t, 10*time.Second, func(s *fixture.State) bool { return s.DialogOpen })
+	st := fix.waitState(t, 10*time.Second, func(s *fixture.State) bool { return s.DialogOpen && s.DialogWindowID != 0 })
 	dialog := strconv.FormatUint(st.DialogWindowID, 10)
 
+	// References resolve against the dialog's latest Window State.
+	if _, stderr, exit := runGetWindowState(t, dialog); exit != 0 {
+		t.Fatalf("get-window-state of the dialog: exit %d, stderr:\n%s", exit, stderr)
+	}
 	stdout, stderr, exit := runBatch(t, []string{
 		dialog,
 		"set-value", "id:dialog-edit-file-name", "report.txt",
