@@ -84,7 +84,24 @@ var (
 	user32               = windows.NewLazySystemDLL("user32.dll")
 	procSetCursorPos     = user32.NewProc("SetCursorPos")
 	procGetSystemMetrics = user32.NewProc("GetSystemMetrics")
+	procWindowFromPoint  = user32.NewProc("WindowFromPoint")
+	procGetAncestor      = user32.NewProc("GetAncestor")
 )
+
+// rootWindowAt returns the top-level window the system hit-tests at the
+// screen point (WindowFromPoint, normalized with GA_ROOT) — read-only.
+func rootWindowAt(x, y int32) uint64 {
+	const gaRoot = 2
+	h, _, _ := procWindowFromPoint.Call(uintptr(uint32(x)) | uintptr(uint32(y))<<32)
+	if h == 0 {
+		return 0
+	}
+	r, _, _ := procGetAncestor.Call(h, gaRoot)
+	if r == 0 {
+		return uint64(h)
+	}
+	return uint64(r)
+}
 
 // parkPointer moves the pointer to the middle of the primary monitor's
 // right edge, away from where the fixture window opens. The pointer stays
