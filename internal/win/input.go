@@ -158,8 +158,9 @@ func moveCursor(x, y int32) error {
 // its owner chain — an owned popup of the target (a menu, a tooltip, a
 // dropdown) is a valid place for a target Element's point to land.
 func checkOverTarget(target uint64, x, y int32) error {
-	p := point{X: x, Y: y}
-	h, _, _ := procWindowFromPoint.Call(uintptr(unsafe.Pointer(&p)))
+	// WindowFromPoint takes the POINT by value: on x64 the 8-byte struct
+	// travels in one register, x in the low half, y in the high half.
+	h, _, _ := procWindowFromPoint.Call(uintptr(uint32(x)) | uintptr(uint32(y))<<32)
 	if h == 0 {
 		return &OcclusionError{X: x, Y: y}
 	}
