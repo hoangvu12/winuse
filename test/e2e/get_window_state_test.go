@@ -251,14 +251,17 @@ func TestGetWindowStateAppWithNoWindows(t *testing.T) {
 // once).
 func TestGetWindowStateTinyBudgetIsPartialWithNote(t *testing.T) {
 	optIn(t)
-	time.Sleep(6 * time.Second) // > e2eIdle (5s) from earlier tests' helpers
+	// The budget is read when the helper starts: begin with a fresh one,
+	// and don't leave the 1 ms helper to the next test.
+	killHelper(t)
+	t.Cleanup(func() { killHelper(t) })
 	id, err := win.CurrentIdentity()
 	if err != nil {
 		t.Fatalf("identity: %v", err)
 	}
 	if conn, err := dialHelper(id); err == nil {
 		conn.Close()
-		t.Fatal("a helper is still serving; its idle period should have passed")
+		t.Fatal("a helper is still serving after it was killed")
 	}
 	fix := startFixture(t)
 	st := fix.waitState(t, 15*time.Second, func(s *fixture.State) bool { return s.WindowID != 0 })
