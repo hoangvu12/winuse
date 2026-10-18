@@ -16,3 +16,4 @@
 ## Comments
 
 - 2026-10-18 — live e2e run (Windows 11, 100% scaling, primary monitor, after the live-fixes merge into winuse-v1): TestCoordinateClickLandsOnAimedPoint passed (within 1 px). Still to run by the user: the same test at 150% and 175% display scaling and with the fixture on a secondary monitor.
+- 2026-10-18 — secondary monitor (100%, fixture placed with WINUSE_FIXTURE_ORIGIN=2100,120 on the monitor right of the primary): TestCoordinateClickLandsOnAimedPoint and TestCoordinateClickExactViaWGC passed, with the whole suite. 150% and 175% are still to be run by the user.
