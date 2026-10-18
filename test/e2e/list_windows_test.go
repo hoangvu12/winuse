@@ -124,10 +124,26 @@ func TestGetWindowPrintsTheResovedLine(t *testing.T) {
 		t.Fatalf("list-windows failed (exit %d)", exit)
 	}
 	lines := strings.Split(strings.TrimSuffix(stdout, "\n"), "\n")
-	fields := strings.Split(lines[0], "\t")
+	// Resolving by App name needs an App with exactly one Window (several
+	// fail as ambiguous, by design).
+	perApp := map[string]int{}
+	for _, l := range lines {
+		perApp[strings.Split(l, "\t")[1]]++
+	}
+	line := ""
+	for _, l := range lines {
+		if perApp[strings.Split(l, "\t")[1]] == 1 {
+			line = l
+			break
+		}
+	}
+	if line == "" {
+		t.Skip("every listed App has several Windows; get-window by App name needs one with exactly one")
+	}
+	fields := strings.Split(line, "\t")
 	id, app := fields[0], fields[1]
 
-	want := lines[0] + "\n"
+	want := line + "\n"
 	for _, tc := range []struct {
 		name string
 		ref  string
