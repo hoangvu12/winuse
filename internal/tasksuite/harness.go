@@ -219,7 +219,8 @@ func ParseClaudeResult(stdout string) (HarnessOutcome, error) {
 
 // claudeResultObjects decodes the type:"result" JSON objects in the
 // output: first the whole output as one object (claude pretty-prints
-// its result), then one object per line.
+// its result) or as one array of events (what --verbose with
+// --output-format json prints), then one object per line.
 func claudeResultObjects(stdout string) []map[string]any {
 	var found []map[string]any
 	whole := strings.TrimSpace(stdout)
@@ -227,6 +228,16 @@ func claudeResultObjects(stdout string) []map[string]any {
 		var obj map[string]any
 		if err := json.Unmarshal([]byte(whole), &obj); err == nil && obj["type"] == "result" {
 			found = append(found, obj)
+		}
+	}
+	if strings.HasPrefix(whole, "[") {
+		var events []map[string]any
+		if err := json.Unmarshal([]byte(whole), &events); err == nil {
+			for _, ev := range events {
+				if ev["type"] == "result" {
+					found = append(found, ev)
+				}
+			}
 		}
 	}
 	if len(found) == 0 {
