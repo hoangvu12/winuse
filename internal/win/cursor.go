@@ -1,0 +1,472 @@
+package win
+
+// The Agent Cursor (headless spec, ADR 0010, ticket 03): a
+// presentation-only second cursor that glides to the Element a Headless
+// Action targets, says what is happening in a label pill, and ripples on
+// the click — so headless work is never invisible, without taking the
+// user's pointer, keyboard or foreground.
+//
+// The API takes screen rectangles (physical pixels) and label text only,
+// never UI Automation types, so any driver (the CDP browser tool winuse
+// will merge with) can show the same cursor. Everything is best effort:
+// no method returns an error, none panics, and none blocks its caller
+// beyond a bound when the UI thread is stuck.
+//
+// Threads. The windows, the timer and all state live on the shared UI
+// thread (ADR 0006), reached through the do function the helper passes
+// (Overlay.Do). Calls are funnelled through one dispatcher goroutine so
+// they reach the UI thread in call order without the caller ever waiting
+// on do itself: Travel waits for its own completion signal (bounded),
+// HideWhile for its hide (bounded), Click and the restore not at all.
+//
+// The pieces: cursor_motion.go (path, easing, timeline, idle — pure),
+// cursor_layout.go (shape and placement — pure), cursor_raster.go
+// (pixels — pure), cursor_view.go (the Win32 windows); this file holds
+// the API and the UI-thread controller that runs the model against the
+// clock and hands frames to the view.
+
+import (
+	"errors"
+	"fmt"
+	"math"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+// AgentCursorClassName is the class of the Agent Cursor's layered windows
+// (the dart with its label pill, the ripple, the outline). The e2e tests find
+// the cursor on the desktop by it.
+const AgentCursorClassName = "winuse.cursor"
+
+// cursorTravelSlack is added to Travel's bound (twice the estimated
+// travel time) for the job's trip to the UI thread.
+const cursorTravelSlack = 50 * time.Millisecond
+
+// cursorQueueSize bounds the calls waiting for the UI thread. When it is
+// full (a UI thread stuck for a long time) further calls are dropped:
+// the cursor is cosmetic.
+const cursorQueueSize = 256
+
+// cursorLiveGuard refuses to create the cursor's windows inside an
+// offline test binary (LiveDesktopGuard); the opt-in visual demo test
+// replaces it.
+var cursorLiveGuard = LiveDesktopGuard
+
+// cursorExcludeFromCapture sets WDA_EXCLUDEFROMCAPTURE on the cursor's
+// windows. Only the opt-in visual demo turns it off, to screenshot the
+// cursor it draws.
+var cursorExcludeFromCapture = true
+
+// AgentCursor is the Agent Cursor. Create one per helper process with
+// NewAgentCursor on the overlay's UI thread and Close it when the helper
+// exits. All methods are safe on a nil cursor (no cursor).
+type AgentCursor struct {
+	do    func(func()) error
+	ui    *cursorUI // touched only from jobs run through do
+	queue chan func()
+	quit  chan struct{}
+	once  sync.Once
+	snap  cursorSnapshot
+}
+
+// cursorSnapshot is the controller's last published position, read by
+// Travel's caller to size its bound without a round trip.
+type cursorSnapshot struct {
+	mu      sync.Mutex
+	visible bool
+	tip     fpoint
+}
+
+func (s *cursorSnapshot) store(visible bool, tip fpoint) {
+	s.mu.Lock()
+	s.visible, s.tip = visible, tip
+	s.mu.Unlock()
+}
+
+func (s *cursorSnapshot) load() (bool, fpoint) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.visible, s.tip
+}
+
+// NewAgentCursor creates the cursor's hidden windows on the UI thread do
+// runs jobs on (the helper passes Overlay.Do, like NewEscWatcherOnUI).
+// An error means no cursor; Headless Actions then run without one.
+func NewAgentCursor(do func(func()) error) (*AgentCursor, error) {
+	if do == nil {
+		return nil, errors.New("the Agent Cursor needs a UI thread")
+	}
+	if err := cursorLiveGuard(); err != nil {
+		return nil, err
+	}
+	var (
+		view      *cursorWin
+		createErr error
+		abandoned atomic.Bool
+	)
+	if err := do(func() {
+		if abandoned.Load() {
+			createErr = errors.New("abandoned")
+			return
+		}
+		view, createErr = newCursorWin()
+	}); err != nil {
+		abandoned.Store(true) // a late job must not create orphan windows
+		return nil, fmt.Errorf("creating the Agent Cursor on the UI thread: %w", err)
+	}
+	if createErr != nil {
+		return nil, fmt.Errorf("creating the Agent Cursor: %w", createErr)
+	}
+	c := newAgentCursor(do, view, time.Now)
+	view.setTick(c.ui.tick)
+	return c, nil
+}
+
+// newAgentCursor wires a cursor around a view (the Win32 windows, or a
+// test fake) and starts its dispatcher.
+func newAgentCursor(do func(func()) error, view cursorView, now func() time.Time) *AgentCursor {
+	c := &AgentCursor{
+		do:    do,
+		queue: make(chan func(), cursorQueueSize),
+		quit:  make(chan struct{}),
+	}
+	c.ui = &cursorUI{view: view, now: now, snap: &c.snap}
+	go c.dispatch()
+	return c
+}
+
+// dispatch runs queued calls in order until Close.
+func (c *AgentCursor) dispatch() {
+	for {
+		select {
+		case <-c.quit:
+			return
+		case call := <-c.queue:
+			call()
+		}
+	}
+}
+
+// enqueue queues a call for the dispatcher without blocking; false when
+// the cursor is closed or the queue is full.
+func (c *AgentCursor) enqueue(call func()) bool {
+	select {
+	case <-c.quit:
+		return false
+	default:
+	}
+	select {
+	case c.queue <- call:
+		return true
+	default:
+		return false
+	}
+}
+
+// post runs job on the UI thread, in call order, without waiting.
+func (c *AgentCursor) post(job func()) {
+	c.enqueue(func() { _ = c.do(job) })
+}
+
+// postWait runs job on the UI thread, in call order, and waits until it
+// ran, the UI thread refused it, or bound passed.
+func (c *AgentCursor) postWait(job func(), bound time.Duration) {
+	ran := make(chan struct{})
+	failed := make(chan struct{})
+	if !c.enqueue(func() {
+		if err := c.do(func() { defer close(ran); job() }); err != nil {
+			close(failed)
+		}
+	}) {
+		return
+	}
+	t := time.NewTimer(bound)
+	defer t.Stop()
+	select {
+	case <-ran:
+	case <-failed:
+	case <-t.C:
+	case <-c.quit:
+	}
+}
+
+// Travel shows the cursor — at origin's centre when it is hidden or
+// fading, else where it is — and glides it to target's centre with label
+// in the pill beside it. It returns when the travel completed, or after
+// a bound of about twice the travel time: a stuck UI thread never holds
+// the Action back longer than that.
+func (c *AgentCursor) Travel(origin, target Rect, label string) {
+	if c == nil {
+		return
+	}
+	bound := c.travelBound(origin, target)
+	done := make(chan struct{})
+	failed := make(chan struct{})
+	if !c.enqueue(func() {
+		if err := c.do(func() { c.ui.travel(origin, target, label, done) }); err != nil {
+			close(failed)
+		}
+	}) {
+		return
+	}
+	t := time.NewTimer(bound)
+	defer t.Stop()
+	select {
+	case <-done:
+	case <-failed:
+	case <-t.C:
+	case <-c.quit:
+	}
+}
+
+// travelBound is Travel's longest wait: twice the travel time estimated
+// from the last published position, plus the trip to the UI thread. The
+// estimate uses scale 1, an upper bound for any monitor at 96 DPI or
+// more (the duration shrinks with the scale).
+func (c *AgentCursor) travelBound(origin, target Rect) time.Duration {
+	visible, tip := c.snap.load()
+	from := rectCentre(origin)
+	if visible {
+		from = tip
+	}
+	return 2*cursorTravelDuration(from, rectCentre(target), 1) + cursorTravelSlack
+}
+
+// Click ripples at the cursor and briefly outlines target's bounds.
+// Non-blocking.
+func (c *AgentCursor) Click(target Rect) {
+	if c == nil {
+		return
+	}
+	c.post(func() { c.ui.click(target) })
+}
+
+// HideWhile runs f with the cursor hidden — the hide is applied (and
+// composed off the screen) before f runs, within the UI thread's bound —
+// and restores it afterwards, even when f panics. winuse's captures
+// bracket themselves with it so the cursor never appears in its own
+// screenshots.
+func (c *AgentCursor) HideWhile(f func()) {
+	if c == nil {
+		f()
+		return
+	}
+	c.postWait(func() { c.ui.pause() }, uiThreadTimeout)
+	defer c.post(func() { c.ui.resume() })
+	f()
+}
+
+// Close destroys the cursor's windows and stops its dispatcher.
+// Idempotent and safe on a nil cursor.
+func (c *AgentCursor) Close() {
+	if c == nil {
+		return
+	}
+	c.once.Do(func() {
+		c.postWait(func() { c.ui.close() }, uiThreadTimeout)
+		close(c.quit)
+	})
+}
+
+// cursorView is the controller's window side, called on the UI thread:
+// the Win32 windows (cursor_view.go) or a test fake.
+type cursorView interface {
+	// monitorAt returns the work area and DPI of the monitor at p.
+	monitorAt(p fpoint) (work Rect, dpi uint32)
+	// measureLabel is text's width in pixels in the label font at scale.
+	measureLabel(text string, scale float64) int32
+	// showCursor shows the dart at tip and the look's label pill at
+	// labelOp and scaled by labelPop (its reveal and pop), the whole at
+	// opacity (the idle fade).
+	showCursor(tip fpoint, opacity, labelOp, labelPop float64, look cursorLook)
+	hideCursor()
+	showRipple(at fpoint, phase, scale float64)
+	hideRipple()
+	// showOutline shows the highlight around target at opacity, scaled by
+	// pop about the element's centre.
+	showOutline(target Rect, opacity, pop, scale float64)
+	hideOutline()
+	// composed waits until hidden windows are off the screen (DwmFlush).
+	composed()
+	// raise re-asserts the windows' place at the top of the topmost band.
+	raise()
+	// schedule (re)arms the controller's tick after d; cancel disarms it.
+	schedule(d time.Duration)
+	cancel()
+	destroy()
+}
+
+// cursorUI is the controller, owned by the UI thread: it runs the model
+// against the clock, renders its frames into the view, completes
+// Travel's waits and drives the timer.
+type cursorUI struct {
+	view   cursorView
+	now    func() time.Time
+	snap   *cursorSnapshot
+	model  cursorModel
+	look   cursorLook
+	fx     float64       // the scale of the last click's ripple/outline
+	paused int           // HideWhile depth
+	done   chan struct{} // the in-flight travel's completion; nil when none
+	closed bool
+}
+
+// travel starts a Travel (see AgentCursor.Travel); done is closed when
+// it completes, is superseded, or cannot run.
+func (u *cursorUI) travel(origin, target Rect, label string, done chan struct{}) {
+	if u.closed {
+		close(done)
+		return
+	}
+	now := u.now()
+	to := rectCentre(target)
+	work, dpi := u.view.monitorAt(to)
+	scale := cursorScale(dpi)
+	look := u.lookFor(to, label, work, scale)
+	// A new label waits for the cursor to land, then fades in; the same
+	// label on a cursor already showing it travels with it (the rule of
+	// agent-desktop's reveal.rs, cursor_motion.go).
+	newLabel := look.Label != "" && (look.Label != u.look.Label || !u.model.visibleForTravel())
+	u.look = look
+	u.finishTravel() // a travel still in flight is superseded
+	u.done = done
+	u.model.startTravel(now, origin, target, scale)
+	if newLabel {
+		u.model.revealLabel()
+	}
+	u.view.raise()
+	u.render(now)
+}
+
+// lookFor computes the cursor window's look for a travel to tip: the
+// label sanitized, ellipsized to the pill's width (and the work area's),
+// and the pill placed beside the tip.
+func (u *cursorUI) lookFor(tip fpoint, label string, work Rect, scale float64) cursorLook {
+	look := cursorLook{Scale: scale}
+	text := sanitizeLabel(label)
+	if text == "" {
+		return look
+	}
+	measure := func(s string) int32 { return u.view.measureLabel(s, scale) }
+	maxW := pillTextMax(scale)
+	if wa := work.Width() - 2*scaled(cursorPillPadX, scale); wa > 0 {
+		maxW = min(maxW, wa)
+	}
+	text = ellipsize(text, maxW, measure)
+	if text == "" {
+		return look
+	}
+	w, h := pillSize(measure(text)+1, scale)
+	pill := placePill(tip, w, h, work, scale)
+	tx, ty := roundPoint(tip)
+	look.Label = text
+	look.Pill = Rect{Left: pill.Left - tx, Top: pill.Top - ty, Right: pill.Right - tx, Bottom: pill.Bottom - ty}
+	return look
+}
+
+// click starts a Click's ripple and outline (see AgentCursor.Click).
+func (u *cursorUI) click(target Rect) {
+	if u.closed {
+		return
+	}
+	now := u.now()
+	_, dpi := u.view.monitorAt(rectCentre(target))
+	u.fx = cursorScale(dpi)
+	if !u.model.visibleForTravel() {
+		u.look = cursorLook{Scale: u.fx} // appearing without a travel: no label
+	}
+	u.model.startClick(now, target, u.fx)
+	u.view.raise()
+	u.render(now)
+}
+
+// tick is the timer's frame (or idle) callback.
+func (u *cursorUI) tick() {
+	if !u.closed {
+		u.render(u.now())
+	}
+}
+
+// render advances the model to now, shows its frame (unless paused),
+// completes a finished travel and re-arms the timer.
+func (u *cursorUI) render(now time.Time) {
+	f := u.model.advance(now)
+	u.snap.store(u.model.visibleForTravel(), u.model.tip)
+	if !f.Travelling {
+		u.finishTravel()
+	}
+	if u.paused == 0 {
+		u.show(f)
+	}
+	if d, ok := u.model.nextWake(now); ok {
+		u.view.schedule(d)
+	} else {
+		u.view.cancel()
+	}
+}
+
+// show hands one frame to the view.
+func (u *cursorUI) show(f cursorFrame) {
+	if f.Cursor {
+		u.view.showCursor(f.Tip, f.Opacity, f.LabelOp, f.LabelPop, u.look)
+	} else {
+		u.view.hideCursor()
+	}
+	if f.Ripple {
+		u.view.showRipple(f.RippleAt, f.RipplePhase, u.fx)
+	} else {
+		u.view.hideRipple()
+	}
+	if f.Outline {
+		u.view.showOutline(f.OutlineRect, f.OutlineOp, f.OutlinePop, u.fx)
+	} else {
+		u.view.hideOutline()
+	}
+}
+
+// finishTravel releases the waiting Travel, if any.
+func (u *cursorUI) finishTravel() {
+	if u.done != nil {
+		close(u.done)
+		u.done = nil
+	}
+}
+
+// pause hides everything for a capture (HideWhile); nested pauses count.
+func (u *cursorUI) pause() {
+	u.paused++
+	if u.paused == 1 && !u.closed {
+		u.view.hideCursor()
+		u.view.hideRipple()
+		u.view.hideOutline()
+		u.view.composed()
+	}
+}
+
+// resume ends a pause; the outermost one shows the current frame again.
+func (u *cursorUI) resume() {
+	if u.paused == 0 {
+		return
+	}
+	u.paused--
+	if u.paused == 0 && !u.closed {
+		u.render(u.now())
+	}
+}
+
+// close destroys the view and releases a waiting Travel.
+func (u *cursorUI) close() {
+	if u.closed {
+		return
+	}
+	u.closed = true
+	u.finishTravel()
+	u.view.cancel()
+	u.view.destroy()
+}
+
+// roundPoint rounds p to whole pixels.
+func roundPoint(p fpoint) (int32, int32) {
+	return int32(math.Round(p.X)), int32(math.Round(p.Y))
+}
