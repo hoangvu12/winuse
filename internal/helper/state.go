@@ -69,8 +69,18 @@ type Services struct {
 	Locked    func() (locked bool, desktop string)                                     // locked-desktop refusal
 	Integrity func(win.WindowInfo) error                                               // administrator-Window refusal
 	Activate  func(hwnd uint64) error                                                  // foreground activation + verification
-	Actions   ElementPointer                                                           // element-side Action work (UIA worker)
+	Actions   ElementPointer                                                           // element-side Action work (UIA worker); a HeadlessActor too routes Element Actions Headless
 	Click     func(target uint64, x, y int32, button win.MouseButton, count int) error // SendInput click
+
+	// The Headless Actions (ADR 0010, headless.go). Ready replaces the
+	// activation: it refuses a Window that cannot take a pattern call
+	// without the foreground (a modal dialog, minimized); nil falls back to
+	// win.HeadlessReady. Cursor is the Agent Cursor that shows a Headless
+	// Action instead of the banner; nil means no cursor (offline tests, a
+	// helper whose cursor could not start). The real one is
+	// *win.AgentCursor, wired by Main.
+	Ready  func(hwnd uint64) error
+	Cursor Cursor
 
 	// Keyboard input (ticket 06). Nil values fall back to the real
 	// SendInput implementations; tests fake them. stopped is the Esc-stop
@@ -111,7 +121,10 @@ type Services struct {
 	// must never interleave control of the desktop. It is a capacity-1
 	// channel — a mutex whose wait is bounded by the waiting request's own
 	// budget. Created by defaultServices so one Services (one helper)
-	// shares one gate; observation-only commands skip it.
+	// shares one gate; observation-only commands skip it. Headless Actions
+	// (ADR 0010) stay serialized too: they write into apps and drive the
+	// one Agent Cursor, and one command at a time is the promise either
+	// way.
 	actionGate chan struct{}
 }
 
@@ -261,6 +274,9 @@ func defaultServices(s Services) Services {
 	if s.Activate == nil {
 		s.Activate = win.Activate
 	}
+	if s.Ready == nil {
+		s.Ready = win.HeadlessReady
+	}
 	if s.Actions == nil {
 		if ep, ok := s.Trees.(ElementPointer); ok {
 			s.Actions = ep
@@ -295,12 +311,12 @@ func defaultServices(s Services) Services {
 		// Capture first (ticket 09, Codex's method — falling back on any
 		// failure, black frame or timeout), then the GDI fallbacks: the
 		// Window's screen region, then PrintWindow. The wgc method logs its
-		// captures into the helper log. With an indicator wired, every
-		// method captures with it hidden (ticket 13), so winuse's own
-		// screenshots never contain it.
+		// captures into the helper log. With an indicator or an Agent
+		// Cursor wired, every method captures with them hidden (ticket 13,
+		// ADR 0010), so winuse's own screenshots never contain them.
 		wgcCapture := wgc.New()
 		wgcCapture.Log = log.Printf
-		s.Capture = shot.Chain{Methods: captureMethods(s.Overlay, wgcCapture)}.CaptureWindow
+		s.Capture = shot.Chain{Methods: captureMethodsHiding(s.Overlay, s.Cursor, wgcCapture)}.CaptureWindow
 	}
 	if s.FrameOrigin == nil {
 		s.FrameOrigin = win.FrameOrigin

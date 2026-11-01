@@ -1,12 +1,16 @@
 package helper
 
 // The ticket-07 Action commands: set-value and perform-secondary-action.
-// They reuse ticket 05's pipeline (Services.runAction: resolve the Window,
-// refuse a locked desktop, refuse an administrator Window, activate and
-// verify the foreground) and plug their step into it, then run the
-// element-side work on the UIA worker (internal/uia value.go: live pattern
-// probes). The output contract is the shared one: `ok`, or a one-line
-// failure with a recovery hint, non-zero exit.
+// On an Element Index or name:/id: reference they are Headless by default
+// (ADR 0010, headless.go: Services.runHeadless — the refusals, no
+// activation, a focus-free pattern call read back where it can be);
+// Raise, the @x,y forms and anything sent with `headed` reuse ticket 05's
+// Headed pipeline (Services.runAction: resolve the Window, refuse a
+// locked desktop, refuse an administrator Window, activate and verify the
+// foreground) and plug their step into it. Either way the element-side
+// work runs on the UIA worker (internal/uia value.go, headless.go: live
+// pattern probes). The output contract is the shared one: `ok`, or a
+// one-line failure with a recovery hint, non-zero exit.
 //
 // The commands reach the element side through ElementActor, a type
 // assertion on Services.Actions — ticket 05's ElementPointer stays
@@ -23,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
@@ -58,9 +63,13 @@ type ElementActor interface {
 }
 
 // setValue runs `winuse set-value <window> <element index | name:/id:
-// reference | @x,y> <value>`: the shared Action pipeline, then the
-// Element's value is written through its value pattern (focused first,
-// Codex's set_value order). A name:/id: reference (ticket 11) resolves
+// reference | @x,y> <value>`. On an Element Index or reference it is
+// Headless (ADR 0010): the value is written through the Element's value
+// pattern without focusing it (UIA SetFocus moves the desktop foreground,
+// agent-desktop A3-4) and a Value write is read back. Headed (@x,y or
+// `headed`): the shared Action pipeline, then the Element's value is
+// written through its value pattern (focused first, Codex's set_value
+// order). A name:/id: reference (ticket 11) resolves
 // against the Window's latest Window State to the Element Index to set;
 // an @x,y reference (finding 8) resolves through the Window's latest
 // screenshot to the screen point, and the Element the UIA worker finds
@@ -75,6 +84,17 @@ func setValue(s Services) Command {
 		target, terr := parseElementTarget("set-value", a.ElementIndex, a.Ref, a.Point, setValueUsageHint)
 		if terr != nil {
 			return "", terr
+		}
+		if ha, ok := s.headless("set-value", args); ok {
+			return s.runHeadless(ctx, a.Window, ha, headlessRun{
+				cmd:    "set-value",
+				verb:   "set value", // never the value: it could be a password
+				target: target,
+				act: func(ctx context.Context, w win.WindowInfo, index int) error {
+					return ha.SetValueHeadless(ctx, w.ID, index, a.Value)
+				},
+				refusal: valueError,
+			})
 		}
 		actor, ok := s.Actions.(ElementActor)
 		if !ok {
@@ -113,7 +133,10 @@ func setValue(s Services) Command {
 // <element index | name:/id: reference | @x,y> <action>`: the action name
 // is validated against winuse's Secondary Actions (case-insensitive)
 // before the pipeline runs, then the Element's own Secondary Actions are
-// probed live and the requested one is performed through its pattern. A
+// probed live and the requested one is performed through its pattern —
+// Headless (ADR 0010) on an Element Index or reference, with Toggle,
+// Select, Expand and Collapse read back; Headed for Raise (it moves the
+// foreground by definition), @x,y and `headed`. A
 // name:/id: reference (ticket 11) resolves against the Window's latest
 // Window State to the Element Index to act on; an @x,y reference
 // (finding 8) acts on the Element the UIA worker finds under the mapped
@@ -135,6 +158,17 @@ func performSecondaryAction(s Services) Command {
 		if !ok {
 			return "", Fail(fmt.Sprintf("unsupported secondary action: %s; expected %s", a.Action, uia.ExpectedSecondaryActions()),
 				"the Secondary Actions each Element offers are listed in its Window State line")
+		}
+		if ha, ok := s.headless("perform-secondary-action", args); ok {
+			return s.runHeadless(ctx, a.Window, ha, headlessRun{
+				cmd:    "perform-secondary-action",
+				verb:   strings.ToLower(action),
+				target: target,
+				act: func(ctx context.Context, w win.WindowInfo, index int) error {
+					return ha.PerformSecondaryActionHeadless(ctx, w.ID, index, action)
+				},
+				refusal: secondaryError,
+			})
 		}
 		actor, ok := s.Actions.(ElementActor)
 		if !ok {

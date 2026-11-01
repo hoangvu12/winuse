@@ -145,8 +145,9 @@ func isNegativeNumber(s string) bool {
 // id: | @x,y> [options]`: single, double or right click on an Element of
 // a Window (by Element Index, or by a name:/id: reference resolved
 // against the Window's latest Window State), or at a coordinate of its
-// latest screenshot.
-func clickCmd(args []string) int {
+// latest screenshot. A left single click on an Element is Headless unless
+// headed (the global --headed flag, ADR 0010).
+func clickCmd(args []string, headed bool) int {
 	window, target, opts, err := parseClickArgs(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, clickUsage)
@@ -159,6 +160,7 @@ func clickCmd(args []string) int {
 		Point:        target.point,
 		ClickCount:   opts.count,
 		MouseButton:  opts.button,
+		Headed:       headed,
 	}); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)

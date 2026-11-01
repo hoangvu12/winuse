@@ -187,14 +187,16 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 // batchCmd implements `winuse batch <window> <action> [arguments]
 // [then <action> [arguments]]...`: run several Actions on one Window in
 // order, stopping at the first failure (which names the failed Action). A
-// successful Batch prints `ok`, Codex-style.
-func batchCmd(args []string) int {
+// successful Batch prints `ok`, Codex-style. headed (the global --headed
+// flag, anywhere on a batch line outside literal text) runs every step the
+// v1 way (ADR 0010).
+func batchCmd(args []string, headed bool) int {
 	window, steps, err := parseBatchArgs(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, batchUsage)
 		return 2
 	}
-	if err := runWithArgs("batch", protocol.BatchArgs{Window: window, Steps: steps}); err != nil {
+	if err := runWithArgs("batch", protocol.BatchArgs{Window: window, Steps: steps, Headed: headed}); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}

@@ -57,8 +57,9 @@ func parseSecondaryActionArgs(args []string) (window string, index *int, ref str
 }
 
 // setValueCmd implements `winuse set-value <window> <element index |
-// name: | id:> <value>`: set an Element's value directly.
-func setValueCmd(args []string) int {
+// name: | id:> <value>`: set an Element's value directly — Headless on an
+// Element unless headed (the global --headed flag, ADR 0010).
+func setValueCmd(args []string, headed bool) int {
 	window, index, ref, point, value, err := parseSetValueArgs(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, setValueUsage)
@@ -70,6 +71,7 @@ func setValueCmd(args []string) int {
 		Ref:          ref,
 		Point:        point,
 		Value:        value,
+		Headed:       headed,
 	}); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
@@ -80,8 +82,9 @@ func setValueCmd(args []string) int {
 // performSecondaryActionCmd implements `winuse perform-secondary-action
 // <window> <element index | name: | id:> <action>`: perform one of the
 // Element's Secondary Actions (Raise, Scroll Down, Expand, Collapse,
-// Toggle, Select, ...).
-func performSecondaryActionCmd(args []string) int {
+// Toggle, Select, ...) — Headless on an Element, except Raise, unless
+// headed (the global --headed flag, ADR 0010).
+func performSecondaryActionCmd(args []string, headed bool) int {
 	window, index, ref, point, action, err := parseSecondaryActionArgs(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, secondaryActionUsage)
@@ -93,6 +96,7 @@ func performSecondaryActionCmd(args []string) int {
 		Ref:          ref,
 		Point:        point,
 		Action:       action,
+		Headed:       headed,
 	}); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
