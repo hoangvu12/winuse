@@ -71,6 +71,12 @@ func startWorker() (*worker, error) {
 		// Provider-connection setup is bounded to 1s; per-chunk transaction
 		// timeouts are re-put before every cache chunk by the walk.
 		call(auto, uia2PutConnectionTimeout, 1000)
+		// AutoSetFocus defaults to TRUE: UIA then focuses the target Element
+		// before every control pattern call (Invoke, Toggle, SetValue, ...),
+		// and focusing moves the desktop foreground (agent-desktop A3-4) —
+		// Headless Actions would steal it (ADR 0010; measured live on the
+		// fixture and on Chrome). Off: a Headed set-value focuses explicitly.
+		call(auto, uia2PutAutoSetFocus, 0)
 		w.thread = &thread{auto: auto}
 		ready <- nil
 		w.serve()
