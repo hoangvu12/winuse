@@ -26,13 +26,8 @@ ok
 
 ## Install
 
-Build it (Go 1.27+):
-
-```powershell
-$env:CGO_ENABLED=0; go build -o winuse.exe ./cmd/winuse
-```
-
-Once a release is published, this one-liner installs the binary instead:
+Install the binary (PowerShell; it goes to `%LOCALAPPDATA%\winuse` and
+onto your user PATH, so restart the terminal afterwards):
 
 ```powershell
 irm https://raw.githubusercontent.com/hoangvu12/winuse/main/install.ps1 | iex
@@ -43,6 +38,9 @@ Then give your agent the skill:
 ```
 npx skills add hoangvu12/winuse
 ```
+
+Or build from source (Go 1.27+):
+`$env:CGO_ENABLED=0; go build -o winuse.exe ./cmd/winuse`.
 
 Now ask it something like "open Notepad and type hello world using winuse".
 
