@@ -1,5 +1,7 @@
-# winuse installer for Windows.
+# winuse installer for Windows: the binary and the agent skill, in one
+# command.
 #   irm https://raw.githubusercontent.com/hoangvu12/winuse/main/install.ps1 | iex
+# Set WINUSE_NO_SKILL=1 to install only the binary.
 $ErrorActionPreference = "Stop"
 
 $repo = "hoangvu12/winuse"
@@ -61,12 +63,40 @@ try {
 # the README's "Allowing the unsigned binary" section is the walkthrough.
 Unblock-File -Path $exe -ErrorAction SilentlyContinue
 
-# add to user PATH if missing
+# add to user PATH if missing, and to this session's PATH so winuse works
+# without restarting the terminal (iex runs in the caller's session)
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($userPath -notlike "*$dir*") {
     [Environment]::SetEnvironmentVariable("Path", "$userPath;$dir", "User")
-    Write-Host "added $dir to your user PATH (restart your terminal)"
+    Write-Host "added $dir to your user PATH"
+}
+if ($env:Path -notlike "*$dir*") {
+    $env:Path = "$env:Path;$dir"
+}
+Write-Host "installed $exe"
+
+# The agent skill, user-wide for every agent the skills CLI detects. It
+# needs Node.js (npx); npx.cmd, not npx, so a restrictive execution policy
+# cannot block npx.ps1. The CLI may report agents it cannot install to, so
+# success is judged by the skill landing in ~\.agents\skills.
+if ($env:WINUSE_NO_SKILL -eq "1") {
+    Write-Host "skipped the agent skill (WINUSE_NO_SKILL=1); install it later with: npx skills add $repo -g"
+} elseif (-not (Get-Command npx.cmd -ErrorAction SilentlyContinue)) {
+    Write-Host "Node.js was not found, so the agent skill was not installed." -ForegroundColor Yellow
+    Write-Host "install Node.js (https://nodejs.org), then run: npx skills add $repo -g"
+} else {
+    Write-Host "installing the agent skill: npx skills add $repo -g -y"
+    $ErrorActionPreference = "Continue"
+    & npx.cmd -y skills add $repo -g -y
+    $ErrorActionPreference = "Stop"
+    $skill = Join-Path $env:USERPROFILE ".agents\skills\winuse\SKILL.md"
+    if (Test-Path $skill) {
+        Write-Host "installed the winuse skill for your agents"
+    } else {
+        Write-Host "the agent skill may not have installed; run: npx skills add $repo -g" -ForegroundColor Yellow
+    }
 }
 
-Write-Host "installed $exe"
-Write-Host "next: winuse list-windows - or install the skill: npx skills add $repo"
+Write-Host ""
+Write-Host "winuse is ready. Try: winuse list-windows"
+Write-Host "or ask your agent: open Notepad and type hello world using winuse"

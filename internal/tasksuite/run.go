@@ -494,10 +494,10 @@ func buildWinuse(repoRoot, binDir string) error {
 	return nil
 }
 
-// copySkill writes SKILL.md into both harnesses' project-skill
-// locations inside the scratch folder.
+// copySkill writes skills/winuse/SKILL.md into both harnesses'
+// project-skill locations inside the scratch folder.
 func copySkill(repoRoot, scratch string) error {
-	raw, err := os.ReadFile(filepath.Join(repoRoot, "SKILL.md"))
+	raw, err := os.ReadFile(filepath.Join(repoRoot, "skills", "winuse", "SKILL.md"))
 	if err != nil {
 		return err
 	}

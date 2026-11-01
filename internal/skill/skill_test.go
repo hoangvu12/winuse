@@ -12,7 +12,7 @@ import (
 // readSkill returns the shipped SKILL.md, skipping the frontmatter.
 func readSkill(t *testing.T) (frontmatter, body string) {
 	t.Helper()
-	raw, err := os.ReadFile("../../SKILL.md")
+	raw, err := os.ReadFile("../../skills/winuse/SKILL.md")
 	if err != nil {
 		t.Fatalf("reading SKILL.md: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestSkillCoversFullCommandSurface(t *testing.T) {
 }
 
 func TestSkillNeverMentionsUseBrowser(t *testing.T) {
-	raw, err := os.ReadFile("../../SKILL.md")
+	raw, err := os.ReadFile("../../skills/winuse/SKILL.md")
 	if err != nil {
 		t.Fatalf("reading SKILL.md: %v", err)
 	}
@@ -157,6 +157,34 @@ func TestInstallerAssetMatchesReleaseWorkflow(t *testing.T) {
 	}
 }
 
+// TestSkillShipsAlone pins the one-command install: `npx skills add`
+// copies the whole folder that holds SKILL.md into every agent's skills
+// directory, so the skill lives in its own folder (a SKILL.md at the repo
+// root would ship the source tree, the tickets and the repo's own
+// CLAUDE.md/AGENTS.md with it), there is no root SKILL.md for the CLI to
+// stop at, and install.ps1 installs the skill after the binary.
+func TestSkillShipsAlone(t *testing.T) {
+	entries, err := os.ReadDir("../../skills/winuse")
+	if err != nil {
+		t.Fatalf("reading skills/winuse: %v", err)
+	}
+	for _, e := range entries {
+		if e.Name() != "SKILL.md" {
+			t.Errorf("skills/winuse/%s ships to every agent with the skill; keep the folder to SKILL.md", e.Name())
+		}
+	}
+	if _, err := os.Stat("../../SKILL.md"); err == nil {
+		t.Errorf("a root SKILL.md makes `npx skills add` copy the whole repository; keep the skill in skills/winuse/")
+	}
+	ps, err := os.ReadFile("../../install.ps1")
+	if err != nil {
+		t.Fatalf("reading install.ps1: %v", err)
+	}
+	if !strings.Contains(string(ps), "skills add $repo") {
+		t.Errorf("install.ps1 does not install the agent skill (npx skills add)")
+	}
+}
+
 func TestSkillMentionsEscExitCode(t *testing.T) {
 	_, body := readSkill(t)
 	for _, needle := range []string{"130", "Esc", "name:", "id:", "@x,y", "install.ps1"} {
@@ -166,7 +194,7 @@ func TestSkillMentionsEscExitCode(t *testing.T) {
 	}
 	// sanity: the frontmatter mentions description once, and the whole file
 	// is small enough to load cheaply when a harness pulls it in.
-	info, err := os.Stat("../../SKILL.md")
+	info, err := os.Stat("../../skills/winuse/SKILL.md")
 	if err != nil {
 		t.Fatalf("stat SKILL.md: %v", err)
 	}
