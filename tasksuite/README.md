@@ -97,7 +97,7 @@ For each task, in a fixed order:
    expectations live. Nothing outside it is touched (apps keep their
    own MRUs and caches, as any interactive use does; no real file or
    setting is the task's to change).
-2. Copies this repo's `SKILL.md` into the scratch folder (`.claude/skills/`
+2. Copies this repo's `skills/winuse/SKILL.md` into the scratch folder (`.claude/skills/`
    and `.agents/skills/`), so every run starts from the same guidance.
 3. Runs the task's `setup.ps1` in the scratch folder.
 4. Starts the local task server (127.0.0.1, rooted at the scratch

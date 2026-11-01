@@ -26,21 +26,21 @@ ok
 
 ## Install
 
-Install the binary (PowerShell; it goes to `%LOCALAPPDATA%\winuse` and
-onto your user PATH, so restart the terminal afterwards):
+One command in PowerShell installs both winuse and the skill your agent
+loads:
 
 ```powershell
 irm https://raw.githubusercontent.com/hoangvu12/winuse/main/install.ps1 | iex
 ```
 
-Then give your agent the skill:
+The binary goes to `%LOCALAPPDATA%\winuse` and onto your PATH. The skill
+is installed with `npx skills add hoangvu12/winuse -g` for every agent it
+detects (Claude Code, Codex, Cursor, …), which needs Node.js. Without
+Node.js, or with `WINUSE_NO_SKILL=1`, only the binary is installed.
 
-```
-npx skills add hoangvu12/winuse
-```
-
-Or build from source (Go 1.27+):
-`$env:CGO_ENABLED=0; go build -o winuse.exe ./cmd/winuse`.
+Building from source instead (Go 1.27+):
+`$env:CGO_ENABLED=0; go build -o winuse.exe ./cmd/winuse`, then
+`npx skills add hoangvu12/winuse`.
 
 Now ask it something like "open Notepad and type hello world using winuse".
 
@@ -59,7 +59,7 @@ Now ask it something like "open Notepad and type hello world using winuse".
 
 Elements are referenced by index, `name:OK`, `id:okButton`, or `@x,y` from
 the latest screenshot. The full guide, which your agent loads with the
-skill, is [SKILL.md](SKILL.md).
+skill, is [SKILL.md](skills/winuse/SKILL.md).
 
 ## Staying in control
 
@@ -74,7 +74,7 @@ screen, and it never presses the Windows key.
 
 ## More
 
-- [SKILL.md](SKILL.md): how to use every command
+- [SKILL.md](skills/winuse/SKILL.md): how to use every command
 - [test/e2e/README.md](test/e2e/README.md): the end-to-end tests
 - [tasksuite/README.md](tasksuite/README.md): real tasks for measuring agent performance
 - [docs/codex-parity.md](docs/codex-parity.md): comparison with Codex Computer Use
