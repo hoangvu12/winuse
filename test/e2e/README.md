@@ -267,3 +267,46 @@ hook's decision table (injected filtering, swallow pairing, the armed
 scope), the abort checkpoints and the exit-130 mapping are
 offline-tested in `internal/win`, `internal/apps`, `internal/helper`;
 these tests pin the live hook only.
+
+The headless-feature tests (`headless_test.go`, ADR 0010) cover Headless
+Element Actions, `--headed` and the Agent Cursor. A second fixture
+instance is started over the first (`-origin`) and brought to the
+foreground with `activate-window`, so the target sits behind another
+Window (coverage is checked through DWM frame bounds and the desktop's
+z-order). `TestHeadlessClickUnderCoveringWindow`: a Headless click on the
+button and on the checkbox changes the fixture's state while the
+covering Window stays the foreground window, the real pointer does not
+move, and the in-control banner never shows.
+`TestHeadlessSetValueKeepsFocusAndForeground`: a Headless set-value
+writes the text field with the foreground unchanged and no UI
+Automation SetFocus call reaching the fixture (its state file counts
+them in `focusRequests`); a `--headed` set-value then does focus first
+and takes the foreground, proving the counter is live.
+`TestHeadlessClickWithoutPatternRouteFails`: a click on the pattern-less
+canvas exits 1 with "nothing was sent" and the exact
+`winuse --headed click <window> <index>` retry, with no input reaching
+the app (state generation unchanged) and the foreground unchanged.
+`TestHeadedClickBringsTheWindowForward`: `--headed` before and after the
+command clicks the covered fixture the v1 way, bringing it to the
+foreground. `TestAgentCursorShownAndExcludedFromCaptures`: during and
+right after a Headless click a visible top-level window of class
+`winuse.cursor` exists, owned by the helper, layered, click-through,
+topmost, tool-window and no-activate, lying over the clicked button; a
+concurrent `get-window-state --screenshot` contains none of its accent
+colour, and the cursor is back after the capture. The cursor's own
+`WDA_EXCLUDEFROMCAPTURE` keeps it out of any screen capture, so the test
+observes it through the window list, not a capture.
+
+Since Element clicks are Headless by default, the tests that rely on a
+real-pointer click pass `--headed`: the Batches that click the text field
+to focus it before typing (`TestBatchTypesThenClicksAndSucceeds`, both
+Esc tests — the field offers no Headless click route) and the
+scroll-into-view click (`TestClickScrollsOffscreenElementIntoView`; a
+Headless Select does not scroll).
+
+Run only these tests:
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -run "Headless|Headed|AgentCursor" ./test/e2e
+```

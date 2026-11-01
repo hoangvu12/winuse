@@ -80,6 +80,11 @@ type State struct {
 	CanvasScrolls      []Point  `json:"canvasScrolls"`
 	CanvasRect         [4]int32 `json:"canvasRect"`
 
+	// FocusRequests counts the UI Automation SetFocus calls the provider
+	// received, on any Element: a Headed set-value focuses its Element
+	// first, a Headless one never does (ADR 0010).
+	FocusRequests int `json:"focusRequests"`
+
 	// Generation increments on every state write.
 	Generation uint64 `json:"generation"`
 }

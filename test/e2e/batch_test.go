@@ -158,11 +158,13 @@ func TestPerformSecondaryActionByReference(t *testing.T) {
 func TestBatchTypesThenClicksAndSucceeds(t *testing.T) {
 	// The ticket's acceptance flow: a Batch that types into the fixture's
 	// text field then clicks a button by name: succeeds and prints ok.
+	// Clicking a text field to focus it is a real-pointer click: the field
+	// offers no Headless click route (ADR 0010), so the Batch is --headed.
 	optIn(t)
 	fix, window := startFixtureWithState(t)
 
 	stdout, stderr, exit := runBatch(t, []string{
-		window,
+		"--headed", window,
 		"click", "id:text-field",
 		"then", "type-text", "batch typed this",
 		"then", "click", "name:Click Me",

@@ -26,6 +26,7 @@ package e2e
 
 import (
 	"image"
+	"image/color"
 	"os"
 	"os/exec"
 	"strconv"
@@ -241,15 +242,20 @@ func TestOverlayOnlyDuringActions(t *testing.T) {
 // is gray, white, black, orange, dark yellow and red), so any hit is the
 // overlay.
 func countAccentPixels(img image.Image) int {
+	return countColourPixels(img, win.OverlayAccent)
+}
+
+// countColourPixels counts the pixels within a small tolerance of c.
+func countColourPixels(img image.Image, c color.RGBA) int {
 	const tol = 30
 	b := img.Bounds()
 	n := 0
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		for x := b.Min.X; x < b.Max.X; x++ {
 			r, g, bl, _ := img.At(x, y).RGBA()
-			if nearColour(uint8(r>>8), win.OverlayAccent.R, tol) &&
-				nearColour(uint8(g>>8), win.OverlayAccent.G, tol) &&
-				nearColour(uint8(bl>>8), win.OverlayAccent.B, tol) {
+			if nearColour(uint8(r>>8), c.R, tol) &&
+				nearColour(uint8(g>>8), c.G, tol) &&
+				nearColour(uint8(bl>>8), c.B, tol) {
 				n++
 			}
 		}

@@ -834,9 +834,11 @@ func fragmentSetFocus(this uintptr) uintptr {
 	if node == nil || a == nil {
 		return hrOK()
 	}
+	a.state.FocusRequests++
 	if a.focusable(node.elem) {
 		a.setFocus(node.elem)
 	}
+	a.changed()
 	return hrOK()
 }
 

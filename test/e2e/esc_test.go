@@ -86,8 +86,10 @@ func TestEscStopsTheLongBatch(t *testing.T) {
 	const words = 1900
 	text := strings.Repeat("winuse esc stop ", words)
 	after := "typed after the stop"
+	// --headed: the click that focuses the text field is a real-pointer
+	// click (the field offers no Headless click route, ADR 0010).
 	bg := runActionAsync(t, []string{
-		"batch", window,
+		"--headed", "batch", window,
 		"click", "id:text-field",
 		"then", "type-text", text,
 		"then", "click", "name:Click Me",
@@ -171,8 +173,10 @@ func TestInjectedEscDoesNotStopTheBatch(t *testing.T) {
 	// and must NOT stop the Batch: only physical presses do.
 	const words = 700 // ~11k runes, ~7 s of typing
 	text := strings.Repeat("injected esc ", words)
+	// --headed: the click that focuses the text field is a real-pointer
+	// click (the field offers no Headless click route, ADR 0010).
 	bg := runActionAsync(t, []string{
-		"batch", window,
+		"--headed", "batch", window,
 		"click", "id:text-field",
 		"then", "type-text", text,
 	}, "WINUSE_HELPER_IDLE="+e2eIdle)
