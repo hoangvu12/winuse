@@ -4,7 +4,7 @@
 
 **Blocked by:** 01, 02, 03
 
-**Status:** ready-for-human
+**Status:** done
 
 ## Comments
 
@@ -14,3 +14,4 @@
   1. **Headless pattern calls stole the foreground.** `IUIAutomation2::AutoSetFocus` defaults to TRUE, so UIA calls the provider's SetFocus (which moves the foreground) before every Invoke/Toggle/SetValue. Traced in the fixture: SetFocus arrived 2–3 ms before each pattern call while winuse never called it. Reproduced on real Chrome with the new `TestHeadlessChromiumKeepsTheForeground`. Fix: `put_AutoSetFocus(FALSE)` (slot 59) at client creation in `internal/uia/thread.go`.
   2. **Modal dialog undetected after a Headless click.** A dialog opened in the background is never activated, so `GetLastActivePopup` returns the owner itself; `TestClickWhileModalDialogOpenFails` and `TestScreenshotOfBlockedWindowNamesDialog` failed. Fix: `win.modalDialog` falls back to `GetWindow(GW_ENABLEDPOPUP)`; Activate and HeadlessReady share it.
   The Agent Cursor capture check also compared against the old teal; it now uses `win.AgentCursorAccent()`. Recorded both in ADR 0010's Consequences.
+- 2026-11-02 orchestrator (done): after the fixes the full opt-in suite passed, 98/98, run with the user's go-ahead. `TestEscStopsTheLongBatch` was skipped because it needs a human to press the physical Esc key; run it at the keyboard with `go test -tags e2e -v -run TestEscStopsTheLongBatch ./test/e2e` (WINUSE_E2E=1). Committed on `headless` as 27d928c..ec922e4; each commit builds, vets and passes `go test ./...`.
