@@ -181,6 +181,102 @@ func TestEscLatchDisarmWithoutArmIsHarmless(t *testing.T) {
 	}
 }
 
+func TestEscLatchPassiveScopeLatchesButPassesThrough(t *testing.T) {
+	// A Headless scope (ADR 0010): the user's Esc still stops winuse, but
+	// the key reaches the app they are typing in — down and up alike.
+	l := &escLatch{}
+	l.armPassive()
+	if r := physicalEscDown.event(l); r != escPass {
+		t.Errorf("physical Esc down in a passive scope: verdict %v, want pass", r)
+	}
+	if !l.stopped() {
+		t.Error("a press in a passive scope must latch")
+	}
+	if r := (escEvent{msg: wmKeyUp, vk: vkEscape}).event(l); r != escPass {
+		t.Errorf("its key-up: verdict %v, want pass (the down was not swallowed)", r)
+	}
+	// Injected Esc never latches, passive or not.
+	l2 := &escLatch{}
+	l2.armPassive()
+	if r := (escEvent{msg: wmKeyDown, vk: vkEscape, flags: llkhfInjected}).event(l2); r != escPass || l2.stopped() {
+		t.Errorf("injected Esc in a passive scope: verdict %v, stopped %v; want pass and no latch", r, l2.stopped())
+	}
+	l.disarmPassive()
+	if l.stopped() {
+		t.Error("leaving the last passive scope must clear the latch")
+	}
+}
+
+func TestEscLatchSwallowingScopeWinsOverPassive(t *testing.T) {
+	// A Batch with a Headed step arms the swallowing scope for its whole
+	// run; a Headless step inside it arms passively. The swallow wins, and
+	// the step ending must not clear the press the Batch still has to see.
+	for _, order := range []string{"armed first", "passive first"} {
+		t.Run(order, func(t *testing.T) {
+			l := &escLatch{}
+			if order == "armed first" {
+				l.arm()
+				l.armPassive()
+			} else {
+				l.armPassive()
+				l.arm()
+			}
+			if r := physicalEscDown.event(l); r != escSwallow {
+				t.Errorf("Esc down with both scopes open: verdict %v, want swallow", r)
+			}
+			if r := (escEvent{msg: wmKeyUp, vk: vkEscape}).event(l); r != escSwallow {
+				t.Errorf("its key-up: verdict %v, want swallow (paired)", r)
+			}
+			l.disarmPassive()
+			if !l.stopped() {
+				t.Error("the passive scope ended inside the armed one; the press must stay latched")
+			}
+			l.disarm()
+			if l.stopped() {
+				t.Error("no scope left; the latch must clear")
+			}
+		})
+	}
+	// The other way round: an armed scope ending inside a passive one
+	// keeps the press for the passive scope.
+	l := &escLatch{}
+	l.armPassive()
+	l.arm()
+	physicalEscDown.event(l)
+	l.disarm()
+	if !l.stopped() {
+		t.Error("the armed scope ended inside a passive one; the press must stay latched")
+	}
+	// With only the passive scope left, a press passes through again.
+	if r := physicalEscDown.event(l); r != escPass {
+		t.Errorf("Esc down after the armed scope ended: verdict %v, want pass", r)
+	}
+	l.disarmPassive()
+	if l.stopped() {
+		t.Error("no scope left; the latch must clear")
+	}
+}
+
+func TestEscLatchPassiveScopesNestAndStrayDisarmsAreHarmless(t *testing.T) {
+	l := &escLatch{}
+	l.disarmPassive() // stray: must not go negative
+	l.armPassive()    // an all-Headless Batch
+	l.armPassive()    // its step
+	physicalEscDown.event(l)
+	l.disarmPassive()
+	if !l.stopped() {
+		t.Error("the Batch's passive scope is still open; the press must stay latched")
+	}
+	l.disarmPassive()
+	if l.stopped() {
+		t.Error("the outermost passive scope ended; the latch must clear")
+	}
+	// Nothing open: a press passes and does not latch.
+	if r := physicalEscDown.event(l); r != escPass || l.stopped() {
+		t.Errorf("press with no scope: verdict %v, stopped %v; want pass, no latch", r, l.stopped())
+	}
+}
+
 func TestEscWatcherNeverInstallsInOfflineTests(t *testing.T) {
 	// The hard rule: no offline test may install the real hook on the
 	// live desktop. Both constructors refuse from inside a test binary
@@ -226,11 +322,24 @@ func TestEscWatcherArmDisarmStoppedThroughTheWatcher(t *testing.T) {
 		t.Error("the scope ended; the latch must clear")
 	}
 
+	// The passive surface: latched without swallowing, cleared on leave.
+	w.ArmPassive()
+	w.latch.pressed.Store(true)
+	if !w.Stopped() {
+		t.Error("a press latched in a passive scope must be visible")
+	}
+	w.DisarmPassive()
+	if w.Stopped() {
+		t.Error("the passive scope ended; the latch must clear")
+	}
+
 	var nilWatch *EscWatcher
 	nilWatch.Arm()
+	nilWatch.ArmPassive()
 	if nilWatch.Stopped() {
 		t.Error("a nil watcher must never report stopped")
 	}
+	nilWatch.DisarmPassive()
 	nilWatch.Disarm()
 	nilWatch.Close()
 }

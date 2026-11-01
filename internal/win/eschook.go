@@ -24,6 +24,14 @@ package win
 // up without its down would leave an app believing Esc is held), and a
 // press is latched only for the duration of the armed scope: the next
 // command starts clean.
+//
+// Headless scopes (ADR 0010, the headless spec's "Esc in Headless
+// scopes") arm passively: winuse is not in control of the user's keyboard
+// or foreground, so the user's Esc may well be meant for the app they are
+// typing in. A physical Esc press in a passive scope still latches the
+// stop (exit 130) but passes through to the app. Any swallowing scope
+// armed at the same time wins — a Batch with a Headed step swallows for
+// its whole run, Headless steps included.
 
 import (
 	"errors"
@@ -70,9 +78,14 @@ type escLatch struct {
 	// armed counts nested armed scopes (a Batch arms, each step's Action
 	// arms again); the hook records and swallows only while it is > 0.
 	armed atomic.Int32
-	// pressed latches one press for the duration of the outermost scope:
-	// several checks inside the scope all see it; leaving the outermost
-	// scope clears it, so a press never leaks into the next command.
+	// passive counts nested passive scopes (Headless Actions and
+	// all-Headless Batches, ADR 0010): while it is > 0 and armed is 0 the
+	// hook records a press but lets the key through.
+	passive atomic.Int32
+	// pressed latches one press for the duration of the outermost scope of
+	// either kind: several checks inside the scope all see it; leaving the
+	// last scope (both counts back at 0) clears it, so a press never leaks
+	// into the next command.
 	pressed atomic.Bool
 	// swallowUp is set when a key-down was swallowed, and cleared by its
 	// key-up: an app must never see half an Esc press.
@@ -86,14 +99,29 @@ func (l *escLatch) arm() { l.armed.Add(1) }
 // disarm leaves an armed scope, clearing the latched press when the
 // outermost scope ends. A disarm without an arm is a no-op (deferred
 // disarms pair defensively), so the count never goes negative.
-func (l *escLatch) disarm() {
+func (l *escLatch) disarm() { l.leave(&l.armed, &l.passive) }
+
+// armPassive enters a passive scope (a Headless Action or Batch): presses
+// latch but pass through, unless a swallowing scope is armed too. Scopes
+// nest with each other and with armed ones.
+func (l *escLatch) armPassive() { l.passive.Add(1) }
+
+// disarmPassive leaves a passive scope; like disarm, a stray call is a
+// no-op, and the latch clears only when no scope of either kind remains.
+func (l *escLatch) disarmPassive() { l.leave(&l.passive, &l.armed) }
+
+// leave decrements one scope count (never below zero) and clears the
+// latched press when that was the last scope of its kind and none of the
+// other kind is open: a passive step ending inside a swallowing Batch
+// must not clear a press the Batch still has to see.
+func (l *escLatch) leave(count, other *atomic.Int32) {
 	for {
-		cur := l.armed.Load()
+		cur := count.Load()
 		if cur <= 0 {
 			return
 		}
-		if l.armed.CompareAndSwap(cur, cur-1) {
-			if cur == 1 {
+		if count.CompareAndSwap(cur, cur-1) {
+			if cur == 1 && other.Load() == 0 {
 				l.pressed.Store(false)
 			}
 			return
@@ -107,7 +135,9 @@ func (l *escLatch) stopped() bool { return l.pressed.Load() }
 
 // onKey decides one keyboard event: true means the hook swallows it.
 // A physical Esc key-down while armed is latched and swallowed; its
-// key-up is swallowed to keep the pair together. Everything else — other
+// key-up is swallowed to keep the pair together. A physical Esc key-down
+// while only passive scopes are open is latched and passed through (its
+// key-up then passes too: swallowUp stays false). Everything else — other
 // keys, injected events, a press while nothing is armed — passes through.
 func (l *escLatch) onKey(msg uint32, vk, flags uint32) bool {
 	if vk != vkEscape || flags&llkhfInjected != 0 {
@@ -119,6 +149,10 @@ func (l *escLatch) onKey(msg uint32, vk, flags uint32) bool {
 			l.pressed.Store(true)
 			l.swallowUp.Store(true)
 			return true
+		}
+		if l.passive.Load() > 0 {
+			l.pressed.Store(true)
+			return false
 		}
 		return false
 	case wmKeyUp, wmSysKeyUp:
@@ -285,8 +319,27 @@ func (w *EscWatcher) Disarm() {
 	}
 }
 
+// ArmPassive enters a passive scope (a Headless Action or an all-Headless
+// Batch, ADR 0010): until the matching DisarmPassive, a physical Esc press
+// is latched (Stopped reports it) but reaches the app the user is typing
+// in. An Arm scope open at the same time wins and swallows. Safe on a nil
+// watcher.
+func (w *EscWatcher) ArmPassive() {
+	if w != nil {
+		w.latch.armPassive()
+	}
+}
+
+// DisarmPassive leaves a passive scope. The latch clears when no scope of
+// either kind remains. Safe on a nil watcher.
+func (w *EscWatcher) DisarmPassive() {
+	if w != nil {
+		w.latch.disarmPassive()
+	}
+}
+
 // Stopped reports whether the user pressed the physical Esc key during
-// the armed scope. A nil watcher never stopped.
+// the armed (or passive) scope. A nil watcher never stopped.
 func (w *EscWatcher) Stopped() bool {
 	if w == nil {
 		return false
