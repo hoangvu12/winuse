@@ -65,10 +65,14 @@ skill, is [SKILL.md](SKILL.md).
 
 ## Staying in control
 
-While winuse acts, a banner frames the window: "winuse is in control — press
-Esc to stop". Pressing the physical Esc key stops it right away. winuse
-refuses to type into administrator windows or a locked screen, and it never
-presses the Windows key.
+Clicking buttons, filling fields and toggling options run headless by
+default: the window can stay behind your own work, and your mouse, keyboard
+and focus are left alone. A second cursor, the agent's, shows each step.
+Typing, keys and pointer gestures (or any action with `--headed`) take the
+foreground instead, and a banner frames the window: "winuse is in control —
+press Esc to stop". Pressing the physical Esc key stops winuse right away
+either way. winuse refuses to act on administrator windows or a locked
+screen, and it never presses the Windows key.
 
 ## More
 

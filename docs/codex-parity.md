@@ -16,6 +16,15 @@ have.
 
 Statuses: **matched** · **intentionally different** · **extension**.
 
+**Headless Actions (ADR 0010).** Codex activates the Window and injects
+real input for every Action. winuse does that only for Headed Actions;
+`click` on an Element (left, single), `set-value` and
+`perform-secondary-action` (except Raise) by Element Index or
+`name:`/`id:` reference are Headless by default — UI Automation pattern
+calls on a Window that stays where it is, no activation, no pointer, no
+keys, no banner. The rows below mark that stance **intentionally
+different**; `--headed` restores Codex's behaviour for any Action.
+
 ## Tools: Codex window2 → winuse CLI
 
 ### list_windows
@@ -85,20 +94,23 @@ the one frame (Codex composites several `zIndex` layers).
 |---|---|---|---|
 | `window` | the Window to click in | `<window>` | matched |
 | `element_index` | the Element Index from the last state | the Element Index, or `name:`/`id:` references resolved against the latest Window State | matched (extended) |
+| (delivery) | activates the Window and injects a real pointer click | an Element click (left, single) is **Headless**: the first pattern the Element offers (Invoke → Toggle → SelectionItem.Select → Expand/Collapse → LegacyIAccessible default action), Toggle/Select/Expand/Collapse read back; none offered fails with "nothing was sent" and the `--headed` hint, never a silent switch. `@x,y`, double/triple and right/middle clicks, and `--headed`, are Codex's real click | intentionally different |
 | `x`, `y` | window-relative **logical** pixels (the 175%-scaling offset bug) | `@x,y` in the latest screenshot's pixel space, mapped back to **physical** pixels, re-anchored to the Window's live bounds at action time | intentionally different |
 | `click_count` | 1 (single) or 2 (double); right double click is not supported | `--count 1|2|3`; non-left multi-clicks are refused with Codex's message | matched |
 | `mouse_button` | `left`/`right`/`middle`, aliases `l`/`r`/`m`; unknown → `unsupported mouse_button: <v>` | `--button left|middle|right` with the same `l`/`r`/`m` aliases and the same error | matched |
 | `screenshotId` | coordinates are validated against the screenshot they came from | no ids: coordinates bind to the Window's **latest** screenshot; a new screenshot or a helper restart fails with the instruction to take a fresh one instead of guessing | intentionally different |
 
-The element path scrolls the Element into view and uses its clickable
-point (or bounds centre) before injecting one SendInput batch, so
-double and triple clicks register.
+The Headed element path scrolls the Element into view and uses its
+clickable point (or bounds centre) before injecting one SendInput batch,
+so double and triple clicks register. The Headless path does neither:
+it needs no point, and an Element that answers only a real click is
+retried with `--headed`.
 
 ### press_key
 
 | Parameter | Codex | winuse `press-key` | Status |
 |---|---|---|---|
-| `window` | the Window receiving the key | `<window>` (activated first, like every Action) | matched |
+| `window` | the Window receiving the key | `<window>` (activated first, like every Headed Action) | matched |
 | `key` | X keysym names and `+` chords (`Return`, `Control_L+a`, `Numpad_0`), aliases, whitespace around `+` ignored; unknown → `unsupported key: <name>` | the same names, aliases and chord delivery (all key-downs in order, key-ups in reverse, scan codes filled, extended keys flagged); the same error | matched |
 
 The Windows key differs in enforcement only: Codex's guidance forbids
@@ -127,10 +139,11 @@ it and winuse's code refuses it (see cross-cutting).
 | `window` | the Window holding the Element | `<window>` | matched |
 | `element_index` | the Element to write | the Element Index, a `name:`/`id:` reference, or `@x,y` (the Element UIA finds under the point of the latest screenshot) | matched (extended) |
 | `value` | the string to set | the value; numeric Elements (RangeValue) take it parsed as a number | matched |
+| (delivery) | activates the Window, focuses the Element, then writes | by Element Index or reference **Headless**: no activation and no focus (UIA SetFocus moves the desktop foreground), a text write read back live; `@x,y` and `--headed` keep Codex's activate-and-focus order | intentionally different |
 
 Non-settable Elements fail with Codex's `Cannot set a value for an
-element that is not settable` plus the click-and-type-text hint. The
-Element is focused first — Codex's `set_value` order.
+element that is not settable` plus the click-and-type-text hint. A
+Headed write focuses the Element first — Codex's `set_value` order.
 
 ### drag
 
@@ -153,6 +166,7 @@ contract.
 | `window` | the Window holding the Element | `<window>` | matched |
 | `element_index` | the Element to act on | the Element Index, a `name:`/`id:` reference, or `@x,y` (as set-value's) | matched (extended) |
 | `action` | case-insensitive; only `Raise`, `Scroll Up/Down/Left/Right`, `Expand`, `Collapse`; unknown → `unsupported secondary action: {action}; expected …` | the same set and the same error listing the expected names, **plus** the `Toggle` and `Select` extensions | matched (extended) |
+| (delivery) | activates the Window first | by Element Index or reference **Headless** (no activation), Toggle/Select/Expand/Collapse read back; Raise (a foreground operation), `@x,y` and `--headed` are Headed | intentionally different |
 
 An action the Element does not offer fails listing the ones it does,
 probed live — so a changed Element says so.
@@ -161,7 +175,7 @@ probed live — so a changed Element says so.
 
 | Parameter | Codex | winuse `activate-window` | Status |
 |---|---|---|---|
-| `window` | the Window to foreground; "an optional escape hatch" because input methods activate automatically | the same: every Action activates and verifies its target first; the command is the escape hatch | matched |
+| `window` | the Window to foreground; "an optional escape hatch" because input methods activate automatically | the same: every Headed Action activates and verifies its target first (Headless ones never do); the command is the escape hatch, and restores a minimized Window that Headless Actions refuse | matched |
 
 Activation uses the foreground-lock workarounds and refuses to
 un-maximize (Codex's bug); a Window blocked by its own modal fails
@@ -196,15 +210,21 @@ low-level keyboard hook ignores injected keys, swallows the physical
 press (the app never sees it), and the command exits **130** with the
 message that the user stopped winuse and a stop-and-ask hint. The latch
 never leaks into the next command (winuse has no turn concept).
-**matched**.
+**matched** for Headed Actions and any Batch with a Headed step. In a
+Headless Action or an all-Headless Batch the press still stops winuse
+(exit 130) but passes through to the user's app — winuse holds neither
+the keyboard nor the foreground there, so the user's Esc may be meant
+for their own work. **intentionally different**.
 
 ### overlay
 
 A border framing the controlled Window and a pill banner
 ("winuse is in control — press Esc to stop"), click-through, never
 focusable, hidden the moment the Action ends, and never in winuse's own
-screenshots. **matched** (Codex's overlay lingering to turn end is a
-bug winuse does not copy).
+screenshots. **matched** for Headed Actions (Codex's overlay lingering
+to turn end is a bug winuse does not copy). Headless Actions show no
+banner — the Agent Cursor shows them instead (see extensions).
+**intentionally different**.
 
 ### error style
 
@@ -302,8 +322,9 @@ AUMIDs — `launch-app` never guesses between several distinct matches.
 
 Codex's helper rejects concurrent requests ("already has an active
 request"); winuse's helper serializes every command that activates a
-Window, injects input or shows the overlay through one helper-wide
-action gate — one command controls the desktop at a time, and a request
+Window, injects input or shows the overlay — and every Headless Action,
+which writes into an app and drives the one Agent Cursor — through one
+helper-wide action gate — one command controls the desktop at a time, and a request
 queued behind another Action until its own budget expired fails instead
 of acting late. Observation-only commands (list-windows, get-window,
 list-apps, the plain tree read, record-tree, launch-app) may answer
@@ -321,4 +342,10 @@ re-reads better — an extension. **matched (extended)**.
 
 Codex's surface has no hover, no zoom, no Batch, no `name:`/`id:`
 references, no `record-tree`; winuse has all of them, keeping Codex's
-parameter names where a parameter exists. **extension**.
+parameter names where a parameter exists. Headless Actions bring two
+more: the global `--headed` flag (before or after the command, and on a
+Batch) that restores Codex's foreground, real-input behaviour for any
+Action, and the Agent Cursor — a presentation-only second cursor that
+glides to the Element of each Headless Action with a short label and
+ripples on the click, click-through, never activated, and hidden from
+winuse's own captures. **extension**.
