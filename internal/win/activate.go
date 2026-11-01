@@ -53,6 +53,34 @@ func (e *ModalDialogError) Error() string {
 	return fmt.Sprintf("window %d has a modal dialog open (window %d); act on the dialog instead", e.WindowID, e.DialogID)
 }
 
+// MinimizedError reports a minimized Window refused by a Headless Action:
+// its Elements are offscreen, and restoring it would take the foreground.
+type MinimizedError struct{ WindowID uint64 }
+
+func (e *MinimizedError) Error() string {
+	return fmt.Sprintf("window %d is minimized", e.WindowID)
+}
+
+// HeadlessReady checks that hwnd can take a Headless Action (ADR 0010)
+// without touching the foreground: a Window disabled by its open modal
+// dialog fails with a ModalDialogError (a pattern call would act behind
+// the dialog), a minimized one with a MinimizedError.
+func HeadlessReady(hwnd uint64) error {
+	if err := LiveDesktopGuard(); err != nil {
+		return err
+	}
+	h := windows.HWND(hwnd)
+	if !isEnabled(h) {
+		if dialog := modalDialog(h); dialog != 0 {
+			return &ModalDialogError{WindowID: hwnd, DialogID: uint64(dialog)}
+		}
+	}
+	if isIconic(h) {
+		return &MinimizedError{WindowID: hwnd}
+	}
+	return nil
+}
+
 // Activate brings hwnd to the foreground and verifies it is in front,
 // using the standard foreground-lock workarounds (win32.md §5): a no-op
 // injected move to satisfy "the caller received the last input event",
@@ -78,8 +106,8 @@ func Activate(hwnd uint64) error {
 	// A disabled window cannot take the foreground: point at the modal
 	// dialog instead of failing generically.
 	if !isEnabled(h) {
-		if popup := lastActivePopup(h); popup != 0 && popup != uintptr(h) {
-			return &ModalDialogError{WindowID: hwnd, DialogID: uint64(popup)}
+		if dialog := modalDialog(h); dialog != 0 {
+			return &ModalDialogError{WindowID: hwnd, DialogID: uint64(dialog)}
 		}
 		return &NotForegroundError{WindowID: hwnd}
 	}
@@ -123,6 +151,26 @@ func Activate(hwnd uint64) error {
 func isEnabled(h windows.HWND) bool {
 	r, _, _ := procIsWindowEnabled.Call(uintptr(h))
 	return r != 0
+}
+
+// gwEnabledPopup is GetWindow's GW_ENABLEDPOPUP: the enabled popup window
+// h owns.
+const gwEnabledPopup = 6
+
+// modalDialog returns the open modal dialog of a disabled Window, or 0.
+// GetLastActivePopup alone only finds a dialog that was once the active
+// window; a dialog opened by a Headless Action (ADR 0010) comes up behind
+// the user's foreground and is never activated, so the enabled visible
+// popup h owns (GW_ENABLEDPOPUP) is the fallback.
+func modalDialog(h windows.HWND) uintptr {
+	if popup := lastActivePopup(h); popup != 0 && popup != uintptr(h) {
+		return popup
+	}
+	r, _, _ := procGetWindow.Call(uintptr(h), gwEnabledPopup)
+	if r != 0 && r != uintptr(h) && windows.IsWindowVisible(windows.HWND(r)) {
+		return r
+	}
+	return 0
 }
 
 // lastActivePopup returns h's most recently active owned popup (h itself

@@ -181,8 +181,11 @@ func TestClickScrollsOffscreenElementIntoView(t *testing.T) {
 	fix, window := startFixtureWithState(t)
 
 	// Hotel is below the fold (items 6-8 are offscreen until scrolled).
+	// Scrolling into view is the real-pointer click's step: a Headless
+	// click selects through SelectionItem without scrolling (ADR 0010), so
+	// this test pins the --headed path.
 	idx := mainElementIndexes()[fixture.ElemItemHotel]
-	stdout, stderr, exit := runClick(t, []string{window, strconv.Itoa(idx)})
+	stdout, stderr, exit := runClick(t, []string{window, strconv.Itoa(idx), "--headed"})
 	assertActionOK(t, "click item-hotel", stdout, stderr, exit)
 
 	st := fix.waitState(t, 5*time.Second, func(s *fixture.State) bool {

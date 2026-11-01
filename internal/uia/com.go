@@ -92,6 +92,7 @@ const (
 	uiaElementFromHandleBuildCache = 10 // ElementFromHandleBuildCache(hwnd, req, **el)
 	uiaGetControlViewCondition     = 18 // get_ControlViewCondition(**cond)
 	uiaCreateCacheRequest          = 20 // CreateCacheRequest(**req)
+	uia2PutAutoSetFocus            = 59 // put_AutoSetFocus(BOOL) [IUIAutomation2]
 	uia2PutConnectionTimeout       = 61 // put_ConnectionTimeout(DWORD ms) [IUIAutomation2]
 	uia2PutTransactionTimeout      = 63 // put_TransactionTimeout(DWORD ms) [IUIAutomation2]
 )

@@ -1,6 +1,6 @@
 ---
 name: winuse
-description: Control Windows desktop apps from the command line — list Apps and Windows, read a Window's accessibility tree as text, click, type, set values, scroll, drag, hover, and screenshot on request. Use when a task needs operating a real Windows App — its Windows, dialogs, menus, or web pages inside a browser Window. Foreground-only, with an on-screen overlay and an Esc stop.
+description: Control Windows desktop apps from the command line — list Apps and Windows, read a Window's accessibility tree as text, click, type, set values, scroll, drag, hover, and screenshot on request. Use when a task needs operating a real Windows App — its Windows, dialogs, menus, or web pages inside a browser Window. Element clicks and value changes run headless behind the user's work; typing and pointer Actions take the foreground, with an on-screen banner and an Esc stop.
 ---
 
 # winuse
@@ -11,15 +11,20 @@ Read this file fully before deciding winuse cannot do something.
 
 Ground rules that shape everything else:
 
-- It runs in the **foreground** on the user's own desktop, never in the
-  background. The machine must stay unlocked and usable; the user may be
-  watching, and may take over at any moment.
-- While an Action or Batch runs, an on-screen banner frames the window:
-  **"winuse is in control — press Esc to stop"** (one banner for a whole
-  Batch, not one per Action). The user pressing the physical **Esc** key
-  stops the running command immediately — that is the designed way for
-  the user to take back control (see
-  [When the user stops you](#when-the-user-stops-you-esc)).
+- It runs on the user's own desktop, while they use it. The machine must
+  stay unlocked; the user may be watching, and may take over at any
+  moment.
+- Element Actions are **Headless** by default: they work through UI
+  Automation on a Window that stays where it is, behind the user's own
+  work — no foreground change, no pointer, no keys. Physical Actions
+  (typing, keys, pointer gestures, coordinates) are **Headed**: the
+  Window comes to the foreground, winuse uses the real pointer and
+  keyboard, and a banner frames the window: **"winuse is in control —
+  press Esc to stop"** (one banner for a whole Batch). See
+  [Headless and Headed Actions](#headless-and-headed-actions).
+- The user pressing the physical **Esc** key stops the running command
+  immediately — that is the designed way for the user to take back
+  control (see [When the user stops you](#when-the-user-stops-you-esc)).
 - The first command starts a small background helper automatically; later
   commands reuse it. Nothing to set up, nothing to manage.
 - Windows only. No telemetry; everything stays on the machine.
@@ -70,8 +75,9 @@ This discipline is what makes computer use reliable; follow it strictly:
   them**. Any Action, any app change, any user interaction makes them
   stale. Never act on an index from an older observation, and never reuse
   a reference after a failed Action — re-observe first.
-- If an Action or a read fails, the outcome is unknown: assume nothing
-  happened, re-observe, then decide.
+- If an Action fails, its message says whether anything reached the app
+  (see [Failures: was anything sent?](#failures-was-anything-sent)).
+  When it does not say, the outcome is unknown: re-observe, then decide.
 - A stale Element Index fails with an instruction to read the Window State
   again — that is the designed recovery, not an error to work around.
   `name:` and `id:` references survive re-reads better than indexes (an
@@ -159,10 +165,51 @@ winuse hover <window> @x,y
 winuse activate-window <window>
 ```
 
-Every Action brings its target Window to the foreground automatically
-before acting, so input always lands in the right window;
+Headed Actions bring their target Window to the foreground
+automatically, so input always lands in the right window;
 `activate-window` is only the escape hatch when focus drifted and
 something else must be re-established first.
+
+### Headless and Headed Actions
+
+**Headless** (the default for these): UI Automation patterns only. The
+Window stays behind the user's work, their pointer, keyboard and
+foreground are untouched, and no banner shows.
+
+- `click` on an Element Index, `name:` or `id:` — left button, single
+  click;
+- `set-value` on an Element Index, `name:` or `id:`;
+- `perform-secondary-action` on an Element Index, `name:` or `id:`,
+  except Raise.
+
+**Headed** (always): the Window comes to the foreground, real input, the
+banner. Every `@x,y` form, `--count 2|3`, `--button right|middle`,
+`type-text`, `press-key`, `scroll`, `drag`, `hover`, `activate-window`,
+and Raise.
+
+A Headless click uses the Element's first pattern: Invoke, Toggle,
+Select, Expand/Collapse, else its default action. It never moves
+keyboard focus — to put the caret in a field before typing, click the
+field with `--headed`. Toggle, Select, Expand, Collapse and a text
+`set-value` are read back after the call, so `ok` means the Element
+shows the new state.
+
+**`--headed`** forces the Headed way for any Action:
+`winuse --headed click 101 3`. It goes before the command or anywhere
+after it, except inside literal text: in `type-text`'s text and
+`set-value`'s value a `--headed` token is text, so put the flag before
+the command there. On a Batch it makes every step Headed. Reach for it
+when a Headless Action fails with the hint to, when the next Window
+State shows a Headless Action had no effect (custom-drawn controls and
+some web widgets answer only a real click), and to focus a field.
+winuse never switches to Headed on its own: taking the user's
+foreground is your decision.
+
+The user sees each Headless Action through the **Agent Cursor**: a
+second, presentation-only cursor that glides to the Element with a
+short label (`click "Save"`) and ripples on the click. It leaves the
+user's pointer and focus alone and never appears in your screenshots;
+it needs nothing from you.
 
 ### Element References
 
@@ -186,9 +233,10 @@ around it; disambiguate with a different reference or a fresh read.
 ### Typing
 
 - Check the Window State's **focused-Element line** before typing. If
-  focus is not where you need it, click the field, re-observe to verify
-  focus, then type. For documents and canvases: click inside the work
-  surface, refresh, verify focus, then type.
+  focus is not where you need it, click the field with `--headed` (a
+  Headless click never moves focus), re-observe to verify focus, then
+  type. For documents and canvases: `--headed` click (or `@x,y` click)
+  inside the work surface, refresh, verify focus, then type.
 - `type-text` types literal Unicode text (any script, emoji included) into
   the focused Element. Use it for text.
 - `press-key` is for **control keys and chords** — `Return`, `Tab`,
@@ -196,7 +244,8 @@ around it; disambiguate with a different reference or a fresh read.
   `Numpad_0`. Never send control keys through `type-text`.
 - Prefer `set-value` to fill a settable field in one reliable Action (the
   Element's line must show `settable`) instead of
-  click-type-verify. Sliders take numbers through it too.
+  click-type-verify: it is Headless and read back. Sliders take numbers
+  through it too.
 
 ### Batches
 
@@ -205,7 +254,7 @@ routine sequence in one call, in order, stopping at the first failure and
 naming the failed Action:
 
 ```
-winuse batch 101 click id:field then type-text hello world then press-key Return then click name:OK
+winuse --headed batch 101 click id:field then type-text hello world then press-key Return then click name:OK
 ```
 
 The Actions take the same arguments as the standalone commands minus the
@@ -213,12 +262,21 @@ Window. Malformed Batches are refused before any input is sent. Keep
 Batches to routine, well-understood sequences; anything uncertain needs
 observe-act-observe with one Action at a time.
 
+A Batch of only Headless steps runs Headless, with no banner. One
+Headed step (`type-text`, `press-key`, …) gives the whole Batch the
+banner and the Headed Esc stop, while its other steps still run
+Headless — so a Batch that clicks a field to focus it before typing
+needs `--headed`, as above.
+
 ## When the user stops you: Esc
 
 While an Action or Batch runs, the user can press the **physical Esc
-key**. The key never reaches the app, the command stops immediately, and
-winuse exits with **code 130** and a message that the user stopped winuse
-with the physical Escape key.
+key**. The command stops immediately, and winuse exits with **code 130**
+and a message that the user stopped winuse with the physical Escape key.
+During a Headed Action (or a Batch with a Headed step) the key never
+reaches the app. During a Headless one it still reaches the app the user
+is working in — they may have meant it for their own work — and it
+stops winuse all the same.
 
 **The user has taken back control.** Stop issuing winuse commands for the
 task, do not retry the stopped Action, and tell the user what you were
@@ -228,10 +286,11 @@ only the physical key stops winuse.)
 
 ## Refusals, and how to recover
 
-- **Administrator Windows**: input to an elevated Window would be silently
-  dropped by Windows, so winuse refuses it with an explanation. Explain to
-  the user that controlling that Window needs winuse running from an
-  elevated terminal — and never report the action as done.
+- **Administrator Windows**: Windows silently drops input to an elevated
+  Window and UI Automation writes into it fail, so winuse refuses it with
+  an explanation. Explain to the user that controlling that Window needs
+  winuse running from an elevated terminal — and never report the action
+  as done.
 - **Locked desktop**: winuse reports it as locked. Stop and ask the user
   to unlock; never drive the lock screen.
 - **Timeouts**: each request has 10 s (launch-app 15 s, a Batch 60 s) and
@@ -243,11 +302,32 @@ only the physical key stops winuse.)
   `name:`/`id:` references if indexes keep shifting.
 - **A modal blocking the target**: the failure names the dialog. Target
   that dialog's own Window and handle it, then return to the owner.
-- **A moved or minimized Window**: activate, re-observe, retry once.
-  `@x,y` coordinates re-anchor to the Window's current bounds
-  automatically, but a fresh screenshot is the safe habit.
+- **A moved Window**: re-observe, retry once. `@x,y` coordinates
+  re-anchor to the Window's current bounds automatically, but a fresh
+  screenshot is the safe habit.
+- **A minimized Window**: Headless Actions refuse it. `activate-window`
+  it (this takes the foreground) or pass `--headed`, re-observe, retry
+  once.
 - Never continue past launcher screens, splash screens or unexpected
   permission prompts; re-observe and reconsider.
+
+### Failures: was anything sent?
+
+A failed Action prints one line and a `hint:`. These phrases decide what
+you may do next:
+
+- **"nothing was sent"** — the app was not touched. Fix the cause the
+  line names and retry; a retry is safe.
+- **"cannot be clicked headless"** (with "nothing was sent") — the
+  Element offers no pattern a Headless click can use. Retry with
+  `--headed`; the hint prints the exact command.
+- **"the Action was delivered; do not repeat it"** — the pattern call
+  went through but the Element reads differently afterwards (a Toggle
+  still `off`, a value that did not stick). Read the Window State and
+  decide from what it shows; repeating could act twice.
+- **"may have taken effect"** — the write failed part-way. Read the
+  Window State before repeating anything.
+- **"is minimized"** — see above: `activate-window` or `--headed`.
 
 ## Safety
 
@@ -269,6 +349,14 @@ Esc is the hard stop; beyond it, judgment is yours. The rules that matter:
 ## Commands
 
 ```
+winuse [--headed] <command> [arguments]
+  --headed                           run the Action (or every Batch step) Headed:
+                                     foreground, real pointer and keyboard, banner.
+                                     Without it, click (Element reference, left,
+                                     single), set-value and perform-secondary-action
+                                     (except Raise) run Headless. Before or after the
+                                     command; literal text in type-text and set-value
+
 winuse list-windows                  list visible Windows: Window ID, App and title
 winuse get-window <window>           print one Window's line, resolved by Window ID or
                                      an unambiguous App name
@@ -317,9 +405,12 @@ the point for set-value and perform-secondary-action.
 
 - Observe → one Action (or one Batch) → observe. Never act twice on one
   observation.
+- Headless first; `--headed` when a Headless Action fails with the hint
+  to, had no effect, or must move focus.
 - Actions print `ok`, or a one-line failure with a recovery hint, and exit
   non-zero (2 usage, 1 failure, 130 the user pressed Esc). Read the hint;
-  it usually names the recovery.
+  it usually names the recovery, and the line says whether a retry is
+  safe.
 - Never guess a Window, an Element or a coordinate. Ambiguity comes back
   with candidates — use them.
 - The focused-Element line comes before any typing.

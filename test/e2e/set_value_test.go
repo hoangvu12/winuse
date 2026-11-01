@@ -48,8 +48,9 @@ func TestSetValueSetsTheTextField(t *testing.T) {
 	assertActionOK(t, "set-value text-field", stdout, stderr, exit)
 
 	st := fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.Text == "hello winuse" })
-	// The Element was focused first (Codex's set_value order); the fixture
-	// records focus as the text field.
+	// A Headless set-value writes without focusing the Element first
+	// (headless_test.go pins that); a --headed one keeps Codex's
+	// focus-first order.
 	if st.Text != "hello winuse" {
 		t.Fatalf("text = %q, want %q", st.Text, "hello winuse")
 	}

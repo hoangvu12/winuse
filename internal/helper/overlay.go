@@ -113,9 +113,11 @@ func (s Services) hideOverlay() {
 // BitBlt where a layered window might be composited in, PrintWindow, and
 // and the Windows.Graphics.Capture method (ticket 09). The
 // indicator is restored afterwards only if it was shown, so captures
-// between Actions are bracketed no-ops.
+// between Actions are bracketed no-ops. The Agent Cursor (ADR 0010) is
+// hidden the same way, inside the indicator's bracket, when one is wired.
 type hiddenDuringCapture struct {
 	overlay Overlay
+	cursor  Cursor
 	method  shot.Method
 }
 
@@ -124,12 +126,18 @@ func (m hiddenDuringCapture) Name() string { return m.method.Name() }
 
 // CaptureWindow implements shot.Method.
 func (m hiddenDuringCapture) CaptureWindow(hwnd uint64) (shot.Frame, error) {
-	if m.overlay == nil {
-		return m.method.CaptureWindow(hwnd)
-	}
 	var frame shot.Frame
 	var err error
-	m.overlay.HideWhile(func() { frame, err = m.method.CaptureWindow(hwnd) })
+	capture := func() { frame, err = m.method.CaptureWindow(hwnd) }
+	if m.cursor != nil {
+		inner := capture
+		capture = func() { m.cursor.HideWhile(inner) }
+	}
+	if m.overlay != nil {
+		inner := capture
+		capture = func() { m.overlay.HideWhile(inner) }
+	}
+	capture()
 	return frame, err
 }
 
@@ -138,10 +146,17 @@ func (m hiddenDuringCapture) CaptureWindow(hwnd uint64) (shot.Frame, error) {
 // fallbacks (spec, Observation details), each wrapped so it runs with the
 // indicator hidden when one is wired.
 func captureMethods(o Overlay, first ...shot.Method) []shot.Method {
+	return captureMethodsHiding(o, nil, first...)
+}
+
+// captureMethodsHiding is captureMethods with the Agent Cursor too: each
+// method runs with the indicator and the cursor hidden, whichever of the
+// two is wired, so winuse's own screenshots contain neither.
+func captureMethodsHiding(o Overlay, c Cursor, first ...shot.Method) []shot.Method {
 	methods := append(append([]shot.Method{}, first...), win.RegionMethod{}, win.PrintWindowMethod{})
-	if o != nil {
+	if o != nil || c != nil {
 		for i := range methods {
-			methods[i] = hiddenDuringCapture{overlay: o, method: methods[i]}
+			methods[i] = hiddenDuringCapture{overlay: o, cursor: c, method: methods[i]}
 		}
 	}
 	return methods

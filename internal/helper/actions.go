@@ -6,10 +6,15 @@ package helper
 // with a recovery hint, non-zero exit on failure, the shared request
 // timeouts.
 //
-// Every Action runs the same pipeline through Services.runAction: resolve
-// the Window, refuse a locked desktop, refuse an administrator Window,
-// activate the Window and verify it is in the foreground, then run the
-// action's own step. Input is injected only after the pipeline passes.
+// Every Headed Action runs the same pipeline through Services.runAction:
+// resolve the Window, refuse a locked desktop, refuse an administrator
+// Window, activate the Window and verify it is in the foreground, then
+// run the action's own step. Input is injected only after the pipeline
+// passes. Element Actions are Headless by default instead (ADR 0010,
+// headless.go): a click on an Element Index or name:/id: reference (left,
+// single) runs Services.runHeadless — the same refusals, no activation,
+// no input, a pattern call. `@x,y`, double/triple and right/middle clicks,
+// activate-window and any click sent with `headed` keep runAction.
 
 import (
 	"context"
@@ -48,10 +53,15 @@ func escStopError() *Error {
 	return &Error{Msg: escStopMessage, Hint: escStopHint, Exit: protocol.ExitEsc}
 }
 
-// click runs `winuse click <window> <element index>`: the Window is
+// click runs `winuse click <window> <element index>`. A left single click
+// on an Element is Headless (ADR 0010): the Element is clicked through
+// its first offered pattern (Invoke, Toggle, Select, Expand/Collapse,
+// LegacyIAccessible default action) on a Window that stays where it is,
+// and an Element with none fails with nothing sent and a --headed hint.
+// Headed (double/triple, right/middle, or `headed`), the Window is
 // activated and verified in the foreground, the Element behind the index
-// is scrolled into view if needed, and the click (single, double, right)
-// is injected at its clickable point or bounds centre.
+// is scrolled into view if needed, and the click is injected at its
+// clickable point or bounds centre.
 //
 // `winuse click <window> name:<text>` and `id:<AutomationId>` (ticket 11)
 // name the Element by its Name or AutomationId instead of its Index: the
@@ -115,7 +125,20 @@ func click(s Services) Command {
 
 		// The Element forms: an Element Index (ticket 05) or a name:/id:
 		// reference (ticket 11), resolved against the Window's latest
-		// Window State to the Element Index to click.
+		// Window State to the Element Index to click — Headless when the
+		// shared predicate says so (headlessStep), Headed otherwise.
+		if actor, ok := s.headless("click", args); ok {
+			return s.runHeadless(ctx, a.Window, actor, headlessRun{
+				cmd:    "click",
+				verb:   "click",
+				target: target,
+				act: func(ctx context.Context, w win.WindowInfo, index int) error {
+					_, err := actor.HeadlessClick(ctx, w.ID, index)
+					return err
+				},
+				refusal: clickRefusal,
+			})
+		}
 		if s.Actions == nil {
 			return "", Fail("click is unavailable: no UIA client", "")
 		}
@@ -138,8 +161,9 @@ func click(s Services) Command {
 
 // activateWindow runs `winuse activate-window <window>`: the shared
 // Action pipeline with the activation itself as the step — the same
-// activation every other Action performs first (spec: an explicit escape
-// hatch for recovering focus).
+// activation every Headed Action performs first (spec: an explicit escape
+// hatch for recovering focus; the headless spec's recovery for a
+// minimized Window). Always Headed.
 func activateWindow(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.ActivateArgs
@@ -152,7 +176,8 @@ func activateWindow(s Services) Command {
 	}
 }
 
-// runAction is the Action pipeline every Action command runs: resolve the
+// runAction is the Headed Action pipeline (every Action that is not
+// Headless, ADR 0010; runHeadless in headless.go is the other): resolve the
 // Window (a Window ID, or an App name when that App has exactly one
 // Window); refuse a locked desktop; refuse an administrator Window
 // (Windows would silently drop the input); activate the Window with the

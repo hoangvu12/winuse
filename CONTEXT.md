@@ -50,8 +50,20 @@ _Avoid_: Selector, locator
 Several Actions sent in one call and run in order, stopping at the first one that fails.
 _Avoid_: Script, macro, sequence
 
+**Headless Action**:
+An Action performed on an Element through UI Automation alone, on a Window that stays where it is: no foreground change, no pointer, no keys, no banner. A click on an Element (left button, single), a set value and every Secondary Action except Raise are Headless unless the agent asks for Headed.
+_Avoid_: Background action, silent action, pattern action
+
+**Headed Action**:
+An Action performed the way a person would: the Window is brought to the foreground and real pointer or keyboard input is sent, under the in-control banner. Typing, keys, scrolling, dragging, hovering, any Action aimed at screen coordinates, double, right or middle clicks, activating a Window and Raise are always Headed; any other Action is Headed when the agent asks for it.
+_Avoid_: Foreground action, physical action, v1 mode
+
+**Agent Cursor**:
+The second, presentation-only cursor that shows the user each Headless Action: it travels to the Element, says what is happening in a label and ripples on the click. It never takes the user's pointer, keyboard or foreground and never appears in winuse's own screenshots.
+_Avoid_: Fake cursor, ghost cursor, pointer
+
 **Esc stop**:
-The user pressing the physical Escape key while winuse is acting: the running command stops immediately, its key never reaching the controlled app, and the agent is told the user stopped winuse (exit code 130).
+The user pressing the physical Escape key while winuse is acting: the running command stops immediately and the agent is told the user stopped winuse (exit code 130). During a Headed Action the key never reaches the controlled app; during a Headless Action it still reaches whatever app the user is working in.
 _Avoid_: Interrupt, cancel, kill switch
 
 **Harness**:

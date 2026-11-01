@@ -310,6 +310,12 @@ func CaptureScreenRegion(r Rect) (*image.RGBA, error) {
 	if err := LiveDesktopGuard(); err != nil {
 		return nil, err
 	}
+	return captureScreenRegion(r)
+}
+
+// captureScreenRegion is CaptureScreenRegion without the live-desktop
+// guard, for the opt-in Agent Cursor demo's screenshots only.
+func captureScreenRegion(r Rect) (*image.RGBA, error) {
 	w, h := r.Width(), r.Height()
 	if w <= 0 || h <= 0 {
 		return nil, errors.New("the capture region is empty")

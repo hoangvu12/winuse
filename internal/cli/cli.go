@@ -19,7 +19,20 @@ import (
 // usageHead and usageTail sandwich the Secondary Actions list in Usage
 // below (from uia's canonical table, finding 18: this text, the Window
 // State's listing and the Action validation share one source).
-const usageHead = `usage: winuse <command> [arguments]
+const usageHead = `usage: winuse [--headed] <command> [arguments]
+
+global options:
+  --headed                    run Actions the v1 way: bring the Window to the
+                               foreground, use the real pointer and keyboard,
+                               and show the in-control banner. Without it,
+                               click on an Element (left, single), set-value
+                               and perform-secondary-action (except Raise) on
+                               an element index, name: or id: run headless
+                               through UI Automation and leave your
+                               foreground, pointer and keyboard alone; every
+                               other Action is always headed. Accepted before
+                               or after the command; inside type-text's text
+                               or set-value's value it is literal text
 
 commands:
   list-windows                list visible Windows: Window ID, App and title
@@ -114,7 +127,12 @@ func secondaryActionsPhrase() string {
 // code: 0 success, 1 command failure, 2 usage error. The first command
 // invocation starts the background helper automatically; later ones reuse
 // it.
+//
+// The global --headed flag (headed.go, ADR 0010) is taken out first,
+// before the command or anywhere after it outside literal text, and
+// forwarded to the Actions that have a Headless form.
 func Main(args []string) int {
+	args, headed := extractHeaded(args)
 	if len(args) == 0 {
 		fmt.Fprint(os.Stderr, Usage)
 		return 2
@@ -138,17 +156,17 @@ func Main(args []string) int {
 	case "zoom":
 		return zoomCmd(args[1:])
 	case "click":
-		return clickCmd(args[1:])
+		return clickCmd(args[1:], headed)
 	case "type-text":
 		return typeTextCmd(args[1:])
 	case "press-key":
 		return pressKeyCmd(args[1:])
 	case "set-value":
-		return setValueCmd(args[1:])
+		return setValueCmd(args[1:], headed)
 	case "perform-secondary-action":
-		return performSecondaryActionCmd(args[1:])
+		return performSecondaryActionCmd(args[1:], headed)
 	case "batch":
-		return batchCmd(args[1:])
+		return batchCmd(args[1:], headed)
 	case "scroll":
 		return scrollCmd(args[1:])
 	case "drag":

@@ -131,6 +131,22 @@ func Main() int {
 		defer esc.Close()
 	}
 
+	// The Agent Cursor (ADR 0010) shows each Headless Action in place of
+	// the banner, on the same UI thread. It needs the overlay's thread; a
+	// cursor that cannot start disables itself like the indicator —
+	// Headless Actions run without it.
+	var cursor *win.AgentCursor
+	if overlay != nil {
+		cursor, err = win.NewAgentCursor(overlay.Do)
+		if err != nil {
+			log.Printf("the Agent Cursor is unavailable, Headless Actions will run without it: %v", err)
+			cursor = nil
+		} else {
+			// Closed before the overlay's thread stops (deferred LIFO).
+			defer cursor.Close()
+		}
+	}
+
 	svc := Services{
 		Trees:  trees,
 		Budget: budget,
@@ -140,6 +156,11 @@ func Main() int {
 	}
 	if esc != nil {
 		svc.Esc = esc
+	}
+	// Set before CommandsWith: the capture chain it builds hides the
+	// cursor around winuse's own screenshots.
+	if cursor != nil {
+		svc.Cursor = cursor
 	}
 	server := New(version.Version, idle, protocol.RequestTimeout, CommandsWith(svc), nil)
 	err = server.Serve(ln)

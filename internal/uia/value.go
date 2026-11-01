@@ -464,7 +464,7 @@ func (c *Client) SetValue(ctx context.Context, hwnd uint64, index int, value str
 		if w.thread == nil {
 			return // fake workers carry no COM thread; tests exercise the miss paths
 		}
-		jobErr = w.thread.setValue(el, value)
+		jobErr = w.thread.setValue(el, value, true)
 	})
 	if err != nil {
 		return err
@@ -488,7 +488,7 @@ func (c *Client) SetValueAtPoint(ctx context.Context, x, y int32, value string) 
 			return
 		}
 		defer release(el)
-		jobErr = w.thread.setValue(el, value)
+		jobErr = w.thread.setValue(el, value, true)
 	})
 	if err != nil {
 		return err
@@ -548,20 +548,24 @@ func (c *Client) PerformSecondaryAction(ctx context.Context, hwnd uint64, index 
 	return jobErr
 }
 
-// setValue writes an Element's value on the worker thread: focus first,
-// then Value.SetValue(BSTR), or RangeValue.SetValue(number) for range
-// Elements, else Codex's not-settable refusal.
-func (th *thread) setValue(el comPtr, value string) error {
-	if hr := call(el, elSetFocus); hr.Failed() {
-		// Codex's set_value focuses the Element first; a stale or disabled
-		// Element maps to its sentinel, anything else to Codex's message.
-		if hrStale(hr) {
-			return staleErr(hr)
+// setValue writes an Element's value on the worker thread: focus first
+// (Headed only — UIA SetFocus moves the desktop foreground, so a Headless
+// write skips it), then Value.SetValue(BSTR), or RangeValue.SetValue(number)
+// for range Elements, else Codex's not-settable refusal.
+func (th *thread) setValue(el comPtr, value string, focus bool) error {
+	if focus {
+		if hr := call(el, elSetFocus); hr.Failed() {
+			// Codex's set_value focuses the Element first; a stale or
+			// disabled Element maps to its sentinel, anything else to
+			// Codex's message.
+			if hrStale(hr) {
+				return staleErr(hr)
+			}
+			if hr == uiaErrElementDisabled {
+				return ErrDisabled
+			}
+			return ErrFocusBeforeValue
 		}
-		if hr == uiaErrElementDisabled {
-			return ErrDisabled
-		}
-		return ErrFocusBeforeValue
 	}
 	// ValuePattern: a read-only value cannot be set (Codex's refusal).
 	if pat, hr := currentPattern(el, patternValue, &iidValuePattern); hrStale(hr) {
@@ -733,9 +737,11 @@ func patternState(pat comPtr, slot uintptr) int32 {
 	return v
 }
 
-// callErr maps a failed COM call on a live element: stale elements fail
-// as stale (the read-the-state-again contract), disabled elements say so,
-// anything else names the operation and the HRESULT.
+// callErr maps a failed pattern write on a live element: stale elements
+// fail as stale (the read-the-state-again contract), disabled elements say
+// so — both refusals, nothing happened — and anything else is a
+// *WriteError naming the operation and the HRESULT, which may have taken
+// effect.
 func callErr(hr HRESULT, what string) error {
 	switch {
 	case hrStale(hr):
@@ -743,7 +749,7 @@ func callErr(hr HRESULT, what string) error {
 	case hr == uiaErrElementDisabled:
 		return ErrDisabled
 	}
-	return fmt.Errorf("%s failed (HRESULT %s)", what, hr)
+	return &WriteError{What: what, HR: hr}
 }
 
 // staleErr wraps a stale HRESULT (the Element behind the index is gone).

@@ -3,11 +3,12 @@ package helper
 // The Batch command (ticket 11): several Actions on one Window in a
 // single call, run in order, stopping at the first failure and naming the
 // failed step. Every step runs through the same command the standalone
-// form uses — the same runAction pipeline (window resolution, locked
-// desktop and administrator refusals, activate-and-verify), the same
+// form uses — the same pipeline (runHeadless for a Headless step,
+// runAction's activate-and-verify for a Headed one, ADR 0010), the same
 // argument validation and the same error mapping — with the Batch's
 // Window injected into its arguments, so a step behaves exactly as if the
-// agent had sent it alone.
+// agent had sent it alone. A Batch sent with `headed` injects `headed`
+// into every step that takes it, so the whole Batch runs the v1 way.
 //
 // Codex has no batch tool (codex-surface.md §1: the model chains calls in
 // a JS cell instead); winuse's Batch keeps Codex's output style — `ok`,
@@ -19,10 +20,14 @@ package helper
 // and a stopped step's own input pipeline is where mid-step input aborts;
 // remaining steps must not run after a stop. The request's deadline
 // stops the Batch at the same point (finding 10): a timed-out request
-// keeps no work running. The whole Batch is one armed
-// Esc scope around its steps' Actions, so a press between steps — or in
-// the last step's tail — is latched and stops the Batch, and the physical
-// key is swallowed for the Batch's duration.
+// keeps no work running. The whole Batch is one Esc scope around its
+// steps' Actions, so a press between steps — or in the last step's tail —
+// is latched and stops the Batch. The scope's kind is decided before the
+// first step runs (headless spec, "Esc in Headless scopes"): a Batch with
+// any Headed step is one swallowing scope with the banner for its whole
+// run, exactly as in v1, Headless steps included; an all-Headless Batch
+// is one passive scope — the user's Esc stops it but reaches their app —
+// with no banner (the Agent Cursor shows each step).
 
 import (
 	"context"
@@ -43,7 +48,8 @@ const batchUsageHint = "usage: winuse batch <window> <action> [arguments] [then 
 // standalone command's own, without the Window. A stopped Batch (the
 // user's Esc press) keeps the stop's exit code (130) and message.
 //
-// The Batch is one overlay bracket (finding 12): the indicator shows once
+// A Batch with a Headed step is one overlay bracket (finding 12; an
+// all-Headless Batch shows no banner, ADR 0010): the indicator shows once
 // over the Batch's Window for the whole run — like the Esc arm scope —
 // and the steps' own brackets ride inside it (bracketOverlay) without
 // hiding the indicator between Actions. A Window that does not resolve
@@ -93,25 +99,45 @@ func batch(commands map[string]Command, s Services) Command {
 				return "", Fail(fmt.Sprintf("batch: Action %d (%s) is unavailable", i+1, st.Kind), batchUsageHint)
 			}
 			injected, err := withWindow(a.Window, st.Args)
+			if err == nil && a.Headed && takesHeaded(st.Kind) {
+				injected, err = withHeaded(injected)
+			}
 			if err != nil {
 				return "", Fail(fmt.Sprintf("batch: Action %d (%s) has invalid arguments: %v", i+1, st.Kind, err), batchUsageHint)
 			}
 			steps = append(steps, prepared{kind: st.Kind, cmd: cmd, args: injected})
 		}
 
+		// The Batch's scope, decided up front by the same predicate each
+		// step's command routes on (headlessStep), so the two never
+		// disagree: Headless only when every step is.
+		allHeadless := true
+		for _, st := range steps {
+			if _, ok := s.headless(st.kind, st.args); !ok {
+				allHeadless = false
+				break
+			}
+		}
+
 		// Run the steps in order, stopping at the first failure. The
 		// failed step's message and hint are forwarded verbatim (its exit
 		// code too, so an Esc stop keeps protocol.ExitEsc). The Batch is one
-		// armed Esc scope around the loop — a press anywhere in it (during a
+		// Esc scope around the loop — a press anywhere in it (during a
 		// step, between steps, in the last step's tail) stops the Batch with
-		// the exit-130 stop, and the remaining steps never run — and one
-		// overlay bracket (finding 12), raised over the Batch's Window when
-		// it resolves, so the indicator does not blink between Actions.
-		esc.Arm()
-		defer esc.Disarm()
-		if w, rerr := resolveWindow(s, a.Window); rerr == nil {
-			s.showOverlay(w)
-			defer s.hideOverlay()
+		// the exit-130 stop, and the remaining steps never run. With a
+		// Headed step it is v1's swallowing scope and one overlay bracket
+		// (finding 12), raised over the Batch's Window when it resolves, so
+		// the indicator does not blink between Actions; all-Headless, it is
+		// a passive scope and no banner.
+		if allHeadless {
+			defer armPassive(esc)()
+		} else {
+			esc.Arm()
+			defer esc.Disarm()
+			if w, rerr := resolveWindow(s, a.Window); rerr == nil {
+				s.showOverlay(w)
+				defer s.hideOverlay()
+			}
 		}
 		for i, st := range steps {
 			if esc.Stopped() {
@@ -134,8 +160,8 @@ func batch(commands map[string]Command, s Services) Command {
 			}
 		}
 		// A press in the last step's tail: the steps all ran, but the user's
-		// stop must still surface (their Esc was swallowed) rather than the
-		// Batch reporting success.
+		// stop must still surface (their Esc was swallowed, or in a passive
+		// scope meant as a stop) rather than the Batch reporting success.
 		if esc.Stopped() {
 			return "", escStopError()
 		}
@@ -169,5 +195,20 @@ func withWindow(window string, raw json.RawMessage) (json.RawMessage, error) {
 		return nil, err
 	}
 	fields["window"] = w
+	return json.Marshal(fields)
+}
+
+// withHeaded sets `headed: true` on one step's raw arguments (a Batch sent
+// with `headed`, ADR 0010: --headed restores v1 behaviour for the whole
+// Batch). Only steps whose command takes the flag get it (takesHeaded);
+// the other Actions are always Headed.
+func withHeaded(raw json.RawMessage) (json.RawMessage, error) {
+	fields := map[string]json.RawMessage{}
+	if len(raw) > 0 && string(raw) != "null" {
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return nil, err
+		}
+	}
+	fields["headed"] = json.RawMessage("true")
 	return json.Marshal(fields)
 }
