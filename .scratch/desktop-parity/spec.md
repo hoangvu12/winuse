@@ -63,7 +63,7 @@ Details are in each ticket's Comments.
 | 18 | Notifications | P3 | M | ready-for-agent |
 | 19 | Session traces with redaction | P3 | M-L | ready-for-agent |
 | 20 | Batch improvements | P3 | S-M | ready-for-agent |
-| 21 | Agent Cursor polish | P3 | S | ready-for-agent |
+| 21 | Agent Cursor polish | P3 | S | wontfix (folded into multi-agent 04) |
 | 22 | list-windows details and filter | P2 | S | done |
 | 23 | type-text into an Element, and pacing | P2 | S-M | ready-for-agent (`--into` done; Text-pattern leg moved to headless-max 13; left: `--interval-ms`) |
 | 24 | Batch across several Windows | P3 | M | ready-for-agent |
@@ -85,4 +85,4 @@ Details are in each ticket's Comments.
 - `key-down`, `key-up`, `mouse-down`, `mouse-up` (agent-desktop ships them as refusals only).
 - `get` and `is` (the tree line carries the states; `wait` covers polling).
 - A C library (ADR 0001).
-- Multi-agent cursors and agent ids (one helper serializes every Action).
+- ~~Multi-agent cursors and agent ids (one helper serializes every Action).~~ Reversed 2026-11-03: see `../multi-agent/spec.md`.
