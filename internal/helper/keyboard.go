@@ -88,7 +88,7 @@ func typeText(s Services) Command {
 				if edit, ok := editTypeRoute(a.Text, *route); ok {
 					return s.typeIntoEdit(ctx, w, edit, a.Text)
 				}
-				if route.Focus.HWND == 0 {
+				if route.Focus.HWND == 0 && (s.Foreground == nil || s.Foreground() != w.ID) {
 					out = noFocusOutput(w)
 				}
 			}

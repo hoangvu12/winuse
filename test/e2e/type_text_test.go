@@ -131,8 +131,13 @@ func TestTypeTextIntoDialogEdit(t *testing.T) {
 	st := fix.waitState(t, 10*time.Second, func(s *fixture.State) bool { return s.DialogOpen && s.DialogWindowID != 0 })
 	dialog := strconv.FormatUint(st.DialogWindowID, 10)
 
+	// The fixture draws its edit inside the dialog window, so a dialog in
+	// the background reports no focused control: the text goes Headed and
+	// the ok says why (headless-max ticket 19).
 	stdout, stderr, exit := runTypeText(t, []string{dialog, "report.txt"})
-	assertActionOK(t, "type-text into the dialog", stdout, stderr, exit)
+	if exit != 0 || stderr != "" || (stdout != "ok\n" && !strings.HasPrefix(stdout, "ok (typed Headed: window "+dialog+" reports no focused control")) {
+		t.Fatalf("type-text into the dialog: exit %d, stdout %q, stderr %q", exit, stdout, stderr)
+	}
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.DialogFileName == "report.txt" })
 }
 
@@ -235,7 +240,7 @@ func TestTypeTextUsageErrors(t *testing.T) {
 	optIn(t)
 
 	stdout, stderr, exit := runTypeText(t, []string{})
-	if exit != 2 || stdout != "" || !strings.Contains(stderr, "usage: winuse type-text <window> [--post] <text>") {
+	if exit != 2 || stdout != "" || !strings.Contains(stderr, "usage: winuse type-text <window> [--post | --into <element>] <text>") {
 		t.Errorf("type-text with no arguments: exit %d, stdout %q, stderr %q", exit, stdout, stderr)
 	}
 	stdout, stderr, exit = runTypeText(t, []string{"101"})

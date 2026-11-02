@@ -242,6 +242,14 @@ func TestTypeTextSaysWhyItWentHeaded(t *testing.T) {
 		}
 	}
 
+	// No focused control, but the Window is already the foreground: it was
+	// not brought forward, so plain ok.
+	spy = newKeyRouteSpy(win.KeyTarget{})
+	spy.svc.Foreground = func() uint64 { return 101 }
+	if out, _ := runCommand(t, CommandsWith(spy.svc), "type-text", typeTextArgs("101", "hi")); out != okOutput {
+		t.Errorf("already the foreground: output = %q, want ok", out)
+	}
+
 	// A focused control that is no edit: plain ok, nothing to explain.
 	spy = newKeyRouteSpy(win.KeyTarget{Focus: okButton})
 	if out, _ := runCommand(t, CommandsWith(spy.svc), "type-text", typeTextArgs("101", "hi")); out != okOutput {
