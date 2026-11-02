@@ -111,13 +111,15 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 		}
 		args = protocol.TypeTextArgs{Text: strings.Join(rest, " "), Post: post}
 	case "press-key":
-		// --post before or after the key posts it (Posted Keys, ticket 07).
-		stripped, post := stripPost(tokens)
+		// --post before or after the key posts it (Posted Keys, ticket 07);
+		// --force sends a Blocked Combo, for this step only.
+		stripped, post := stripFlag(tokens, postFlag)
+		stripped, force := stripFlag(stripped, forceFlag)
 		rest = stripped[1:]
 		if len(rest) == 0 {
 			return protocol.Step{}, errors.New("a batch press-key Action needs a key")
 		}
-		args = protocol.PressKeyArgs{Key: strings.Join(rest, " "), Post: post}
+		args = protocol.PressKeyArgs{Key: strings.Join(rest, " "), Post: post, Force: force}
 	case "set-value":
 		if len(rest) < 2 {
 			return protocol.Step{}, errors.New("a batch set-value Action takes an element index, name:/id: reference or @x,y, and a value")

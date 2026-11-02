@@ -284,12 +284,14 @@ type TypeTextArgs struct {
 // Headless (ADR 0011, Decision 4) unless headed; every other key is
 // Headed. With post, the key is posted as Posted Keys instead (WM_KEYDOWN
 // and WM_KEYUP to the focused control, no foreground, no modifiers); post
-// and headed do not combine.
+// and headed do not combine. A Blocked Combo (Alt+F4, Alt+Tab,
+// Ctrl+Shift+Escape and their supersets) is refused unless force.
 type PressKeyArgs struct {
 	Window string `json:"window"`
 	Key    string `json:"key"`
 	Headed bool   `json:"headed,omitempty"` // force v1's activate-and-inject press, even where a Headless route exists
 	Post   bool   `json:"post,omitempty"`   // Posted Keys: post the key to the Window's focused control (ADR 0011, Decision 5)
+	Force  bool   `json:"force,omitempty"`  // send a Blocked Combo anyway (keys.Blocked)
 }
 
 // SetValueArgs are set-value's arguments — Codex's set_value parameters

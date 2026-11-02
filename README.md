@@ -74,7 +74,8 @@ any action other than a window action work this way. Pass `--post` to send
 keys and text to a background window instead, which some apps ignore.
 
 Press Esc at any time to stop winuse. It refuses to act on administrator
-windows or a locked screen, and it never presses the Windows key.
+windows or a locked screen, and it never presses the Windows key. It also
+refuses Alt+F4, Alt+Tab and Ctrl+Shift+Escape unless you pass `--force`.
 
 ## Browsers
 

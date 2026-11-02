@@ -22,13 +22,17 @@ import (
 	"github.com/hoangvu12/winuse/internal/protocol"
 )
 
-// postFlag is the Posted Keys option's spelling.
-const postFlag = "--post"
+// postFlag is the Posted Keys option's spelling; forceFlag sends a Blocked
+// Combo press-key otherwise refuses.
+const (
+	postFlag  = "--post"
+	forceFlag = "--force"
+)
 
 // The keyboard commands' usage lines.
 const (
 	typeTextUsage = "usage: winuse type-text <window> [--post] <text>"
-	pressKeyUsage = "usage: winuse press-key <window> <key> [--post]"
+	pressKeyUsage = "usage: winuse press-key <window> <key> [--post] [--force]"
 )
 
 // errPostHeaded is the usage error for --post together with --headed.
@@ -93,8 +97,13 @@ func typeTextCmd(args []string, headed bool) int {
 // global --headed flag (ADR 0011: Return and Escape on a classic dialog
 // are Headless unless headed). A --post after the Window, before or after
 // the key, posts the key instead.
+//
+// A --force there too sends a Blocked Combo (Alt+F4, Alt+Tab,
+// Ctrl+Shift+Escape and their supersets), which the helper otherwise
+// refuses.
 func pressKeyRequest(args []string, headed bool) (protocol.PressKeyArgs, error) {
-	args, post := stripPost(args)
+	args, post := stripFlag(args, postFlag)
+	args, force := stripFlag(args, forceFlag)
 	window, key, err := parsePressKeyArgs(args)
 	if err != nil {
 		return protocol.PressKeyArgs{}, err
@@ -102,27 +111,27 @@ func pressKeyRequest(args []string, headed bool) (protocol.PressKeyArgs, error) 
 	if post && headed {
 		return protocol.PressKeyArgs{}, errPostHeaded
 	}
-	return protocol.PressKeyArgs{Window: window, Key: key, Headed: headed, Post: post}, nil
+	return protocol.PressKeyArgs{Window: window, Key: key, Headed: headed, Post: post, Force: force}, nil
 }
 
-// stripPost removes every --post after the first argument (the Window, or
-// a batch step's Action name) and reports whether there was one. Key
-// names never spell --post.
-func stripPost(args []string) (rest []string, post bool) {
+// stripFlag removes every flag (--post, --force) after the first argument
+// (the Window, or a batch step's Action name) and reports whether there
+// was one. Key names never spell a flag.
+func stripFlag(args []string, flag string) (rest []string, found bool) {
 	rest = make([]string, 0, len(args))
 	for i, tok := range args {
-		if i > 0 && tok == postFlag {
-			post = true
+		if i > 0 && tok == flag {
+			found = true
 			continue
 		}
 		rest = append(rest, tok)
 	}
-	return rest, post
+	return rest, found
 }
 
-// pressKeyCmd implements `winuse press-key <window> <key> [--post]`: press
-// a key or key combination by Codex's key names. headed is the global
-// --headed flag.
+// pressKeyCmd implements `winuse press-key <window> <key> [--post]
+// [--force]`: press a key or key combination by Codex's key names. headed
+// is the global --headed flag.
 func pressKeyCmd(args []string, headed bool) int {
 	req, err := pressKeyRequest(args, headed)
 	if err != nil {

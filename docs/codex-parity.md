@@ -308,7 +308,11 @@ Codex's keysym names, the alias blob (`Ctrl`, `Alt`, `period`,
 `greater`, `Numpad_Add`, …), chords delivered as all-downs-then-ups,
 scan codes filled (Codex's zero-scancode Flutter bug), shifted names
 mapping to the unshifted key. The Windows key is recognized only to be
-**refused in code** — Codex relies on model guidance. **matched**.
+**refused in code** — Codex relies on model guidance. Beyond Codex,
+`press-key` also refuses Alt+F4, Alt+Tab and Ctrl+Shift+Escape and any
+chord holding one of them, with nothing sent, unless `--force` (per step
+in a Batch) — agent-desktop's blocked combos, its Windows-key ones already
+covered by the refusal above. **matched (extended)**.
 
 ### app identifiers
 

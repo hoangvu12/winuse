@@ -765,7 +765,7 @@ func TestTypeTextPostPostsCharacters(t *testing.T) {
 }
 
 func TestPostRefusesChordsWithModifiers(t *testing.T) {
-	for _, key := range []string{"Control_L+a", "Shift_L+Tab", "Alt_L+F4", "a+Control_R"} {
+	for _, key := range []string{"Control_L+a", "Shift_L+Tab", "Alt_L+F5", "a+Control_R"} {
 		spy := newKeyRouteSpy(editTarget(plainEdit))
 		_, cmdErr := runCommand(t, CommandsWith(spy.svc), "press-key", protocol.PressKeyArgs{Window: "101", Key: key, Post: true})
 		if cmdErr == nil {

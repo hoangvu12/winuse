@@ -140,6 +140,12 @@ func TestParseBatchStepRemainingActions(t *testing.T) {
 		{name: "press-key --post after the key", tokens: []string{"press-key", "Tab", "--post"},
 			want: protocol.PressKeyArgs{Key: "Tab", Post: true}},
 		{name: "press-key --post needs a key", tokens: []string{"press-key", "--post"}, wantErr: "a batch press-key Action needs a key"},
+		// Blocked Combos (desktop-parity ticket 05): --force per step.
+		{name: "press-key --force", tokens: []string{"press-key", "Alt_L+F4", "--force"},
+			want: protocol.PressKeyArgs{Key: "Alt_L+F4", Force: true}},
+		{name: "press-key --force --post", tokens: []string{"press-key", "--force", "Tab", "--post"},
+			want: protocol.PressKeyArgs{Key: "Tab", Post: true, Force: true}},
+		{name: "press-key --force needs a key", tokens: []string{"press-key", "--force"}, wantErr: "a batch press-key Action needs a key"},
 		{name: "set-value with a name reference", tokens: []string{"set-value", "name:Text Field", "hello", "world"},
 			want: protocol.SetValueArgs{Ref: "name:Text Field", Value: "hello world"}},
 		{name: "set-value with an index", tokens: []string{"set-value", "5", "42"},
