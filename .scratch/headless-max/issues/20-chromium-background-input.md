@@ -19,9 +19,9 @@ Rules:
 - Read back through the UIA Value pattern where the field has one. Otherwise the output says it was not verified.
 - Limits stated in the output and the skill: the page sees a focus/blur pair around each step; WebView2 (a child window) is not covered.
 
-Open for triage: Headless by default where the read-back exists, or opt-in with `--post` everywhere (the page sees focus/blur).
+Automatic, no `--post` (user decision, see Comments).
 
-**Blocked by:** none (the ADR 0013 policy from 17 decides default vs `--post`)
+**Blocked by:** none
 
 **Status:** ready-for-agent
 
