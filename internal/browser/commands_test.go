@@ -54,7 +54,7 @@ func TestLaunchStartsAWinuseProfileAndConnects(t *testing.T) {
 	if len(starts) != 1 || starts[0].path != path {
 		t.Fatalf("starts = %+v", starts)
 	}
-	wantArgs := []string{"--remote-debugging-port=" + strconv.Itoa(s.Port()), "--user-data-dir=" + dir, "--no-first-run", "--no-default-browser-check"}
+	wantArgs := []string{"--remote-debugging-port=" + strconv.Itoa(s.Port()), "--user-data-dir=" + dir, "--no-first-run", "--no-default-browser-check", "--disable-features=CalculateNativeWinOcclusion"}
 	if !slices.Equal(starts[0].args, wantArgs) {
 		t.Errorf("args = %q, want %q", starts[0].args, wantArgs)
 	}
@@ -72,6 +72,42 @@ func TestLaunchStartsAWinuseProfileAndConnects(t *testing.T) {
 	}
 	if len(f.startCalls()) != 1 || s.Upgrades() != 1 {
 		t.Errorf("second launch started %d browsers and made %d handshakes", len(f.startCalls()), s.Upgrades())
+	}
+}
+
+func TestLaunchArgsTurnOffNativeOcclusion(t *testing.T) {
+	const flag = "--disable-features=CalculateNativeWinOcclusion"
+	for _, args := range [][]string{launchArgs(9222, `C:\p`), cloneArgs(9222, `C:\p`, "Default", true)} {
+		n := 0
+		for _, a := range args {
+			if strings.HasPrefix(a, "--disable-features=") {
+				n++
+			}
+		}
+		if n != 1 || !slices.Contains(args, flag) {
+			t.Errorf("args = %q, want one %s", args, flag)
+		}
+	}
+}
+
+func TestDisableFeaturesMergesIntoAnExistingSwitch(t *testing.T) {
+	tests := []struct {
+		in   []string
+		want []string
+	}{
+		{[]string{"--a"}, []string{"--a", "--disable-features=X"}},
+		{[]string{"--disable-features=Y", "--a"}, []string{"--disable-features=Y,X", "--a"}},
+		{[]string{"--disable-features=X,Y"}, []string{"--disable-features=X,Y"}},
+		{[]string{"--disable-features="}, []string{"--disable-features=X"}},
+	}
+	for _, tt := range tests {
+		in := slices.Clone(tt.in)
+		if got := disableFeatures(in, "X"); !slices.Equal(got, tt.want) {
+			t.Errorf("disableFeatures(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+		if !slices.Equal(in, tt.in) {
+			t.Errorf("disableFeatures changed its input to %q", in)
+		}
 	}
 }
 
@@ -274,7 +310,7 @@ func TestCloneCopiesTheProfileAndLaunchesIt(t *testing.T) {
 		t.Error("another profile was copied")
 	}
 	args := f.startCalls()[0].args
-	if !slices.Contains(args, "--profile-directory=Default") || !slices.Contains(args, "--user-data-dir="+clone) || slices.Contains(args, "--restore-last-session") {
+	if !slices.Contains(args, "--profile-directory=Default") || !slices.Contains(args, "--user-data-dir="+clone) || slices.Contains(args, "--restore-last-session") || !slices.Contains(args, "--disable-features=CalculateNativeWinOcclusion") {
 		t.Errorf("args = %q", args)
 	}
 }

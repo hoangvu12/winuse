@@ -563,3 +563,25 @@ go test -tags e2e -v -timeout 20m -run "TestBrowserPages" ./test/e2e
 
 `-run "TestBrowserPages$/chrome/dialogs"` runs one subtest, and
 `-run TestBrowserPagesExtension` only the extension subset.
+
+## The occlusion flag test
+
+`browser_occlusion_test.go` (ticket 04 of `.scratch/headless-max/`)
+checks that a browser winuse launches keeps building its UI Automation
+tree while it is covered: `winuse browser launch` passes
+`--disable-features=CalculateNativeWinOcclusion`. For Chrome, then Edge
+(a browser that is not installed is skipped), it launches the browser in
+winuse's own launch profile, covers the new Window with the fixture at
+once, opens `testdata/browser-pages.html` with `winuse navigate`, and
+then reads the Window State until it shows the address bar (the frame)
+and the Page's "e2e count" button, through the Browser Connection. Both
+must show within 5 s, and the fixture must keep the foreground. It skips
+a browser whose launch profile is already running, since a warm browser
+says nothing about a cold one: close it with `winuse browser stop chrome`
+first. It closes the browser, the launch profile it created, the fixture
+and the helper, and puts the pin and the foreground back.
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -timeout 10m -run TestLaunchedBrowserCoveredKeepsItsTree ./test/e2e
+```

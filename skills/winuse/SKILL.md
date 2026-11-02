@@ -375,7 +375,8 @@ Pick the route by what the task needs.
   prompt, so use it only while the user is at the keyboard.
 
 `launch` and `clone` open a normal browser Window. Find it with
-`list-windows`. When the job is done, `winuse browser stop [browser]`
+`list-windows`. It keeps rendering and its UI Automation tree while it is
+covered, so it can stay behind the user's windows. When the job is done, `winuse browser stop [browser]`
 closes a browser winuse launched or cloned and keeps its profile.
 
 Through the extension, the browser shows a "started debugging this
