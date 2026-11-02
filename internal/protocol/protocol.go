@@ -97,12 +97,76 @@ func CommandTimeout(cmd string) (time.Duration, bool) {
 	return d, ok
 }
 
+// The caller-set timeout caps (desktop-parity ticket 14): --timeout widens
+// a slow command's budget, for slow Electron, Office and cold Chromium
+// trees, a slow App start, a long Batch or a long page wait, up to these.
+// Action commands keep their fixed budget: a slow Action is a bug or a
+// hung App.
+const (
+	MaxStateTimeout  = 60 * time.Second  // get-window-state
+	MaxLaunchTimeout = 120 * time.Second // launch-app
+	MaxBatchTimeout  = 300 * time.Second // batch
+	MaxWaitTimeout   = 300 * time.Second // wait (the wait itself; the request adds WaitMargin)
+)
+
+// WaitMargin is kept between a page wait and its request's deadline, so a
+// wait that runs out still answers in time: wait --timeout asks for the
+// wait plus this margin as its request budget.
+const WaitMargin = time.Second
+
+// maxTimeouts holds the commands that take a caller-set timeout, with
+// its cap.
+var maxTimeouts = map[string]time.Duration{
+	"get-window-state": MaxStateTimeout,
+	"launch-app":       MaxLaunchTimeout,
+	"batch":            MaxBatchTimeout,
+	"wait":             MaxWaitTimeout + WaitMargin,
+}
+
+// MaxTimeout returns the cap on a command's caller-set timeout; ok is
+// false for a command that takes none.
+func MaxTimeout(cmd string) (time.Duration, bool) {
+	d, ok := maxTimeouts[cmd]
+	return d, ok
+}
+
+// CallerTimeout returns the budget the request's caller set (TimeoutMS),
+// clamped to its command's cap; ok is false when the request sets none or
+// its command takes none.
+func CallerTimeout(req *Request) (time.Duration, bool) {
+	limit, ok := maxTimeouts[req.Cmd]
+	if !ok || req.TimeoutMS <= 0 {
+		return 0, false
+	}
+	d := time.Duration(req.TimeoutMS) * time.Millisecond
+	if d > limit {
+		d = limit
+	}
+	return d, true
+}
+
+// Budget returns a request's budget given the default one: the command's
+// explicit budget (CommandTimeout) or the default, widened to the
+// caller-set timeout. A caller-set timeout under that budget leaves it as
+// it is: --timeout only widens.
+func Budget(req *Request, def time.Duration) time.Duration {
+	budget := def
+	if d, ok := CommandTimeout(req.Cmd); ok {
+		budget = d
+	}
+	if d, ok := CallerTimeout(req); ok && d > budget {
+		budget = d
+	}
+	return budget
+}
+
 // Request is one command sent by the CLI.
 type Request struct {
-	V    int             `json:"v"`              // wire protocol version
-	Ver  string          `json:"ver"`            // CLI binary version; a helper from a different build exits (see Response.Stale)
-	Cmd  string          `json:"cmd"`            // command name, e.g. "list-windows"
-	Args json.RawMessage `json:"args,omitempty"` // command arguments, command-specific JSON
+	V         int             `json:"v"`                    // wire protocol version
+	Ver       string          `json:"ver"`                  // CLI binary version; a helper from a different build exits (see Response.Stale)
+	Cmd       string          `json:"cmd"`                  // command name, e.g. "list-windows"
+	Args      json.RawMessage `json:"args,omitempty"`       // command arguments, command-specific JSON
+	TimeoutMS int             `json:"timeout_ms,omitempty"` // the caller-set budget (--timeout) of a command in MaxTimeout, clamped to its cap; 0: the command's own
 }
 
 // GetWindowArgs are get-window's arguments: the Window to re-resolve and

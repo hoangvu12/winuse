@@ -48,15 +48,21 @@ commands:
   get-window <window>         print one Window's line (Window ID, App and title),
                                resolved by Window ID or an unambiguous App name
   list-apps                   list running and recently used Apps, with their Windows
-  launch-app <name|exe path>  start an App by name or executable path, report its Window
-  get-window-state <window> [--screenshot]
+  launch-app <name|exe path> [--timeout <seconds>]
+                               start an App by name or executable path, report
+                               its Window; waits 15 s, --timeout up to 120 for
+                               a slow App
+  get-window-state <window> [--screenshot] [--timeout <seconds>]
                                print a Window's State: its Element tree as text,
                                and with --screenshot a screenshot saved to a file
                                whose path is printed; a Chromium or Electron
                                Window without a Browser Connection whose web
                                content reads thin is read again for up to 5 s
                                while it builds (once per Window; later reads
-                               of a Window that stayed thin retry once)
+                               of a Window that stayed thin retry once). The
+                               read has 10 s; --timeout up to 60 gives a slow
+                               Electron, Office or cold Chromium tree more,
+                               and the extra time goes to that 5 s wait too
   record-tree <window> <file> record a Window's real tree to a fixture file
   zoom <window> <x>,<y>,<w>,<h>
                                save a full-resolution crop of a region of the
@@ -101,11 +107,13 @@ commands:
 const usageTail = `);
                                @x,y acts on the Element under a point of the
                                latest screenshot
-  batch <window> <action> [arguments] [then <action> [arguments]] ...
+  batch <window> [--timeout <seconds>] <action> [arguments] [then <action> [arguments]] ...
                                run several Actions on one Window in order,
                                stopping at the first failure (which names
                                the failed Action); e.g.
                                winuse batch 101 click name:File then type-text hello then press-key Return
+                               A Batch has 60 s; --timeout before the first
+                               Action gives it up to 300
   scroll <window> <element index | name: | id:> <up|down|left|right> [steps]
                                scroll the list or page holding an Element by
                                steps (1 to 50, default 3)
@@ -204,7 +212,8 @@ const usageTail = `);
                                wait until an element shows, the text appears,
                                the URL matches (* is a wildcard), or the page
                                loads (10 s by default, --timeout <seconds> up
-                               to 25); wait download prints the path of the
+                               to 300; in a batch, the Batch's budget bounds
+                               it); wait download prints the path of the
                                file a click downloaded, on a browser winuse
                                launched or cloned
   eval <window> <expression>  run a JavaScript expression in the Page and
@@ -372,16 +381,24 @@ type recordArgs struct {
 	File   string `json:"file"`
 }
 
+// windowStateUsage is get-window-state's usage line.
+const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--timeout <seconds>]"
+
 // getWindowStateCmd prints the Window State: Codex's depth-first,
 // indented, numbered Element tree — with --screenshot, the screenshot line
-// after it. headed is the global --headed flag.
+// after it. headed is the global --headed flag; --timeout widens the
+// request budget (up to 60 s) and the Chromium settle with it.
 func getWindowStateCmd(args []string, headed bool) int {
-	req, err := windowStateRequest(args, headed)
+	args, timeout, err := takeTimeout("get-window-state", args)
+	var req windowArgs
+	if err == nil {
+		req, err = windowStateRequest(args, headed)
+	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "winuse: %v\nusage: winuse get-window-state <window> [--screenshot]\n", err)
+		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, windowStateUsage)
 		return 2
 	}
-	if err := runWithArgs("get-window-state", req); err != nil {
+	if err := runWithTimeout("get-window-state", req, timeout); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}
@@ -424,9 +441,16 @@ func listAppsCmd(args []string) int {
 // launchAppCmd starts an App by name or executable path and prints the
 // Window it opened (one list-windows-style line). Paths are resolved
 // against the CLI's working directory — the helper cannot see it.
+// --timeout widens the 15 s launch budget (up to 120 s) for a slow App.
 func launchAppCmd(args []string) int {
+	const usage = "usage: winuse launch-app <name|exe path> [--timeout <seconds>]"
+	args, timeout, err := takeTimeout("launch-app", args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, usage)
+		return 2
+	}
 	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "usage: winuse launch-app <name|exe path>")
+		fmt.Fprintln(os.Stderr, usage)
 		return 2
 	}
 	app := args[0]
@@ -435,7 +459,7 @@ func launchAppCmd(args []string) int {
 			app = abs
 		}
 	}
-	if err := runWithArgs("launch-app", protocol.LaunchArgs{App: app}); err != nil {
+	if err := runWithTimeout("launch-app", protocol.LaunchArgs{App: app}, timeout); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}
@@ -467,6 +491,12 @@ func runSimple(cmd string) error {
 // runWithArgs sends one command (with its JSON arguments) to the helper and
 // prints its response Codex-style.
 func runWithArgs(cmd string, args any) error {
+	return runRequest(cmd, args, nil)
+}
+
+// runRequest is runWithArgs with a hook that adjusts the request before
+// it is sent (a caller-set timeout, timeout.go). edit may be nil.
+func runRequest(cmd string, args any, edit func(*protocol.Request)) error {
 	if !win.HasInputDesktop() {
 		return inputDesktopExitError()
 	}
@@ -477,6 +507,9 @@ func runWithArgs(cmd string, args any) error {
 	req, err := Request(cmd, args)
 	if err != nil {
 		return err
+	}
+	if edit != nil {
+		edit(req)
 	}
 	resp, err := client.Call(context.Background(), req)
 	if err != nil {

@@ -75,7 +75,7 @@ func TestParsePageArgsRefusals(t *testing.T) {
 		{"wait", []string{"selector"}, "wait selector needs a value"},
 		{"wait", []string{"idle"}, `not "idle"`},
 		{"wait", []string{"download", "x"}, "wait download takes no value"},
-		{"wait", []string{"text", "x", "--timeout", "60"}, "at most 25"},
+		{"wait", []string{"text", "x", "--timeout", "301"}, "at most 300"},
 		{"wait", []string{"text", "x", "--timeout", "0"}, "above 0"},
 		{"eval", nil, "eval needs an expression"},
 	}

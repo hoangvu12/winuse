@@ -44,10 +44,29 @@ const a11yRetryDelay = 500 * time.Millisecond
 
 // DefaultChromiumSettle is the settle budget for a thin Chromium tree: how
 // long readTree keeps polling for the web content to build. Capture passes
-// it; a caller-set timeout (desktop-parity ticket 14) can pass a wider one
-// through readTree's settle parameter. The request's own deadline always
-// bounds it.
+// it, or the wider one a caller-set timeout (desktop-parity ticket 14) put
+// on the context with WithSettle, through readTree's settle parameter. The
+// request's own deadline always bounds it.
 const DefaultChromiumSettle = 5 * time.Second
+
+// settleKey is the context key of a caller-set settle budget.
+type settleKey struct{}
+
+// WithSettle returns ctx carrying a Chromium settle budget for the reads
+// made under it (get-window-state --timeout widens it). A budget at or
+// under DefaultChromiumSettle leaves the default.
+func WithSettle(ctx context.Context, settle time.Duration) context.Context {
+	return context.WithValue(ctx, settleKey{}, settle)
+}
+
+// SettleOf is the Chromium settle budget of a read under ctx: the one
+// WithSettle set when it is wider, else DefaultChromiumSettle.
+func SettleOf(ctx context.Context) time.Duration {
+	if d, ok := ctx.Value(settleKey{}).(time.Duration); ok && d > DefaultChromiumSettle {
+		return d
+	}
+	return DefaultChromiumSettle
+}
 
 // chromiumSettleEvery is the settle loop's poll interval (the ticket's
 // 250-500 ms): each poll is one tree read.

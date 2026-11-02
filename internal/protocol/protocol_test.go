@@ -331,3 +331,81 @@ func TestHoverArgsJSONShape(t *testing.T) {
 }
 
 func intPtr(v int) *int { return &v }
+
+// TestCallerTimeout covers the caller-set timeouts (desktop-parity ticket
+// 14): get-window-state, launch-app, batch and wait take one, clamped to
+// their caps; every other command, Actions included, ignores it.
+func TestCallerTimeout(t *testing.T) {
+	cases := []struct {
+		cmd    string
+		ms     int
+		want   time.Duration
+		wantOK bool
+	}{
+		{"get-window-state", 30000, 30 * time.Second, true},
+		{"get-window-state", 600000, MaxStateTimeout, true},
+		{"launch-app", 90000, 90 * time.Second, true},
+		{"launch-app", 999000, MaxLaunchTimeout, true},
+		{"batch", 999000, MaxBatchTimeout, true},
+		{"wait", 999000, MaxWaitTimeout + WaitMargin, true},
+		{"get-window-state", 0, 0, false},
+		{"get-window-state", -5, 0, false},
+		{"click", 30000, 0, false},
+		{"type-text", 30000, 0, false},
+		{"list-windows", 30000, 0, false},
+	}
+	for _, c := range cases {
+		got, ok := CallerTimeout(&Request{Cmd: c.cmd, TimeoutMS: c.ms})
+		if got != c.want || ok != c.wantOK {
+			t.Errorf("CallerTimeout(%s, %d ms) = %s, %v; want %s, %v", c.cmd, c.ms, got, ok, c.want, c.wantOK)
+		}
+	}
+	if MaxStateTimeout != 60*time.Second || MaxLaunchTimeout != 120*time.Second || MaxBatchTimeout != 300*time.Second || MaxWaitTimeout != 300*time.Second {
+		t.Errorf("caps drifted: %s %s %s %s", MaxStateTimeout, MaxLaunchTimeout, MaxBatchTimeout, MaxWaitTimeout)
+	}
+}
+
+// TestBudget: the caller-set timeout only widens the command's budget,
+// and an Action's budget never follows it.
+func TestBudget(t *testing.T) {
+	cases := []struct {
+		req  Request
+		want time.Duration
+	}{
+		{Request{Cmd: "get-window-state"}, RequestTimeout},
+		{Request{Cmd: "get-window-state", TimeoutMS: 45000}, 45 * time.Second},
+		{Request{Cmd: "get-window-state", TimeoutMS: 3000}, RequestTimeout},
+		{Request{Cmd: "get-window-state", TimeoutMS: 120000}, MaxStateTimeout},
+		{Request{Cmd: "launch-app"}, LaunchTimeout},
+		{Request{Cmd: "launch-app", TimeoutMS: 5000}, LaunchTimeout},
+		{Request{Cmd: "launch-app", TimeoutMS: 60000}, 60 * time.Second},
+		{Request{Cmd: "batch", TimeoutMS: 200000}, 200 * time.Second},
+		{Request{Cmd: "wait", TimeoutMS: 11000}, BrowserTimeout},
+		{Request{Cmd: "wait", TimeoutMS: 121000}, 121 * time.Second},
+		{Request{Cmd: "click", TimeoutMS: 60000}, RequestTimeout},
+		{Request{Cmd: "navigate", TimeoutMS: 120000}, BrowserTimeout},
+	}
+	for _, c := range cases {
+		if got := Budget(&c.req, RequestTimeout); got != c.want {
+			t.Errorf("Budget(%s, %d ms) = %s, want %s", c.req.Cmd, c.req.TimeoutMS, got, c.want)
+		}
+	}
+	// The default passed in is the server's own (tests shrink it).
+	if got := Budget(&Request{Cmd: "get-window-state"}, time.Second); got != time.Second {
+		t.Errorf("Budget with a 1 s default = %s", got)
+	}
+}
+
+func TestRequestTimeoutJSON(t *testing.T) {
+	b, err := json.Marshal(Request{V: 1, Cmd: "batch", TimeoutMS: 120000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"v":1,"ver":"","cmd":"batch","timeout_ms":120000}`; string(b) != want {
+		t.Fatalf("request JSON:\n got %s\nwant %s", b, want)
+	}
+	b, _ = json.Marshal(Request{V: 1, Cmd: "click"})
+	if strings.Contains(string(b), "timeout") {
+		t.Fatalf("a request without --timeout must not carry one: %s", b)
+	}
+}

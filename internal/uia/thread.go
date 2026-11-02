@@ -357,7 +357,8 @@ func (c *Client) Run(ctx context.Context, job func(w *worker, r *run)) error {
 // Chromium/Electron enable their accessibility tree lazily, at the first
 // UI Automation contact (see retry.go): a Chromium Window whose web content
 // reads thin, and is not read over a Browser Connection, is read again
-// until it settles, within DefaultChromiumSettle, and one that stays thin
+// until it settles, within DefaultChromiumSettle (or the wider budget
+// WithSettle put on ctx, still bounded by its deadline), and one that stays thin
 // carries a note saying so (a Window that already stayed thin once gets one
 // short retry instead, until a read finds it built); any other nearly empty first read is retried
 // once after a short delay, and a tree that stays nearly empty carries a
@@ -410,7 +411,7 @@ func (c *Client) CaptureFrame(ctx context.Context, hwnd uint64, title, app strin
 		at = res.cut
 		return &readResult{tree: res.tree, rootClass: res.rootClass, paged: res.cut >= 0}, nil
 	}
-	tree, err = readTree(ctx, app, budget, DefaultChromiumSettle, c.thin.window(hwnd), read, sleepCtx)
+	tree, err = readTree(ctx, app, budget, SettleOf(ctx), c.thin.window(hwnd), read, sleepCtx)
 	if err != nil {
 		return nil, -1, err
 	}
