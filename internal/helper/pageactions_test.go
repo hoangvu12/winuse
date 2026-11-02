@@ -83,12 +83,14 @@ type pageRig struct {
 	inputs    []string
 	scrolled  int
 	scrolls   [][5]int32
+	textField map[string]any // select-text's textFieldJS answer
+	selection map[string]any // selectTextJS answer override; nil echoes the span
 }
 
 func newPageRig(t *testing.T) *pageRig {
 	t.Helper()
 	r := &pageRig{headlessSpy: newHeadlessSpy(), srv: cdptest.NewServer(), aim: map[string]any{},
-		field: map[string]any{"kind": "text"}, focus: map[string]any{"kind": "editable", "x": 10, "y": 20, "w": 50, "h": 10, "dpr": 1.5}, loader: "L1"}
+		field: map[string]any{"kind": "text"}, textField: map[string]any{"kind": "text", "length": 14, "selectable": true}, focus: map[string]any{"kind": "editable", "x": 10, "y": 20, "w": 50, "h": 10, "dpr": 1.5}, loader: "L1"}
 	t.Cleanup(r.srv.Close)
 	r.bounds = win.Rect{Left: 100, Top: 200, Right: 1100, Bottom: 900} // the document Element
 	r.handlers()
@@ -147,13 +149,31 @@ func (r *pageRig) handlers() {
 	})
 	r.srv.Handle("Runtime.callFunctionOn", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
 		var p struct {
-			Fn string `json:"functionDeclaration"`
+			Fn   string `json:"functionDeclaration"`
+			Args []struct {
+				Value any `json:"value"`
+			} `json:"arguments"`
 		}
 		json.Unmarshal(m.Params, &p)
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		var v any
 		switch {
+		case strings.Contains(p.Fn, "winuse:textfield"):
+			v = r.textField
+		case strings.Contains(p.Fn, "winuse:selecttext"):
+			// The span as sent: start and end, or "all" for an undefined end.
+			start, end := p.Args[0].Value, p.Args[1].Value
+			if end == nil {
+				r.inputs = append(r.inputs, fmt.Sprintf("selecttext %v all", start))
+				end = r.textField["length"]
+			} else {
+				r.inputs = append(r.inputs, fmt.Sprintf("selecttext %v %v", start, end))
+			}
+			v = map[string]any{"start": start, "end": end, "length": r.textField["length"]}
+			if r.selection != nil {
+				v = r.selection
+			}
 		case strings.Contains(p.Fn, "winuse:aim"):
 			st := map[string]any{"state": "ok", "l": 10.0, "t": 20.0, "w": 50.0, "h": 10.0, "x": 35.0, "y": 25.0, "chain": true, "dpr": 1.5, "name": "page name"}
 			for k, x := range r.aim {

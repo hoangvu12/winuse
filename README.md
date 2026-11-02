@@ -19,15 +19,19 @@ irm https://raw.githubusercontent.com/hoangvu12/winuse/main/install.ps1 | iex
 ```
 
 It puts `winuse.exe` in `%LOCALAPPDATA%\winuse`, adds that folder to your
-PATH, and installs the skill for every agent it finds. The skill step uses
-`npx skills` and needs Node.js. Set `WINUSE_NO_SKILL=1` to skip it.
+PATH, and installs the skill. It writes the skill that ships inside
+`winuse.exe` to `~\.agents\skills\winuse` with `winuse skill install`, so
+the skill always matches the binary. With Node.js it also runs `npx skills`
+first, which links the skill into every agent it finds. Set
+`WINUSE_NO_SKILL=1` to skip the skill.
 
 Then ask your agent something like "open Calculator and work out 7 + 2
 using winuse".
 
 To build from source instead, use Go 1.27 or newer:
 `$env:CGO_ENABLED=0; go build -o winuse.exe ./cmd/winuse`, then
-`npx skills add hoangvu12/winuse`.
+`npx skills add hoangvu12/winuse`, or `.\winuse.exe skill install <dir>` to
+write the skill into an agent's skills folder.
 
 ## How it works
 
@@ -70,7 +74,8 @@ any action other than a window action work this way. Pass `--post` to send
 keys and text to a background window instead, which some apps ignore.
 
 Press Esc at any time to stop winuse. It refuses to act on administrator
-windows or a locked screen, and it never presses the Windows key.
+windows or a locked screen, and it never presses the Windows key. It also
+refuses Alt+F4, Alt+Tab and Ctrl+Shift+Escape unless you pass `--force`.
 
 ## Browsers
 
@@ -96,17 +101,21 @@ connect in four ways.
   its remote debugging switch and allow the connection.
 
 Without a connection, winuse reads the page through UI Automation like
-any other window.
+any other window. Chromium builds that tree slowly the first time, so
+winuse waits up to 5 s for it, once per window, in browsers and in
+Electron and WebView2 apps alike. A fully covered window may not build it
+at all, and winuse says so.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `list-windows`, `list-apps` | Lists open windows, and running and recently used apps |
+| `list-windows`, `list-apps` | Lists open windows, and running and recently used apps. `list-windows --details` adds each window's position, size, process id and focused, minimized, maximized or admin state; `--app <name>` lists one app's windows |
 | `launch-app <name>` | Starts an app and prints its window |
 | `get-window-state <window> [--screenshot]` | Prints a window's element tree, with an optional screenshot |
 | `click`, `set-value`, `perform-secondary-action` | Clicks, fills in, expands or toggles an element |
 | `type-text`, `press-key` | Types text or presses keys such as `Control_L+a` |
+| `select-text` | Selects text in a field without keys or the mouse |
 | `scroll` | Scrolls an element by steps or into view, or scrolls at a point |
 | `drag`, `hover`, `zoom` | Drags or hovers at a point or on a page element, or saves a close-up of a screenshot |
 | `restore-window`, `minimize-window`, `move-window`, `resize-window`, `close-window` | Manages a window without bringing it to the front |
@@ -116,8 +125,11 @@ any other window.
 | `dialog`, `upload` | Answers a JavaScript dialog, or gives files to a file input |
 | `tab list`, `tab new`, `tab switch`, `tab close` | Manages a browser window's tabs |
 | `browser status`, `browser ext install`, `browser launch`, `browser clone`, `browser connect` | Connects to a browser and reports how |
+| `status` | Prints the versions, whether the helper runs, the lock state, integrity level, DPI awareness, browser connections and Windows build, without starting anything |
 
 [SKILL.md](skills/winuse/SKILL.md) is the full guide your agent loads.
+`winuse skill` prints the copy built into your binary, so it always
+matches the version you run.
 
 ## More
 

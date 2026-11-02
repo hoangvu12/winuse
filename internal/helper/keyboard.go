@@ -23,7 +23,7 @@ import (
 // commands' argument failures.
 const (
 	typeTextUsageHint = "usage: winuse type-text <window> [--post] <text>"
-	pressKeyUsageHint = "usage: winuse press-key <window> <key> [--post]"
+	pressKeyUsageHint = "usage: winuse press-key <window> <key> [--post] [--force]"
 )
 
 // typeText runs `winuse type-text <window> <text>`: the Window is
@@ -101,7 +101,8 @@ func typeText(s Services) Command {
 // the shared predicate decides the route before anything is sent. With
 // `headed` the probe is skipped and the press is v1's. With `post` the key
 // is posted to the focused control as Posted Keys (Decision 5), refused
-// with modifiers.
+// with modifiers. A Blocked Combo is refused before any of these routes
+// unless `force` (blockedComboError).
 func pressKey(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.PressKeyArgs
@@ -111,6 +112,9 @@ func pressKey(s Services) Command {
 		chord, err := keys.Parse(a.Key)
 		if err != nil {
 			return "", keyError(err)
+		}
+		if e := blockedComboError(chord, a.Force); e != nil {
+			return "", e
 		}
 		if a.Post {
 			// Posted Keys (ADR 0011, Decision 5): WM_KEYDOWN and WM_KEYUP
@@ -152,6 +156,31 @@ func pressKey(s Services) Command {
 			return okOutput, nil
 		})
 	}
+}
+
+// blockedCombos are the Blocked Combos' effects and recovery hints, by
+// keys.Blocked's name.
+var blockedCombos = map[string]struct{ does, hint string }{
+	"Alt+F4": {"closes the foreground window",
+		"close the Window with winuse close-window <window>; pass --force only to send Alt+F4 itself"},
+	"Alt+Tab": {"switches the user's foreground window",
+		"use winuse activate-window <window> to bring a Window forward; pass --force only to send Alt+Tab itself"},
+	"Ctrl+Shift+Escape": {"opens Task Manager",
+		"pass --force only when the user asked for Task Manager"},
+}
+
+// blockedComboError refuses a Blocked Combo (Alt+F4, Alt+Tab,
+// Ctrl+Shift+Escape or a superset, keys.Blocked) unless force, before any
+// route is chosen: Headed, Posted or the Page alike, since on a Page Alt+F4
+// and Ctrl+Shift+Escape reach the browser frame, not the Page. nil when the
+// chord may be sent.
+func blockedComboError(chord keys.Chord, force bool) *Error {
+	name, blocked := keys.Blocked(chord)
+	if !blocked || force {
+		return nil
+	}
+	c := blockedCombos[name]
+	return nothingSent(Fail("press-key refuses "+chord.String()+": "+name+" "+c.does, c.hint))
 }
 
 // keyError maps a key-name parse failure to the user-facing line with its

@@ -31,13 +31,20 @@ different**; `--headed` restores Codex's behaviour for any Action.
 
 | Parameter | Codex | winuse `list-windows` | Status |
 |---|---|---|---|
-| `—` (no parameters) | returns `Window[] {app, id, title?}` of targetable windows | prints `<Window ID>	<App>	<title>` per Window | matched |
+| `—` (no parameters) | returns `Window[] {app, id, title?}` of targetable windows | with no flags, prints `<Window ID>	<App>	<title>` per Window; the opt-in `--details` column and `--app` filter are winuse extensions (see below) | matched |
 
 Behaviour notes (see cross-cutting rows for the differences that live
 here): the window filter is Codex's (visible, not cloaked, not a tool
 window) **plus** owned dialogs — the fix for Codex's untargetable-dialog
 bug. UWP Windows are attributed to the real app process; the App name is
 the executable's FileDescription, falling back to the exe base name.
+
+Without flags the line is exactly Codex's. `--details` adds a column
+before the title (so the title stays last): the visible frame `x,y WxH`
+(the numbers `move-window` and `resize-window` take), `pid N`, and the
+flags `focused`, `minimized`, `maximized` and `admin` when true.
+`--app <name>` keeps one App's Windows, matched as the App-name form of
+`<window>`. Both follow agent-desktop's `list-windows`; Codex has neither.
 
 ### get_window
 
@@ -85,7 +92,12 @@ identifiers"). The 15 s launch budget and Codex's failure message
 Codex's default is screenshot-first (macOS inheritance); the spec flips
 it deliberately — a text-first read is cheaper and enough for ordinary
 tasks, and a note tells the agent when a Window's tree is too sparse to
-trust (canvas apps). Popups and menus drawn over the Window appear in
+trust (canvas apps). A Chromium or Electron Window read through UI
+Automation alone (no Browser Connection) whose web content reads thin is
+read again for up to 5 s while Chromium builds its lazy tree (once per
+Window; a Window that stayed thin gets one short retry on later reads),
+and a tree still thin after that carries a note that names the fully
+covered Window as the likely cause (ADR 0005). Popups and menus drawn over the Window appear in
 the one frame (Codex composites several `zIndex` layers).
 
 ### click
@@ -188,8 +200,9 @@ naming the dialog.
 Codex ships a per-turn `codex-computer-use.exe` driven over JSON-RPC by
 `@oai/sky` inside a JS REPL; winuse is a CLI plus a persistent
 background helper over a named pipe restricted to the user's SID,
-version-checked (a stale helper exits so upgrades never talk to an old
-one), idle-exiting after 5 minutes. The observable contract — one
+version-checked (a stale helper exits so upgrades never act through an
+old one; only the read-only `status` is answered across builds, naming
+both versions), idle-exiting after 5 minutes. The observable contract — one
 request at a time, `ok` or a one-line failure, no state echo — is
 preserved. **intentionally different**.
 
@@ -308,7 +321,11 @@ Codex's keysym names, the alias blob (`Ctrl`, `Alt`, `period`,
 `greater`, `Numpad_Add`, …), chords delivered as all-downs-then-ups,
 scan codes filled (Codex's zero-scancode Flutter bug), shifted names
 mapping to the unshifted key. The Windows key is recognized only to be
-**refused in code** — Codex relies on model guidance. **matched**.
+**refused in code** — Codex relies on model guidance. Beyond Codex,
+`press-key` also refuses Alt+F4, Alt+Tab and Ctrl+Shift+Escape and any
+chord holding one of them, with nothing sent, unless `--force` (per step
+in a Batch) — agent-desktop's blocked combos, its Windows-key ones already
+covered by the refusal above. **matched (extended)**.
 
 ### app identifiers
 
@@ -348,4 +365,13 @@ Batch) that restores Codex's foreground, real-input behaviour for any
 Action, and the Agent Cursor — a presentation-only second cursor that
 glides to the Element of each Headless Action with a short label and
 ripples on the click, click-through, never activated, and hidden from
-winuse's own captures. **extension**.
+winuse's own captures. `select-text` selects a span of a field's text, or
+all of it, with no keys and no foreground (a classic edit control's
+EM_SETSEL, a UI Automation Text pattern, or a Page field through the
+Browser Connection), read back; Codex selects text only with real keys
+or a drag. `list-windows --details` and `--app` add a Window's frame,
+pid and state flags and an App filter to Codex's plain listing. `status`
+prints the winuse and helper versions, the helper's uptime, the desktop's
+lock state, the integrity level, DPI awareness, the Browser Connections
+and the Windows build; it only reads and never starts the helper.
+**extension**.

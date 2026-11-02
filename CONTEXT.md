@@ -27,7 +27,7 @@ The web content of a browser Window's active Tab, read and acted on through the 
 _Avoid_: Document, DOM, site
 
 **Browser Connection**:
-winuse's live link to one running Chromium browser, through the winuse extension or a browser winuse launched or cloned. The user's own Chrome and a Chrome winuse launched are two browsers with two Browser Connections, and a browser Window is always reached through the one of the browser it belongs to. Without one, that Window is read through UI Automation alone.
+winuse's live link to one running Chromium browser, through the winuse extension or a browser winuse launched or cloned. The user's own Chrome and a Chrome winuse launched are two browsers with two Browser Connections, and a browser Window is always reached through the one of the browser it belongs to. Without one, that Window is read through UI Automation alone, and a cold or fully covered Chromium may expose its page there late or not at all: the read waits a few seconds for a thin tree to build, then says it is still thin.
 _Avoid_: CDP session, debug port, endpoint
 
 ### Observation
@@ -47,7 +47,7 @@ _Avoid_: Element ID, ref
 ### Operation
 
 **Action**:
-A single operation the agent performs on a Window: click, set value, secondary action, scroll, drag, hover, press key, type text, or a Window Action.
+A single operation the agent performs on a Window: click, set value, secondary action, scroll, drag, hover, press key, type text, select text, or a Window Action.
 _Avoid_: Command, step, tool call
 
 **Window Action**:
@@ -67,7 +67,7 @@ Several Actions sent in one call and run in order, stopping at the first one tha
 _Avoid_: Script, macro, sequence
 
 **Headless Action**:
-An Action that winuse can deliver reliably without the foreground: no foreground change, no pointer, no real keys, no banner. Every Window Action is always Headless. These are Headless unless the agent asks for Headed: a click on an Element (left button, single), a set value, every Secondary Action except Raise, scrolling an Element, Return or Escape on a classic dialog, and typing into a classic edit box that has the focus. Actions on a Page Element through a Browser Connection are Headless too, whatever the button or click count, and so are keys and typing while the Page has the focus and scrolling at a point of the Page. The Actions on a Tab's Page as a whole (navigate, back, forward, reload, upload, dialog, wait and eval) are always Headless.
+An Action that winuse can deliver reliably without the foreground: no foreground change, no pointer, no real keys, no banner. Every Window Action is always Headless, and so is selecting text in a field. These are Headless unless the agent asks for Headed: a click on an Element (left button, single), a set value, every Secondary Action except Raise, scrolling an Element, Return or Escape on a classic dialog, and typing into a classic edit box that has the focus. Actions on a Page Element through a Browser Connection are Headless too, whatever the button or click count, and so are keys and typing while the Page has the focus and scrolling at a point of the Page. The Actions on a Tab's Page as a whole (navigate, back, forward, reload, upload, dialog, wait and eval) are always Headless.
 _Avoid_: Background action, silent action, pattern action
 
 **Headed Action**:
@@ -77,6 +77,10 @@ _Avoid_: Foreground action, physical action, v1 mode
 **Posted Keys**:
 Keys or text that the agent explicitly asks to post to a Window's focused control without the foreground. Best effort: the app may ignore them, and they cannot carry modifiers. Neither Headless nor Headed.
 _Avoid_: Background keys, silent typing
+
+**Blocked Combo**:
+A key combination press-key refuses, with nothing sent, unless the agent passes `--force`: Alt+F4, Alt+Tab, Ctrl+Shift+Escape, and any chord that holds one of them. The Windows key is refused always, with no override.
+_Avoid_: Dangerous key, forbidden shortcut
 
 **Agent Cursor**:
 The second, presentation-only cursor that shows the user each Headless Action: it travels to the Element, says what is happening in a label and ripples on the click. It never takes the user's pointer, keyboard or foreground and never appears in winuse's own screenshots.

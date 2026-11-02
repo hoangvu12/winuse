@@ -5,5 +5,7 @@
 // stays valid for `npx skills add`, the SKILL.md keeps covering the full
 // command surface as the CLI grows, it never mentions the tool it must not
 // depend on, and the installer's asset names stay in sync with what the
-// release workflow builds.
+// release workflow builds. The binary's embedded copy (the root package's
+// go:embed, printed by `winuse skill`) is checked to equal the shipped
+// file.
 package skill

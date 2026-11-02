@@ -105,6 +105,16 @@ type Request struct {
 	Args json.RawMessage `json:"args,omitempty"` // command arguments, command-specific JSON
 }
 
+// ListWindowsArgs are list-windows's optional arguments (desktop-parity
+// 22): Details adds the details column (visible frame, pid, focused,
+// minimized, maximized, admin); App keeps only that App's Windows,
+// matched as a Window reference matches an App name. Neither is set for
+// Codex's plain list_windows.
+type ListWindowsArgs struct {
+	Details bool   `json:"details,omitempty"`
+	App     string `json:"app,omitempty"`
+}
+
 // GetWindowArgs are get-window's arguments: the Window to re-resolve and
 // print as one list-windows line — Codex's get_window "id"/"app" step
 // (winuse names the Window by Window ID or unambiguous App name).
@@ -284,12 +294,14 @@ type TypeTextArgs struct {
 // Headless (ADR 0011, Decision 4) unless headed; every other key is
 // Headed. With post, the key is posted as Posted Keys instead (WM_KEYDOWN
 // and WM_KEYUP to the focused control, no foreground, no modifiers); post
-// and headed do not combine.
+// and headed do not combine. A Blocked Combo (Alt+F4, Alt+Tab,
+// Ctrl+Shift+Escape and their supersets) is refused unless force.
 type PressKeyArgs struct {
 	Window string `json:"window"`
 	Key    string `json:"key"`
 	Headed bool   `json:"headed,omitempty"` // force v1's activate-and-inject press, even where a Headless route exists
 	Post   bool   `json:"post,omitempty"`   // Posted Keys: post the key to the Window's focused control (ADR 0011, Decision 5)
+	Force  bool   `json:"force,omitempty"`  // send a Blocked Combo anyway (keys.Blocked)
 }
 
 // SetValueArgs are set-value's arguments — Codex's set_value parameters
@@ -318,6 +330,19 @@ type SecondaryActionArgs struct {
 	Headed       bool   `json:"headed,omitempty"` // force v1's activate-first pipeline (ADR 0010); default Headless except Raise
 }
 
+// SelectTextArgs are select-text's arguments (headless-max ticket 10):
+// the Element (an Index or a name:/id: reference) and the span to select,
+// Length UTF-16 code units from Start, or with All the whole text. Always
+// Headless: there is no headed form.
+type SelectTextArgs struct {
+	Window       string `json:"window"`        // Window ID, or an App name when that App has exactly one Window
+	ElementIndex *int   `json:"element_index"` // the Element whose text to select, from that Window's latest Window State
+	Ref          string `json:"ref,omitempty"` // name:<text> or id:<AutomationId>: the Element whose text to select
+	Start        int    `json:"start"`         // the first UTF-16 unit selected
+	Length       int    `json:"length"`        // how many UTF-16 units to select; 0 places the caret at Start
+	All          bool   `json:"all,omitempty"` // select the whole text (Start and Length stay 0)
+}
+
 // BatchArgs are batch's arguments (ticket 11): several Actions on one
 // Window in a single call, run in order, stopping at the first failure.
 type BatchArgs struct {
@@ -340,7 +365,7 @@ type Step struct {
 // extends the list with scroll, drag and hover. The CLI's batch step
 // parser and the helper's step dispatch share this list so the two ends
 // of the wire never disagree about what a Batch can run.
-var BatchStepKinds = append([]string{
+var BatchStepKinds = append(append([]string{
 	"click", "type-text", "press-key", "set-value", "perform-secondary-action", "activate-window",
 	"scroll", "drag", "hover",
 	// Browser merge ticket 07: the tab commands that act (tab-list prints
@@ -349,7 +374,11 @@ var BatchStepKinds = append([]string{
 },
 	// Browser merge ticket 06: the page-only Actions (what navigate, wait
 	// and eval print is dropped in a Batch, which prints only ok).
-	PageCommands...)
+	PageCommands...),
+	// Headless-max ticket 10: select-text, so a Batch can select a word
+	// and type its replacement.
+	"select-text",
+)
 
 // Response is the helper's answer.
 type Response struct {

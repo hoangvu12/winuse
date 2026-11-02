@@ -380,6 +380,20 @@ still the foreground window afterwards. The shared helpers are in
   an empty temp file, types into it while covered, and reads the editor's
   text back with WM_GETTEXT. If Notepad restores sessions, its next start
   may show that temp file's tab with the test text: close it.
+- `TestHeadlessSelectTextInClassicEdit` (`select_text_test.go`): types
+  `hello world` into the covered Classic Dialog's Edit, `select-text`
+  6 5 on it by `id:1001`, then `type-text winuse` replaces the selection
+  (`hello winuse`); `select-text all` and a replacement of the whole
+  text follow, and a span past the end is refused with "nothing was
+  sent". The foreground and the pointer stay put.
+- `TestHeadlessSelectTextInNotepad` **needs the Windows 11 Notepad** and
+  skips like the type-text Notepad test: `select-text` on the `Text
+  editor` Element, then `type-text` replaces the selection, read back with
+  WM_GETTEXT; then `all`.
+- The Page input is covered in `TestBrowserPages`'s page Actions:
+  `select-text` 6 4 on the text field, read back through its own
+  `selectionStart` and `selectionEnd`, then `type-text` replaces it, then
+  `all`. The UI Automation Text pattern route has no e2e target yet.
 - `TestPostedKeysIntoClassicEdit` (`posted_keys_test.go`):
   `type-text --post` and `press-key BackSpace --post` reach the Classic
   Dialog's Edit, the output starts with `ok (posted;`, and
@@ -594,4 +608,27 @@ and the helper, and puts the pin and the foreground back.
 ```
 set WINUSE_E2E=1
 go test -tags e2e -v -timeout 10m -run TestLaunchedBrowserCoveredKeepsItsTree ./test/e2e
+```
+
+## The cold Electron settle test
+
+`electron_settle_test.go` (ticket 18 of `.scratch/headless-max/`) reads
+a covered Electron App cold. An Electron App has no Browser Connection,
+so its Window State comes from UI Automation alone, and get-window-state
+waits up to 5 s for a thin Chromium tree to settle. The test needs the
+prebuilt Electron binary: set `WINUSE_E2E_ELECTRON` to `electron.exe`
+from an Electron release (it skips without it). It starts Electron with
+an isolated profile on `testdata/chromium-fixture.html`, covers the new
+Window with the fixture at once, and reads its Window State once. The
+read must answer within the 10 s request budget, the fixture must keep
+the foreground, and the Window State must show either the page's
+"winuse e2e button" or the thin-page note ("the page's accessibility
+tree is still thin"), not both; the note must come after about 5 s of
+settling. The log says which one happened. It closes Electron, the
+fixture and the helper, and puts the foreground back.
+
+```
+set WINUSE_E2E=1
+set WINUSE_E2E_ELECTRON=C:\path\to\electron\electron.exe
+go test -tags e2e -v -timeout 5m -run TestCoveredElectronReadCold ./test/e2e
 ```

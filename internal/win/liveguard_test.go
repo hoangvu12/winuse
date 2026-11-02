@@ -28,6 +28,7 @@ func TestLiveDesktopEntryPointsRefuseInTests(t *testing.T) {
 		// The keyboard routes (ADR 0011, Decision 4).
 		"PostDialogCommand": PostDialogCommand(0, IDCancel, 0),
 		"ReplaceSelection":  ReplaceSelection(0, "x"),
+		"SetEditSelection":  SetEditSelection(0, 0, 1),
 		// Posted Keys (ADR 0011, Decision 5).
 		"PostKeys": func() error { _, err := PostKeys(0, keys.Chord{{Name: "Return", VK: 0x0D}}); return err }(),
 		"PostText": func() error { _, err := PostText(0, "x"); return err }(),

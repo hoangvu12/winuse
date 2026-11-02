@@ -265,8 +265,36 @@ func TestPostReachesKeyboardRequests(t *testing.T) {
 	}
 }
 
+// TestForceReachesPressKeyRequests pins desktop-parity ticket 05's CLI
+// parsing: --force may stand anywhere after the Window and combines with
+// --post and --headed.
+func TestForceReachesPressKeyRequests(t *testing.T) {
+	cases := []struct {
+		line string
+		want protocol.PressKeyArgs
+	}{
+		{"press-key 101 Alt_L+F4 --force", protocol.PressKeyArgs{Window: "101", Key: "Alt_L+F4", Force: true}},
+		{"press-key 101 --force Alt_L+Tab", protocol.PressKeyArgs{Window: "101", Key: "Alt_L+Tab", Force: true}},
+		{"press-key 101 --force Return --post", protocol.PressKeyArgs{Window: "101", Key: "Return", Post: true, Force: true}},
+		{"--headed press-key 101 ctrl+shift+esc --force", protocol.PressKeyArgs{Window: "101", Key: "ctrl+shift+esc", Headed: true, Force: true}},
+	}
+	for _, tc := range cases {
+		rest, headed := extractHeaded(split(tc.line))
+		req, err := pressKeyRequest(rest[1:], headed)
+		if err != nil {
+			t.Fatalf("%q: %v", tc.line, err)
+		}
+		if req != tc.want {
+			t.Errorf("%q: request = %+v, want %+v", tc.line, req, tc.want)
+		}
+	}
+	if _, err := pressKeyRequest([]string{"101", "--force"}, false); err == nil {
+		t.Error("press-key 101 --force: want the missing-key usage error")
+	}
+}
+
 func TestUsageMentionsPost(t *testing.T) {
-	for _, want := range []string{"type-text <window> [--post] <text>", "press-key <window> <key> [--post]", "posted"} {
+	for _, want := range []string{"type-text <window> [--post] <text>", "press-key <window> <key> [--post] [--force]", "posted", "Alt+F4, Alt+Tab, Ctrl+Shift+Escape"} {
 		if !strings.Contains(Usage, want) {
 			t.Errorf("usage text missing %q", want)
 		}

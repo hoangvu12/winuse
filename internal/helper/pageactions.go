@@ -15,6 +15,7 @@ package helper
 //	perform-secondary-action    today's routes       refused (click it instead)      refused
 //	scroll @x,y in the Page     -                    CDP mouseWheel, Headless        (no --headed form)
 //	type-text, press-key        today's routes       CDP insertText and key events   v1 (--headed skips the probe)
+//	select-text                 selecttext.go        DOM.focus + a selection         (no --headed form)
 //
 // type-text and press-key reach the Page when the Window's latest Window
 // State holds its Page, its Tab is still the active one, and the Page's
@@ -786,6 +787,13 @@ func (s Services) pageStep(kind string, args json.RawMessage, w win.WindowInfo) 
 	case "set-value":
 		var a protocol.SetValueArgs
 		if json.Unmarshal(args, &a) != nil || a.Headed || !elementForm(a.ElementIndex, a.Ref, a.Point) {
+			return false
+		}
+		_, _, _, ok := s.pageRoute(ref, elementTarget{index: a.ElementIndex, ref: a.Ref})
+		return ok
+	case "select-text":
+		var a protocol.SelectTextArgs
+		if json.Unmarshal(args, &a) != nil || !headlessSelectText(a) {
 			return false
 		}
 		_, _, _, ok := s.pageRoute(ref, elementTarget{index: a.ElementIndex, ref: a.Ref})

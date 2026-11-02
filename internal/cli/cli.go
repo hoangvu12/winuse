@@ -30,7 +30,8 @@ global options:
 
 headless (the default; your foreground, pointer and keyboard stay untouched):
   click (left, single), set-value, perform-secondary-action (except Raise)
-  and scroll on an element index, name: or id:; press-key Return or Escape
+  and scroll on an element index, name: or id:; select-text, which has no
+  headed form; press-key Return or Escape
   on a classic dialog; type-text into a focused classic edit control, for
   text with no newline, tab or other control character; screenshots from
   get-window-state --screenshot and zoom (--headed activates the Window
@@ -43,7 +44,13 @@ headless (the default; your foreground, pointer and keyboard stay untouched):
   wait and eval, which have no headed form.
 
 commands:
-  list-windows                list visible Windows: Window ID, App and title
+  list-windows [--details] [--app <name>]
+                               list visible Windows: Window ID, App and title;
+                               --details adds a column before the title with the
+                               visible frame "x,y WxH" (what move-window and
+                               resize-window take), "pid N" and the flags focused,
+                               minimized, maximized and admin; --app lists one
+                               App's Windows (App name or executable name)
   get-window <window>         print one Window's line (Window ID, App and title),
                                resolved by Window ID or an unambiguous App name
   list-apps                   list running and recently used Apps, with their Windows
@@ -51,7 +58,11 @@ commands:
   get-window-state <window> [--screenshot]
                                print a Window's State: its Element tree as text,
                                and with --screenshot a screenshot saved to a file
-                               whose path is printed
+                               whose path is printed; a Chromium or Electron
+                               Window without a Browser Connection whose web
+                               content reads thin is read again for up to 5 s
+                               while it builds (once per Window; later reads
+                               of a Window that stayed thin retry once)
   record-tree <window> <file> record a Window's real tree to a fixture file
   zoom <window> <x>,<y>,<w>,<h>
                                save a full-resolution crop of a region of the
@@ -69,7 +80,7 @@ commands:
                                --post, right after the Window, posts the text
                                to the focused control without the foreground
                                instead: best effort, as for press-key
-  press-key <window> <key> [--post]
+  press-key <window> <key> [--post] [--force]
                                press a key or key combination by Codex's key
                                names, e.g. Return, Tab, Control_L+a, Numpad_0
                                (Return or Escape on a classic dialog presses
@@ -78,7 +89,11 @@ commands:
                                without the foreground instead: best effort,
                                no modifiers, and the app may ignore it (the
                                output says posted; read the Window State to
-                               check). --post and --headed do not combine
+                               check). --post and --headed do not combine.
+                               Alt+F4, Alt+Tab, Ctrl+Shift+Escape and any
+                               chord holding one of them are refused with
+                               nothing sent unless --force (also per batch
+                               step); the Windows key is never sent
   set-value <window> <element index | name: | id: | @x,y> <value>
                                set an Element's value directly (a settable
                                edit, a numeric range, on|off for a check
@@ -106,6 +121,11 @@ const usageTail = `);
                                scroll the Window at a point of its latest
                                screenshot: positive dy scrolls down, positive
                                dx right; one wheel notch is 120
+  select-text <window> <element index | name: | id:> <start> <length> | all
+                               select text in a field without keys or the
+                               mouse: length characters (UTF-16 units) from
+                               start, counting from 0, or all of it; a
+                               type-text afterwards replaces the selection
   drag <window> @x,y @x,y     drag the pointer from one point to another,
                                both in the Window's latest screenshot's pixels;
                                drag <window> <element> <element | @x,y> drags
@@ -196,6 +216,17 @@ const usageTail = `);
   eval <window> <expression>  run a JavaScript expression in the Page and
                                print its value (JSON for objects, cut at 4000
                                characters)
+  skill                       print the agent skill (SKILL.md) this binary
+                               was built with; read it again after an upgrade
+  skill install <dir>         write that SKILL.md to <dir>\winuse\SKILL.md, for
+                               a skills folder such as ~\.agents\skills
+  status                      print one line each: the winuse and helper
+                               versions and the helper's uptime, whether the
+                               desktop is locked, the integrity level, DPI
+                               awareness, the Browser Connections the helper
+                               holds and the Windows build. Read-only: it
+                               never starts the helper (it says "not
+                               running") and never connects a browser
   version                     print the winuse version
 
 a <window> is a Window ID, or an App name when that App has exactly one Window;
@@ -239,7 +270,7 @@ func secondaryActionsPhrase() string {
 // Main runs the CLI for args (without the program name) and returns the exit
 // code: 0 success, 1 command failure, 2 usage error. The first command
 // invocation starts the background helper automatically; later ones reuse
-// it.
+// it. status never starts it (status.go).
 //
 // The global --headed flag (headed.go, ADR 0010) is taken out first,
 // before the command or anywhere after it outside literal text, and
@@ -283,6 +314,8 @@ func Main(args []string) int {
 		return batchCmd(args[1:], headed)
 	case "scroll":
 		return scrollCmd(args[1:], headed)
+	case "select-text":
+		return selectTextCmd(args[1:])
 	case "drag":
 		return dragCmd(args[1:])
 	case "hover":
@@ -301,24 +334,70 @@ func Main(args []string) int {
 		return tabCmd(args[1:])
 	case "navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval":
 		return pageCmd(args[0], args[1:]) // page.go, browser merge ticket 06
+	case "skill":
+		return skillCmd(args[1:])
+	case "status":
+		return statusCmd(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "winuse: unknown command %q\n\n%s", args[0], Usage)
 		return 2
 	}
 }
 
+const listWindowsUsage = "usage: winuse list-windows [--details] [--app <name>]"
+
 // listWindowsCmd prints one line per visible Window:
-// "<Window ID>\t<App>\t<title>".
+// "<Window ID>\t<App>\t<title>". --details adds the details column before
+// the title; --app keeps one App's Windows (desktop-parity 22). Without
+// flags the request carries no arguments, Codex's list_windows.
 func listWindowsCmd(args []string) int {
-	if len(args) > 0 {
-		fmt.Fprintln(os.Stderr, "winuse: list-windows takes no arguments")
+	a, err := parseListWindowsArgs(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, listWindowsUsage)
 		return 2
 	}
-	if err := runSimple("list-windows"); err != nil {
+	if a == (protocol.ListWindowsArgs{}) {
+		err = runSimple("list-windows")
+	} else {
+		err = runWithArgs("list-windows", a)
+	}
+	if err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}
 	return 0
+}
+
+// parseListWindowsArgs parses list-windows's flags: --details, and
+// --app <name> or --app=<name>.
+func parseListWindowsArgs(args []string) (protocol.ListWindowsArgs, error) {
+	var a protocol.ListWindowsArgs
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--details":
+			a.Details = true
+		case arg == "--app" || strings.HasPrefix(arg, "--app="):
+			if a.App != "" {
+				return protocol.ListWindowsArgs{}, errors.New("--app is given twice")
+			}
+			name, ok := strings.CutPrefix(arg, "--app=")
+			if !ok {
+				if i+1 >= len(args) {
+					return protocol.ListWindowsArgs{}, errors.New("--app takes an App name")
+				}
+				i++
+				name = args[i]
+			}
+			if strings.TrimSpace(name) == "" {
+				return protocol.ListWindowsArgs{}, errors.New("--app takes an App name")
+			}
+			a.App = name
+		default:
+			return protocol.ListWindowsArgs{}, fmt.Errorf("list-windows: unexpected argument %q", arg)
+		}
+	}
+	return a, nil
 }
 
 // getWindowCmd implements `winuse get-window <window>`: print the one

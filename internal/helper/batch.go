@@ -35,6 +35,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hoangvu12/winuse/internal/keys"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/win"
 )
@@ -81,8 +82,9 @@ func batch(commands map[string]Command, s Services) Command {
 		// (key names, secondary actions, element availability) still runs
 		// at its turn: it may depend on the live Window, and the failure
 		// then names its step. A posted step that is headed, by its own
-		// flag or the Batch's, is refused here too (postFlagsError), so
-		// the steps before it never act.
+		// flag or the Batch's, is refused here too (postFlagsError), and so
+		// is a press-key step with a Blocked Combo and no `force` of its own
+		// (blockedStep), so the steps before it never act.
 		type prepared struct {
 			kind string
 			cmd  Command
@@ -110,6 +112,9 @@ func batch(commands map[string]Command, s Services) Command {
 			}
 			if postsHeaded(injected) {
 				e := postFlagsError(st.Kind)
+				return "", Fail(fmt.Sprintf("batch: Action %d (%s): %s", i+1, st.Kind, e.Msg), e.Hint)
+			}
+			if e := blockedStep(st.Kind, injected); e != nil {
 				return "", Fail(fmt.Sprintf("batch: Action %d (%s): %s", i+1, st.Kind, e.Msg), e.Hint)
 			}
 			steps = append(steps, prepared{kind: st.Kind, cmd: cmd, args: injected})
@@ -230,6 +235,24 @@ func postsHeaded(raw json.RawMessage) bool {
 		Headed bool `json:"headed"`
 	}
 	return json.Unmarshal(raw, &f) == nil && f.Post && f.Headed
+}
+
+// blockedStep is blockedComboError for one prepared step: a press-key step
+// whose key parses to a Blocked Combo without the step's `force`. Other
+// steps, and keys that do not parse (refused at their turn), pass.
+func blockedStep(kind string, raw json.RawMessage) *Error {
+	if kind != "press-key" {
+		return nil
+	}
+	var a protocol.PressKeyArgs
+	if json.Unmarshal(raw, &a) != nil {
+		return nil
+	}
+	chord, err := keys.Parse(a.Key)
+	if err != nil {
+		return nil
+	}
+	return blockedComboError(chord, a.Force)
 }
 
 // withHeaded sets `headed: true` on one step's raw arguments (a Batch sent
