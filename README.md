@@ -106,7 +106,7 @@ any other window.
 
 | Command | What it does |
 |---|---|
-| `list-windows`, `list-apps` | Lists open windows, and running and recently used apps |
+| `list-windows`, `list-apps` | Lists open windows, and running and recently used apps. `list-windows --details` adds each window's position, size, process id and focused, minimized, maximized or admin state; `--app <name>` lists one app's windows |
 | `launch-app <name>` | Starts an app and prints its window |
 | `get-window-state <window> [--screenshot]` | Prints a window's element tree, with an optional screenshot |
 | `click`, `set-value`, `perform-secondary-action` | Clicks, fills in, expands or toggles an element |

@@ -105,6 +105,16 @@ type Request struct {
 	Args json.RawMessage `json:"args,omitempty"` // command arguments, command-specific JSON
 }
 
+// ListWindowsArgs are list-windows's optional arguments (desktop-parity
+// 22): Details adds the details column (visible frame, pid, focused,
+// minimized, maximized, admin); App keeps only that App's Windows,
+// matched as a Window reference matches an App name. Neither is set for
+// Codex's plain list_windows.
+type ListWindowsArgs struct {
+	Details bool   `json:"details,omitempty"`
+	App     string `json:"app,omitempty"`
+}
+
 // GetWindowArgs are get-window's arguments: the Window to re-resolve and
 // print as one list-windows line — Codex's get_window "id"/"app" step
 // (winuse names the Window by Window ID or unambiguous App name).

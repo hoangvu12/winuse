@@ -2,6 +2,7 @@ package win
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -135,6 +136,33 @@ func TestAppExeName(t *testing.T) {
 	for _, c := range cases {
 		if got := AppExeName(c.w); got != c.want {
 			t.Errorf("AppExeName(%+v) = %q, want %q", c.w, got, c.want)
+		}
+	}
+}
+
+func TestWindowsOfApp(t *testing.T) {
+	ws := []WindowInfo{
+		{ID: 1, App: "Notepad", ExePath: `C:\Windows\notepad.exe`},
+		{ID: 2, App: "Google Chrome", ExePath: `C:\Chrome\chrome.exe`},
+		{ID: 3, App: "Notepad", ExePath: `C:\Windows\notepad.exe`, Title: "Save As"},
+	}
+	ids := func(ws []WindowInfo) []uint64 {
+		var out []uint64
+		for _, w := range ws {
+			out = append(out, w.ID)
+		}
+		return out
+	}
+	for ref, want := range map[string][]uint64{
+		"notepad":       {1, 3},
+		"NOTEPAD.EXE":   {1, 3},
+		"google chrome": {2},
+		" chrome ":      {2},
+		"chr":           nil,
+		"Save As":       nil,
+	} {
+		if got := ids(WindowsOfApp(ws, ref)); fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("WindowsOfApp(%q) = %v, want %v", ref, got, want)
 		}
 	}
 }

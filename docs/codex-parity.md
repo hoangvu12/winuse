@@ -31,13 +31,20 @@ different**; `--headed` restores Codex's behaviour for any Action.
 
 | Parameter | Codex | winuse `list-windows` | Status |
 |---|---|---|---|
-| `—` (no parameters) | returns `Window[] {app, id, title?}` of targetable windows | prints `<Window ID>	<App>	<title>` per Window | matched |
+| `—` (no parameters) | returns `Window[] {app, id, title?}` of targetable windows | with no flags, prints `<Window ID>	<App>	<title>` per Window; the opt-in `--details` column and `--app` filter are winuse extensions (see below) | matched |
 
 Behaviour notes (see cross-cutting rows for the differences that live
 here): the window filter is Codex's (visible, not cloaked, not a tool
 window) **plus** owned dialogs — the fix for Codex's untargetable-dialog
 bug. UWP Windows are attributed to the real app process; the App name is
 the executable's FileDescription, falling back to the exe base name.
+
+Without flags the line is exactly Codex's. `--details` adds a column
+before the title (so the title stays last): the visible frame `x,y WxH`
+(the numbers `move-window` and `resize-window` take), `pid N`, and the
+flags `focused`, `minimized`, `maximized` and `admin` when true.
+`--app <name>` keeps one App's Windows, matched as the App-name form of
+`<window>`. Both follow agent-desktop's `list-windows`; Codex has neither.
 
 ### get_window
 
@@ -352,4 +359,5 @@ winuse's own captures. `select-text` selects a span of a field's text, or
 all of it, with no keys and no foreground (a classic edit control's
 EM_SETSEL, a UI Automation Text pattern, or a Page field through the
 Browser Connection), read back; Codex selects text only with real keys
-or a drag. **extension**.
+or a drag. `list-windows --details` and `--app` add a Window's frame,
+pid and state flags and an App filter to Codex's plain listing. **extension**.

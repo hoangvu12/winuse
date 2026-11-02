@@ -44,7 +44,13 @@ headless (the default; your foreground, pointer and keyboard stay untouched):
   wait and eval, which have no headed form.
 
 commands:
-  list-windows                list visible Windows: Window ID, App and title
+  list-windows [--details] [--app <name>]
+                               list visible Windows: Window ID, App and title;
+                               --details adds a column before the title with the
+                               visible frame "x,y WxH" (what move-window and
+                               resize-window take), "pid N" and the flags focused,
+                               minimized, maximized and admin; --app lists one
+                               App's Windows (App name or executable name)
   get-window <window>         print one Window's line (Window ID, App and title),
                                resolved by Window ID or an unambiguous App name
   list-apps                   list running and recently used Apps, with their Windows
@@ -321,18 +327,60 @@ func Main(args []string) int {
 	}
 }
 
+const listWindowsUsage = "usage: winuse list-windows [--details] [--app <name>]"
+
 // listWindowsCmd prints one line per visible Window:
-// "<Window ID>\t<App>\t<title>".
+// "<Window ID>\t<App>\t<title>". --details adds the details column before
+// the title; --app keeps one App's Windows (desktop-parity 22). Without
+// flags the request carries no arguments, Codex's list_windows.
 func listWindowsCmd(args []string) int {
-	if len(args) > 0 {
-		fmt.Fprintln(os.Stderr, "winuse: list-windows takes no arguments")
+	a, err := parseListWindowsArgs(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, listWindowsUsage)
 		return 2
 	}
-	if err := runSimple("list-windows"); err != nil {
+	if a == (protocol.ListWindowsArgs{}) {
+		err = runSimple("list-windows")
+	} else {
+		err = runWithArgs("list-windows", a)
+	}
+	if err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}
 	return 0
+}
+
+// parseListWindowsArgs parses list-windows's flags: --details, and
+// --app <name> or --app=<name>.
+func parseListWindowsArgs(args []string) (protocol.ListWindowsArgs, error) {
+	var a protocol.ListWindowsArgs
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--details":
+			a.Details = true
+		case arg == "--app" || strings.HasPrefix(arg, "--app="):
+			if a.App != "" {
+				return protocol.ListWindowsArgs{}, errors.New("--app is given twice")
+			}
+			name, ok := strings.CutPrefix(arg, "--app=")
+			if !ok {
+				if i+1 >= len(args) {
+					return protocol.ListWindowsArgs{}, errors.New("--app takes an App name")
+				}
+				i++
+				name = args[i]
+			}
+			if strings.TrimSpace(name) == "" {
+				return protocol.ListWindowsArgs{}, errors.New("--app takes an App name")
+			}
+			a.App = name
+		default:
+			return protocol.ListWindowsArgs{}, fmt.Errorf("list-windows: unexpected argument %q", arg)
+		}
+	}
+	return a, nil
 }
 
 // getWindowCmd implements `winuse get-window <window>`: print the one

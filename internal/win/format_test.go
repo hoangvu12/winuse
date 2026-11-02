@@ -59,3 +59,31 @@ func TestFormatWindowsIsListableLine(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatWindowsDetailed(t *testing.T) {
+	ws := []WindowInfo{
+		{ID: 131072, App: "Notepad", Title: "Untitled - Notepad", PID: 4312,
+			Bounds: Rect{Left: 100, Top: 50, Right: 1124, Bottom: 818}},
+		{ID: 197504, App: "Notepad", Title: "title with\ttab", PID: 4312, Minimized: true,
+			Bounds: Rect{Left: -32000, Top: -32000, Right: -31840, Bottom: -31972}},
+		{ID: 262256, App: "", Title: "", PID: 77,
+			Bounds: Rect{Left: -1928, Top: -8, Right: 8, Bottom: 1048}},
+	}
+	d := []WindowDetails{{Focused: true}, {Admin: true}, {Focused: true, Maximized: true, Admin: true}}
+	want := "131072\tNotepad\t100,50 1024x768 pid 4312 focused\tUntitled - Notepad\n" +
+		"197504\tNotepad\t-32000,-32000 160x28 pid 4312 minimized admin\ttitle with\ttab\n" +
+		"262256\t\t-1928,-8 1936x1056 pid 77 focused maximized admin\t\n"
+	got := FormatWindowsDetailed(ws, d)
+	if got != want {
+		t.Fatalf("FormatWindowsDetailed:\n got %q\nwant %q", got, want)
+	}
+	// The title stays last: split on \t with limit 4.
+	line := strings.Split(got, "\n")[1]
+	if parts := strings.SplitN(line, "\t", 4); parts[3] != "title with\ttab" {
+		t.Errorf("parse: %q", parts)
+	}
+	// Missing details read as all false.
+	if got := FormatWindowsDetailed(ws[:1], nil); got != "131072\tNotepad\t100,50 1024x768 pid 4312\tUntitled - Notepad\n" {
+		t.Errorf("no details: %q", got)
+	}
+}
