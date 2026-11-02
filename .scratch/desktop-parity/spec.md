@@ -50,7 +50,7 @@ Add agent-desktop's missing features as winuse extensions, and keep winuse's Cod
 | 20 | Batch improvements | P3 | S-M | needs-triage |
 | 21 | Agent Cursor polish | P3 | S | ready-for-agent |
 | 22 | list-windows details and filter | P2 | S | done |
-| 23 | type-text into an Element, and pacing | P2 | S-M | ready-for-agent |
+| 23 | type-text into an Element, and pacing | P2 | S-M | ready-for-agent (`--into` done; Text-pattern leg moved to headless-max 13; left: `--interval-ms`) |
 | 24 | Batch across several Windows | P3 | M | needs-triage |
 
 24 tickets: 7 P1, 12 P2, 5 P3. Tickets 22-24 were added after a cross-check of the research's "partial" rows (rows 4, 23 and 60) against the tickets. The research's ticket 15 (`launch-app` options) moved into `../headless-max/issues/01-launch-without-foreground.md`, which changes the same code.

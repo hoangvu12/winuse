@@ -9,19 +9,19 @@ Routes for `--into`, most headless first:
 
 - Page Element: CDP focus (`DOM.focus`), then `Input.insertText`. Headless.
 - Classic edit control (the Element has a NativeWindowHandle of class Edit/RichEdit): EM_SETSEL to the end (or keep the caret), then the existing EM_REPLACESEL route. Headless, no focus change.
-- Text-pattern field: the caret splice of `../../headless-max/issues/13-caret-aware-typing.md`, aimed at this Element. Headless.
+- Text-pattern field: moved to `../../headless-max/issues/13-caret-aware-typing.md` (2026-11-03, see Comments).
 - Otherwise Headed: activate, click the Element, then type. Without `--headed`, refuse with "nothing was sent" and the hint.
 
 `--interval-ms` does not apply to the Headless routes (they insert in one call); the output says so if both are given.
 
-**Blocked by:** none (the Text-pattern leg needs headless-max 13)
+**Blocked by:** none
 
-**Status:** ready-for-agent (the `--into` legs for Page Elements and classic edit controls landed 2026-11-03, see Comments; left: `--interval-ms` and the Text-pattern leg)
+**Status:** ready-for-agent (the `--into` legs for Page Elements and classic edit controls landed 2026-11-03; the Text-pattern leg moved to headless-max 13; left: `--interval-ms`)
 
 - [x] `--into` in CLI, protocol, Batch
 - [ ] `--interval-ms` in CLI, protocol, Batch
 - [x] Routing by Element origin and kind (Page, classic edit, Headed/refusal)
-- [ ] Routing: the Text-pattern leg (blocked by headless-max 13)
+- [x] ~~Routing: the Text-pattern leg~~ moved to headless-max 13
 - [x] Offline tests: each route, the refusal
 - [ ] Offline tests: the interval note
 - [x] Opt-in e2e: fixture edit box by ID, covered (`TestHeadlessTypeTextIntoElement`)
@@ -64,3 +64,11 @@ has a dated amendment to Decision 4.
 - **Skipped:** `--interval-ms` (not trivial: it touches the Headed and
   Posted typing loops) and the Text-pattern leg (needs headless-max 13).
   Both stay on this ticket.
+
+### 2026-11-03: Text-pattern leg moved to headless-max 13
+
+The de-duplication pass moved the Text-pattern `--into` leg to
+`../../headless-max/issues/13-caret-aware-typing.md`. It was the same splice
+as that ticket, aimed at a named Element, so it waits for the same triage
+decision. This ticket now covers only `--interval-ms`, which has no conflict
+and stays ready-for-agent.

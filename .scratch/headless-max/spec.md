@@ -45,15 +45,15 @@ Close every gap that has a route, and say plainly where none exists.
 | 10 | select-text | S | done |
 | 11 | Point forms resolve to an Element in the target Window | M | needs-triage |
 | 12 | Posted Clicks (opt-in) | M | needs-triage |
-| 13 | Caret-aware typing into Text-pattern fields | M | needs-triage |
+| 13 | Caret-aware typing into Text-pattern fields (and the `type-text --into` Text-pattern leg, from desktop-parity 23) | M | needs-triage |
 | 14 | Headless Actions on minimized Windows | S | needs-triage |
 | 15 | Electron and WebView2 Browser Connections at launch | L | needs-triage |
 | 16 | Spike: MXC session container | M | needs-triage |
 | 17 | ADR 0013, CONTEXT.md, skill and the impossible list | S | needs-triage |
 | 18 | Longer settle for a cold Chromium UIA tree | S | done |
-| 19 | Headless typing into a covered Windows 11 Notepad | S-M | needs-triage |
+| 19 | Headless typing into a covered Windows 11 Notepad | S-M | done |
 
-18 tickets: 10 S, 7 M (one spike), 1 L.
+19 tickets: 10 S, 1 S-M, 7 M (one spike), 1 L. Done: 02, 04, 10, 18, 19.
 
 ## Impossible headless (stays a refusal with a `--headed` hint)
 
