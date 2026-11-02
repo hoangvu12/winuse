@@ -41,7 +41,7 @@ Close every gap that has a route, and say plainly where none exists.
 | 06 | Accelerator lookup route for press-key | S | ready-for-agent (low priority) |
 | 07 | Chords through attached key state (opt-in) | M | ready-for-agent (classic Apps after the laptop probe) |
 | 08 | invoke-menu for classic menu bars | M | ready-for-agent |
-| 09 | ContextMenu Secondary Action | M | ready-for-agent (laptop probe first) |
+| 09 | ContextMenu Secondary Action | M | ready-for-agent |
 | 10 | select-text | S | done |
 | 11 | Point forms resolve to an Element in the target Window | M | ready-for-agent |
 | 12 | Posted Clicks (opt-in) | M | ready-for-agent |

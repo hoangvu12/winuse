@@ -17,7 +17,7 @@ Then:
 
 **Blocked by:** none
 
-**Status:** ready-for-agent (laptop probe first)
+**Status:** ready-for-agent (routes measured; see Comments)
 
 - [ ] Probe: cross-process WM_CONTEXTMENU, item Invoke on `#32768`, ShowContextMenu on Chrome and a WinUI app
 - [ ] Route selection and readback
@@ -37,3 +37,22 @@ Then:
 ### 2026-11-03: triage decision (user)
 
 Build it once the probe has measured the routes. It is also the preferred route for right-clicks on an Element (ticket 12's posted right-click is the fallback). Probe: cross-process WM_CONTEXTMENU on a classic Edit, ShowContextMenu on Chrome and on a WPF or WinUI window the probe builds, and item choice (UIA Invoke on `#32768`, MN_GETHMENU). the laptop probe chat (358cd6b7) runs it; the user is never at the laptop during probes.
+
+### 2026-11-03: routes measured (`../headless-gaps/probes-round4.md` section 2)
+
+Routes per framework:
+
+| Framework | Open the menu | Pick an item | Close |
+|---|---|---|---|
+| Classic Win32 | posted WM_CONTEXTMENU(control, -1); readback: a new `#32768` of the target pid | read the items through MN_GETHMENU (names and ids), then **post the item's mnemonic key to the `#32768`**; WM_COMMAND to the owner only when the menu is not TPM_RETURNCMD (verify by the menu closing and the effect) | WM_CANCELMODE to the owner |
+| Chromium (frame and page Elements) | UIA ShowContextMenu on the Element (not the top-level or RWHV); readback: a new Chrome_WidgetWin_1 popup of the same pid | UIA Invoke on the popup's MenuItem (foreground unchanged) | WM_CANCELMODE to the top-level |
+| WinUI 3 | UIA ShowContextMenu; readback: new `PopupHost` windows | not yet measured | WM_CANCELMODE does not close it; use Escape through Posted Keys or UIA, not yet measured |
+| WPF | no Headless route (ShowContextMenu and WM_CONTEXTMENU both open nothing in an inactive window) | | |
+
+Rules:
+
+- **Never UIA Invoke an item of a classic `#32768` menu**: it took the foreground (measured).
+- **Never SendMessage WM_CONTEXTMENU**: TrackPopupMenu is modal and would block the helper.
+- WPF and anything with no readback refuse with "nothing was sent" and the `--headed` hint.
+- Choosing an item is part of this ticket: `perform-secondary-action <window> <element> ContextMenu` reports the menu's Window ID, and the item is clicked by its index in the menu's Window State. The helper routes that click by the menu's class (mnemonic for `#32768`, Invoke for Chromium).
+- The laptop probe for this ticket is done.
