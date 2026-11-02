@@ -120,8 +120,24 @@ func listApps(store *apps.StoreSource) Command {
 // the generic request timeout.
 const launchPollBudget = protocol.LaunchTimeout - 500*time.Millisecond
 
+// launchPoll is the poll budget of a launch under ctx: launchPollBudget's
+// margin under the request's deadline, which a caller-set --timeout
+// widens (desktop-parity ticket 14). Without a deadline it is
+// launchPollBudget.
+func launchPoll(ctx context.Context) time.Duration {
+	dl, ok := ctx.Deadline()
+	if !ok {
+		return launchPollBudget
+	}
+	if d := time.Until(dl) - (protocol.LaunchTimeout - launchPollBudget); d > launchPollBudget {
+		return d
+	}
+	return launchPollBudget
+}
+
 // launchApp starts an App and reports the Window it opened within the
-// launch timeout (15 s): one list-windows-style line. Name resolution
+// launch timeout (15 s, or the caller's --timeout up to 120 s): one
+// list-windows-style line. Name resolution
 // matches running, recently used, installed and packaged Apps; explicit
 // identifiers (paths, AUMIDs) skip the lookup.
 //
@@ -182,7 +198,7 @@ func launchApp(store *apps.StoreSource, esc EscWatch) Command {
 		if err != nil {
 			return "", Fail(fmt.Sprintf("failed to launch app %s: %v", a.App, err), "")
 		}
-		window, err := apps.WaitForWindow(ctx, spec, pid, before, fgBefore, launchPollBudget,
+		window, err := apps.WaitForWindow(ctx, spec, pid, before, fgBefore, launchPoll(ctx),
 			func() ([]win.WindowInfo, error) {
 				all, err := win.Collect()
 				if err != nil {

@@ -56,7 +56,8 @@ type DialogArgs struct {
 
 // WaitArgs are wait's arguments: what to wait for (selector, text, url,
 // load or download), its value, and a timeout in milliseconds (0: the
-// default; capped by the request budget).
+// default; capped by the request budget, which the CLI widens to the
+// timeout plus WaitMargin through Request.TimeoutMS).
 type WaitArgs struct {
 	Window    string `json:"window"`
 	For       string `json:"for"`

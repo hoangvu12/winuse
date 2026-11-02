@@ -16,6 +16,7 @@ import (
 
 	"github.com/hoangvu12/winuse/internal/browser"
 	"github.com/hoangvu12/winuse/internal/keys"
+	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/shot"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/wgc"
@@ -536,8 +537,9 @@ type windowRef struct {
 func getWindowState(s Services, ctx context.Context, args json.RawMessage) (string, *Error) {
 	var a windowRef
 	if err := parseArgs(args, &a); err != nil {
-		return "", Fail("get-window-state: "+err.Error(), "run winuse get-window-state <window> [--screenshot]")
+		return "", Fail("get-window-state: "+err.Error(), "run winuse get-window-state <window> [--screenshot] [--timeout <seconds>]")
 	}
+	ctx = uia.WithSettle(ctx, stateSettle(ctx))
 	w, rerr := resolveWindow(s, a.Window)
 	if rerr != nil {
 		return "", rerr
@@ -555,6 +557,23 @@ func getWindowState(s Services, ctx context.Context, args json.RawMessage) (stri
 		return "", terr
 	}
 	return wstate.Render(tree), nil
+}
+
+// stateSettle is the Chromium settle budget of a get-window-state under
+// ctx (desktop-parity ticket 14): uia.DefaultChromiumSettle, widened by
+// whatever a caller-set --timeout adds to the default request budget, so
+// a cold Chromium tree gets the extra time. The request's deadline still
+// bounds the settle (uia's settlePolls).
+func stateSettle(ctx context.Context) time.Duration {
+	dl, ok := ctx.Deadline()
+	if !ok {
+		return uia.DefaultChromiumSettle
+	}
+	extra := time.Until(dl) - protocol.RequestTimeout
+	if extra <= 0 {
+		return uia.DefaultChromiumSettle
+	}
+	return uia.DefaultChromiumSettle + extra
 }
 
 // recordArgs is record-tree's argument shape.

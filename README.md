@@ -111,15 +111,15 @@ at all, and winuse says so.
 | Command | What it does |
 |---|---|
 | `list-windows`, `list-apps` | Lists open windows, and running and recently used apps. `list-windows --details` adds each window's position, size, process id and focused, minimized, maximized or admin state; `--app <name>` lists one app's windows |
-| `launch-app <name>` | Starts an app and prints its window |
-| `get-window-state <window> [--screenshot]` | Prints a window's element tree, with an optional screenshot |
+| `launch-app <name> [--timeout <s>]` | Starts an app and prints its window |
+| `get-window-state <window> [--screenshot] [--timeout <s>]` | Prints a window's element tree, with an optional screenshot; `--timeout` gives a slow app's tree more time |
 | `click`, `set-value`, `perform-secondary-action` | Clicks, fills in, expands or toggles an element |
 | `type-text`, `press-key` | Types text or presses keys such as `Control_L+a` |
 | `select-text` | Selects text in a field without keys or the mouse |
 | `scroll` | Scrolls an element by steps or into view, or scrolls at a point |
 | `drag`, `hover`, `zoom` | Drags or hovers at a point or on a page element, or saves a close-up of a screenshot |
 | `restore-window`, `minimize-window`, `move-window`, `resize-window`, `close-window` | Manages a window without bringing it to the front |
-| `batch <window> ... then ...` | Runs several actions in one call |
+| `batch <window> [--timeout <s>] ... then ...` | Runs several actions in one call |
 | `navigate`, `back`, `forward`, `reload` | Opens a URL or moves through a tab's history |
 | `wait`, `eval` | Waits for an element, text, URL, load or download, or runs JavaScript in the page |
 | `dialog`, `upload` | Answers a JavaScript dialog, or gives files to a file input |

@@ -214,7 +214,14 @@ timed out: <method>`. **matched**. A Batch gets 60 s — an
 **intentionally different** bound recorded in decisions.md: one request
 runs many Actions in order (Codex has no batch tool, so its 10 s rule
 has no batch case), and each Action inside still behaves like a
-standalone one within the shared contract.
+standalone one within the shared contract. **extension** (desktop-parity
+ticket 14): `--timeout <seconds>` on `get-window-state` (up to 60 s, and
+the Chromium settle widens with it), `launch-app` (120 s), `batch` (300 s)
+and `wait` (300 s) widens that command's budget for slow Electron, Office
+and cold Chromium trees; the CLI's pipe deadline and the helper's request
+context both follow it, and a value under the default leaves the default.
+Codex's budgets are fixed. Actions keep theirs: a slow Action is a bug or
+a hung App.
 
 ### esc stop
 

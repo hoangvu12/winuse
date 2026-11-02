@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
 )
@@ -116,9 +117,20 @@ func parseDialogArgs(tokens []string) (protocol.DialogArgs, error) {
 	return a, nil
 }
 
-// maxWaitSeconds caps --timeout: a wait must answer inside the request's
-// budget (protocol.BrowserTimeout), less a margin.
-const maxWaitSeconds = 25
+// maxWaitSeconds caps --timeout (desktop-parity ticket 14): the request's
+// budget follows it, the wait plus protocol.WaitMargin (waitTimeout), up to
+// protocol.MaxWaitTimeout. In a Batch the Batch's budget bounds it.
+const maxWaitSeconds = int(protocol.MaxWaitTimeout / time.Second)
+
+// waitTimeout is the request budget a wait asks for: its --timeout plus
+// protocol.WaitMargin, so the wait runs out before the request does (0:
+// no --timeout, the command's own budget).
+func waitTimeout(a protocol.WaitArgs) time.Duration {
+	if a.TimeoutMS <= 0 {
+		return 0
+	}
+	return time.Duration(a.TimeoutMS)*time.Millisecond + protocol.WaitMargin
+}
 
 // parseWaitArgs parses what to wait for, its value and --timeout.
 func parseWaitArgs(tokens []string) (protocol.WaitArgs, error) {
@@ -141,7 +153,7 @@ func parseWaitArgs(tokens []string) (protocol.WaitArgs, error) {
 			continue
 		}
 		n, err := strconv.ParseFloat(secs, 64)
-		if err != nil || n <= 0 || n > maxWaitSeconds {
+		if err != nil || n <= 0 || n > float64(maxWaitSeconds) {
 			return a, fmt.Errorf("--timeout must be a number of seconds above 0 and at most %d, got %q", maxWaitSeconds, secs)
 		}
 		a.TimeoutMS = int(n * 1000)
@@ -226,7 +238,11 @@ func pageCmd(cmd string, args []string) int {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, protocol.PageUsage(cmd))
 		return 2
 	}
-	if err := runWithArgs(cmd, withWindowField(a, args[0])); err != nil {
+	var timeout time.Duration
+	if w, ok := a.(protocol.WaitArgs); ok {
+		timeout = waitTimeout(w)
+	}
+	if err := runWithTimeout(cmd, withWindowField(a, args[0]), timeout); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}

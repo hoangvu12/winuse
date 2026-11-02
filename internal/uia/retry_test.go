@@ -888,3 +888,18 @@ func TestRetryFixtureDepthsAreWellFormed(t *testing.T) {
 		}
 	}
 }
+
+// TestSettleOf: a read's settle budget is DefaultChromiumSettle unless a
+// caller-set timeout put a wider one on the context (desktop-parity
+// ticket 14); a narrower one leaves the default.
+func TestSettleOf(t *testing.T) {
+	if got := SettleOf(context.Background()); got != DefaultChromiumSettle {
+		t.Errorf("no settle on the context: %s", got)
+	}
+	if got := SettleOf(WithSettle(context.Background(), 30*time.Second)); got != 30*time.Second {
+		t.Errorf("a wider settle: %s, want 30s", got)
+	}
+	if got := SettleOf(WithSettle(context.Background(), time.Second)); got != DefaultChromiumSettle {
+		t.Errorf("a narrower settle: %s, want the default", got)
+	}
+}

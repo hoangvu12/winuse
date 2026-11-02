@@ -21,7 +21,7 @@ import (
 )
 
 // batchUsage is the batch command's usage line.
-const batchUsage = "usage: winuse batch <window> <action> [arguments] [then <action> [arguments]] ..."
+const batchUsage = "usage: winuse batch <window> [--timeout <seconds>] <action> [arguments] [then <action> [arguments]] ..."
 
 // batchKindsWord renders the batchable Actions for usage errors.
 func batchKindsWord() string {
@@ -254,9 +254,15 @@ func batchPosts(steps []protocol.Step) bool {
 // order, stopping at the first failure (which names the failed Action). A
 // successful Batch prints `ok`, Codex-style. headed (the global --headed
 // flag, anywhere on a batch line outside literal text) runs every step the
-// v1 way (ADR 0010).
+// v1 way (ADR 0010). --timeout before the first Action widens the 60 s
+// budget (up to 300 s).
 func batchCmd(args []string, headed bool) int {
-	window, steps, err := parseBatchArgs(args)
+	args, timeout, err := takeBatchTimeout(args)
+	var window string
+	var steps []protocol.Step
+	if err == nil {
+		window, steps, err = parseBatchArgs(args)
+	}
 	if err == nil && headed && batchPosts(steps) {
 		err = errPostHeaded
 	}
@@ -264,7 +270,7 @@ func batchCmd(args []string, headed bool) int {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, batchUsage)
 		return 2
 	}
-	if err := runWithArgs("batch", protocol.BatchArgs{Window: window, Steps: steps, Headed: headed}); err != nil {
+	if err := runWithTimeout("batch", protocol.BatchArgs{Window: window, Steps: steps, Headed: headed}, timeout); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}

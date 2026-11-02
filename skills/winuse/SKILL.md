@@ -84,7 +84,9 @@ does. An App with no open Window is an error, not an empty list.
 
 If the App has no Window yet, `launch-app` it by name, by the launch
 identifier `list-apps` prints, or by exe path. If it reports no Window, run
-`list-windows` again before you decide the launch failed.
+`list-windows` again before you decide the launch failed. A launch waits 15
+seconds for the Window; for an App you know starts slowly, pass
+`--timeout <seconds>` (up to 120).
 
 A dialog such as Save As, a file picker or a message box is its own Window
 of the same App. Target it directly. If a dialog you expect is missing from
@@ -154,7 +156,10 @@ first. `--headed` activates the Window and captures it the old way, for an
 app whose headless capture comes out blank.
 
 A slow app can return a partial tree with a note. That is progress, not a
-failure.
+failure. A read has 10 seconds. For a slow Electron or Office tree, or a
+cold Chromium page, pass `--timeout <seconds>` (up to 60): the read gets
+that long, and the wait for a thin Chromium tree to build gets the extra
+time too.
 
 ## Name an Element
 
@@ -461,7 +466,7 @@ winuse drag <window> <element> <element|@x,y>
   Headless.
 - After an Action that loads or changes the Page, `wait` for what you
   expect, then read the Window State. A wait lasts 10 seconds by default,
-  and `--timeout <seconds>` goes up to 25.
+  and `--timeout <seconds>` goes up to 300.
 - `set-value` fills a text field, picks a list option by its label or
   value, and turns a check box, switch or radio button `on` or `off`. A
   radio button cannot be turned off, so turn another one on.
@@ -529,7 +534,10 @@ Window, including `--post` on `press-key` and `type-text`. A separate `then`
 argument, in any case, always starts a new step, so quote text that contains
 the word as one argument. winuse refuses a malformed Batch before it sends
 anything. Batch only sequences you understand well, and go back to one
-Action at a time when anything is uncertain.
+Action at a time when anything is uncertain. A Batch has 60 seconds in all;
+for a long one, put `--timeout <seconds>` (up to 300) right after the
+Window, before the first Action. A `--timeout` later on the line belongs to
+a `wait` step, and the Batch's budget bounds that wait.
 
 A Batch of only Headless and posted steps runs Headless, with no banner. One
 Headed step, such as `type-text` outside a classic edit box, gives the whole
@@ -595,9 +603,13 @@ ordinary Escape sent to the app; only the physical key stops winuse.
   Window ID. Handle that dialog's Window, then return to the owner.
 - A timeout fails with `winuse request timed out: <command>`. Each request
   has 10 seconds, `launch-app` 15, a Batch 60, the Page, tab and most
-  browser commands 30, `browser connect` 90 and `browser clone` 180. Wait
-  two seconds and retry
-  once; if it fails again, report the exact error and stop.
+  browser commands 30, `browser connect` 90 and `browser clone` 180.
+  `get-window-state` (up to 60), `launch-app` (120), `batch` (300) and
+  `wait` (300) take `--timeout <seconds>` for slow work; Actions keep their
+  budget, since a slow Action means a bug or a hung App. Wait two seconds
+  and retry
+  once, with a longer `--timeout` where the command takes one; if it fails
+  again, report the exact error and stop.
 - A stale Element or shifted UI needs a fresh Window State. Prefer `name:`
   and `id:` if indexes keep shifting.
 - A moved Window needs a fresh observation and one retry. `@x,y` points
@@ -638,8 +650,8 @@ Run `winuse` with no arguments for the full usage text.
 winuse [--headed] <command> [arguments]
 
 list-windows [--details] [--app <name>]
-list-apps | get-window <window> | launch-app <name|exe path>
-get-window-state <window> [--screenshot]
+list-apps | get-window <window> | launch-app <name|exe path> [--timeout <s>]
+get-window-state <window> [--screenshot] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right]
 set-value <window> <ref> <value|on|off>
@@ -656,7 +668,7 @@ hover <window> <element>            # a Page Element, Headless
 activate-window <window>
 restore-window <window> | minimize-window <window> | close-window <window>
 move-window <window> <x> <y> | resize-window <window> <width> <height>
-batch <window> <action> [args] [then <action> [args]] ...
+batch <window> [--timeout <s>] <action> [args] [then <action> [args]] ...
 navigate <window> <url> [--wait load|domcontentloaded|none] | back | forward | reload <window>
 wait <window> selector <css> | text <text> | url <url> | load | download [--timeout <s>]
 eval <window> <expression> | dialog <window> accept|dismiss [text]

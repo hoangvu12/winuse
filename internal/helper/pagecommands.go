@@ -57,10 +57,11 @@ var (
 var pageCommandsWord = strings.Join(protocol.PageCommands[:len(protocol.PageCommands)-1], ", ") + " and " + protocol.PageCommands[len(protocol.PageCommands)-1]
 
 // pageWaitDefault is wait's default timeout; pageWaitMargin is kept
-// between any page wait and the request's deadline, to answer in time.
+// between any page wait and the request's deadline, to answer in time
+// (the CLI asks for wait --timeout plus it as the request budget).
 const (
 	pageWaitDefault = 10 * time.Second
-	pageWaitMargin  = time.Second
+	pageWaitMargin  = protocol.WaitMargin
 	// dialogClosedWait bounds how long dialog waits for the browser to say
 	// the dialog closed, so the next Action does not see it still open.
 	dialogClosedWait = 500 * time.Millisecond
@@ -791,7 +792,7 @@ func pageWait(s Services) Command {
 					return "", false, escStopBeforeActError()
 				case errors.As(err, &timeout):
 					return "", false, Fail(fmt.Sprintf("waiting for %s in window %d: %s", waitWhat(kind, a.Value), pw.w.ID, timeout.Error()),
-						"the page may need another Action first; read winuse get-window-state "+id+" (wait takes --timeout <seconds>, up to the request's budget)")
+						"the page may need another Action first; read winuse get-window-state "+id+" (wait takes --timeout <seconds>, up to 300)")
 				case errors.As(err, &bad):
 					return "", false, Fail(fmt.Sprintf("wait: the %s cannot be checked: %s", kind, bad.Msg), waitUsageHint)
 				case errors.As(err, &dialog):
