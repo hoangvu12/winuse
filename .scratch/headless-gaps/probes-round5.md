@@ -30,3 +30,26 @@ Foreground and cursor were unchanged at every step in both apps.
   - PasswordBox has IsPassword=1 in both. Its Value is "" in WPF and "●●●●●●" in WinUI.
   - A read-only TextBox has Value.IsReadOnly=1 in both, and SetValue fails with UIA_E_INVALIDOPERATION (0x80131509), leaving the text unchanged.
   - All of them have the Text pattern.
+
+## 2. Modern right-click menus (headless-max 09)
+
+Foreground and cursor were unchanged at every step.
+
+**WinUI 3** (the probe's own app, covered, never activated):
+- [M] ShowContextMenu on a TextBox with a custom MenuFlyout: S_OK. A top-level `Microsoft.UI.Content.PopupWindowSiteBridge` "PopupHost" appeared (218x162, with its own InputSiteWindowClass child).
+  - Its tree: Popup (Window pattern) > MenuFlyout (Menu, Legacy only) > MenuFlyoutItem "Alpha" and "Beta" (Invoke).
+  - The items also show in the main window's tree, so dedupe by PopupHost.
+- [M] Side effect: the app's Window.Activated fired once (act 0 to 1) at ShowContextMenu, and XAML focus moved to the first item. GetForegroundWindow did not change.
+- [M] **Invoke on the MenuFlyoutItem: S_OK.** Its Click ran (alpha=1), the flyout closed (0 popups), and the foreground was unchanged. Unlike a classic `#32768`, this does not take the foreground.
+- [M] **Closing without picking** (MenuFlyout):
+  - These close it: Window.Close on the "Popup" element (S_OK), Escape (WM_KEYDOWN/UP) posted to the popup's own InputSiteWindowClass, and Escape posted to the main window's island InputSiteWindowClass.
+  - These do not: Escape posted to the PopupHost hwnd, and Escape posted to the top-level. The MenuFlyout has no ExpandCollapse.
+- [M] The TextBox's default TextCommandBarFlyout uses two PopupHost windows. Its items are AppBarButtons (ct MenuItem): Paste, Select All and a "MoreButton". Invoke on "Select All": S_OK, and the box's selection became 0,11.
+  - Escape to either input site closes it; Escape to the PopupHost or the top-level does not.
+  - Collapse on its ApplicationBar (S_OK) only empties it: the popup shell stays open with focus on it, and the next ShowContextMenu just closes the shell. [I] Use Escape to the input site instead.
+
+**Chrome** (the probe's own Chrome, temp profile, covered):
+- [M] **A covered Chrome exposes no page content through UIA over 15 s**: 36 Elements, browser UI only, even through Chrome_RenderWidgetHostHWND. With `--disable-features=CalculateNativeWinOcclusion`, the textarea showed up in 340 ms. [I] Chrome's occlusion tracking hides covered WebContents, which removes their accessibility tree. This matters for every covered-Chrome UIA path; CDP avoids it. (headless-max 04 already passes the flag to browsers winuse launches.)
+- [M] With occlusion off, ShowContextMenu on the textarea returned S_OK, and a new Chrome_WidgetWin_1 menu window appeared (425x715) with 12 items: Invoke on most, ExpandCollapse on Spell check and Writing Direction. Item names include the shortcut ("Select all Ctrl+A", "Undo Ctrl+Z").
+- [M] Invoke on "Select all": S_OK and the menu closed. **But it selected the document ("winuse probe page"), not the textarea**: activeElement stayed empty and the textarea's selection stayed 0,0. ShowContextMenu does not focus its target, so edit commands act on whatever Chrome considers focused.
+- [M] Closing: Collapse on the menu's SubmenuView fails with E_FAIL (0x80004005). Escape posted to the menu window closes it.

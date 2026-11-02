@@ -56,3 +56,17 @@ Rules:
 - WPF and anything with no readback refuse with "nothing was sent" and the `--headed` hint.
 - Choosing an item is part of this ticket: `perform-secondary-action <window> <element> ContextMenu` reports the menu's Window ID, and the item is clicked by its index in the menu's Window State. The helper routes that click by the menu's class (mnemonic for `#32768`, Invoke for Chromium).
 - The laptop probe for this ticket is done.
+
+### 2026-11-03: WinUI and Chrome items measured (`../headless-gaps/probes-round5.md` section 2)
+
+This updates the route table above.
+
+- **WinUI 3: pick and close are measured.**
+  - The menu is a `PopupHost` (PopupWindowSiteBridge) top-level. Dedupe its items against the main tree.
+  - **UIA Invoke on a MenuFlyoutItem or AppBarButton works and keeps the foreground** (unlike classic `#32768`).
+  - Close it with Window.Close on the Popup element, or Escape posted to the popup's InputSiteWindowClass. Not WM_CANCELMODE, not Escape to the PopupHost or the top-level.
+  - The App sees a Window.Activated event, but the system foreground does not change.
+- **Chrome:**
+  - Items are Invoke-able and named with their shortcut. Close with Escape posted to the menu window (Collapse fails).
+  - **Edit commands in the menu act on Chrome's current focus, not on the right-clicked Element** (Select all selected the document). Only report and allow commands that do not depend on focus, or tell the agent that edit items may act elsewhere. Page Elements should keep using CDP.
+  - A fully covered Chrome without the occlusion flag has no page tree at all. The UIA route applies only to browsers winuse launched (ticket 04's flag) or to visible ones.
