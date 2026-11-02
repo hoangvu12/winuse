@@ -42,3 +42,10 @@ Written for the "winuse multi-agent research" chat (690cfc8b), from measurements
 ### 2026-11-03: triage decision (user)
 
 Automatic: no `--post`. Read back through UIA Value where it exists; where it does not, the output says the text was not verified. ADR 0013 records this as an exception to its opt-in rule. The laptop probe also checks double and right clicks through the sent mouse messages.
+
+### 2026-11-03: double and right clicks measured (`../headless-gaps/probes-round4.md` section 3)
+
+- Sent WM_LBUTTONDOWN/UP/DBLCLK/UP and WM_RBUTTONDOWN/UP in client coordinates gave trusted `dblclick` and `contextmenu` (with `auxclick`) in Chrome and Electron, with the foreground and cursor unchanged.
+- **Mouse messages need no activation pair. Send clicks without it**, so the page sees no focus/blur. Keys still need it.
+- `click --count 2` and `click --button right` on a Chromium or Electron Window without a Browser Connection go through this route, automatically, as the user decided.
+- A message right click does not open Chrome's own page menu (nothing appeared within 300 ms). The page's contextmenu handler runs. To open Chrome's native menu, use ticket 09's ShowContextMenu route.

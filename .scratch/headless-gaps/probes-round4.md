@@ -75,3 +75,13 @@ All targets are the probe's own windows. Foreground and cursor were unchanged un
 - For classic windows: open the menu with a posted WM_CONTEXTMENU, then choose an item by posting its mnemonic to the `#32768` (or WM_COMMAND for owners that use it).
 - Never use UIA Invoke on `#32768` items: it takes the foreground.
 - WPF has no Headless route.
+
+## 3. Double and right clicks through sent mouse messages (headless-max 20)
+
+The messages were sent in client coordinates to the top-level `Chrome_WidgetWin_1`. Chrome (stable, temp profile) and Electron 45.2.1 behaved identically. Foreground and cursor were unchanged in every step. [M] unless marked.
+
+- **Double click** (WM_MOUSEMOVE, LBUTTONDOWN(MK_LBUTTON), LBUTTONUP, LBUTTONDBLCLK(MK_LBUTTON), LBUTTONUP) on a button: the page saw `mousedown(detail 1) click(1) mousedown(2) click(2) dblclick(2)`, all button 0 and isTrusted. **This works with and without the activation pair** around it.
+- **Right click** (RBUTTONDOWN(MK_RBUTTON), RBUTTONUP) on a button whose contextmenu handler calls preventDefault: `mousedown(button 2) auxclick(2) contextmenu(2)`, all trusted. It also works with and without the activation.
+- Right click on a second button with **no** preventDefault (activated): the same three trusted events. No native menu popup appeared within about 300 ms in Chrome or Electron (no new visible top-level of the pid). WM_CANCELMODE afterwards had nothing to close.
+  - [I] Electron has no default menu. Chrome's page menu apparently did not open for a message-generated right click. Not investigated further.
+- Sent mouse messages work without the activation, while keys need it (round 3). So clicks, double clicks and right clicks can skip the focus/blur pair the page sees from the activation.
