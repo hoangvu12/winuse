@@ -70,7 +70,7 @@ commands:
                                --post, right after the Window, posts the text
                                to the focused control without the foreground
                                instead: best effort, as for press-key
-  press-key <window> <key> [--post]
+  press-key <window> <key> [--post] [--force]
                                press a key or key combination by Codex's key
                                names, e.g. Return, Tab, Control_L+a, Numpad_0
                                (Return or Escape on a classic dialog presses
@@ -79,7 +79,11 @@ commands:
                                without the foreground instead: best effort,
                                no modifiers, and the app may ignore it (the
                                output says posted; read the Window State to
-                               check). --post and --headed do not combine
+                               check). --post and --headed do not combine.
+                               Alt+F4, Alt+Tab, Ctrl+Shift+Escape and any
+                               chord holding one of them are refused with
+                               nothing sent unless --force (also per batch
+                               step); the Windows key is never sent
   set-value <window> <element index | name: | id: | @x,y> <value>
                                set an Element's value directly (a settable
                                edit, a numeric range, on|off for a check

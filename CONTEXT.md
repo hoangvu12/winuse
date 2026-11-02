@@ -78,6 +78,10 @@ _Avoid_: Foreground action, physical action, v1 mode
 Keys or text that the agent explicitly asks to post to a Window's focused control without the foreground. Best effort: the app may ignore them, and they cannot carry modifiers. Neither Headless nor Headed.
 _Avoid_: Background keys, silent typing
 
+**Blocked Combo**:
+A key combination press-key refuses, with nothing sent, unless the agent passes `--force`: Alt+F4, Alt+Tab, Ctrl+Shift+Escape, and any chord that holds one of them. The Windows key is refused always, with no override.
+_Avoid_: Dangerous key, forbidden shortcut
+
 **Agent Cursor**:
 The second, presentation-only cursor that shows the user each Headless Action: it travels to the Element, says what is happening in a label and ripples on the click. It never takes the user's pointer, keyboard or foreground and never appears in winuse's own screenshots.
 _Avoid_: Fake cursor, ghost cursor, pointer
