@@ -214,6 +214,13 @@ const usageTail = `);
                                was built with; read it again after an upgrade
   skill install <dir>         write that SKILL.md to <dir>\winuse\SKILL.md, for
                                a skills folder such as ~\.agents\skills
+  status                      print one line each: the winuse and helper
+                               versions and the helper's uptime, whether the
+                               desktop is locked, the integrity level, DPI
+                               awareness, the Browser Connections the helper
+                               holds and the Windows build. Read-only: it
+                               never starts the helper (it says "not
+                               running") and never connects a browser
   version                     print the winuse version
 
 a <window> is a Window ID, or an App name when that App has exactly one Window;
@@ -257,7 +264,7 @@ func secondaryActionsPhrase() string {
 // Main runs the CLI for args (without the program name) and returns the exit
 // code: 0 success, 1 command failure, 2 usage error. The first command
 // invocation starts the background helper automatically; later ones reuse
-// it.
+// it. status never starts it (status.go).
 //
 // The global --headed flag (headed.go, ADR 0010) is taken out first,
 // before the command or anywhere after it outside literal text, and
@@ -323,6 +330,8 @@ func Main(args []string) int {
 		return pageCmd(args[0], args[1:]) // page.go, browser merge ticket 06
 	case "skill":
 		return skillCmd(args[1:])
+	case "status":
+		return statusCmd(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "winuse: unknown command %q\n\n%s", args[0], Usage)
 		return 2

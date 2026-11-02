@@ -193,8 +193,9 @@ naming the dialog.
 Codex ships a per-turn `codex-computer-use.exe` driven over JSON-RPC by
 `@oai/sky` inside a JS REPL; winuse is a CLI plus a persistent
 background helper over a named pipe restricted to the user's SID,
-version-checked (a stale helper exits so upgrades never talk to an old
-one), idle-exiting after 5 minutes. The observable contract — one
+version-checked (a stale helper exits so upgrades never act through an
+old one; only the read-only `status` is answered across builds, naming
+both versions), idle-exiting after 5 minutes. The observable contract — one
 request at a time, `ok` or a one-line failure, no state echo — is
 preserved. **intentionally different**.
 
@@ -361,4 +362,7 @@ winuse's own captures. `select-text` selects a span of a field's text, or
 all of it, with no keys and no foreground (a classic edit control's
 EM_SETSEL, a UI Automation Text pattern, or a Page field through the
 Browser Connection), read back; Codex selects text only with real keys
-or a drag. **extension**.
+or a drag. `status` prints the winuse and helper versions, the helper's
+uptime, the desktop's lock state, the integrity level, DPI awareness, the
+Browser Connections and the Windows build; it only reads and never
+starts the helper. **extension**.

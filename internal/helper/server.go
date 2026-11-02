@@ -169,7 +169,9 @@ func (s *Server) handle(req *protocol.Request) protocol.Response {
 	if req.V != protocol.Version {
 		return protocol.Errorf(1, "wire protocol version %d not supported (helper speaks %d); upgrade winuse", req.V, protocol.Version)
 	}
-	if req.Ver != s.version {
+	// status only reads, so a CLI of another build may ask it without
+	// stopping this helper: the report names both versions (ticket 16).
+	if req.Ver != s.version && req.Cmd != StatusCommand {
 		return protocol.Response{
 			OK:    false,
 			Stale: true,

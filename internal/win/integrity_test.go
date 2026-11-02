@@ -82,3 +82,20 @@ func TestAdminWindowErrorMessage(t *testing.T) {
 		t.Errorf("error = %q, want %q", e.Error(), want)
 	}
 }
+
+func TestIntegrityName(t *testing.T) {
+	cases := map[uint32]string{
+		IntegrityUntrusted:  "untrusted",
+		IntegrityLow:        "low",
+		IntegrityMedium:     "medium",
+		IntegrityMediumPlus: "medium plus",
+		IntegrityHigh:       "high (administrator)",
+		IntegritySystem:     "system",
+		0x5000:              "system", // protected process
+	}
+	for rid, want := range cases {
+		if got := IntegrityName(rid); got != want {
+			t.Errorf("IntegrityName(%#x) = %q, want %q", rid, got, want)
+		}
+	}
+}
