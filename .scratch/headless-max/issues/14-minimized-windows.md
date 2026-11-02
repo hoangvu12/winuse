@@ -47,3 +47,18 @@ Drop the minimized refusal for Headless Element Actions on classic Win32 now (me
 ### 2026-11-03: WPF and WinUI 3 measured (`../headless-gaps/probes-round4.md` section 1)
 
 On the laptop, the probe's own WPF and WinUI 3 windows were minimized with SW_SHOWMINNOACTIVE. Invoke, Toggle, SetValue (read back) and SelectionItem.Select all worked; the windows stayed iconic; foreground and cursor were unchanged; the tree size was the same as when restored. Scope now: lift the minimized refusal for UIA-pattern Actions on classic Win32, WPF and WinUI 3. Keep it for Chromium (message routes and the Chromium frame), for packaged UWP (`ApplicationFrameWindow`, not measured) and for screenshots. The laptop probe for this ticket is done.
+
+### 2026-11-03: Store apps measured (`../headless-gaps/probes-round5.md` section 5)
+
+Calculator, a packaged UWP app, measured on the laptop:
+
+- **Minimized, its UIA tree is empty** (0 Elements in both the frame and the detached CoreWindow, over 20 s). The app is most likely suspended. There is nothing to act on.
+- **Restoring it with SW_SHOWNOACTIVATE took the foreground.**
+- Its launch through IApplicationActivationManager took the foreground too. That is relevant to ticket 01: packaged-app launches cannot be kept in the background, so report it.
+
+Rule:
+
+- Keep the minimized refusal for `ApplicationFrameWindow` (UWP). Name the reason in the refusal: "a minimized Store app has no UI to act on".
+- The `restore-window` hint stays, adding that restoring a Store app brings it to the front.
+
+Final scope of this ticket: lift the refusal for classic Win32, WPF and WinUI 3 Desktop; keep it for UWP and Chromium.

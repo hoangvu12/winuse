@@ -93,3 +93,27 @@ Read-only. Foreground and cursor were unchanged throughout, including the launch
 - [M] Where AcceleratorKey holds a real shortcut, the format is "Ctrl+S" or "Ctrl+Shift+O" (plus-joined, modifiers first).
 - [I] AcceleratorKey cannot be trusted alone. Also parse the text after "\t" in classic Names and HMENU strings, and the " Ctrl+X" suffix in Chromium Names. Treat a single letter as a mnemonic, not a shortcut.
 - [M] Addendum to section 2: on a second open Chrome menu, Collapse on the SubmenuView hung the client indefinitely in 1 of 3 runs, and returned E_FAIL in about 600 ms in the other two. [I] Never Collapse a Chromium menu; post Escape instead.
+
+## 5. A minimized Store app: Calculator (headless-max 14)
+
+6 runs, all closed cleanly.
+
+- [M] **Launch takes the foreground.**
+  - IApplicationActivationManager.ActivateApplication("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", AO_NONE) returned S_OK.
+  - The ApplicationFrameWindow (owned by ApplicationFrameHost, not the app pid) appeared 168-304 ms after the call returned, and it was the foreground at that moment (polled every 10 ms: the Calculator frame at +169 ms).
+  - So the launch takes the foreground even from a non-foreground caller. Nothing was clicked to give it back.
+- [M] Loaded and restored, before minimizing: CalculatorResults ("Display is 0") was reachable 56-75 ms after the frame appeared. The frame subtree had 56 descendants (FindAll 15-19 ms), with the CoreWindow as a child of the frame.
+- [M] Minimize: ShowWindow(frame, SW_SHOWMINNOACTIVE) returned TRUE, and the foreground went back to the user's previous window within 0.8 s (4 of 4 runs). It stayed minimized (IsIconic=1, rect -32000) for the whole leg, 20+ s.
+- [M] **Minimized, the UIA tree is gone.**
+  - The Windows.UI.Core.CoreWindow detaches from the frame and becomes a top-level window of CalculatorApp.
+  - Frame descendants: 0 (2-46 ms). CoreWindow descendants: 0, with FindAll taking about 220 ms (vs 7 ms), at both +0.8 s and +20 s.
+  - The same held when minimized 200 ms after launch (before load) and after load.
+  - So nothing could be Invoked: "Seven", "Plus", "Two" and "Equals" were not found, and the display was unreadable.
+- [I] A minimized UWP app is unreachable through UIA. The likely cause is suspension (PLM): the frame has no content. In contrast, minimized classic, WPF and WinUI 3 Desktop windows all work (rounds 3 and 4).
+- [M] **Restore with ShowWindow(SW_SHOWNOACTIVATE) took the foreground**: the ApplicationFrameWindow became the foreground. The leg should have stopped there but did not, so the following was observed with the foreground taken:
+  - the tree came back in 68 ms (56 Elements);
+  - Invoke on Seven, Plus, Two and Equals each returned S_OK in 22-44 ms, and the display read "Display is 9";
+  - re-minimizing left the foreground on the minimized Calculator frame. Closing gave it back to the user's window.
+- [M] Never-minimized leg: Invoke on Seven gave "Display is 7", but the foreground was already Calculator from the launch, so this is not a background measurement.
+- [M] Close: WindowPattern.Close on the frame returned S_OK, and no CalculatorApp process remained after 2.5 s (all runs).
+- [I] **Store apps: launch and restore both cost the foreground, and minimizing kills the tree.** The only background state is "restored but covered", which can only be reached through a foreground-taking launch. winuse should treat a minimized UWP app as not Headless and say so.

@@ -37,3 +37,7 @@ Launch options (from desktop-parity research ticket 15): `--arg <a>` (repeatable
 ### 2026-11-03: triage decision (user)
 
 Kept as written.
+
+### 2026-11-03: packaged-app launch measured
+
+IApplicationActivationManager.ActivateApplication(AO_NONE) for Calculator made its ApplicationFrameWindow the foreground about 170 ms after the call, from a caller without the foreground (`../headless-gaps/probes-round5.md` section 5). The AUMID path cannot be kept in the background. Keep the plan: report `ok (the App took the foreground)`.
