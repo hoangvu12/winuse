@@ -70,3 +70,7 @@ This updates the route table above.
   - Items are Invoke-able and named with their shortcut. Close with Escape posted to the menu window (Collapse fails).
   - **Edit commands in the menu act on Chrome's current focus, not on the right-clicked Element** (Select all selected the document). Only report and allow commands that do not depend on focus, or tell the agent that edit items may act elsewhere. Page Elements should keep using CDP.
   - A fully covered Chrome without the occlusion flag has no page tree at all. The UIA route applies only to browsers winuse launched (ticket 04's flag) or to visible ones.
+
+### 2026-11-03: never Collapse a Chromium menu
+
+On a second open Chrome menu, UIA Collapse on the SubmenuView hung the UIA client indefinitely in 1 of 3 runs (`../headless-gaps/probes-round5.md` section 4). Close Chromium menus only with Escape posted to the menu window.

@@ -72,3 +72,24 @@ Foreground and cursor were unchanged at launch and at every step, in both.
 - [M] With nothing focused in the page (activeElement empty, hasFocus=false), insertText returns {} and does nothing.
 - [M] After Runtime.evaluate("t.focus(); t.setSelectionRange(5,5)"), insertText("xy😀") gave the value "helloxy😀 page", one input event and caret 9,9 (UTF-16). document.hasFocus() became true, and the foreground was unchanged.
 - [I] So insertText needs a DOM focus step first. No window activation is required.
+
+## 4. Which Apps fill UIA AcceleratorKey (headless-max 06)
+
+Read-only. Foreground and cursor were unchanged throughout, including the launches of Character Map and Paint.
+
+| App | AcceleratorKey | Where the shortcut is instead | AccessKey |
+|---|---|---|---|
+| WPF (MenuItem InputGestureText, RoutedUICommand KeyGesture, Button KeyBinding) | never filled | nowhere (Name is just "Save") | "Alt+F" on the bar, "S" in a submenu |
+| WinUI 3 MenuFlyoutItem with a KeyboardAccelerator | "Ctrl+S", "Ctrl+O" (readable once the MenuBarItem is expanded) | | empty unless set |
+| WinUI 3 Button with a KeyboardAccelerator | "" | | |
+| WinForms MenuStrip ShortcutKeys | "Ctrl+S", "Ctrl+O", "Ctrl+Shift+O" | | "Alt+f" on the bar, "o" in the dropdown |
+| Classic Win32 HMENU ("&Save\tCtrl+S") | "" | the Name: "Save\tCtrl+S" | "Alt+s" |
+| Character Map (`#32770`) | none | | "Alt+s", "Alt+c", "Alt+v" |
+| Paint (MSPaintApp, 64 Elements) | Save "Ctrl+S", Undo "Ctrl+Z", Redo "Ctrl+Y" | | key-tip sequences ("Alt, F"; "Alt, S, A") |
+| Chrome page context menu | the mnemonic letter ("a", "u") | the Name: "Select all Ctrl+A" | "" |
+
+- [M] Expand and Collapse opened and closed the WPF (HwndWrapper popup), WinUI (PopupHost) and WinForms (WindowsForms10.Window.20808) menus, with no foreground change.
+- [M] On a classic HMENU, ExpandCollapse.Expand fails with UIA_E_INVALIDOPERATION (0x80131509), so its items cannot be read over UIA without a real open. But GetMenu, GetSubMenu and GetMenuStringW(MF_BYPOSITION) read the whole tree cross-process without opening it: "&File" > ["&Open...\tCtrl+O", "Save &As\tCtrl+Shift+S"], "&Save\tCtrl+S".
+- [M] Where AcceleratorKey holds a real shortcut, the format is "Ctrl+S" or "Ctrl+Shift+O" (plus-joined, modifiers first).
+- [I] AcceleratorKey cannot be trusted alone. Also parse the text after "\t" in classic Names and HMENU strings, and the " Ctrl+X" suffix in Chromium Names. Treat a single letter as a mnemonic, not a shortcut.
+- [M] Addendum to section 2: on a second open Chrome menu, Collapse on the SubmenuView hung the client indefinitely in 1 of 3 runs, and returned E_FAIL in about 600 ms in the other two. [I] Never Collapse a Chromium menu; post Escape instead.
