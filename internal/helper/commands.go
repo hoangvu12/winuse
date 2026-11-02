@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -24,17 +25,48 @@ func Commands() map[string]Command {
 }
 
 // listWindows answers with one line per visible Window:
-// "<Window ID>\t<App>\t<title>", in z-order, topmost first. It only reads
+// "<Window ID>\t<App>\t<title>", in z-order, topmost first — Codex's
+// list_windows. With details (desktop-parity 22) each line gains the
+// details column before the title (win.FormatWindowsDetailed); with app
+// only that App's Windows are listed, matched as a Window reference
+// matches an App name, and an App with no Window fails. It only reads
 // window metadata (never sends input, never activates).
-func listWindows(ctx context.Context, args json.RawMessage) (string, *Error) {
-	if len(args) > 0 && string(args) != "null" && string(args) != "{}" {
-		return "", Fail("list-windows takes no arguments", "")
+func listWindows(s Services) Command {
+	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
+		var a protocol.ListWindowsArgs
+		if len(args) > 0 && string(args) != "null" {
+			dec := json.NewDecoder(bytes.NewReader(args))
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&a); err != nil {
+				return "", Fail("list-windows: invalid arguments: "+err.Error(), "usage: winuse list-windows [--details] [--app <name>]")
+			}
+		}
+		ws, err := s.Windows()
+		if err != nil {
+			return "", Fail("enumerating windows: "+err.Error(), "")
+		}
+		if app := strings.TrimSpace(a.App); app != "" {
+			ws = win.WindowsOfApp(ws, app)
+			if len(ws) == 0 {
+				return "", Fail(fmt.Sprintf("app %q has no open Windows", app),
+					"an App is named by its App name from winuse list-windows or its executable name")
+			}
+		}
+		if !a.Details {
+			return win.FormatWindows(ws), nil
+		}
+		fg := s.Foreground()
+		details := make([]win.WindowDetails, len(ws))
+		for i, w := range ws {
+			var adminErr *win.AdminWindowError
+			details[i] = win.WindowDetails{
+				Focused:   w.ID == fg,
+				Maximized: !w.Minimized && s.Maximized(w.ID),
+				Admin:     errors.As(s.Integrity(w), &adminErr),
+			}
+		}
+		return win.FormatWindowsDetailed(ws, details), nil
 	}
-	all, err := win.Collect()
-	if err != nil {
-		return "", Fail("enumerating windows: "+err.Error(), "")
-	}
-	return win.FormatWindows(win.VisibleWindows(all)), nil
 }
 
 // getWindow answers `winuse get-window <window>`: the resolved Window as

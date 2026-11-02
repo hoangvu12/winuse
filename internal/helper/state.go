@@ -216,7 +216,7 @@ func CommandsWith(s Services) map[string]Command {
 	// cached for the helper's lifetime (it is a ~1 s PowerShell call).
 	store := &apps.StoreSource{Run: apps.GetStartApps}
 	cmds := map[string]Command{
-		"list-windows":             listWindows,
+		"list-windows":             listWindows(s),
 		"get-window":               getWindow(s),
 		"get-window-state":         func(ctx context.Context, args json.RawMessage) (string, *Error) { return getWindowState(s, ctx, args) },
 		"record-tree":              func(ctx context.Context, args json.RawMessage) (string, *Error) { return recordTree(s, ctx, args) },

@@ -60,6 +60,8 @@ an Element keeps its name and ID while its index shifts.
 
 ```
 winuse list-windows                 # one line per Window: <Window ID>  <App>  <title>
+winuse list-windows --details       # adds <x,y WxH pid N flags> before the title
+winuse list-windows --app <name>    # only that App's Windows (with or without --details)
 winuse get-window <window>          # re-resolve one Window and print its line
 winuse list-apps                    # running and recent Apps, with their Windows
 winuse launch-app <name|exe path>   # start an App and print the Window it opened
@@ -70,6 +72,15 @@ Name a Window by the Window ID that `list-windows`, `list-apps` or
 Window. With several, the error lists the candidates, and you pick one of
 them. Use `get-window` as a cheap check that a Window still exists, for
 example after a helper restart.
+
+`--details` puts a column between the App and the title, for example
+`120,80 1024x768 pid 4312 focused`. The rectangle is the Window's visible
+frame, the numbers `move-window` and `resize-window` take. The flags
+`focused`, `minimized`, `maximized` and `admin` appear only when true. An
+`admin` Window runs as administrator, and winuse cannot act in it. A
+minimized Window's frame is the off-screen icon position, not a place to
+act. `--app` takes an App name or executable name, as a Window reference
+does. An App with no open Window is an error, not an empty list.
 
 If the App has no Window yet, `launch-app` it by name, by the launch
 identifier `list-apps` prints, or by exe path. If it reports no Window, run
@@ -612,7 +623,8 @@ Run `winuse` with no arguments for the full usage text.
 ```
 winuse [--headed] <command> [arguments]
 
-list-windows | list-apps | get-window <window> | launch-app <name|exe path>
+list-windows [--details] [--app <name>]
+list-apps | get-window <window> | launch-app <name|exe path>
 get-window-state <window> [--screenshot]
 zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right]
