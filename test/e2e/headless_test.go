@@ -105,15 +105,17 @@ func waitForeground(t *testing.T, id uint64, timeout time.Duration) {
 // coverWindow starts a second fixture instance over the target Window and
 // brings it to the foreground with `winuse activate-window` (a Headed
 // Action), so the target sits behind the user's "own" Window. It returns
-// the covering Window's ID; the instance is killed on cleanup.
-func coverWindow(t *testing.T, target string) uint64 {
+// the covering Window's ID; the instance is killed on cleanup. flags are
+// extra fixture flags for the cover.
+func coverWindow(t *testing.T, target string, flags ...string) uint64 {
 	t.Helper()
 	fb, err := win.FrameBounds(mustWindowID(t, target))
 	if err != nil {
 		t.Fatalf("reading the target window's frame bounds: %v", err)
 	}
 	statePath := filepath.Join(t.TempDir(), "cover-state.json")
-	cmd := exec.Command(fixtureBinary(t), "-state", statePath, "-origin", fmt.Sprintf("%d,%d", fb.Left, fb.Top))
+	args := append([]string{"-state", statePath, "-origin", fmt.Sprintf("%d,%d", fb.Left, fb.Top)}, flags...)
+	cmd := exec.Command(fixtureBinary(t), args...)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("starting the covering fixture: %v", err)
 	}

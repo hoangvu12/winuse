@@ -16,7 +16,9 @@
 //
 // The Windows/Super/Meta family (Win, Windows, Meta, Command, Cmd, Super,
 // OS, each with _L/_R) is recognized only to be refused: winuse never
-// sends the Windows key (Codex's documented rule).
+// sends the Windows key (Codex's documented rule). Alt+F4, Alt+Tab and
+// Ctrl+Shift+Escape parse, and Blocked names them so press-key can refuse
+// them unless forced.
 package keys
 
 import (
@@ -90,6 +92,18 @@ type Key struct {
 	Name     string
 	VK       uint16
 	Extended bool
+}
+
+// Modifier reports whether the key is a modifier: Control, Shift or Alt,
+// left or right (the generic VK_SHIFT, VK_CONTROL and VK_MENU too). Posted
+// Keys refuse them: a posted message does not change the keyboard state
+// that apps read with GetKeyState.
+func (k Key) Modifier() bool {
+	switch k.VK {
+	case 0x10, 0x11, 0x12, vkLshift, vkRshift, vkLcontrol, vkRcontrol, vkLmenu, vkRmenu:
+		return true
+	}
+	return false
 }
 
 // Chord is a parsed key chord: one or more keys. Delivery order is part of
@@ -366,6 +380,57 @@ func init() {
 		windowsKeyNames[base+"_L"] = true
 		windowsKeyNames[base+"_R"] = true
 	}
+}
+
+// The modifier families a Blocked Combo names: left, right and the
+// generic virtual key.
+var (
+	altKeys     = []uint16{0x12, vkLmenu, vkRmenu}
+	controlKeys = []uint16{0x11, vkLcontrol, vkRcontrol}
+	shiftKeys   = []uint16{0x10, vkLshift, vkRshift}
+)
+
+// blockedCombos are the combinations press-key refuses unless forced
+// (agent-desktop's blocked combos less the Windows-key ones, which Parse
+// refuses outright). Each needs one key from every group.
+var blockedCombos = []struct {
+	name   string
+	groups [][]uint16
+}{
+	{"Alt+F4", [][]uint16{altKeys, {vkF1 + 3}}},
+	{"Alt+Tab", [][]uint16{altKeys, {vkTab}}},
+	{"Ctrl+Shift+Escape", [][]uint16{controlKeys, shiftKeys, {vkEscape}}},
+}
+
+// Blocked reports the dangerous combination a chord presses: Alt+F4,
+// Alt+Tab or Ctrl+Shift+Escape, either side's modifier, and any superset
+// of one (Control_L+Alt_L+F4 still closes the window). It returns the
+// combination's name ("Alt+F4") and true, or "" and false.
+func Blocked(c Chord) (string, bool) {
+	for _, combo := range blockedCombos {
+		if holdsAll(c, combo.groups) {
+			return combo.name, true
+		}
+	}
+	return "", false
+}
+
+// holdsAll reports whether the chord holds a key from every group.
+func holdsAll(c Chord, groups [][]uint16) bool {
+	for _, group := range groups {
+		found := false
+		for _, k := range c {
+			for _, vk := range group {
+				if k.VK == vk {
+					found = true
+				}
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 // Parse parses a key or `+`-separated chord in Codex's key naming: one or

@@ -27,8 +27,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
@@ -84,6 +86,12 @@ func setValue(s Services) Command {
 		target, terr := parseElementTarget("set-value", a.ElementIndex, a.Ref, a.Point, setValueUsageHint)
 		if terr != nil {
 			return "", terr
+		}
+		// A Page Element routes over the Browser Connection (pageactions.go).
+		if out, rerr, ok := s.onPage(a.Window, target, func(w win.WindowInfo, index int, o *page.Origin) (string, *Error) {
+			return s.pageSetValue(ctx, w, index, o, target, a.Value, a.Headed)
+		}); ok {
+			return out, rerr
 		}
 		if ha, ok := s.headless("set-value", args); ok {
 			return s.runHeadless(ctx, a.Window, ha, headlessRun{
@@ -159,6 +167,11 @@ func performSecondaryAction(s Services) Command {
 			return "", Fail(fmt.Sprintf("unsupported secondary action: %s; expected %s", a.Action, uia.ExpectedSecondaryActions()),
 				"the Secondary Actions each Element offers are listed in its Window State line")
 		}
+		if out, rerr, ok := s.onPage(a.Window, target, func(w win.WindowInfo, index int, _ *page.Origin) (string, *Error) {
+			return "", pageSecondaryRefusal(w, index, target, action)
+		}); ok {
+			return out, rerr
+		}
 		if ha, ok := s.headless("perform-secondary-action", args); ok {
 			return s.runHeadless(ctx, a.Window, ha, headlessRun{
 				cmd:    "perform-secondary-action",
@@ -205,15 +218,39 @@ func performSecondaryAction(s Services) Command {
 }
 
 // valueError maps a set-value failure to the user-facing line: the
-// not-settable refusal points at type-text (the ticket's contract);
-// anything element-side falls through to the shared stale/state mapping.
+// not-settable refusal points at type-text (the ticket's contract); a
+// combo or list with no item, or several, by the name asked for points at
+// the names it lists (desktop-parity 12); anything element-side falls
+// through to the shared stale/state mapping.
 func valueError(err error, w win.WindowInfo, index int) *Error {
+	var sel *uia.SelectItemError
+	if errors.As(err, &sel) {
+		id := strconv.FormatUint(w.ID, 10)
+		switch {
+		case errors.Is(err, uia.ErrAmbiguousItem):
+			return Fail(err.Error(), "name one item exactly as the list spells it: an exact name wins over one that differs only in case or spacing")
+		case errors.Is(err, uia.ErrNoSuchItem):
+			return Fail(err.Error(), "pass one of the list's item names exactly; read a fresh Window State (winuse get-window-state "+id+") if the list has changed")
+		case sel.Opened:
+			// The search failed after the Expand: keep the opened-and-closed
+			// wording the shared mapping would drop.
+			return Fail(err.Error(), "read a fresh Window State (winuse get-window-state "+id+") and retry")
+		}
+	}
 	switch {
 	case errors.Is(err, uia.ErrNotSettable):
 		return Fail(err.Error(),
 			"use winuse click to focus the Element, then winuse type-text to type into it instead")
 	case errors.Is(err, uia.ErrRangeValue):
 		return Fail(err.Error(), "this Element takes a numeric value (a slider or spinner); pass a number")
+	case errors.Is(err, uia.ErrToggleValue):
+		return Fail(err.Error(), "this Element is a check box or toggle; pass on or off")
+	case errors.Is(err, uia.ErrToggleUnreadable):
+		toggle := "perform-secondary-action with the Toggle action"
+		if index >= 0 {
+			toggle = fmt.Sprintf("winuse perform-secondary-action %d %d Toggle", w.ID, index)
+		}
+		return Fail(err.Error(), "read a fresh Window State; to flip the Element whatever its state, use "+toggle)
 	case errors.Is(err, uia.ErrFocusBeforeValue):
 		return Fail(err.Error(), "the Element may not be focusable; read a fresh Window State and retry")
 	case errors.Is(err, uia.ErrDisabled):

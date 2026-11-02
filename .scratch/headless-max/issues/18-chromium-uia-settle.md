@@ -1,0 +1,45 @@
+# 18: Longer settle for a cold Chromium UIA tree
+
+**What to build:** when a Chromium Window has no Browser Connection (the user's own browser without the extension, Electron, WebView2), wait longer for its UIA tree to build, within the request budget, and say what happened.
+
+ADR 0005 retries once after 500 ms. The Laptop probe measured that a cold Chromium can take 10-25 s, and a fully covered cold Chrome never built its web tree (36 nodes for 14 s), while one that was partly visible settled in about 0.1 s. Ticket 04 fixes browsers winuse launches; this ticket covers the rest.
+
+- Poll the document subtree size every 250-500 ms until it grows and then stops growing, up to a settle budget (proposal 5 s, or the caller's `--timeout` from desktop-parity 14).
+- If it never settles: return what is there with a note: "the page's accessibility tree is still thin; Chromium may not build it while the Window is fully covered. Connect the browser (winuse browser ...) or uncover the Window."
+- Never activate or un-cover the Window to make it build.
+
+**Blocked by:** none
+
+**Status:** done (amends ADR 0005)
+
+- [x] Settle loop with growth detection
+- [x] The note
+- [x] Offline tests with a faked growing tree
+- [x] Opt-in e2e: a covered Electron App read cold
+- [x] ADR 0005 amendment
+
+## Comments
+
+### 2026-11-02: landed
+
+- `internal/uia/retry.go`: `readTree` now settles a thin Chromium tree before anything else. The trigger (`worthSettle`) is a Chromium Window (the `Chrome_` class or a known browser exe), read whole, whose Document was not cut for a Browser Connection's Page (`readResult.paged`, set by `CaptureFrame` when the walk cut a Document), and whose web content is thin (`documentSize` < `thinDocumentNodes` = 3 Elements under its Documents, nested iframe Documents counted once; no Document counts as 0). `settleTree` polls every `chromiumSettleEvery` (300 ms) until the size has grown and then stopped growing. A paged or partial poll ends it, and so does a failed sleep (the request ending). A poll that fails fails the read. A tree still thin at the end gets `thinPageNote` ("the page's accessibility tree is still thin; Chromium may not build it while the Window is fully covered. Connect the browser (winuse browser status says how) or uncover the Window; for an Electron or WebView2 App, request a screenshot"). The note replaces the walk's nearly-empty note when there is one, so the agent gets one note. A tree that grew past thin but was still growing at the end is returned without a note. Nothing activates or uncovers the Window.
+- Budget: `readTree` takes the settle budget as a parameter, and `CaptureFrame` passes `DefaultChromiumSettle` (5 s). That is the seam where desktop-parity ticket 14's `--timeout` can pass a wider one. `settlePolls` counts polls, not time, so the faked sleep keeps the tests instant. It also bounds them by the request deadline: each poll needs its interval, with `settleReadReserve` (1 s) and the 500 ms response margin left over.
+- The non-Chromium path is unchanged: one retry after 500 ms and the sparse-after-retry note. The old "complete Chromium tree with no Document" trigger is now part of the settle (no Document is thin). `hasDocument` and `worthRetry` are gone.
+- Tests (`internal/uia/retry_test.go`): a faked Chrome tree (`chromeRead(n)`) that grows and then stops; one that never settles (thin note, once, total sleep within 5 s); a sparse Electron window (thin note replaces the nearly-empty note); still growing at the end (no note); a paged poll and a paged first read; a partial poll; a warm page; a poll error; an interrupted sleep; the request deadline bounding the polls; a wider caller settle; `documentSize` cases; the 250-500 ms, 5 s and note contracts. The existing one-retry tests now use a non-Chromium canvas class. The Chromium ones expect the settle (three reads: grew, then stopped).
+- Opt-in e2e `test/e2e/electron_settle_test.go`, `TestCoveredElectronReadCold`. It starts the prebuilt Electron binary named by the new `WINUSE_E2E_ELECTRON` (and skips without it) with an isolated profile on `testdata/chromium-fixture.html`. It covers the Window with the fixture as soon as it exists and runs one cold `get-window-state`. The read must answer within the 10 s request budget and leave the cover in front. It must show either the page's button or the thin note (not both), and the note must come after about 5 s. Described in `test/e2e/README.md`. **It is written and passes `go vet -tags e2e ./test/e2e`, but it has not been run.** Nothing in this ticket was measured live.
+- ADR 0005: an inline amendment marker on the second-trigger paragraph and a dated "Amendment" section (trigger, loop, note, budget seam, consequences).
+- Docs: the get-window-state usage line, SKILL.md (after the nearly-empty paragraph), CONTEXT.md (Browser Connection), README (Browsers) and docs/codex-parity.md (get_window_state prose; no row status changed).
+- Known cost, recorded in the ADR: a Chromium Window with no Browser Connection that never builds a Document or really shows an almost empty page (Chrome's popups and bubbles, `about:blank`, a canvas-only Electron App) spends the full 5 s on its first read (then 500 ms per read, see the review fix) and gets the thin note. Size is the only cue the walk has; a covered-Window signal could cut this, but it needs a live measurement. With `--screenshot`, the capture runs after a settle that may use up to about 5 s of the 10 s request.
+
+- 2026-11-02 review fix: the full settle is paid at most once per Window. The orchestrator's review pointed out that Chrome's own popups, empty pages and canvas-only Electron Apps paid 5 s on every read. `uia.Client` now holds a `thinWindows` memory keyed by HWND, holding at most `maxThinWindows` (256) Windows; when it is full, an arbitrary mark is dropped. `readTree` takes the Window's `thinMark` (the zero mark remembers nothing, so it stays injectable). A settle that ends thin notes and marks the Window, including one that grew a little and stopped under the threshold. A later thin read of a marked Window goes to `retryThin`: one `a11yRetryDelay` (500 ms) retry, then the thin-page note if it is still thin, or the first read with the note if the retry's sleep is interrupted. Any read that finds the Window not thin (built, or partial) clears the mark, so it settles again the next time it goes thin. A paged read leaves the mark alone. A reused HWND can inherit a stale mark, which costs it one retry instead of a settle until a read finds it built. New tests in `internal/uia/retry_test.go`: the second read of a thin Window does one retry, not the loop, and keeps the note; the mark clears after a non-thin retry or a non-thin first read, and the Window then settles again; a settle that builds leaves no mark; a paged read keeps the mark; an interrupted marked retry still notes; the memory's bound, forget, and zero or nil marks. ADR 0005's amendment, SKILL.md, README, the usage line and docs/codex-parity.md say the wait is once per Window. The e2e test kills the helper first, so its first read still meets an empty memory; it has still not been run.
+
+### 2026-11-03: measured live (Electron 45.2.1); threshold and budget kept
+
+- Binary: the official `electron-v45.2.1-win32-x64.zip` (latest stable, published 2026-10-31; SHA-256 `7c342aee…ebb727`, matching the release's `SHASUMS256.txt`), unzipped outside the repo. `test/e2e/README.md` now documents the download.
+- `TestCoveredElectronReadCold` passed: "the covered Electron Window stayed thin; the note said so after 5.48s" (whole test 21.2 s), cover still in front.
+- A throwaway diagnostic (deleted) started Electron the same way, covered it fully, and read `get-window-state` repeatedly for 60 s:
+  - Fully covered, 4 runs: never built. Every read was the window and nine panes (no Document: `documentSize` 0), with the thin note. First reads took 5.29, 5.35, 5.36 and 5.40 s.
+  - Partly covered (the cover 120 px shorter than the Window, so a strip of the page shows), 3 runs: the first read showed the page, button included, in 0.85, 0.87 and 0.88 s (the CLI and helper start included).
+  - Built tree: a Document with 7 Elements (text, group, link, button, label, edit, checkbox). Thin: 0.
+- So the 3-Element threshold separates the two cleanly. A longer budget would not help a fully covered Window (nothing by 60 s), and a partly visible one needs well under 5 s. The 10-25 s cold Chromium from the Laptop probe was not seen here. Values unchanged: `thinDocumentNodes` 3, `DefaultChromiumSettle` 5 s; no offline test changed.
+- Once-per-Window memory: in the e2e runs every repeated read paid the full 5 s again. That is the test helper's `WINUSE_HELPER_IDLE=5s` (`e2eIdle`): a 5.3 s read outlives the idle window, the helper exits, and its `thinWindows` memory goes with it. With a 120 s idle, the second read of the still-covered Window took the one 500 ms retry (reads 2-27: 0.55-1.75 s each, all thin with the note). The product is fine; the e2e suite just cannot see the memory with its 5 s idle.

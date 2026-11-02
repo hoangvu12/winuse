@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/hoangvu12/winuse/internal/browser"
 	"github.com/hoangvu12/winuse/internal/pipe"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
@@ -147,9 +148,16 @@ func Main() int {
 		}
 	}
 
+	// The Browser Connections (browser merge ticket 01): one connection per
+	// browser, held for the helper's lifetime, so Chrome's approval prompt
+	// appears once per helper rather than once per command. Closed on exit.
+	browsers := browser.NewManager(browser.Live())
+	defer browsers.Close()
+
 	svc := Services{
-		Trees:  trees,
-		Budget: budget,
+		Trees:   trees,
+		Budget:  budget,
+		Browser: browsers,
 	}
 	if overlay != nil {
 		svc.Overlay = overlay

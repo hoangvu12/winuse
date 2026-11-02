@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "source": "hand-authored UI Automation frame of a Chrome Window with the winuse extension attached: tab strip, toolbar, the active Tab's document (its UIA descendants are what the Page replaces) and the debugging infobar below it. The tests set the title, the tab and the document name to each Page fixture's title.",
+  "title": "TITLE - Google Chrome",
+  "app": "chrome.exe",
+  "focusedIndex": -1,
+  "elements": [
+    { "depth": 0, "role": "window", "name": "TITLE - Google Chrome" },
+    { "depth": 1, "role": "pane", "name": "Google Chrome" },
+    { "depth": 2, "role": "tab list", "name": "Tabs" },
+    { "depth": 3, "role": "tab", "name": "TITLE", "selectable": true, "selected": true, "secondaryActions": ["Select"] },
+    { "depth": 3, "role": "button", "name": "New Tab" },
+    { "depth": 2, "role": "toolbar", "name": "Address and search bar" },
+    { "depth": 3, "role": "button", "name": "Back" },
+    { "depth": 3, "role": "edit", "name": "Address and search bar", "settable": "string", "value": "https://example.test/" },
+    { "depth": 2, "role": "document", "name": "TITLE", "value": "https://example.test/" },
+    { "depth": 3, "role": "group" },
+    { "depth": 4, "role": "text", "name": "read through UI Automation" },
+    { "depth": 3, "role": "button", "name": "UI Automation button" },
+    { "depth": 2, "role": "group", "name": "\"winuse\" started debugging this browser" },
+    { "depth": 3, "role": "button", "name": "Cancel" }
+  ]
+}

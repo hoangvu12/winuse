@@ -71,6 +71,10 @@ func testServices(trees TreeReader) Services {
 		Windows: func() ([]win.WindowInfo, error) { return fakeWindows(), nil },
 		Trees:   trees,
 		Budget:  3 * time.Second,
+		// The keyboard routing's Window probe (ADR 0011, Decision 4): the
+		// fake Windows are no dialogs and hold no edit focus, so press-key
+		// and type-text stay Headed unless a test fakes a route.
+		KeyRoute: func(uint64) win.KeyTarget { return win.KeyTarget{} },
 	}
 }
 

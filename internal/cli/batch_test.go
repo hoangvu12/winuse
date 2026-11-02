@@ -128,6 +128,35 @@ func TestParseBatchStepRemainingActions(t *testing.T) {
 		{name: "press-key", tokens: []string{"press-key", "Control_L+a"},
 			want: protocol.PressKeyArgs{Key: "Control_L+a"}},
 		{name: "press-key needs a key", tokens: []string{"press-key"}, wantErr: "a batch press-key Action needs a key"},
+		// Posted Keys (ticket 07): --post first in a type-text step, before
+		// or after the key in a press-key step.
+		{name: "type-text --post", tokens: []string{"type-text", "--post", "hello", "world"},
+			want: protocol.TypeTextArgs{Text: "hello world", Post: true}},
+		{name: "type-text with a later --post types it", tokens: []string{"type-text", "hello", "--post"},
+			want: protocol.TypeTextArgs{Text: "hello --post"}},
+		{name: "type-text --post needs text", tokens: []string{"type-text", "--post"}, wantErr: "a batch type-text Action needs text"},
+		// type-text into an Element (desktop-parity ticket 23): --into and
+		// its Element first in the step; a later --into is text.
+		{name: "type-text --into an index", tokens: []string{"type-text", "--into", "3", "hello", "world"},
+			want: protocol.TypeTextArgs{Text: "hello world", IntoIndex: intPtr(3)}},
+		{name: "type-text --into an id", tokens: []string{"type-text", "--into", "id:1001", "hi"},
+			want: protocol.TypeTextArgs{Text: "hi", IntoRef: "id:1001"}},
+		{name: "type-text with a later --into types it", tokens: []string{"type-text", "hi", "--into", "3"},
+			want: protocol.TypeTextArgs{Text: "hi --into 3"}},
+		{name: "type-text --into needs an element", tokens: []string{"type-text", "--into"}, wantErr: "a batch type-text Action: --into takes an element index"},
+		{name: "type-text --into needs text", tokens: []string{"type-text", "--into", "3"}, wantErr: "a batch type-text Action needs text"},
+		{name: "type-text --into takes no point", tokens: []string{"type-text", "--into", "@1,2", "hi"}, wantErr: "not @x,y coordinates"},
+		{name: "press-key --post before the key", tokens: []string{"press-key", "--post", "Return"},
+			want: protocol.PressKeyArgs{Key: "Return", Post: true}},
+		{name: "press-key --post after the key", tokens: []string{"press-key", "Tab", "--post"},
+			want: protocol.PressKeyArgs{Key: "Tab", Post: true}},
+		{name: "press-key --post needs a key", tokens: []string{"press-key", "--post"}, wantErr: "a batch press-key Action needs a key"},
+		// Blocked Combos (desktop-parity ticket 05): --force per step.
+		{name: "press-key --force", tokens: []string{"press-key", "Alt_L+F4", "--force"},
+			want: protocol.PressKeyArgs{Key: "Alt_L+F4", Force: true}},
+		{name: "press-key --force --post", tokens: []string{"press-key", "--force", "Tab", "--post"},
+			want: protocol.PressKeyArgs{Key: "Tab", Post: true, Force: true}},
+		{name: "press-key --force needs a key", tokens: []string{"press-key", "--force"}, wantErr: "a batch press-key Action needs a key"},
 		{name: "set-value with a name reference", tokens: []string{"set-value", "name:Text Field", "hello", "world"},
 			want: protocol.SetValueArgs{Ref: "name:Text Field", Value: "hello world"}},
 		{name: "set-value with an index", tokens: []string{"set-value", "5", "42"},
@@ -153,6 +182,18 @@ func TestParseBatchStepRemainingActions(t *testing.T) {
 			wantErr: "the scroll amount must be an integer"},
 		{name: "scroll point must be @x,y", tokens: []string{"scroll", "12,34", "0", "600"},
 			wantErr: "@x,y"},
+		// Element scroll (headless-parity spec): an Element with a
+		// direction and optional steps, or into-view.
+		{name: "scroll an element down", tokens: []string{"scroll", "4", "down"},
+			want: protocol.ScrollArgs{ElementIndex: intPtr(4), Direction: "down"}},
+		{name: "scroll an element by steps", tokens: []string{"scroll", "name:Files", "right", "7"},
+			want: protocol.ScrollArgs{Ref: "name:Files", Direction: "right", Steps: intPtr(7)}},
+		{name: "scroll an element into view", tokens: []string{"scroll", "id:row", "into-view"},
+			want: protocol.ScrollArgs{Ref: "id:row", Direction: "into-view"}},
+		{name: "scroll an element needs a direction", tokens: []string{"scroll", "4"},
+			wantErr: "a batch scroll Action takes an element and a direction"},
+		{name: "scroll an element with a bad direction", tokens: []string{"scroll", "4", "sideways"},
+			wantErr: "the scroll direction must be"},
 		{name: "drag", tokens: []string{"drag", "@10,20", "@30,40"},
 			want: protocol.DragArgs{FromX: 10, FromY: 20, ToX: 30, ToY: 40}},
 		{name: "drag needs two points", tokens: []string{"drag", "@10,20"},
@@ -254,6 +295,11 @@ func TestBatchUsageErrorsExit2WithoutDialing(t *testing.T) {
 			"a batch drag Action takes two @x,y points (from, to)"},
 		{"batch with a malformed hover step", []string{"batch", "101", "hover"},
 			"a batch hover Action takes an @x,y point"},
+		// Posted Keys (ticket 07) never combine with --headed.
+		{"headed batch with a posted key", []string{"--headed", "batch", "101", "press-key", "--post", "Return"},
+			"--post and --headed cannot be combined"},
+		{"headed batch with posted text", []string{"batch", "101", "type-text", "--post", "hi", "then", "click", "3", "--headed"},
+			"--post and --headed cannot be combined"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

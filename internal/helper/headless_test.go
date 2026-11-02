@@ -44,6 +44,9 @@ type headlessSpy struct {
 	hValue  string
 	hAction string
 
+	scroll scrollRecord // Element scroll's fake (scroll_test.go)
+	text   textRecord   // select-text's fake (selecttext_test.go)
+
 	esc    *scopeEsc
 	cursor *cursorSpy
 }
@@ -386,7 +389,7 @@ func TestHeadlessStepPredicate(t *testing.T) {
 		{"click", json.RawMessage(`not json`), false},
 	}
 	for _, tc := range cases {
-		if got := headlessStep(tc.kind, tc.args); got != tc.want {
+		if got := headlessStep(tc.kind, tc.args, nil); got != tc.want {
 			t.Errorf("headlessStep(%s, %s) = %v, want %v", tc.kind, tc.args, got, tc.want)
 		}
 	}
@@ -492,6 +495,22 @@ func TestHeadlessRefusalsBeforeAnyPatternCall(t *testing.T) {
 	_, cmdErr = runCommand(t, CommandsWith(spy.svc), "set-value", setValueArgs("101", 3, "x"))
 	if cmdErr == nil || !strings.HasSuffix(cmdErr.Msg, "; nothing was sent") || !strings.Contains(cmdErr.Hint, "type-text") {
 		t.Errorf("not settable: %v", cmdErr)
+	}
+
+	// A toggle Element refuses a value that is not one of the six words,
+	// and a toggle state it cannot read, before any Toggle call.
+	spy = newHeadlessSpy()
+	spy.hValueErr = fmt.Errorf("%w: maybe", uia.ErrToggleValue)
+	_, cmdErr = runCommand(t, CommandsWith(spy.svc), "set-value", setValueArgs("101", 3, "maybe"))
+	if cmdErr == nil || cmdErr.Msg != "toggle value must be on, off, true, false, checked or unchecked: maybe; nothing was sent" ||
+		!strings.Contains(cmdErr.Hint, "on or off") {
+		t.Errorf("toggle value: %v", cmdErr)
+	}
+	spy = newHeadlessSpy()
+	spy.hValueErr = uia.ErrToggleUnreadable
+	_, cmdErr = runCommand(t, CommandsWith(spy.svc), "set-value", setValueArgs("101", 3, "on"))
+	if cmdErr == nil || !strings.HasSuffix(cmdErr.Msg, "; nothing was sent") || !strings.Contains(cmdErr.Hint, "Toggle") {
+		t.Errorf("unreadable toggle state: %v", cmdErr)
 	}
 }
 

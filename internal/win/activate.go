@@ -61,6 +61,13 @@ func (e *MinimizedError) Error() string {
 	return fmt.Sprintf("window %d is minimized", e.WindowID)
 }
 
+// IsMinimized reports whether hwnd is minimized (IsIconic). A headless
+// screenshot refuses a minimized Window (ADR 0011): there is nothing on
+// screen to capture, and restoring it is the agent's call.
+func IsMinimized(hwnd uint64) bool {
+	return isIconic(windows.HWND(hwnd))
+}
+
 // HeadlessReady checks that hwnd can take a Headless Action (ADR 0010)
 // without touching the foreground: a Window disabled by its open modal
 // dialog fails with a ModalDialogError (a pattern call would act behind

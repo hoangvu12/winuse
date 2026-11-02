@@ -73,6 +73,24 @@ func CheckWindowIntegrity(w WindowInfo) error {
 	return nil
 }
 
+// IntegrityName names an integrity level RID for winuse status: the level
+// at or below it ("medium plus" sits between medium and high).
+func IntegrityName(rid uint32) string {
+	switch {
+	case rid >= IntegritySystem:
+		return "system"
+	case rid >= IntegrityHigh:
+		return "high (administrator)"
+	case rid >= IntegrityMediumPlus:
+		return "medium plus"
+	case rid >= IntegrityMedium:
+		return "medium"
+	case rid >= IntegrityLow:
+		return "low"
+	}
+	return "untrusted"
+}
+
 // IntegrityLevel returns the integrity level RID of the process with the
 // given pid (0: the calling process).
 func IntegrityLevel(pid uint32) (uint32, error) {

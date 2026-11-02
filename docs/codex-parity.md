@@ -31,13 +31,20 @@ different**; `--headed` restores Codex's behaviour for any Action.
 
 | Parameter | Codex | winuse `list-windows` | Status |
 |---|---|---|---|
-| `—` (no parameters) | returns `Window[] {app, id, title?}` of targetable windows | prints `<Window ID>	<App>	<title>` per Window | matched |
+| `—` (no parameters) | returns `Window[] {app, id, title?}` of targetable windows | with no flags, prints `<Window ID>	<App>	<title>` per Window; the opt-in `--details` column and `--app` filter are winuse extensions (see below) | matched |
 
 Behaviour notes (see cross-cutting rows for the differences that live
 here): the window filter is Codex's (visible, not cloaked, not a tool
 window) **plus** owned dialogs — the fix for Codex's untargetable-dialog
 bug. UWP Windows are attributed to the real app process; the App name is
 the executable's FileDescription, falling back to the exe base name.
+
+Without flags the line is exactly Codex's. `--details` adds a column
+before the title (so the title stays last): the visible frame `x,y WxH`
+(the numbers `move-window` and `resize-window` take), `pid N`, and the
+flags `focused`, `minimized`, `maximized` and `admin` when true.
+`--app <name>` keeps one App's Windows, matched as the App-name form of
+`<window>`. Both follow agent-desktop's `list-windows`; Codex has neither.
 
 ### get_window
 
@@ -85,7 +92,12 @@ identifiers"). The 15 s launch budget and Codex's failure message
 Codex's default is screenshot-first (macOS inheritance); the spec flips
 it deliberately — a text-first read is cheaper and enough for ordinary
 tasks, and a note tells the agent when a Window's tree is too sparse to
-trust (canvas apps). Popups and menus drawn over the Window appear in
+trust (canvas apps). A Chromium or Electron Window read through UI
+Automation alone (no Browser Connection) whose web content reads thin is
+read again for up to 5 s while Chromium builds its lazy tree (once per
+Window; a Window that stayed thin gets one short retry on later reads),
+and a tree still thin after that carries a note that names the fully
+covered Window as the likely cause (ADR 0005). Popups and menus drawn over the Window appear in
 the one frame (Codex composites several `zIndex` layers).
 
 ### click
@@ -138,12 +150,31 @@ it and winuse's code refuses it (see cross-cutting).
 |---|---|---|---|
 | `window` | the Window holding the Element | `<window>` | matched |
 | `element_index` | the Element to write | the Element Index, a `name:`/`id:` reference, or `@x,y` (the Element UIA finds under the point of the latest screenshot) | matched (extended) |
-| `value` | the string to set | the value; numeric Elements (RangeValue) take it parsed as a number | matched |
+| `value` | the string to set | the value; numeric Elements (RangeValue) take it parsed as a number; a combo box or list with no writable value takes an item's name | matched |
 | (delivery) | activates the Window, focuses the Element, then writes | by Element Index or reference **Headless**: no activation and no focus (UIA SetFocus moves the desktop foreground), a text write read back live; `@x,y` and `--headed` keep Codex's activate-and-focus order | intentionally different |
 
 Non-settable Elements fail with Codex's `Cannot set a value for an
 element that is not settable` plus the click-and-type-text hint. A
 Headed write focuses the Element first — Codex's `set_value` order.
+
+A UIA combo box or list (Selection or ItemContainer pattern) whose Value
+is missing or read-only picks the item the value names, a winuse
+extension that mirrors agent-desktop's `select`: a bounded descendant
+search matching the exact name, then ItemContainer's lookup for a
+virtualized list's unbuilt items, then the name ignoring case and
+spacing; Realize, SelectionItem.Select, then the selection read back. A
+collapsed combo is searched collapsed first, because its drop-down is a
+topmost popup over the user's work; it is expanded, searched again and
+collapsed afterwards only when the collapsed search finds no item at all.
+Several matches or none are refused with the names, with nothing sent
+unless the combo had to be opened; the error then says it was opened and
+closed. An editable combo keeps the Value write. A classic Win32 combo
+(window class ComboBox, including a drop-down list whose proxy reports
+a writable Value) is matched the same way through its own messages and
+never opened: CB_GETLBTEXT, CB_SETCURSEL, read back with CB_GETCURSEL.
+After the read-back, a classic combo's parent (or a LBS_NOTIFY list
+box's) gets the CBN_SELCHANGE (LBN_SELCHANGE) a user's choice sends,
+which a programmatic selection does not.
 
 ### drag
 
@@ -188,8 +219,9 @@ naming the dialog.
 Codex ships a per-turn `codex-computer-use.exe` driven over JSON-RPC by
 `@oai/sky` inside a JS REPL; winuse is a CLI plus a persistent
 background helper over a named pipe restricted to the user's SID,
-version-checked (a stale helper exits so upgrades never talk to an old
-one), idle-exiting after 5 minutes. The observable contract — one
+version-checked (a stale helper exits so upgrades never act through an
+old one; only the read-only `status` is answered across builds, naming
+both versions), idle-exiting after 5 minutes. The observable contract — one
 request at a time, `ok` or a one-line failure, no state echo — is
 preserved. **intentionally different**.
 
@@ -201,7 +233,14 @@ timed out: <method>`. **matched**. A Batch gets 60 s — an
 **intentionally different** bound recorded in decisions.md: one request
 runs many Actions in order (Codex has no batch tool, so its 10 s rule
 has no batch case), and each Action inside still behaves like a
-standalone one within the shared contract.
+standalone one within the shared contract. **extension** (desktop-parity
+ticket 14): `--timeout <seconds>` on `get-window-state` (up to 60 s, and
+the Chromium settle widens with it), `launch-app` (120 s), `batch` (300 s)
+and `wait` (300 s) widens that command's budget for slow Electron, Office
+and cold Chromium trees; the CLI's pipe deadline and the helper's request
+context both follow it, and a value under the default leaves the default.
+Codex's budgets are fixed. Actions keep theirs: a slow Action is a bug or
+a hung App.
 
 ### esc stop
 
@@ -308,7 +347,11 @@ Codex's keysym names, the alias blob (`Ctrl`, `Alt`, `period`,
 `greater`, `Numpad_Add`, …), chords delivered as all-downs-then-ups,
 scan codes filled (Codex's zero-scancode Flutter bug), shifted names
 mapping to the unshifted key. The Windows key is recognized only to be
-**refused in code** — Codex relies on model guidance. **matched**.
+**refused in code** — Codex relies on model guidance. Beyond Codex,
+`press-key` also refuses Alt+F4, Alt+Tab and Ctrl+Shift+Escape and any
+chord holding one of them, with nothing sent, unless `--force` (per step
+in a Batch) — agent-desktop's blocked combos, its Windows-key ones already
+covered by the refusal above. **matched (extended)**.
 
 ### app identifiers
 
@@ -348,4 +391,13 @@ Batch) that restores Codex's foreground, real-input behaviour for any
 Action, and the Agent Cursor — a presentation-only second cursor that
 glides to the Element of each Headless Action with a short label and
 ripples on the click, click-through, never activated, and hidden from
-winuse's own captures. **extension**.
+winuse's own captures. `select-text` selects a span of a field's text, or
+all of it, with no keys and no foreground (a classic edit control's
+EM_SETSEL, a UI Automation Text pattern, or a Page field through the
+Browser Connection), read back; Codex selects text only with real keys
+or a drag. `list-windows --details` and `--app` add a Window's frame,
+pid and state flags and an App filter to Codex's plain listing. `status`
+prints the winuse and helper versions, the helper's uptime, the desktop's
+lock state, the integrity level, DPI awareness, the Browser Connections
+and the Windows build; it only reads and never starts the helper.
+**extension**.

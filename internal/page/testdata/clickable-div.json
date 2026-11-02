@@ -1,0 +1,45 @@
+{
+  "source": "hand-authored Accessibility.getFullAXTree answer for a page whose controls are role-less divs: the cursor-pointer pass found a settings div, a product card and a span inside a real button (which stays part of the button). Also a nav list of links and a paragraph.",
+  "browser": "chrome",
+  "targetId": "T2",
+  "title": "Shop",
+  "url": "https://shop.test/",
+  "main": {
+    "sessionId": "S2",
+    "frameId": "F1",
+    "loaders": { "F1": "L7" },
+    "marks": {
+      "clickables": [
+        { "backendNodeId": 210, "text": "Open settings" },
+        { "backendNodeId": 220, "text": "Blue mug 12 EUR" },
+        { "backendNodeId": 241, "text": "Buy" }
+      ]
+    },
+    "nodes": [
+      { "nodeId": "1", "role": { "type": "internalRole", "value": "RootWebArea" }, "name": { "type": "computedString", "value": "Shop" }, "properties": [{ "name": "focused", "value": { "type": "booleanOrUndefined", "value": true } }], "childIds": ["2"], "backendDOMNodeId": 1, "frameId": "F1" },
+      { "nodeId": "2", "role": { "type": "role", "value": "generic" }, "parentId": "1", "childIds": ["3", "9", "10", "20", "24", "30"], "backendDOMNodeId": 2 },
+      { "nodeId": "3", "role": { "type": "role", "value": "navigation" }, "name": { "type": "computedString", "value": "Main" }, "parentId": "2", "childIds": ["4"], "backendDOMNodeId": 3 },
+      { "nodeId": "4", "role": { "type": "role", "value": "list" }, "parentId": "3", "childIds": ["5", "7"], "backendDOMNodeId": 4 },
+      { "nodeId": "5", "role": { "type": "role", "value": "listitem" }, "parentId": "4", "childIds": ["6"], "backendDOMNodeId": 5 },
+      { "nodeId": "6", "role": { "type": "role", "value": "link" }, "name": { "type": "computedString", "value": "Home" }, "parentId": "5", "childIds": ["61"], "backendDOMNodeId": 6 },
+      { "nodeId": "61", "role": { "type": "internalRole", "value": "StaticText" }, "name": { "type": "computedString", "value": "Home" }, "parentId": "6", "childIds": ["62"], "backendDOMNodeId": 61 },
+      { "nodeId": "62", "role": { "type": "internalRole", "value": "InlineTextBox" }, "name": { "type": "computedString", "value": "Home" }, "parentId": "61" },
+      { "nodeId": "7", "role": { "type": "role", "value": "listitem" }, "parentId": "4", "childIds": ["8"], "backendDOMNodeId": 7 },
+      { "nodeId": "8", "role": { "type": "role", "value": "link" }, "name": { "type": "computedString", "value": "Cart (2)" }, "parentId": "7", "backendDOMNodeId": 8 },
+      { "nodeId": "9", "ignored": true, "role": { "type": "role", "value": "none" }, "parentId": "2", "childIds": [], "backendDOMNodeId": 9 },
+      { "nodeId": "10", "ignored": true, "role": { "type": "role", "value": "generic" }, "parentId": "2", "childIds": ["11"], "backendDOMNodeId": 210 },
+      { "nodeId": "11", "role": { "type": "internalRole", "value": "StaticText" }, "name": { "type": "computedString", "value": "Open settings" }, "parentId": "10", "backendDOMNodeId": 211 },
+      { "nodeId": "20", "role": { "type": "role", "value": "generic" }, "parentId": "2", "childIds": ["21", "22"], "backendDOMNodeId": 220 },
+      { "nodeId": "21", "role": { "type": "role", "value": "heading" }, "name": { "type": "computedString", "value": "Blue mug" }, "parentId": "20", "childIds": ["211"], "backendDOMNodeId": 221 },
+      { "nodeId": "211", "role": { "type": "internalRole", "value": "StaticText" }, "name": { "type": "computedString", "value": "Blue mug" }, "parentId": "21", "backendDOMNodeId": 2211 },
+      { "nodeId": "22", "role": { "type": "internalRole", "value": "StaticText" }, "name": { "type": "computedString", "value": "12 EUR" }, "parentId": "20", "backendDOMNodeId": 222 },
+      { "nodeId": "24", "role": { "type": "role", "value": "button" }, "name": { "type": "computedString", "value": "Buy" }, "parentId": "2", "childIds": ["25"], "backendDOMNodeId": 240 },
+      { "nodeId": "25", "role": { "type": "role", "value": "generic" }, "parentId": "24", "childIds": ["26"], "backendDOMNodeId": 241 },
+      { "nodeId": "26", "role": { "type": "internalRole", "value": "StaticText" }, "name": { "type": "computedString", "value": "Buy" }, "parentId": "25", "backendDOMNodeId": 242 },
+      { "nodeId": "30", "role": { "type": "role", "value": "paragraph" }, "parentId": "2", "childIds": ["31", "32", "33"], "backendDOMNodeId": 30 },
+      { "nodeId": "31", "role": { "type": "internalRole", "value": "StaticText" }, "name": { "type": "computedString", "value": "Free shipping over 50 EUR." }, "parentId": "30", "backendDOMNodeId": 31 },
+      { "nodeId": "32", "role": { "type": "internalRole", "value": "LineBreak" }, "name": { "type": "computedString", "value": "\n" }, "parentId": "30", "backendDOMNodeId": 32 },
+      { "nodeId": "33", "role": { "type": "role", "value": "image" }, "name": { "type": "computedString", "value": "" }, "parentId": "30", "backendDOMNodeId": 33 }
+    ]
+  }
+}

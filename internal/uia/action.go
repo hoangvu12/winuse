@@ -73,6 +73,10 @@ func (c *Client) ElementPoint(ctx context.Context, hwnd uint64, index int) (Poin
 // mapped by the helper).
 func (c *Client) lookup(hwnd uint64, index int) (comPtr, error) {
 	el, ok := c.store.element(hwnd, index)
+	if ok && el == nil {
+		// A Page Element (splice.go): it has no UIA Element behind it.
+		return nil, fmt.Errorf("%w: element %d of window %d", ErrPageElement, index, hwnd)
+	}
 	if ok {
 		return el, nil
 	}
@@ -132,19 +136,13 @@ func (th *thread) elementFromPoint(x, y int32) (comPtr, error) {
 }
 
 // scrollIntoView asks the Element's ScrollItem pattern to bring it on
-// screen, best effort: a stale Element surfaces (the caller fails as
-// stale), but any other failure is ignored — the clickable point or the
-// bounds centre may still be usable.
+// screen (the same call as scroll into-view, scrollItemIntoView), best
+// effort: a stale Element surfaces (the caller fails as stale), but any
+// other failure, and an Element without the pattern, is ignored (the
+// clickable point or the bounds centre may still be usable).
 func scrollIntoView(el comPtr) error {
-	var pat comPtr
-	hr := call(el, elGetCurrentPatternAs, patternScrollItem,
-		uintptr(unsafe.Pointer(&iidScrollItemPattern)), uintptr(unsafe.Pointer(&pat)))
-	if hr.Failed() || pat == nil {
-		return nil // not scrollable (or the pattern query failed): not fatal
-	}
-	defer release(pat)
-	if hr := call(pat, scrollItemScrollIntoView); hr.Failed() && hrStale(hr) {
-		return fmt.Errorf("%w: the Element is no longer available (HRESULT %s)", ErrStale, hr)
+	if err := scrollItemIntoView(el); errors.Is(err, ErrStale) {
+		return err
 	}
 	return nil
 }

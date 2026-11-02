@@ -19,7 +19,11 @@ package helper
 // its Esc scope and banner before its first step runs) both ask it, so
 // they can never disagree about which Actions are Headless. A helper
 // whose Services.Actions is not a HeadlessActor (the v1 fakes of the
-// offline tests) routes everything Headed.
+// offline tests) routes every Element Action Headed.
+//
+// press-key and type-text (ADR 0011, Decision 4; keyroute.go) route by
+// the live Window instead: the predicate takes the Window probe's
+// reading, read after the Window resolves and before anything is sent.
 
 import (
 	"context"
@@ -30,6 +34,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hoangvu12/winuse/internal/keys"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
@@ -58,6 +63,13 @@ type HeadlessActor interface {
 	// ElementBounds reads the Element's live bounds (physical screen
 	// pixels) and name: the Agent Cursor's destination and label.
 	ElementBounds(ctx context.Context, hwnd uint64, index int) (left, top, right, bottom int32, name string, err error)
+	// ScrollElement scrolls the Element by steps through its own
+	// ScrollPattern or its nearest scrollable ancestor's and reads the
+	// scroll percent back (headless-parity spec, "Element scroll").
+	ScrollElement(ctx context.Context, hwnd uint64, index int, dir uia.ScrollDirection, steps int) error
+	// ScrollElementIntoView scrolls the Element into view through its
+	// ScrollItem pattern and reads IsOffscreen back.
+	ScrollElementIntoView(ctx context.Context, hwnd uint64, index int) error
 }
 
 var _ HeadlessActor = (*uia.Client)(nil)
@@ -105,7 +117,7 @@ func armPassive(esc EscWatch) (disarm func()) {
 // flag: the only ones with a Headless form.
 func takesHeaded(kind string) bool {
 	switch kind {
-	case "click", "set-value", "perform-secondary-action":
+	case "click", "set-value", "perform-secondary-action", "scroll", "press-key", "type-text":
 		return true
 	}
 	return false
@@ -116,14 +128,69 @@ func takesHeaded(kind string) bool {
 // Headless Action — `click` on an Element Index or name:/id: reference
 // with the left button and a single click; `set-value` and
 // `perform-secondary-action` on an Element Index or reference, except the
-// Raise Secondary Action; never with `headed: true`. `@x,y` is never
+// Raise Secondary Action; `scroll` on an Element Index or reference with a
+// direction or into-view (headless-parity spec, "Element scroll");
+// `select-text` on an Element Index or reference with a valid span, which
+// has no headed form (headless-max ticket 10); never with `headed: true`.
+// `@x,y` is never
 // Headless: a screen point names whatever is topmost there, which for a
 // covered Window is another Window's Element. Arguments that do not
 // parse (or name an unknown Secondary Action) are not Headless: the
 // command fails on them anyway, and a Batch then keeps v1's swallowing
 // scope.
-func headlessStep(kind string, args json.RawMessage) bool {
+//
+// press-key and type-text route by the live Window, not by their
+// arguments alone (ADR 0011, Decision 4): route is the Window probe's
+// reading (Services.KeyRoute), taken before anything is sent, and nil
+// when there is none, which keeps every keyboard step Headed. Return or
+// Escape with no modifiers on a classic dialog is Headless
+// (dialogKeyRoute), and so is text with no control characters into a
+// focused, writable classic edit control (editTypeRoute). type-text
+// aimed at an Element (--into, typeinto.go) needs no probe: unheaded, it
+// is Headless or sends nothing. The other kinds ignore route.
+//
+// Posted Keys (`post`, ADR 0011, Decision 5) are no Headless Action:
+// Windows does not promise that an app handles them. They take no
+// foreground, no banner and no real input either, so a posted step
+// counts as Headless here, for the Batch's scope, without a probe. With
+// `headed` as well the command fails, and the step is not Headless.
+func headlessStep(kind string, args json.RawMessage, route *win.KeyTarget) bool {
 	switch kind {
+	case "type-text":
+		var a protocol.TypeTextArgs
+		if json.Unmarshal(args, &a) != nil || a.Headed {
+			return false
+		}
+		if typesInto(a) {
+			// Headless or nothing sent, never Headed (typeinto.go); with
+			// post the command fails.
+			return !a.Post
+		}
+		if a.Post {
+			return true
+		}
+		if route == nil {
+			return false
+		}
+		_, ok := editTypeRoute(a.Text, *route)
+		return ok
+	case "press-key":
+		var a protocol.PressKeyArgs
+		if json.Unmarshal(args, &a) != nil || a.Headed {
+			return false
+		}
+		if a.Post {
+			return true
+		}
+		if route == nil {
+			return false
+		}
+		chord, err := keys.Parse(a.Key)
+		if err != nil {
+			return false
+		}
+		_, ok := dialogKeyRoute(chord, *route)
+		return ok
 	case "click":
 		var a protocol.ClickArgs
 		if json.Unmarshal(args, &a) != nil || a.Headed || !elementForm(a.ElementIndex, a.Ref, a.Point) {
@@ -144,6 +211,13 @@ func headlessStep(kind string, args json.RawMessage) bool {
 		}
 		action, ok := uia.CanonicalSecondaryAction(a.Action)
 		return ok && action != "Raise"
+	case "scroll":
+		var a protocol.ScrollArgs
+		return json.Unmarshal(args, &a) == nil && headlessElementScroll(a)
+	case "select-text":
+		// Always Headless: there is no headed form (selecttext.go).
+		var a protocol.SelectTextArgs
+		return json.Unmarshal(args, &a) == nil && headlessSelectText(a)
 	}
 	return false
 }
@@ -154,14 +228,56 @@ func elementForm(index *int, ref string, point *protocol.Point) bool {
 	return point == nil && countRefForms(false, index != nil, ref != "") == 1
 }
 
-// headless reports whether this command runs Headless on this helper:
-// the shared predicate holds and the element side can act headless.
+// headless reports whether this Element Action runs Headless on this
+// helper: the shared predicate holds and the element side can act
+// headless. The keyboard commands route through keyRoute instead: they
+// need the live Window, not the element side.
 func (s Services) headless(kind string, args json.RawMessage) (HeadlessActor, bool) {
 	actor, ok := s.Actions.(HeadlessActor)
-	if !ok || !headlessStep(kind, args) {
+	if !ok || !headlessStep(kind, args, nil) {
 		return nil, false
 	}
 	return actor, true
+}
+
+// keyRoute probes the resolved Window for the keyboard routing (ADR 0011,
+// Decision 4). It returns nil, and the keyboard commands stay Headed,
+// when there is no probe (Services built without defaultServices), or
+// when the step is headed or posted: neither route needs the probe.
+func (s Services) keyRoute(args json.RawMessage, w win.WindowInfo) *win.KeyTarget {
+	if s.KeyRoute == nil {
+		return nil
+	}
+	var flags struct {
+		Headed bool `json:"headed"`
+		Post   bool `json:"post"`
+	}
+	if json.Unmarshal(args, &flags) != nil || flags.Headed || flags.Post {
+		return nil
+	}
+	t := s.KeyRoute(w.ID)
+	return &t
+}
+
+// stepHeadless is the Batch's per-step scope question: the same predicate
+// each step's command routes on. Element Actions need the element side;
+// press-key and type-text need the Batch's Window (w nil when it did not
+// resolve: the first step then fails on it anyway) and probe it.
+func (s Services) stepHeadless(kind string, args json.RawMessage, w *win.WindowInfo) bool {
+	if w != nil && s.pageStep(kind, args, *w) {
+		return true // a Page step (pageactions.go)
+	}
+	switch kind {
+	case "press-key", "type-text":
+		if w == nil {
+			return false
+		}
+		return headlessStep(kind, args, s.keyRoute(args, *w))
+	case "tab-new", "tab-close", "tab-switch":
+		return s.tabStepHeadless(kind, w) // tabs.go: tab-switch is Headless only through the extension
+	}
+	_, ok := s.headless(kind, args)
+	return ok
 }
 
 // headlessRun is one Headless Action's own part of runHeadless.
@@ -197,23 +313,8 @@ func (s Services) runHeadless(ctx context.Context, ref string, actor HeadlessAct
 	if rerr != nil {
 		return "", rerr
 	}
-	if locked, desktop := s.Locked(); locked {
-		return "", nothingSent(lockedDesktopFailure(desktop))
-	}
-	if err := s.Integrity(w); err != nil {
-		var admin *win.AdminWindowError
-		if errors.As(err, &admin) {
-			return "", nothingSent(Fail(err.Error(),
-				"UI Automation writes into a higher-integrity Window fail; start winuse from an elevated terminal to control administrator Windows, or ask the user to operate this Window"))
-		}
-		return "", nothingSent(Fail(err.Error(), ""))
-	}
-	ready := s.Ready
-	if ready == nil {
-		ready = win.HeadlessReady
-	}
-	if err := ready(w.ID); err != nil {
-		return "", readyError(err, w)
+	if rerr := s.headlessRefusals(w, adminPatternHint); rerr != nil {
+		return "", rerr
 	}
 
 	// The passive Esc scope: from here the user's Esc stops this Action
@@ -247,6 +348,59 @@ func (s Services) runHeadless(ctx context.Context, ref string, actor HeadlessAct
 		return "", headlessFailure(err, w, index, run)
 	}
 	return okOutput, nil
+}
+
+// adminPatternHint and adminMessageHint are the administrator-Window
+// refusal's hints: UIPI blocks UI Automation writes and posted or sent
+// window messages alike.
+const (
+	adminPatternHint = "UI Automation writes into a higher-integrity Window fail; start winuse from an elevated terminal to control administrator Windows, or ask the user to operate this Window"
+	adminMessageHint = "Windows blocks messages into a higher-integrity Window; start winuse from an elevated terminal to control administrator Windows, or ask the user to operate this Window"
+)
+
+// headlessRefusals are runHeadless's refusals on a resolved Window, in
+// order, each saying "nothing was sent": a locked desktop, an
+// administrator Window (adminHint), and a Window that cannot take the
+// Action without the foreground (Services.Ready: a modal dialog blocks it,
+// or it is minimized).
+func (s Services) headlessRefusals(w win.WindowInfo, adminHint string) *Error {
+	if locked, desktop := s.Locked(); locked {
+		return nothingSent(lockedDesktopFailure(desktop))
+	}
+	if err := s.Integrity(w); err != nil {
+		var admin *win.AdminWindowError
+		if errors.As(err, &admin) {
+			return nothingSent(Fail(err.Error(), adminHint))
+		}
+		return nothingSent(Fail(err.Error(), ""))
+	}
+	check := s.Ready
+	if check == nil {
+		check = win.HeadlessReady
+	}
+	if err := check(w.ID); err != nil {
+		return readyError(err, w)
+	}
+	return nil
+}
+
+// cursorTravelRect glides the Agent Cursor from the Window to a screen
+// rectangle (a dialog's button, an edit control) labelled with what is
+// about to happen, and returns where it went for the click effect. An
+// empty target falls back to the Window's own bounds. Best effort, like
+// cursorTravel.
+func (s Services) cursorTravelRect(w win.WindowInfo, target win.Rect, label string) (win.Rect, bool) {
+	if s.Cursor == nil {
+		return win.Rect{}, false
+	}
+	if target.Width() <= 0 || target.Height() <= 0 {
+		target = w.Bounds
+	}
+	if target.Width() <= 0 || target.Height() <= 0 {
+		return win.Rect{}, false
+	}
+	cursorBestEffort("travelling", func() { s.Cursor.Travel(w.Bounds, target, label) })
+	return target, true
 }
 
 // cursorTravel glides the Agent Cursor from the Window to the Element,
@@ -310,6 +464,9 @@ const nothingSentNote = "; nothing was sent"
 // nothingSent marks a refusal as raised before anything reached the app.
 func nothingSent(e *Error) *Error {
 	out := *e
+	if strings.HasSuffix(out.Msg, nothingSentNote) {
+		return &out // already said
+	}
 	out.Msg += nothingSentNote
 	return &out
 }
@@ -327,8 +484,9 @@ func escStopBeforeActError() *Error {
 
 // readyError maps Services.Ready's refusal: a modal dialog points at the
 // dialog (activationError's hint); a minimized Window points at
-// activate-window or --headed (its Elements are offscreen, and restoring
-// it would take the foreground — the agent's call, not winuse's).
+// restore-window (headless, ADR 0011), activate-window (the foreground
+// way) or --headed (its Elements are offscreen, and restoring it is the
+// agent's call, not winuse's).
 func readyError(err error, w win.WindowInfo) *Error {
 	var modal *win.ModalDialogError
 	if errors.As(err, &modal) {
@@ -338,7 +496,8 @@ func readyError(err error, w win.WindowInfo) *Error {
 	if errors.As(err, &minimized) {
 		id := strconv.FormatUint(w.ID, 10)
 		return nothingSent(Fail(err.Error(),
-			"a minimized Window's Elements cannot be acted on headless; restore it with winuse activate-window "+id+
+			"a minimized Window's Elements cannot be acted on headless; restore it with winuse restore-window "+id+
+				" (headless), or with winuse activate-window "+id+
 				" (this takes the foreground), or pass --headed to act the v1 way"))
 	}
 	return nothingSent(Fail(err.Error(), ""))
@@ -386,12 +545,22 @@ func clickRefusal(err error, w win.WindowInfo, index int) *Error {
 }
 
 // refusedBeforeCall reports whether an element-side failure is a refusal
-// raised before any pattern call.
+// raised before any pattern call. A select by name that matched no item,
+// or several, sent nothing unless it expanded the list for the search
+// (it then says the list was opened and closed).
 func refusedBeforeCall(err error) bool {
+	var sel *uia.SelectItemError
+	if errors.As(err, &sel) {
+		return !sel.Opened
+	}
 	var unavail *uia.UnavailableActionError
 	switch {
 	case errors.Is(err, uia.ErrStale), errors.Is(err, uia.ErrNoState), errors.Is(err, uia.ErrDisabled),
-		errors.Is(err, uia.ErrNotSettable), errors.Is(err, uia.ErrRangeValue), errors.As(err, &unavail):
+		errors.Is(err, uia.ErrNotSettable), errors.Is(err, uia.ErrRangeValue),
+		errors.Is(err, uia.ErrToggleValue), errors.Is(err, uia.ErrToggleUnreadable), errors.As(err, &unavail),
+		errors.Is(err, uia.ErrNotScrollable), errors.Is(err, uia.ErrNoScrollItem), errors.Is(err, uia.ErrScrollSteps),
+		errors.Is(err, uia.ErrNoTextPattern), errors.Is(err, uia.ErrNoTextSelection), errors.Is(err, uia.ErrTextUnreadable),
+		errors.Is(err, uia.ErrTextRange), errors.Is(err, uia.ErrTextSpan):
 		return true
 	}
 	return false

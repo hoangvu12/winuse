@@ -151,9 +151,22 @@ func captureMethods(o Overlay, first ...shot.Method) []shot.Method {
 
 // captureMethodsHiding is captureMethods with the Agent Cursor too: each
 // method runs with the indicator and the cursor hidden, whichever of the
-// two is wired, so winuse's own screenshots contain neither.
+// two is wired, so winuse's own screenshots contain neither. This is the
+// full chain that --headed captures through, after activation.
 func captureMethodsHiding(o Overlay, c Cursor, first ...shot.Method) []shot.Method {
-	methods := append(append([]shot.Method{}, first...), win.RegionMethod{}, win.PrintWindowMethod{})
+	return hideDuringCapture(o, c, append(append([]shot.Method{}, first...), win.RegionMethod{}, win.PrintWindowMethod{}))
+}
+
+// headlessCaptureMethods is the headless chain (ADR 0011): first, then
+// PrintWindow, hidden the same way. The screen region method is left out:
+// it copies whatever is on top, so it needs the Window in the foreground.
+func headlessCaptureMethods(o Overlay, c Cursor, first ...shot.Method) []shot.Method {
+	return hideDuringCapture(o, c, append(append([]shot.Method{}, first...), win.PrintWindowMethod{}))
+}
+
+// hideDuringCapture wraps each method in the capture bracket when an
+// indicator or a cursor is wired, and leaves them plain otherwise.
+func hideDuringCapture(o Overlay, c Cursor, methods []shot.Method) []shot.Method {
 	if o != nil || c != nil {
 		for i := range methods {
 			methods[i] = hiddenDuringCapture{overlay: o, cursor: c, method: methods[i]}

@@ -29,6 +29,8 @@ type fakeSource struct {
 	step          time.Duration
 	base          time.Time
 	childrenCalls int
+	expanded      []*fakeNode       // every node whose children were read, in order
+	onChildren    func(n *fakeNode) // runs at every Children call, before it answers
 }
 
 func newFakeSource(root *fakeNode) *fakeSource {
@@ -47,6 +49,10 @@ func (s *fakeSource) Root() (*fakeNode, NodeData, error) {
 func (s *fakeSource) Children(n *fakeNode, remaining time.Duration) ([]*fakeNode, []NodeData, error) {
 	s.childrenCalls++
 	s.elapsed += s.step
+	s.expanded = append(s.expanded, n)
+	if s.onChildren != nil {
+		s.onChildren(n)
+	}
 	if s.childrenErr != nil {
 		if err := s.childrenErr(n); err != nil {
 			return nil, nil, err
@@ -364,5 +370,290 @@ func TestWalkExpiredBudgetWalksOnlyRoot(t *testing.T) {
 	}
 	if len(res.Notes) != 1 || !strings.Contains(res.Notes[0], "time limit") {
 		t.Errorf("Notes = %v, want the time-limit note", res.Notes)
+	}
+}
+
+// browserTree is a browser Window's frame: the address bar, the active
+// Tab's document (index 4, its descendants 5 to 7) and the infobar after it.
+func browserTree() *fakeNode {
+	return node(wstate.ControlTypeWindow, "Page - Google Chrome",
+		node(wstate.ControlTypePane, "Google Chrome",
+			node(wstate.ControlTypeToolBar, "Address", node(wstate.ControlTypeButton, "Back")),
+			node(wstate.ControlTypeDocument, "Page",
+				node(wstate.ControlTypeGroup, "", node(wstate.ControlTypeText, "read through UI Automation")),
+				node(wstate.ControlTypeButton, "UI Automation button"),
+			),
+			node(wstate.ControlTypeGroup, "infobar", node(wstate.ControlTypeButton, "Cancel")),
+		),
+	)
+}
+
+// cutNamed is a DocumentCut whose answer is known: the Document named title.
+func cutNamed(title string) DocumentCut {
+	return func(name, _ string) (bool, bool) { return title != "" && name == title, true }
+}
+
+// lateCut is a DocumentCut for the Document named title whose answer is
+// known only once *known is set.
+func lateCut(title string, known *bool) DocumentCut {
+	return func(name, _ string) (bool, bool) { return *known && name == title, *known }
+}
+
+func walkNames(res WalkResult[*fakeNode]) string {
+	var out []string
+	for _, e := range res.Elements {
+		out = append(out, e.Name)
+	}
+	return strings.Join(out, "|")
+}
+
+// descendantsOf lists n's descendants, not n itself.
+func descendantsOf(n *fakeNode) []*fakeNode {
+	var out []*fakeNode
+	for _, k := range n.kids {
+		out = append(out, k)
+		out = append(out, descendantsOf(k)...)
+	}
+	return out
+}
+
+// cutFrame is what every cut walk of browserTree reads: the frame with the
+// document's own line and nothing under it.
+const cutFrame = "Page - Google Chrome|Google Chrome|Address|Back|Page|infobar|Cancel"
+
+func TestWalkCutNeverReadsTheDocumentsDescendants(t *testing.T) {
+	tree := browserTree()
+	doc := tree.kids[0].kids[1]
+	src := newFakeSource(tree)
+	cfg := fullConfig()
+	cfg.Cut = cutNamed("Page")
+	res, err := Walk[*fakeNode](src, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := walkNames(res); got != cutFrame {
+		t.Errorf("elements = %q, want %q", got, cutFrame)
+	}
+	if res.Cut != 4 || res.Elements[4].Role != "document" {
+		t.Errorf("Cut = %d", res.Cut)
+	}
+	// Not one chunk was read for the document or under it.
+	inside := append([]*fakeNode{doc}, descendantsOf(doc)...)
+	for _, n := range src.expanded {
+		for _, d := range inside {
+			if n == d {
+				t.Errorf("the walk read the children of %q", n.data.Name)
+			}
+		}
+	}
+	if len(src.expanded) != 6 {
+		t.Errorf("%d chunks, want 6 (every frame Element but the document)", len(src.expanded))
+	}
+	if len(res.Live) != len(res.Elements) || len(res.Dropped) != 0 || len(res.Notes) != 0 || res.FocusedIndex != -1 {
+		t.Errorf("live %d, dropped %d, notes %q, focus %d", len(res.Live), len(res.Dropped), res.Notes, res.FocusedIndex)
+	}
+}
+
+// TestWalkLateCutDropsWhatWasReadUnderTheDocument: the answer comes while
+// the walk is inside the document. What it read there is dropped (handles
+// for the caller to release), its notes and its focus with it, and the
+// walk goes on after the document.
+func TestWalkLateCutDropsWhatWasReadUnderTheDocument(t *testing.T) {
+	tree := browserTree()
+	doc := tree.kids[0].kids[1]
+	broken, group := node(wstate.ControlTypeGroup, "broken", node(wstate.ControlTypeText, "x")), doc.kids[0]
+	doc.kids = append([]*fakeNode{broken}, doc.kids...)
+	group.kids[0].data.Focused = true
+	known := false
+	src := newFakeSource(tree)
+	src.childrenErr = func(n *fakeNode) error {
+		if n == broken {
+			return errors.New("element gone") // an unreadable reason under the document
+		}
+		return nil
+	}
+	src.onChildren = func(n *fakeNode) {
+		if n == group {
+			known = true // the Page read ends while the group is read
+		}
+	}
+	cfg := fullConfig()
+	cfg.Cut = lateCut("Page", &known)
+	res, err := Walk[*fakeNode](src, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := walkNames(res); got != cutFrame {
+		t.Errorf("elements = %q, want %q", got, cutFrame)
+	}
+	if res.Cut != 4 {
+		t.Errorf("Cut = %d", res.Cut)
+	}
+	// broken, group and its text were read, then dropped; the document's
+	// last child was never read and is dropped too.
+	if len(res.Dropped) != 4 || len(res.Live) != len(res.Elements) {
+		t.Errorf("dropped %d, live %d", len(res.Dropped), len(res.Live))
+	}
+	if len(res.Notes) != 0 {
+		t.Errorf("notes from under the cut document stayed: %q", res.Notes)
+	}
+	if res.FocusedIndex != 4 {
+		t.Errorf("the focus under the document moves to it: %d", res.FocusedIndex)
+	}
+	for _, n := range src.expanded {
+		if n == group.kids[0] || n == doc.kids[2] {
+			t.Errorf("read on under the document after the answer: %q", n.data.Name)
+		}
+	}
+}
+
+// TestWalkCutPicksTheFirstDocumentNamedAfterTheTab: the cut is page.Merge's
+// pick. A document named otherwise (a side panel) is read whole, a nested
+// document goes with its cut parent, and a later document with the same
+// name stays whole.
+func TestWalkCutPicksTheFirstDocumentNamedAfterTheTab(t *testing.T) {
+	tree := browserTree()
+	pane := tree.kids[0]
+	doc := pane.kids[1]
+	doc.kids = append(doc.kids, node(wstate.ControlTypeDocument, "Page", node(wstate.ControlTypeText, "iframe")))
+	side := node(wstate.ControlTypeDocument, "Reading list", node(wstate.ControlTypeText, "saved"))
+	again := node(wstate.ControlTypeDocument, "Page", node(wstate.ControlTypeText, "again"))
+	pane.kids = []*fakeNode{pane.kids[0], side, doc, pane.kids[2], again}
+	cfg := fullConfig()
+	cfg.Cut = cutNamed("Page")
+	res, err := Walk[*fakeNode](newFakeSource(tree), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "Page - Google Chrome|Google Chrome|Address|Back|Reading list|saved|Page|infobar|Cancel|Page|again"
+	if got := walkNames(res); got != want {
+		t.Errorf("elements = %q, want %q", got, want)
+	}
+	if res.Cut != 6 {
+		t.Errorf("Cut = %d, want 6", res.Cut)
+	}
+}
+
+// TestWalkCutSeesTheDocumentsValue: the cut is asked with each document's
+// Value (a browser's document URL), so a stale Tab's document named like
+// the Tab is passed over and read whole, and the next one is cut. A
+// document with no Value pattern is asked with "".
+func TestWalkCutSeesTheDocumentsValue(t *testing.T) {
+	tree := browserTree()
+	pane := tree.kids[0]
+	doc := pane.kids[1]
+	doc.data.HasValue, doc.data.ValueValue = true, "https://example.org/"
+	stale := node(wstate.ControlTypeDocument, "Page", node(wstate.ControlTypeText, "old"))
+	stale.data.HasValue, stale.data.ValueValue = true, "https://example.com/"
+	empty := node(wstate.ControlTypeDocument, "")
+	empty.data.ValueValue = "ignored without the pattern"
+	pane.kids = []*fakeNode{stale, empty, pane.kids[0], doc, pane.kids[2]}
+	var asked []string
+	cfg := fullConfig()
+	cfg.Cut = func(name, value string) (bool, bool) {
+		asked = append(asked, name+"="+value)
+		return name == "Page" && value == "https://example.org/", true
+	}
+	res, err := Walk[*fakeNode](newFakeSource(tree), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "Page - Google Chrome|Google Chrome|Page|old||Address|Back|Page|infobar|Cancel"
+	if got := walkNames(res); got != want || res.Cut != 7 {
+		t.Errorf("elements = %q, cut %d; want %q, cut 7", got, res.Cut, want)
+	}
+	if got := strings.Join(asked, ","); got != "Page=https://example.com/,=,Page=https://example.org/" {
+		t.Errorf("asked %q", got)
+	}
+}
+
+// TestWalkCutNamingNoDocumentIsTheWholeWalk: the answer never comes, names
+// none of the documents (several documents, none named after the Tab), or
+// comes after the document was read whole: the walk is today's, element
+// for element.
+func TestWalkCutNamingNoDocumentIsTheWholeWalk(t *testing.T) {
+	whole, err := Walk[*fakeNode](newFakeSource(browserTree()), fullConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	never := false
+	for name, cut := range map[string]DocumentCut{
+		"never known": lateCut("Page", &never),
+		"no match":    cutNamed("Other"),
+		"empty title": cutNamed(""),
+	} {
+		res, err := Walk[*fakeNode](newFakeSource(browserTree()), WalkConfig{Cut: cut})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if walkNames(res) != walkNames(whole) || res.Cut != -1 || len(res.Dropped) != 0 || len(res.Notes) != 0 {
+			t.Errorf("%s: %q, cut %d", name, walkNames(res), res.Cut)
+		}
+	}
+
+	// Known once the infobar is read: the document is already whole, and
+	// a later document with its name is not cut either.
+	tree := browserTree()
+	pane := tree.kids[0]
+	pane.kids = append(pane.kids, node(wstate.ControlTypeDocument, "Page", node(wstate.ControlTypeText, "again")))
+	known := false
+	src := newFakeSource(tree)
+	src.onChildren = func(n *fakeNode) {
+		if n == pane.kids[2] {
+			known = true
+		}
+	}
+	res, err := Walk[*fakeNode](src, WalkConfig{Cut: lateCut("Page", &known)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Cut != -1 || len(res.Elements) != 12 {
+		t.Errorf("late answer: %q, cut %d", walkNames(res), res.Cut)
+	}
+}
+
+// TestWalkCutLeavesTheBudgetsToTheFrame: a dense document no longer eats
+// the element cap or the time budget, and a cut tree is never called
+// nearly empty.
+func TestWalkCutLeavesTheBudgetsToTheFrame(t *testing.T) {
+	dense := func() *fakeNode {
+		tree := browserTree()
+		doc := tree.kids[0].kids[1]
+		for i := 0; i < 50; i++ {
+			doc.kids = append(doc.kids, node(wstate.ControlTypeText, "dense"))
+		}
+		return tree
+	}
+	cfg := fullConfig()
+	cfg.MaxNodes = 20
+	full, _ := Walk[*fakeNode](newFakeSource(dense()), cfg)
+	if len(full.Notes) != 1 || !strings.Contains(full.Notes[0], "the element cap (20) was reached") {
+		t.Fatalf("the whole walk: %q", full.Notes)
+	}
+	cfg.Cut = cutNamed("Page")
+	res, _ := Walk[*fakeNode](newFakeSource(dense()), cfg)
+	if walkNames(res) != cutFrame || len(res.Notes) != 0 {
+		t.Errorf("cut walk under the element cap: %q, %q", walkNames(res), res.Notes)
+	}
+
+	// One second per chunk on the fake clock, 9 s of budget: the whole walk
+	// runs out inside the document; the cut walk does not.
+	src := newFakeSource(dense())
+	src.step = time.Second
+	full, _ = Walk[*fakeNode](src, WalkConfig{Budget: 9 * time.Second, Now: src.now})
+	if len(full.Notes) != 1 || !strings.Contains(full.Notes[0], "time limit") {
+		t.Fatalf("the whole walk: %q", full.Notes)
+	}
+	src = newFakeSource(dense())
+	src.step = time.Second
+	res, _ = Walk[*fakeNode](src, WalkConfig{Budget: 9 * time.Second, Now: src.now, Cut: cutNamed("Page")})
+	if walkNames(res) != cutFrame || len(res.Notes) != 0 {
+		t.Errorf("cut walk under the time budget: %q, %q", walkNames(res), res.Notes)
+	}
+
+	sparse := node(wstate.ControlTypeWindow, "W", node(wstate.ControlTypeDocument, "Page", node(wstate.ControlTypeText, "t")))
+	res, _ = Walk[*fakeNode](newFakeSource(sparse), WalkConfig{Cut: cutNamed("Page")})
+	if len(res.Elements) != 2 || len(res.Notes) != 0 {
+		t.Errorf("a cut tree is not nearly empty: %d elements, %q", len(res.Elements), res.Notes)
 	}
 }

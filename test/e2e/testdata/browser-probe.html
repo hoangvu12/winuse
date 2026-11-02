@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>winuse browser probe</title>
+<!--
+  The browser merge probe page (browser_probe_test.go, ticket 03 of
+  .scratch/browser-merge). Every probed Element sits at a fixed CSS
+  position with a DOM id, which Chromium exposes as the UI Automation
+  AutomationId. Change a position here and the probe still works: it reads
+  the CSS rectangles from the page, never from a table in Go.
+-->
+<style>
+  html, body { margin: 0; padding: 0; }
+  body { font: 14px sans-serif; position: relative; width: 480px; height: 300px; }
+  .p { position: absolute; box-sizing: border-box; margin: 0; }
+  #probe-link { left: 24px; top: 24px; width: 120px; height: 24px; display: block; }
+  #probe-button { left: 200px; top: 60px; width: 140px; height: 36px; }
+  #probe-input { left: 40px; top: 140px; width: 220px; height: 28px; }
+  #probe-corner { left: 360px; top: 220px; width: 80px; height: 30px; }
+  #probe-out { left: 40px; top: 190px; width: 220px; height: 20px; }
+</style>
+</head>
+<body>
+  <a class="p" id="probe-link" href="#probe-link">probe link</a>
+  <button class="p" id="probe-button" type="button"
+    onclick="this.dataset.count = Number(this.dataset.count || 0) + 1; document.getElementById('probe-out').textContent = 'clicked ' + this.dataset.count">probe button</button>
+  <input class="p" id="probe-input" type="text" aria-label="probe input">
+  <div class="p" id="probe-out">not clicked</div>
+  <button class="p" id="probe-corner" type="button">probe corner</button>
+</body>
+</html>

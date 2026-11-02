@@ -56,6 +56,8 @@ func BuildTree(s State) []Node {
 		Node{Elem: ElemSoloOne},
 		Node{Elem: ElemSoloTwo},
 		Node{Elem: ElemCheckboxNotify},
+		Node{Elem: ElemButtonClassic},
+		Node{Elem: ElemButtonMessageBox},
 		Node{Elem: ElemItemList, Children: ListItems},
 	)
 	nodes = append(nodes, leaves(ListItems)...)
@@ -99,6 +101,7 @@ func firstChildren(s State) []Elem {
 		ElemButtonClick, ElemButtonSaveAs, ElemButtonDisabled,
 		ElemTwinA, ElemTwinB, ElemSoloOne, ElemSoloTwo,
 		ElemCheckboxNotify,
+		ElemButtonClassic, ElemButtonMessageBox,
 		ElemItemList,
 		ElemDetailsExpander,
 		ElemCanvas,
@@ -139,7 +142,8 @@ func Parent(e Elem, s State, dialog bool) Elem {
 	case ElemWindow:
 		return ""
 	case ElemMenuBar, ElemTextField, ElemButtonClick, ElemButtonSaveAs, ElemButtonDisabled,
-		ElemTwinA, ElemTwinB, ElemSoloOne, ElemSoloTwo, ElemCheckboxNotify, ElemItemList,
+		ElemTwinA, ElemTwinB, ElemSoloOne, ElemSoloTwo, ElemCheckboxNotify,
+		ElemButtonClassic, ElemButtonMessageBox, ElemItemList,
 		ElemDetailsExpander, ElemCanvas, ElemStatus:
 		return ElemWindow
 	case ElemHoverToolbar:

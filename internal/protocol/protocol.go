@@ -44,11 +44,47 @@ const BatchTimeout = 60 * time.Second
 // be large, but not unbounded).
 const MaxLine = 4 << 20
 
+// The Browser Connection budgets (browser merge ticket 01). A dial may
+// wait 20 s for Chrome's remote-debugging approval; launch waits for the
+// started browser's endpoint; connect waits for the user to turn on the
+// inspect toggle; clone copies a profile and may first close the user's
+// browser.
+const (
+	BrowserTimeout        = 30 * time.Second  // browser status, launch, stop
+	BrowserConnectTimeout = 90 * time.Second  // browser connect
+	BrowserCloneTimeout   = 180 * time.Second // browser clone
+)
+
 // commandTimeouts holds the per-command request budgets that differ from
 // RequestTimeout.
 var commandTimeouts = map[string]time.Duration{
-	"launch-app": LaunchTimeout,
-	"batch":      BatchTimeout,
+	"launch-app":      LaunchTimeout,
+	"batch":           BatchTimeout,
+	"browser-status":  BrowserTimeout,
+	"browser-launch":  BrowserTimeout,
+	"browser-stop":    BrowserTimeout,
+	"browser-connect": BrowserConnectTimeout,
+	"browser-clone":   BrowserCloneTimeout,
+	// The winuse extension (ticket 02): updating an outdated extension
+	// waits up to 15 s for it to reconnect.
+	"browser-ext-install": BrowserTimeout,
+	"browser-ext-status":  BrowserTimeout,
+	// The tab commands (ticket 07) may dial the Browser Connection first,
+	// which can wait for the browser's approval prompt.
+	"tab-list":   BrowserTimeout,
+	"tab-new":    BrowserTimeout,
+	"tab-close":  BrowserTimeout,
+	"tab-switch": BrowserTimeout,
+	// The page-only Actions (ticket 06, page.go): the same reason, and
+	// their waits (load, wait, eval) stay under this budget.
+	"navigate": BrowserTimeout,
+	"back":     BrowserTimeout,
+	"forward":  BrowserTimeout,
+	"reload":   BrowserTimeout,
+	"upload":   BrowserTimeout,
+	"dialog":   BrowserTimeout,
+	"wait":     BrowserTimeout,
+	"eval":     BrowserTimeout,
 }
 
 // CommandTimeout returns a command's explicitly configured budget, if it
@@ -61,12 +97,86 @@ func CommandTimeout(cmd string) (time.Duration, bool) {
 	return d, ok
 }
 
+// The caller-set timeout caps (desktop-parity ticket 14): --timeout widens
+// a slow command's budget, for slow Electron, Office and cold Chromium
+// trees, a slow App start, a long Batch or a long page wait, up to these.
+// Action commands keep their fixed budget: a slow Action is a bug or a
+// hung App.
+const (
+	MaxStateTimeout  = 60 * time.Second  // get-window-state
+	MaxLaunchTimeout = 120 * time.Second // launch-app
+	MaxBatchTimeout  = 300 * time.Second // batch
+	MaxWaitTimeout   = 300 * time.Second // wait (the wait itself; the request adds WaitMargin)
+)
+
+// WaitMargin is kept between a page wait and its request's deadline, so a
+// wait that runs out still answers in time: wait --timeout asks for the
+// wait plus this margin as its request budget.
+const WaitMargin = time.Second
+
+// maxTimeouts holds the commands that take a caller-set timeout, with
+// its cap.
+var maxTimeouts = map[string]time.Duration{
+	"get-window-state": MaxStateTimeout,
+	"launch-app":       MaxLaunchTimeout,
+	"batch":            MaxBatchTimeout,
+	"wait":             MaxWaitTimeout + WaitMargin,
+}
+
+// MaxTimeout returns the cap on a command's caller-set timeout; ok is
+// false for a command that takes none.
+func MaxTimeout(cmd string) (time.Duration, bool) {
+	d, ok := maxTimeouts[cmd]
+	return d, ok
+}
+
+// CallerTimeout returns the budget the request's caller set (TimeoutMS),
+// clamped to its command's cap; ok is false when the request sets none or
+// its command takes none.
+func CallerTimeout(req *Request) (time.Duration, bool) {
+	limit, ok := maxTimeouts[req.Cmd]
+	if !ok || req.TimeoutMS <= 0 {
+		return 0, false
+	}
+	d := time.Duration(req.TimeoutMS) * time.Millisecond
+	if d > limit {
+		d = limit
+	}
+	return d, true
+}
+
+// Budget returns a request's budget given the default one: the command's
+// explicit budget (CommandTimeout) or the default, widened to the
+// caller-set timeout. A caller-set timeout under that budget leaves it as
+// it is: --timeout only widens.
+func Budget(req *Request, def time.Duration) time.Duration {
+	budget := def
+	if d, ok := CommandTimeout(req.Cmd); ok {
+		budget = d
+	}
+	if d, ok := CallerTimeout(req); ok && d > budget {
+		budget = d
+	}
+	return budget
+}
+
 // Request is one command sent by the CLI.
 type Request struct {
-	V    int             `json:"v"`              // wire protocol version
-	Ver  string          `json:"ver"`            // CLI binary version; a helper from a different build exits (see Response.Stale)
-	Cmd  string          `json:"cmd"`            // command name, e.g. "list-windows"
-	Args json.RawMessage `json:"args,omitempty"` // command arguments, command-specific JSON
+	V         int             `json:"v"`                    // wire protocol version
+	Ver       string          `json:"ver"`                  // CLI binary version; a helper from a different build exits (see Response.Stale)
+	Cmd       string          `json:"cmd"`                  // command name, e.g. "list-windows"
+	Args      json.RawMessage `json:"args,omitempty"`       // command arguments, command-specific JSON
+	TimeoutMS int             `json:"timeout_ms,omitempty"` // the caller-set budget (--timeout) of a command in MaxTimeout, clamped to its cap; 0: the command's own
+}
+
+// ListWindowsArgs are list-windows's optional arguments (desktop-parity
+// 22): Details adds the details column (visible frame, pid, focused,
+// minimized, maximized, admin); App keeps only that App's Windows,
+// matched as a Window reference matches an App name. Neither is set for
+// Codex's plain list_windows.
+type ListWindowsArgs struct {
+	Details bool   `json:"details,omitempty"`
+	App     string `json:"app,omitempty"`
 }
 
 // GetWindowArgs are get-window's arguments: the Window to re-resolve and
@@ -81,6 +191,22 @@ type GetWindowArgs struct {
 // ID) — Codex's launch_app "app" parameter.
 type LaunchArgs struct {
 	App string `json:"app"`
+}
+
+// BrowserArgs are the arguments of browser status, use, launch, connect
+// and stop: a browser's short name (chrome, brave, edge, chromium,
+// vivaldi, opera), or empty for the pinned or only debuggable one. For
+// browser use, "auto" removes the pin and empty prints it.
+type BrowserArgs struct {
+	Browser string `json:"browser,omitempty"`
+}
+
+// BrowserCloneArgs are browser clone's arguments.
+type BrowserCloneArgs struct {
+	Browser     string `json:"browser,omitempty"`
+	Profile     string `json:"profile,omitempty"`      // the profile folder to copy; empty is Default
+	Fresh       bool   `json:"fresh,omitempty"`        // copy again from scratch instead of syncing
+	CloseSource bool   `json:"close_source,omitempty"` // close the running browser first (cleanly), so logins copy, and reopen its tabs in the clone
 }
 
 // ClickArgs are click's arguments — Codex's click parameters. Ticket 05
@@ -122,12 +248,25 @@ type Region struct {
 // scrollX scrolls right, negative left (Codex: "scrollY: 600 scrolls
 // down ... Negative scrolls up or left"). Amounts are in wheel units:
 // one notch is 120.
+//
+// The Element forms (headless-parity spec, "Element scroll") name an
+// Element instead, by Element Index or name:/id: reference, with a
+// direction: up, down, left or right by steps (default 3, at most 50), or
+// into-view. They are Headless unless headed; the point form is always
+// Headed. A request uses one form: the point and amounts stay zero in an
+// Element form.
 type ScrollArgs struct {
 	Window  string `json:"window"`
 	X       int    `json:"x"`
 	Y       int    `json:"y"`
 	ScrollX int    `json:"scrollX"`
 	ScrollY int    `json:"scrollY"`
+
+	ElementIndex *int   `json:"element_index,omitempty"` // the Element to scroll, from the Window's latest Window State
+	Ref          string `json:"ref,omitempty"`           // name:<text> or id:<AutomationId>: the Element to scroll
+	Direction    string `json:"direction,omitempty"`     // up, down, left, right or into-view
+	Steps        *int   `json:"steps,omitempty"`         // scroll steps for a direction (default 3, 1 to 50); none for into-view
+	Headed       bool   `json:"headed,omitempty"`        // an Element form the v1 way: activate, then the wheel at the Element (into-view: the ScrollItem call after activation)
 }
 
 // DragArgs are drag's arguments — Codex's drag parameters: from and to
@@ -139,6 +278,14 @@ type DragArgs struct {
 	FromY  int    `json:"from_y"`
 	ToX    int    `json:"to_x"`
 	ToY    int    `json:"to_y"`
+
+	// Browser merge ticket 06: a drag from a Page Element (an Element Index
+	// or name:/id: reference) to another Page Element or to the @x,y point
+	// above (ToX, ToY). Headless over the Browser Connection.
+	FromIndex *int   `json:"from_index,omitempty"`
+	FromRef   string `json:"from_ref,omitempty"`
+	ToIndex   *int   `json:"to_index,omitempty"`
+	ToRef     string `json:"to_ref,omitempty"`
 }
 
 // HoverArgs are hover's arguments: the point to move the pointer to,
@@ -149,12 +296,18 @@ type HoverArgs struct {
 	Window string `json:"window"`
 	X      int    `json:"x"`
 	Y      int    `json:"y"`
+
+	// Browser merge ticket 06: a hover over a Page Element instead of a
+	// point, Headless over the Browser Connection.
+	ElementIndex *int   `json:"element_index,omitempty"`
+	Ref          string `json:"ref,omitempty"`
 }
 
 // ZoomArgs are zoom's arguments.
 type ZoomArgs struct {
 	Window string `json:"window"`
 	Region Region `json:"region"`
+	Headed bool   `json:"headed,omitempty"` // activate, then capture through the full chain (ADR 0011); default headless
 }
 
 // ActivateArgs are activate-window's arguments: the Window to bring to
@@ -163,20 +316,65 @@ type ActivateArgs struct {
 	Window string `json:"window"`
 }
 
+// WindowActionArgs are the arguments of the Window Actions that name only
+// the Window (ADR 0011): restore-window, minimize-window and close-window.
+type WindowActionArgs struct {
+	Window string `json:"window"`
+}
+
+// MoveWindowArgs are move-window's arguments (ADR 0011): the screen point
+// the Window's frame top-left moves to, in physical pixels.
+type MoveWindowArgs struct {
+	Window string `json:"window"`
+	X      int    `json:"x"`
+	Y      int    `json:"y"`
+}
+
+// ResizeWindowArgs are resize-window's arguments (ADR 0011): the Window's
+// new frame size, in physical pixels.
+type ResizeWindowArgs struct {
+	Window string `json:"window"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+
 // TypeTextArgs are type-text's arguments — Codex's type_text parameters:
 // the text is typed into the Window's focused Element (the Window is
-// activated first, like every Action).
+// activated first, like every Headed Action). Text without control
+// characters into a focused classic edit control runs Headless (ADR 0011,
+// Decision 4) unless headed. With post, the text is posted as Posted Keys
+// instead (WM_CHAR to the focused control, no foreground); post and
+// headed do not combine.
+//
+// With an Element in IntoIndex or IntoRef (desktop-parity ticket 23), the
+// text goes into that Element instead of whatever has the focus: a Page
+// Element over the Browser Connection, an Element whose own window is a
+// classic edit control through EM_REPLACESEL, both Headless; any other
+// Element only with headed (activate, click it, type). into does not
+// combine with post.
 type TypeTextArgs struct {
-	Window string `json:"window"`
-	Text   string `json:"text"`
+	Window    string `json:"window"`
+	Text      string `json:"text"`
+	Headed    bool   `json:"headed,omitempty"`     // force v1's activate-and-type, even where a Headless route exists
+	Post      bool   `json:"post,omitempty"`       // Posted Keys: post WM_CHAR to the Window's focused control (ADR 0011, Decision 5)
+	IntoIndex *int   `json:"into_index,omitempty"` // type into this Element, from the Window's latest Window State
+	IntoRef   string `json:"into_ref,omitempty"`   // name:<text> or id:<AutomationId>: type into this Element
 }
 
 // PressKeyArgs are press-key's arguments — Codex's press_key parameters:
 // a key or `+`-separated chord in Codex's X keysym-style names (Return,
-// Tab, Control_L+a, Numpad_0).
+// Tab, Control_L+a, Numpad_0). Return and Escape on a classic dialog run
+// Headless (ADR 0011, Decision 4) unless headed; every other key is
+// Headed. With post, the key is posted as Posted Keys instead (WM_KEYDOWN
+// and WM_KEYUP to the focused control, no foreground, no modifiers); post
+// and headed do not combine. A Blocked Combo (Alt+F4, Alt+Tab,
+// Ctrl+Shift+Escape and their supersets) is refused unless force.
 type PressKeyArgs struct {
 	Window string `json:"window"`
 	Key    string `json:"key"`
+	Headed bool   `json:"headed,omitempty"` // force v1's activate-and-inject press, even where a Headless route exists
+	Post   bool   `json:"post,omitempty"`   // Posted Keys: post the key to the Window's focused control (ADR 0011, Decision 5)
+	Force  bool   `json:"force,omitempty"`  // send a Blocked Combo anyway (keys.Blocked)
 }
 
 // SetValueArgs are set-value's arguments — Codex's set_value parameters
@@ -205,6 +403,19 @@ type SecondaryActionArgs struct {
 	Headed       bool   `json:"headed,omitempty"` // force v1's activate-first pipeline (ADR 0010); default Headless except Raise
 }
 
+// SelectTextArgs are select-text's arguments (headless-max ticket 10):
+// the Element (an Index or a name:/id: reference) and the span to select,
+// Length UTF-16 code units from Start, or with All the whole text. Always
+// Headless: there is no headed form.
+type SelectTextArgs struct {
+	Window       string `json:"window"`        // Window ID, or an App name when that App has exactly one Window
+	ElementIndex *int   `json:"element_index"` // the Element whose text to select, from that Window's latest Window State
+	Ref          string `json:"ref,omitempty"` // name:<text> or id:<AutomationId>: the Element whose text to select
+	Start        int    `json:"start"`         // the first UTF-16 unit selected
+	Length       int    `json:"length"`        // how many UTF-16 units to select; 0 places the caret at Start
+	All          bool   `json:"all,omitempty"` // select the whole text (Start and Length stay 0)
+}
+
 // BatchArgs are batch's arguments (ticket 11): several Actions on one
 // Window in a single call, run in order, stopping at the first failure.
 type BatchArgs struct {
@@ -227,10 +438,20 @@ type Step struct {
 // extends the list with scroll, drag and hover. The CLI's batch step
 // parser and the helper's step dispatch share this list so the two ends
 // of the wire never disagree about what a Batch can run.
-var BatchStepKinds = []string{
+var BatchStepKinds = append(append([]string{
 	"click", "type-text", "press-key", "set-value", "perform-secondary-action", "activate-window",
 	"scroll", "drag", "hover",
-}
+	// Browser merge ticket 07: the tab commands that act (tab-list prints
+	// the Tabs, so it is no step; tab-new's id is not printed in a Batch).
+	"tab-new", "tab-close", "tab-switch",
+},
+	// Browser merge ticket 06: the page-only Actions (what navigate, wait
+	// and eval print is dropped in a Batch, which prints only ok).
+	PageCommands...),
+	// Headless-max ticket 10: select-text, so a Batch can select a word
+	// and type its replacement.
+	"select-text",
+)
 
 // Response is the helper's answer.
 type Response struct {

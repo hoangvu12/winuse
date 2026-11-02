@@ -14,7 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hoangvu12/winuse/internal/browser"
 	"github.com/hoangvu12/winuse/internal/keys"
+	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/shot"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/wgc"
@@ -88,15 +90,47 @@ type Services struct {
 	TypeText  func(text string, stopped func() bool) error // Unicode key-event typing
 	PressKeys func(chord keys.Chord) error                 // key or chord press (downs in order, ups in reverse)
 
+	// The keyboard routes (ADR 0011, Decision 4; keyroute.go). KeyRoute is
+	// the Window probe press-key and type-text route on, read after the
+	// Window resolves and before anything is sent; nil (Services built
+	// without defaultServices) keeps every key and text Headed.
+	// DialogCommand posts a classic dialog's WM_COMMAND(id, BN_CLICKED);
+	// EditState and ReplaceSel are the Headless type-text route into a
+	// classic edit control. defaultServices fills the real ones; tests fake
+	// them so offline tests never send a message.
+	KeyRoute      func(hwnd uint64) win.KeyTarget                      // the dialog, its default and Cancel buttons, the focused control
+	DialogCommand func(dialog uint64, id uint16, control uint64) error // PostMessage(WM_COMMAND)
+	EditState     func(edit uint64) (win.EditState, error)             // WM_GETTEXTLENGTH and EM_GETSEL
+	ReplaceSel    func(edit uint64, text string) error                 // SendMessageTimeout(EM_REPLACESEL, TRUE)
+
+	// select-text's classic edit route (headless-max ticket 10,
+	// selecttext.go): EditControl reads the window behind an Element's
+	// NativeWindowHandle, SetEditSel selects in it; EditState (above) reads
+	// the length and the selection back. Nil values fall back to the real
+	// calls; tests fake them so offline tests never send a message.
+	EditControl func(hwnd uint64) win.Control           // class, style and enabled state, never the text
+	SetEditSel  func(edit uint64, start, end int) error // SendMessageTimeout(EM_SETSEL, start, end)
+
+	// Posted Keys (ADR 0011, Decision 5; keyroute.go): press-key and
+	// type-text with `post`. Each returns how many messages it posted, so
+	// a failure can tell "nothing was sent" from a partial post. Nil values
+	// fall back to the real PostMessage calls; tests fake them.
+	PostKeys func(target uint64, chord keys.Chord) (int, error) // WM_KEYDOWN in order, WM_KEYUP in reverse
+	PostText func(target uint64, text string) (int, error)      // WM_CHAR per UTF-16 unit
+
 	// The Esc stop (ticket 12): nil falls back to a no-op (no physical-Esc
 	// stopping); tests fake it with a latch they can press.
 	Esc EscWatch
 	// The screenshot services (tickets 08 and 09). Nil values fall back
 	// to the real ones; tests fake them so offline tests never capture the
-	// screen.
-	Capture     func(hwnd uint64) (shot.Frame, error)  // the capture chain (Windows.Graphics.Capture → region → PrintWindow)
-	Shots       *shot.Store                            // per-Window latest screenshot mappings (`@x,y`, zoom)
-	FrameOrigin func(hwnd uint64) (image.Point, error) // the Window's extended frame bounds top-left, read fresh at Action time
+	// screen. Screenshots and zoom are headless by default (ADR 0011):
+	// CaptureHeadless, after Minimized refuses a minimized Window. Capture
+	// is the full chain that --headed runs after activation.
+	Capture         func(hwnd uint64) (shot.Frame, error)  // the full chain (Windows.Graphics.Capture → region → PrintWindow)
+	CaptureHeadless func(hwnd uint64) (shot.Frame, error)  // the headless chain (Windows.Graphics.Capture → PrintWindow)
+	Minimized       func(hwnd uint64) bool                 // the Window is minimized: nothing to capture headless
+	Shots           *shot.Store                            // per-Window latest screenshot mappings (`@x,y`, zoom)
+	FrameOrigin     func(hwnd uint64) (image.Point, error) // the Window's extended frame bounds top-left, read fresh at Action time
 
 	// The pointer input (ticket 10). Nil values fall back to the real
 	// SendInput implementations; tests fake them. dx/dy are Codex's
@@ -108,6 +142,24 @@ type Services struct {
 	Drag   func(target uint64, fx, fy, tx, ty int32, stopped func() bool) error // left-button drag, from point to point
 	Hover  func(target uint64, x, y int32) error                                // move the pointer and leave it there
 
+	// The Window Actions (ADR 0011, windowactions.go). Nil values fall
+	// back to the real non-activating Win32 calls; tests fake them so
+	// offline tests never place or close a real Window. Minimized (above)
+	// is their iconic probe too. Sleep paces their verification polls;
+	// tests fake it so a poll runs instantly.
+	RestoreWindow     func(hwnd uint64) error                      // ShowWindowAsync(SW_SHOWNOACTIVATE)
+	MinimizeWindow    func(hwnd uint64) error                      // ShowWindowAsync(SW_SHOWMINNOACTIVE)
+	MoveWindow        func(hwnd uint64, x, y int32) error          // SetWindowPos: visible frame top-left, no activation, no z-order change
+	ResizeWindow      func(hwnd uint64, width, height int32) error // SetWindowPos: visible frame size, no activation, no z-order change
+	CloseWindow       func(hwnd uint64) error                      // PostMessage(WM_CLOSE)
+	WindowFrame       func(hwnd uint64) (win.Rect, error)          // the visible frame (extended frame bounds) move and resize set
+	Maximized         func(hwnd uint64) bool                       // IsZoomed
+	RestoresMaximized func(hwnd uint64) bool                       // WPF_RESTORETOMAXIMIZED: the minimized Window was maximized
+	WindowOpen        func(hwnd uint64) bool                       // the Window still exists and is visible
+	Foreground        func() uint64                                // GetForegroundWindow: restore-window's self-activation check
+	WindowPID         func(hwnd uint64) uint32                     // the Window's process: another Window of the same App
+	Sleep             func(d time.Duration)                        // the verification polls' pause; nil: time.Sleep
+
 	// The in-control indicator (ticket 13): raised over the target Window
 	// for the duration of every Action, click-through, never focused, and
 	// hidden around every capture. Nil means no indicator (offline tests;
@@ -115,6 +167,30 @@ type Services struct {
 	// *win.Overlay, wired by Main; the Esc keyboard hook of ticket 12 will
 	// join its UI thread.
 	Overlay Overlay
+
+	// The Browser Connections (browser.go, browser merge ticket 01): one
+	// persistent connection per browser for the helper's lifetime. Nil
+	// falls back to a *browser.Manager over browser.Live, which probes and
+	// dials nothing until a browser command runs (and refuses to in a test
+	// binary); helper.Main wires its own so it can close it on exit.
+	Browser BrowserService
+	// Pages reads a browser Window's Page through its Browser Connection,
+	// for the one Window State of a browser Window (pagestate.go, browser
+	// merge ticket 04). Nil falls back to a reader over Browser; tests
+	// fake it with recorded reads.
+	Pages PageReader
+
+	// The status probes (desktop parity ticket 16, status.go), all
+	// read-only. Started is when the helper started and Now the clock its
+	// uptime is read on; OwnIntegrity, DPIAwareness and WindowsBuild read
+	// the helper process and the machine. Nil and zero values fall back to
+	// the real ones (Started: when CommandsWith ran, at helper start);
+	// Locked (above) is the desktop probe. Tests fake them.
+	Started      time.Time
+	Now          func() time.Time
+	OwnIntegrity func() (uint32, error) // the helper's integrity level RID
+	DPIAwareness func() string          // the helper's DPI awareness, named
+	WindowsBuild func() string          // the Windows build, named
 
 	// actionGate serializes every command that activates a Window, injects
 	// input or shows the overlay (finding 11): two concurrent CLI calls
@@ -124,7 +200,8 @@ type Services struct {
 	// shares one gate; observation-only commands skip it. Headless Actions
 	// (ADR 0010) stay serialized too: they write into apps and drive the
 	// one Agent Cursor, and one command at a time is the promise either
-	// way.
+	// way. The Window Actions (ADR 0011) are serialized as well: they
+	// place and close the Windows that other Actions act in.
 	actionGate chan struct{}
 }
 
@@ -136,7 +213,7 @@ type Services struct {
 // command controls the desktop at a time, exactly what codex-parity's
 // "one request at a time" promises. Observation-only commands —
 // list-windows, get-window, list-apps, the plain tree read, record-tree,
-// launch-app — stay concurrent; get-window-state's --screenshot branch
+// launch-app, status — stay concurrent; get-window-state's --screenshot branch
 // and zoom join the serialized set inside their handlers.
 func CommandsWith(s Services) map[string]Command {
 	s = defaultServices(s)
@@ -152,22 +229,29 @@ func CommandsWith(s Services) map[string]Command {
 	// cached for the helper's lifetime (it is a ~1 s PowerShell call).
 	store := &apps.StoreSource{Run: apps.GetStartApps}
 	cmds := map[string]Command{
-		"list-windows":             listWindows,
+		"list-windows":             listWindows(s),
 		"get-window":               getWindow(s),
 		"get-window-state":         func(ctx context.Context, args json.RawMessage) (string, *Error) { return getWindowState(s, ctx, args) },
 		"record-tree":              func(ctx context.Context, args json.RawMessage) (string, *Error) { return recordTree(s, ctx, args) },
 		"zoom":                     zoom(s),
 		"click":                    click(s),
 		"activate-window":          activateWindow(s),
+		"restore-window":           restoreWindow(s),
+		"minimize-window":          minimizeWindow(s),
+		"move-window":              moveWindow(s),
+		"resize-window":            resizeWindow(s),
+		"close-window":             closeWindow(s),
 		"type-text":                typeText(s),
 		"press-key":                pressKey(s),
 		"set-value":                setValue(s),
 		"perform-secondary-action": performSecondaryAction(s),
 		"scroll":                   scroll(s),
+		"select-text":              selectText(s),
 		"drag":                     drag(s),
 		"hover":                    hover(s),
 		"list-apps":                listApps(store),
 		"launch-app":               launchApp(store, s.Esc),
+		StatusCommand:              statusCommand(s),
 	}
 	// The Batch dispatches its steps to the other commands, and brackets
 	// itself as one armed Esc scope and one overlay bracket around them
@@ -175,6 +259,18 @@ func CommandsWith(s Services) map[string]Command {
 	// step commands: the batch as a whole is serialized below, and the
 	// action gate is not reentrant.
 	cmds["batch"] = batch(cmds, s)
+	// The Browser Connection commands (browser.go).
+	for name, cmd := range browserCommands(s) {
+		cmds[name] = cmd
+	}
+	// The tab commands (tabs.go, browser merge ticket 07).
+	for name, cmd := range tabCommands(s) {
+		cmds[name] = cmd
+	}
+	// The page-only Actions (pagecommands.go, browser merge ticket 06).
+	for name, cmd := range pageCommands(s) {
+		cmds[name] = cmd
+	}
 
 	// The serialized registry: every control-path command runs alone.
 	out := make(map[string]Command, len(cmds))
@@ -193,13 +289,19 @@ func CommandsWith(s Services) map[string]Command {
 // with a serialized one (finding 11). get-window-state is listed here for
 // its plain tree read; its --screenshot branch serializes inside the
 // handler. launch-app starts a process and watches for its Window — it
-// injects nothing.
+// injects nothing. The browser-* commands start, connect to and close
+// browsers without touching the desktop's input, and can wait a minute or
+// more for the user (an approval prompt, the inspect toggle, a profile
+// copy), so they never hold the action gate; the manager serializes its
+// own dials.
 func observationOnlyCommand(name string) bool {
 	switch name {
-	case "list-windows", "get-window", "list-apps", "get-window-state", "record-tree", "launch-app":
+	case "list-windows", "get-window", "list-apps", "get-window-state", "record-tree", "launch-app",
+		"tab-list",    // reads a browser Window's Tabs only (tabs.go)
+		StatusCommand: // read-only probes (status.go): never waits behind an Action
 		return true
 	}
-	return false
+	return strings.HasPrefix(name, "browser-")
 }
 
 // serialized wraps one command in the helper-wide action gate (finding
@@ -291,6 +393,30 @@ func defaultServices(s Services) Services {
 	if s.PressKeys == nil {
 		s.PressKeys = win.PressChord
 	}
+	if s.KeyRoute == nil {
+		s.KeyRoute = win.ProbeKeyTarget
+	}
+	if s.DialogCommand == nil {
+		s.DialogCommand = win.PostDialogCommand
+	}
+	if s.EditState == nil {
+		s.EditState = win.ReadEditState
+	}
+	if s.ReplaceSel == nil {
+		s.ReplaceSel = win.ReplaceSelection
+	}
+	if s.EditControl == nil {
+		s.EditControl = win.ReadControl
+	}
+	if s.SetEditSel == nil {
+		s.SetEditSel = win.SetEditSelection
+	}
+	if s.PostKeys == nil {
+		s.PostKeys = win.PostKeys
+	}
+	if s.PostText == nil {
+		s.PostText = win.PostText
+	}
 	if s.Esc == nil {
 		s.Esc = noopEscWatch{}
 	}
@@ -306,20 +432,87 @@ func defaultServices(s Services) Services {
 	if s.Shots == nil {
 		s.Shots = shot.NewStore()
 	}
-	if s.Capture == nil {
-		// The capture chain (spec, Observation details): Windows.Graphics
+	if s.Capture == nil || s.CaptureHeadless == nil {
+		// The capture chains (spec, Observation details): Windows.Graphics
 		// Capture first (ticket 09, Codex's method — falling back on any
-		// failure, black frame or timeout), then the GDI fallbacks: the
-		// Window's screen region, then PrintWindow. The wgc method logs its
-		// captures into the helper log. With an indicator or an Agent
-		// Cursor wired, every method captures with them hidden (ticket 13,
-		// ADR 0010), so winuse's own screenshots never contain them.
+		// failure, black frame or timeout), then the GDI fallbacks. The full
+		// chain (--headed) tries the Window's screen region, then
+		// PrintWindow; the headless chain (ADR 0011) only PrintWindow. Both
+		// share one wgc method, which logs its captures into the helper log.
+		// With an indicator or an Agent Cursor wired, every method captures
+		// with them hidden (ticket 13, ADR 0010), so winuse's own
+		// screenshots never contain them.
 		wgcCapture := wgc.New()
 		wgcCapture.Log = log.Printf
-		s.Capture = shot.Chain{Methods: captureMethodsHiding(s.Overlay, s.Cursor, wgcCapture)}.CaptureWindow
+		if s.Capture == nil {
+			s.Capture = shot.Chain{Methods: captureMethodsHiding(s.Overlay, s.Cursor, wgcCapture)}.CaptureWindow
+		}
+		if s.CaptureHeadless == nil {
+			s.CaptureHeadless = shot.Chain{Methods: headlessCaptureMethods(s.Overlay, s.Cursor, wgcCapture)}.CaptureWindow
+		}
+	}
+	if s.Minimized == nil {
+		s.Minimized = win.IsMinimized
 	}
 	if s.FrameOrigin == nil {
 		s.FrameOrigin = win.FrameOrigin
+	}
+	if s.RestoreWindow == nil {
+		s.RestoreWindow = win.RestoreNoActivate
+	}
+	if s.MinimizeWindow == nil {
+		s.MinimizeWindow = win.MinimizeNoActivate
+	}
+	if s.MoveWindow == nil {
+		s.MoveWindow = win.MoveNoActivate
+	}
+	if s.ResizeWindow == nil {
+		s.ResizeWindow = win.ResizeNoActivate
+	}
+	if s.CloseWindow == nil {
+		s.CloseWindow = win.PostClose
+	}
+	if s.WindowFrame == nil {
+		s.WindowFrame = win.WindowFrame
+	}
+	if s.Maximized == nil {
+		s.Maximized = win.IsMaximized
+	}
+	if s.RestoresMaximized == nil {
+		s.RestoresMaximized = win.RestoresToMaximized
+	}
+	if s.WindowOpen == nil {
+		s.WindowOpen = win.WindowOpen
+	}
+	if s.Foreground == nil {
+		s.Foreground = win.ForegroundWindow
+	}
+	if s.WindowPID == nil {
+		s.WindowPID = win.WindowPID
+	}
+	if s.Sleep == nil {
+		s.Sleep = time.Sleep
+	}
+	if s.Browser == nil {
+		s.Browser = browser.NewManager(browser.Live())
+	}
+	if s.Pages == nil {
+		s.Pages = newLivePages(s.Browser, s.Maximized)
+	}
+	if s.Now == nil {
+		s.Now = time.Now
+	}
+	if s.Started.IsZero() {
+		s.Started = s.Now()
+	}
+	if s.OwnIntegrity == nil {
+		s.OwnIntegrity = func() (uint32, error) { return win.IntegrityLevel(0) }
+	}
+	if s.DPIAwareness == nil {
+		s.DPIAwareness = win.DPIAwareness
+	}
+	if s.WindowsBuild == nil {
+		s.WindowsBuild = win.WindowsBuild
 	}
 	if s.actionGate == nil {
 		s.actionGate = make(chan struct{}, 1)
@@ -329,39 +522,58 @@ func defaultServices(s Services) Services {
 
 // windowRef is the shared argument shape of commands that name a Window.
 type windowRef struct {
-	Window     string `json:"window"`     // a Window ID, or an App name (exactly one Window)
-	Screenshot bool   `json:"screenshot"` // get-window-state --screenshot: capture and save a screenshot too
+	Window     string `json:"window"`           // a Window ID, or an App name (exactly one Window)
+	Screenshot bool   `json:"screenshot"`       // get-window-state --screenshot: capture and save a screenshot too
+	Headed     bool   `json:"headed,omitempty"` // with --screenshot: activate, then capture through the full chain (ADR 0011)
 }
 
 // getWindowState answers `winuse get-window-state <window>`: the resolved
 // Window's State as Codex's depth-first, indented, numbered tree. A read
 // that hits the tree budget returns the partial tree with a note. With
-// --screenshot (screenshot.go), the Window is activated, captured through
-// the method chain, the image saved scaled (long edge at most 1568 px,
-// JPEG q80) with its path printed and its mapping recorded for `@x,y`
-// references and zoom regions.
+// --screenshot (screenshot.go), the Window is captured without activation
+// (activated first under --headed), the image saved scaled (long edge at
+// most 1568 px, JPEG q80) with its path printed and its mapping recorded
+// for `@x,y` references and zoom regions.
 func getWindowState(s Services, ctx context.Context, args json.RawMessage) (string, *Error) {
 	var a windowRef
 	if err := parseArgs(args, &a); err != nil {
-		return "", Fail("get-window-state: "+err.Error(), "run winuse get-window-state <window> [--screenshot]")
+		return "", Fail("get-window-state: "+err.Error(), "run winuse get-window-state <window> [--screenshot] [--timeout <seconds>]")
 	}
+	ctx = uia.WithSettle(ctx, stateSettle(ctx))
 	w, rerr := resolveWindow(s, a.Window)
 	if rerr != nil {
 		return "", rerr
 	}
 	if a.Screenshot {
-		// The screenshot path activates the Window and captures: serialize
-		// it like an Action (finding 11), while the plain tree read stays
-		// concurrent.
+		// The screenshot path captures with the indicator and the Agent
+		// Cursor hidden, and activates under --headed: serialize it like an
+		// Action (finding 11), while the plain tree read stays concurrent.
 		return s.serialized(func(ctx context.Context, args json.RawMessage) (string, *Error) {
-			return windowStateScreenshot(s, ctx, w)
+			return windowStateScreenshot(s, ctx, w, a.Headed)
 		})(ctx, args)
 	}
-	tree, err := s.Trees.Capture(ctx, w.ID, w.Title, win.AppExeName(w), s.Budget)
-	if err != nil {
-		return "", treeReadError(err)
+	tree, terr := readWindowTree(s, ctx, w)
+	if terr != nil {
+		return "", terr
 	}
 	return wstate.Render(tree), nil
+}
+
+// stateSettle is the Chromium settle budget of a get-window-state under
+// ctx (desktop-parity ticket 14): uia.DefaultChromiumSettle, widened by
+// whatever a caller-set --timeout adds to the default request budget, so
+// a cold Chromium tree gets the extra time. The request's deadline still
+// bounds the settle (uia's settlePolls).
+func stateSettle(ctx context.Context) time.Duration {
+	dl, ok := ctx.Deadline()
+	if !ok {
+		return uia.DefaultChromiumSettle
+	}
+	extra := time.Until(dl) - protocol.RequestTimeout
+	if extra <= 0 {
+		return uia.DefaultChromiumSettle
+	}
+	return uia.DefaultChromiumSettle + extra
 }
 
 // recordArgs is record-tree's argument shape.

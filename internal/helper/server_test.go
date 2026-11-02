@@ -216,7 +216,7 @@ func TestServeIdleExits(t *testing.T) {
 
 func TestServeActivityPushesIdleOut(t *testing.T) {
 	// A connection arriving just before the idle deadline keeps the helper
-	// alive: the timer resets on accepted connections.
+	// alive: the timer restarts when each served connection ends.
 	s := New("0.1.0", 150*time.Millisecond, protocol.RequestTimeout, map[string]Command{
 		"x": echoCommand("ok"),
 	}, discardLogger())
@@ -238,6 +238,54 @@ func TestServeActivityPushesIdleOut(t *testing.T) {
 	client2.SetDeadline(time.Now().Add(5 * time.Second))
 	if _, err := call(client2, testRequest("x")); err != nil {
 		t.Fatalf("second call after idle would have fired: %v", err)
+	}
+	client2.Close()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Serve returned %v, want nil", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("helper should have exited by now (post-test idle)")
+	}
+}
+
+func TestServeIdleCountsFromTheEndOfTheLastRequest(t *testing.T) {
+	// A request that outlasts the idle period (a cold Chromium's
+	// get-window-state) must not take the helper down: the next command
+	// needs the Window State it cached. The idle period starts when the
+	// request ends.
+	const idle = 150 * time.Millisecond
+	s := New("0.1.0", idle, protocol.RequestTimeout, map[string]Command{
+		"slow": func(ctx context.Context, args json.RawMessage) (string, *Error) {
+			time.Sleep(3 * idle)
+			return "read", nil
+		},
+		"x": echoCommand("ok"),
+	}, discardLogger())
+	ln := newFakeListener()
+	defer ln.Close()
+	done := make(chan error, 1)
+	go func() { done <- s.Serve(ln) }()
+
+	client := ln.push()
+	client.SetDeadline(time.Now().Add(5 * time.Second))
+	if resp, err := call(client, testRequest("slow")); err != nil || !resp.OK {
+		t.Fatalf("slow call: %+v, %v", resp, err)
+	}
+	client.Close()
+
+	time.Sleep(idle / 3) // within the idle period counted from the answer
+	select {
+	case <-done:
+		t.Fatal("the helper exited while or right after serving a request longer than its idle period")
+	default:
+	}
+	client2 := ln.push()
+	client2.SetDeadline(time.Now().Add(5 * time.Second))
+	if resp, err := call(client2, testRequest("x")); err != nil || !resp.OK {
+		t.Fatalf("call after the slow request: %+v, %v", resp, err)
 	}
 	client2.Close()
 

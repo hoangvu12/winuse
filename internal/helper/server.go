@@ -48,17 +48,18 @@ type Server struct {
 	commands       map[string]Command
 	log            *log.Logger
 
-	mu        sync.Mutex // guards idleTimer and ln
+	mu        sync.Mutex // guards idleTimer, ln and active
 	idleTimer *time.Timer
 	ln        net.Listener
+	active    int // connections being served; the idle period starts when the last one ends
 
 	shutdownOnce sync.Once
 	closed       atomic.Bool
 }
 
-// New creates a server. idle is how long without a connection before the
-// helper exits by itself; requestTimeout bounds one command (slightly under
-// the client's deadline). logger may be nil.
+// New creates a server. idle is how long without a connection being
+// served before the helper exits by itself; requestTimeout bounds one
+// command (slightly under the client's deadline). logger may be nil.
 func New(version string, idle, requestTimeout time.Duration, commands map[string]Command, logger *log.Logger) *Server {
 	if logger == nil {
 		logger = log.Default()
@@ -78,10 +79,7 @@ func New(version string, idle, requestTimeout time.Duration, commands map[string
 func (s *Server) Serve(ln net.Listener) error {
 	s.mu.Lock()
 	s.ln = ln
-	s.idleTimer = time.AfterFunc(s.idle, func() {
-		s.log.Printf("helper idle for %s, exiting", s.idle)
-		s.Shutdown()
-	})
+	s.idleTimer = time.AfterFunc(s.idle, s.idleExpired)
 	s.mu.Unlock()
 
 	var inflight sync.WaitGroup
@@ -97,10 +95,11 @@ func (s *Server) Serve(ln net.Listener) error {
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}
-		s.resetIdle()
+		s.begin()
 		inflight.Add(1)
 		go func() {
 			defer inflight.Done()
+			defer s.end()
 			s.serveConn(conn)
 		}()
 	}
@@ -120,13 +119,38 @@ func (s *Server) Shutdown() {
 	})
 }
 
-// resetIdle pushes the idle deadline out after activity.
-func (s *Server) resetIdle() {
+// begin marks a connection being served: the helper is not idle until it
+// ends.
+func (s *Server) begin() {
 	s.mu.Lock()
-	if s.idleTimer != nil {
+	s.active++
+	s.mu.Unlock()
+}
+
+// end marks a served connection done and, when it was the last one,
+// restarts the idle period from now. A request that outlasts the idle
+// period (a cold Chromium read takes seconds) must not take the helper,
+// and the Window State it just cached, down right after it answers.
+func (s *Server) end() {
+	s.mu.Lock()
+	s.active--
+	if s.active == 0 && s.idleTimer != nil {
 		s.idleTimer.Reset(s.idle)
 	}
 	s.mu.Unlock()
+}
+
+// idleExpired shuts the helper down after the idle period, unless a
+// connection is still being served (its end restarts the period).
+func (s *Server) idleExpired() {
+	s.mu.Lock()
+	busy := s.active > 0
+	s.mu.Unlock()
+	if busy {
+		return
+	}
+	s.log.Printf("helper idle for %s, exiting", s.idle)
+	s.Shutdown()
 }
 
 // serveConn answers exactly one request on one connection.
@@ -144,9 +168,10 @@ func (s *Server) serveConn(conn net.Conn) {
 	if err := protocol.ReadLine(bufio.NewReader(conn), &req); err != nil {
 		return // malformed request; drop the connection
 	}
-	// Commands with an explicitly longer budget (launch-app: 15 s) get it:
-	// extend the exchange deadline to cover the whole request.
-	if d, ok := protocol.CommandTimeout(req.Cmd); ok && d > s.requestTimeout {
+	// Commands with an explicitly longer budget (launch-app: 15 s) or a
+	// caller-set --timeout get it: extend the exchange deadline to cover
+	// the whole request.
+	if d := protocol.Budget(&req, s.requestTimeout); d > s.requestTimeout {
 		if err := conn.SetDeadline(time.Now().Add(d + 2*time.Second)); err != nil {
 			s.log.Printf("extending deadline: %v", err)
 			return
@@ -169,7 +194,9 @@ func (s *Server) handle(req *protocol.Request) protocol.Response {
 	if req.V != protocol.Version {
 		return protocol.Errorf(1, "wire protocol version %d not supported (helper speaks %d); upgrade winuse", req.V, protocol.Version)
 	}
-	if req.Ver != s.version {
+	// status only reads, so a CLI of another build may ask it without
+	// stopping this helper: the report names both versions (ticket 16).
+	if req.Ver != s.version && req.Cmd != StatusCommand {
 		return protocol.Response{
 			OK:    false,
 			Stale: true,
@@ -183,12 +210,9 @@ func (s *Server) handle(req *protocol.Request) protocol.Response {
 		return protocol.Errorf(1, "unknown command %q", req.Cmd)
 	}
 	// The request budget: the server's configured default, overridden by
-	// commands with an explicit budget (launch-app: 15 s).
-	budget := s.requestTimeout
-	if d, ok := protocol.CommandTimeout(req.Cmd); ok {
-		budget = d
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	// commands with an explicit budget (launch-app: 15 s) and widened by a
+	// caller-set --timeout (desktop-parity ticket 14).
+	ctx, cancel := context.WithTimeout(context.Background(), protocol.Budget(req, s.requestTimeout))
 	defer cancel()
 	out, cmdErr := cmd(ctx, req.Args)
 	// Timeout policy (orchestrator decision): a command that failed or

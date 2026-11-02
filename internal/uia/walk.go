@@ -77,7 +77,23 @@ type WalkConfig struct {
 	MaxChildren int // per node
 	Budget      time.Duration
 	Now         func() time.Time // nil: time.Now
+
+	// Cut, when set, leaves out the descendants of the first Document
+	// Element (in Element Index order) it names: their content is read
+	// elsewhere. While its answer is not known, the walk reads on and asks
+	// again before every chunk inside a Document, so a late answer still
+	// stops the read there: what was read under the cut Document is dropped
+	// as if never read. A Document read whole before the answer stays whole.
+	Cut DocumentCut
 }
+
+// DocumentCut picks the one Document Element whose descendants a walk
+// leaves out because another reader replaces them: a browser Window's
+// Page, read over CDP (browser merge ticket 04, ADR 0012). It is asked with
+// a Document Element's name and Value (a browser gives its URL) and
+// answers whether that Document is the one, and whether the answer is
+// known yet. It is called on the worker thread and must not block.
+type DocumentCut func(name, value string) (cut, known bool)
 
 // Default walk budgets (research proposal, codex-surface.md §7: node cap
 // 1000–4000, depth 32–48, children 200–1000).
@@ -122,6 +138,9 @@ type WalkResult[T any] struct {
 	FocusedIndex int
 	// Notes are the partial-tree / sparse-tree notes for the Window State.
 	Notes []string
+	// Cut is the Element Index of the Document Element whose descendants
+	// were left out (WalkConfig.Cut), or -1.
+	Cut int
 }
 
 // walk reasons, in the order the partial-tree note lists them.
@@ -140,6 +159,7 @@ const (
 func Walk[T any](src TreeSource[T], cfg WalkConfig) (WalkResult[T], error) {
 	var res WalkResult[T]
 	res.FocusedIndex = -1
+	res.Cut = -1
 	if cfg.MaxNodes <= 0 {
 		cfg.MaxNodes = DefaultMaxNodes
 	}
@@ -156,7 +176,7 @@ func Walk[T any](src TreeSource[T], cfg WalkConfig) (WalkResult[T], error) {
 	if now == nil {
 		now = time.Now
 	}
-	w := &walker[T]{src: src, cfg: cfg, now: now, deadline: now().Add(cfg.Budget), res: &res}
+	w := &walker[T]{src: src, cfg: cfg, now: now, deadline: now().Add(cfg.Budget), res: &res, unwind: -1}
 	root, data, err := src.Root()
 	if err != nil {
 		return res, err
@@ -164,9 +184,10 @@ func Walk[T any](src TreeSource[T], cfg WalkConfig) (WalkResult[T], error) {
 	w.visit(root, data, 0)
 	if reason, ok := w.reasonNote(); ok {
 		res.Notes = append(res.Notes, reason)
-	} else if !w.truncated && len(res.Elements) <= nearEmptyNodes {
+	} else if !w.truncated && res.Cut < 0 && len(res.Elements) <= nearEmptyNodes {
 		// Only an uncut tree this small is "nearly empty": a tree cut by a
-		// budget is partial, not sparse (its note already says so).
+		// budget is partial, not sparse (its note already says so), and a
+		// cut Document's content is read elsewhere.
 		res.Notes = append(res.Notes, nearEmptyNote)
 	}
 	return res, nil
@@ -184,6 +205,26 @@ type walker[T any] struct {
 	stopped   bool
 	truncated bool // any element carries a truncation marker
 	reasons   [reasonCount]bool
+
+	// The pending Document cut (WalkConfig.Cut).
+	cutDone  bool      // answered: a Document was cut, or none will be
+	docs     []docMark // the Document Elements read so far, in index order
+	checked  int       // docs[:checked] are known not to be the one
+	openDocs int       // Documents whose descendants are being read
+	mark     docMark   // the Document being cut
+	unwind   int       // that Document's index while the walk climbs back to it, or -1
+}
+
+// docMark is one Document Element a pending cut may still name, with the
+// walk's notes as they were when it was reached: a cut restores them, so
+// nothing read under the Document leaves a trace.
+type docMark struct {
+	index     int
+	name      string
+	value     string
+	open      bool // its descendants are being read
+	reasons   [reasonCount]bool
+	truncated bool
 }
 
 func (w *walker[T]) visit(node T, data NodeData, depth int) {
@@ -192,6 +233,38 @@ func (w *walker[T]) visit(node T, data NodeData, depth int) {
 	w.res.Live = append(w.res.Live, node)
 	if data.Focused && w.res.FocusedIndex < 0 {
 		w.res.FocusedIndex = index
+	}
+	if w.cutPending() && data.ControlType == wstate.ControlTypeDocument {
+		value := ""
+		if data.HasValue {
+			value = data.ValueValue
+		}
+		w.docs = append(w.docs, docMark{index: index, name: data.Name, value: value, open: true, reasons: w.reasons, truncated: w.truncated})
+		w.openDocs++
+		w.expand(node, depth, index)
+		w.openDocs--
+		for i := len(w.docs) - 1; i >= 0; i-- {
+			if w.docs[i].index == index {
+				w.docs[i].open = false
+				break
+			}
+		}
+		return
+	}
+	w.expand(node, depth, index)
+}
+
+// expand reads the children of the node at index and visits them.
+func (w *walker[T]) expand(node T, depth, index int) {
+	// A pending cut is asked before every chunk read inside a Document.
+	if w.cutPending() && w.openDocs > 0 {
+		if at := w.decideCut(); at == index {
+			w.cutAt(index)
+			return
+		} else if at >= 0 {
+			w.unwind = at
+			return
+		}
 	}
 
 	// Expansion. Depth first: a node at MaxDepth is rendered but never
@@ -241,8 +314,64 @@ func (w *walker[T]) visit(node T, data NodeData, depth int) {
 			return
 		}
 		w.visit(kids[i], kidData[i], depth+1)
+		if w.unwind >= 0 {
+			// A late cut: the rest of this level is left unread on the way
+			// back up to the cut Document.
+			w.drop(kids[i+1:])
+			if w.unwind == index {
+				w.cutAt(index)
+			}
+			return
+		}
 	}
 	w.drop(kids[limit:])
+}
+
+// cutPending reports whether the walk still has a Document cut to place.
+func (w *walker[T]) cutPending() bool {
+	return w.cfg.Cut != nil && !w.cutDone
+}
+
+// decideCut asks the pending cut about the Documents read so far, in index
+// order. The first one it names is cut while its descendants are still
+// being read (its index is returned); one already read whole stays whole,
+// and nothing is cut. -1 too while the answer is not known or names none
+// of them yet.
+func (w *walker[T]) decideCut() int {
+	for ; w.checked < len(w.docs); w.checked++ {
+		d := w.docs[w.checked]
+		cut, known := w.cfg.Cut(d.name, d.value)
+		if !known {
+			return -1
+		}
+		if cut {
+			w.cutDone = true
+			if !d.open {
+				return -1
+			}
+			w.mark = d
+			return d.index
+		}
+	}
+	return -1
+}
+
+// cutAt leaves out the descendants of the Document Element at index. What
+// was read under it (a late answer) is dropped, its handles for the caller
+// to release, and the notes are restored to what they were when the walk
+// reached the Document. A focus read under it moves to the Document: the
+// merge reads a focus in the Document as before.
+func (w *walker[T]) cutAt(index int) {
+	w.res.Dropped = append(w.res.Dropped, w.res.Live[index+1:]...)
+	w.res.Live = w.res.Live[:index+1]
+	w.res.Elements = w.res.Elements[:index+1]
+	w.res.Elements[index].Truncated = nil
+	w.reasons, w.truncated = w.mark.reasons, w.mark.truncated
+	if w.res.FocusedIndex > index {
+		w.res.FocusedIndex = index
+	}
+	w.res.Cut = index
+	w.unwind = -1
 }
 
 // drop records handles the walk will not visit; the caller releases them.

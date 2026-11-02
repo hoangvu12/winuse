@@ -33,10 +33,13 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf16"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 // secondaryAction is one row of the canonical Secondary Actions table
@@ -216,6 +219,14 @@ var (
 	// ErrDisabled reports an Element that refused a pattern call because
 	// it is disabled (UIA_E_ELEMENTNOTENABLED).
 	ErrDisabled = errors.New("the Element is disabled")
+
+	// ErrToggleValue reports a value that a toggle Element (Toggle pattern,
+	// no Value or RangeValue pattern) cannot take.
+	ErrToggleValue = errors.New("toggle value must be on, off, true, false, checked or unchecked")
+
+	// ErrToggleUnreadable reports a toggle Element whose state cannot be
+	// read, so set-value cannot tell whether to toggle it.
+	ErrToggleUnreadable = errors.New("the Element's toggle state cannot be read, so set-value cannot tell whether to toggle it")
 )
 
 // UnavailableActionError reports a Secondary Action the Element does not
@@ -449,7 +460,8 @@ func propString(el comPtr, prop uint32) string {
 // is resolved against the Window's latest Window State; the Element is
 // focused first (Codex's set_value does), then written through its Value
 // pattern — or, for range Elements (sliders), through RangeValue with the
-// value parsed as a number.
+// value parsed as a number; for a toggle Element with neither, through
+// Toggle with the value on or off (parseToggleValue).
 func (c *Client) SetValue(ctx context.Context, hwnd uint64, index int, value string) error {
 	var jobErr error
 	err := c.Run(ctx, func(w *worker, _ *run) {
@@ -548,62 +560,177 @@ func (c *Client) PerformSecondaryAction(ctx context.Context, hwnd uint64, index 
 	return jobErr
 }
 
-// setValue writes an Element's value on the worker thread: focus first
+// setValue writes an Element's value on the worker thread (writeValue).
+func (th *thread) setValue(el comPtr, value string, focus bool) error {
+	_, err := th.writeValue(el, value, focus)
+	return err
+}
+
+// writeValue writes an Element's value on the worker thread: focus first
 // (Headed only — UIA SetFocus moves the desktop foreground, so a Headless
 // write skips it), then Value.SetValue(BSTR), or RangeValue.SetValue(number)
-// for range Elements, else Codex's not-settable refusal.
-func (th *thread) setValue(el comPtr, value string, focus bool) error {
+// for range Elements, or Toggle calls to set a toggle Element on or off
+// (setToggle); a combo or list with no writable Value picks the item the
+// value names (selectItem, which reads its own selection back: selected
+// reports that route), else Codex's not-settable refusal.
+func (th *thread) writeValue(el comPtr, value string, focus bool) (selected bool, err error) {
 	if focus {
 		if hr := call(el, elSetFocus); hr.Failed() {
 			// Codex's set_value focuses the Element first; a stale or
 			// disabled Element maps to its sentinel, anything else to
 			// Codex's message.
 			if hrStale(hr) {
-				return staleErr(hr)
+				return false, staleErr(hr)
 			}
 			if hr == uiaErrElementDisabled {
-				return ErrDisabled
+				return false, ErrDisabled
 			}
-			return ErrFocusBeforeValue
+			return false, ErrFocusBeforeValue
 		}
 	}
-	// ValuePattern: a read-only value cannot be set (Codex's refusal).
+	// ValuePattern: a read-only value cannot be set (Codex's refusal),
+	// unless the Element is a combo or list (a drop-down list's Value is
+	// read-only): then the value names the item to pick. A classic Win32
+	// drop-down list picks by name too, although its proxy reports the
+	// Value writable (win.Control.DropDownList). An editable combo keeps
+	// the Value write.
 	if pat, hr := currentPattern(el, patternValue, &iidValuePattern); hrStale(hr) {
-		return staleErr(hr)
+		return false, staleErr(hr)
 	} else if pat != nil {
 		defer release(pat)
 		var ro int32
 		call(pat, valueCurrentRO, uintptr(unsafe.Pointer(&ro))) // unreadable → writable
+		if win.ReadControl(nativeWindow(el)).DropDownList() {
+			return true, th.selectItem(el, value)
+		}
 		if ro != 0 {
-			return ErrNotSettable
+			if selectsByName(el) {
+				return true, th.selectItem(el, value)
+			}
+			return false, ErrNotSettable
 		}
 		bstr := sysAllocString(value)
 		defer freeBSTR(bstr)
 		if hr := call(pat, valueSetValue, uintptr(unsafe.Pointer(bstr))); hr.Failed() {
-			return callErr(hr, "setting the Element's value")
+			return false, callErr(hr, "setting the Element's value")
 		}
-		return nil
+		return false, nil
 	}
 	// RangeValuePattern: the value must parse as a number.
 	if pat, hr := currentPattern(el, patternRangeValue, &iidRangeValuePattern); hrStale(hr) {
-		return staleErr(hr)
+		return false, staleErr(hr)
 	} else if pat != nil {
 		defer release(pat)
 		f, perr := strconv.ParseFloat(strings.TrimSpace(value), 64)
 		if perr != nil {
-			return fmt.Errorf("%w: %s", ErrRangeValue, value)
+			return false, fmt.Errorf("%w: %s", ErrRangeValue, value)
 		}
 		if runtime.GOARCH != "amd64" {
 			// RangeValue.SetValue takes a double by value; Go's windows/arm64
 			// syscall trampoline cannot pass those (uia-go notes §2).
-			return errors.New("setting a range value is not supported on this architecture")
+			return false, errors.New("setting a range value is not supported on this architecture")
 		}
 		if hr := call(pat, rangeValueSetValue, uintptr(math.Float64bits(f))); hr.Failed() {
-			return callErr(hr, "setting the Element's value")
+			return false, callErr(hr, "setting the Element's value")
 		}
-		return nil
+		return false, nil
 	}
-	return ErrNotSettable
+	// TogglePattern with neither value pattern: a check box set on or off.
+	if pat, hr := currentPattern(el, patternToggle, &iidTogglePattern); hrStale(hr) {
+		return false, staleErr(hr)
+	} else if pat != nil {
+		defer release(pat)
+		return false, setToggle(el, pat, value)
+	}
+	// A combo or list with no Value pattern: pick the item by name.
+	if selectsByName(el) {
+		return true, th.selectItem(el, value)
+	}
+	return false, ErrNotSettable
+}
+
+// parseToggleValue reads set-value's value for a toggle Element: on, true
+// and checked mean on; off, false and unchecked mean off (any case).
+func parseToggleValue(value string) (int32, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "on", "true", "checked":
+		return toggleOn, nil
+	case "off", "false", "unchecked":
+		return toggleOff, nil
+	}
+	return -1, fmt.Errorf("%w: %s", ErrToggleValue, value)
+}
+
+// maxToggles bounds set-value on a toggle. A three-state box reaches
+// either target within two Toggle calls whichever way its cycle turns
+// (Win32 and WPF go off, on, indeterminate; UIA documents on, off,
+// indeterminate), so the count cannot be read off the state: set-value
+// toggles until the target reads, at most twice.
+const maxToggles = 2
+
+// toggleSteps are the live operations toggleTo drives: the COM code binds
+// them to an Element, the offline tests to a fake box.
+type toggleSteps struct {
+	toggle func(sent int) error   // one Toggle call; sent is how many went before it
+	settle func(prev int32) int32 // the state once it leaves prev, or as it reads when verifyWait passes
+}
+
+// toggleTo takes a toggle Element from before to target (set-value on a
+// toggle): nothing is sent when it is already there; otherwise Toggle is
+// called until the target reads, at most maxToggles times, and the result
+// is verified. A Toggle that shows no visible move is never followed by
+// another: the first may still land late, and a second could undo it.
+func toggleTo(before, target int32, s toggleSteps) error {
+	if before < 0 {
+		return ErrToggleUnreadable
+	}
+	now := before
+	for sent := 0; now != target && sent < maxToggles; sent++ {
+		if err := s.toggle(sent); err != nil {
+			return err
+		}
+		prev := now
+		if now = s.settle(prev); now == prev || now < 0 {
+			break
+		}
+	}
+	if now != target {
+		return &VerifyError{Action: "set-value", Expected: toggleWord(target), Observed: toggleWord(now)}
+	}
+	return nil
+}
+
+// setToggle sets a toggle Element on or off through its TogglePattern
+// pat. A value other than the six words is refused before any call.
+func setToggle(el comPtr, pat comPtr, value string) error {
+	target, err := parseToggleValue(value)
+	if err != nil {
+		return err
+	}
+	return toggleTo(currentState(el, propToggleState), target, toggleSteps{
+		toggle: func(sent int) error {
+			hr := call(pat, toggleToggle)
+			switch {
+			case !hr.Failed():
+				return nil
+			case sent > 0:
+				// The first Toggle was delivered: whatever this one
+				// failed with, the Action may have taken effect.
+				return &WriteError{What: "toggling the Element again", HR: hr}
+			}
+			return callErr(hr, "toggling the Element")
+		},
+		settle: func(prev int32) int32 {
+			deadline := time.Now().Add(verifyWait)
+			for {
+				now := currentState(el, propToggleState)
+				if now != prev || time.Now().After(deadline) {
+					return now
+				}
+				time.Sleep(verifyInterval)
+			}
+		},
+	})
 }
 
 // probedPatterns holds the live pattern interfaces probed on an Element

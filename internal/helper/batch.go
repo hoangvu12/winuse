@@ -35,7 +35,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hoangvu12/winuse/internal/keys"
 	"github.com/hoangvu12/winuse/internal/protocol"
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 // batchUsageHint is the recovery hint for batch's argument failures.
@@ -79,7 +81,10 @@ func batch(commands map[string]Command, s Services) Command {
 		// malformed Batch never acts. A step's value-level validation
 		// (key names, secondary actions, element availability) still runs
 		// at its turn: it may depend on the live Window, and the failure
-		// then names its step.
+		// then names its step. A posted step that is headed, by its own
+		// flag or the Batch's, is refused here too (postFlagsError), and so
+		// is a press-key step with a Blocked Combo and no `force` of its own
+		// (blockedStep), so the steps before it never act.
 		type prepared struct {
 			kind string
 			cmd  Command
@@ -105,15 +110,39 @@ func batch(commands map[string]Command, s Services) Command {
 			if err != nil {
 				return "", Fail(fmt.Sprintf("batch: Action %d (%s) has invalid arguments: %v", i+1, st.Kind, err), batchUsageHint)
 			}
+			if postsHeaded(injected) {
+				e := postFlagsError(st.Kind)
+				return "", Fail(fmt.Sprintf("batch: Action %d (%s): %s", i+1, st.Kind, e.Msg), e.Hint)
+			}
+			if e := blockedStep(st.Kind, injected); e != nil {
+				return "", Fail(fmt.Sprintf("batch: Action %d (%s): %s", i+1, st.Kind, e.Msg), e.Hint)
+			}
 			steps = append(steps, prepared{kind: st.Kind, cmd: cmd, args: injected})
 		}
 
 		// The Batch's scope, decided up front by the same predicate each
-		// step's command routes on (headlessStep), so the two never
-		// disagree: Headless only when every step is.
+		// step's command routes on (headlessStep): Headless only when every
+		// step is. The Batch's Window resolves once here. press-key and
+		// type-text route by the live Window (ADR 0011, Decision 4), so each
+		// keyboard step probes it (Services.KeyRoute) right here, before the
+		// scope is picked, and probes it again when the step runs.
+		//
+		// The race: an earlier step can move the focus or close the dialog,
+		// so a keyboard step can route differently when it runs than when
+		// the scope was picked. Both directions stay safe. A step that turns
+		// Headed inside a passive scope arms its own swallowing scope and
+		// banner for its run (runAction; a swallowing scope wins over a
+		// passive one), and a step that turns Headless inside a swallowing
+		// scope runs Headless under the banner, as a Headless click does in
+		// a mixed Batch. Each step still decides before it sends anything.
+		w, werr := resolveWindow(s, a.Window)
+		var bw *win.WindowInfo
+		if werr == nil {
+			bw = &w
+		}
 		allHeadless := true
 		for _, st := range steps {
-			if _, ok := s.headless(st.kind, st.args); !ok {
+			if !s.stepHeadless(st.kind, st.args, bw) {
 				allHeadless = false
 				break
 			}
@@ -134,8 +163,8 @@ func batch(commands map[string]Command, s Services) Command {
 		} else {
 			esc.Arm()
 			defer esc.Disarm()
-			if w, rerr := resolveWindow(s, a.Window); rerr == nil {
-				s.showOverlay(w)
+			if bw != nil {
+				s.showOverlay(*bw)
 				defer s.hideOverlay()
 			}
 		}
@@ -196,6 +225,34 @@ func withWindow(window string, raw json.RawMessage) (json.RawMessage, error) {
 	}
 	fields["window"] = w
 	return json.Marshal(fields)
+}
+
+// postsHeaded reports whether one step's prepared arguments carry both
+// `post` and `headed` (the Batch's headed already injected by withHeaded).
+func postsHeaded(raw json.RawMessage) bool {
+	var f struct {
+		Post   bool `json:"post"`
+		Headed bool `json:"headed"`
+	}
+	return json.Unmarshal(raw, &f) == nil && f.Post && f.Headed
+}
+
+// blockedStep is blockedComboError for one prepared step: a press-key step
+// whose key parses to a Blocked Combo without the step's `force`. Other
+// steps, and keys that do not parse (refused at their turn), pass.
+func blockedStep(kind string, raw json.RawMessage) *Error {
+	if kind != "press-key" {
+		return nil
+	}
+	var a protocol.PressKeyArgs
+	if json.Unmarshal(raw, &a) != nil {
+		return nil
+	}
+	chord, err := keys.Parse(a.Key)
+	if err != nil {
+		return nil
+	}
+	return blockedComboError(chord, a.Force)
 }
 
 // withHeaded sets `headed: true` on one step's raw arguments (a Batch sent

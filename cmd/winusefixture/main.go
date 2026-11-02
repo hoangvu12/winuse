@@ -11,6 +11,12 @@
 // environment). -origin x,y (or WINUSE_FIXTURE_ORIGIN) places the main
 // window's top-left corner in screen pixels — e.g. on a secondary monitor
 // for the display acceptance runs; by default Windows places it.
+// -activate-on-restore makes it an App that brings itself to the
+// foreground: it calls SetForegroundWindow on its main window whenever
+// that is restored from minimized. -allow-foreground <pid> lets that
+// process set the foreground window each time the fixture is activated
+// (AllowSetForegroundWindow), as the user's foreground App would have
+// to for a background App to take it.
 //
 // It is a plain GUI app: it takes over the desktop when run. It is never
 // run by agents; only the user starts it (directly, or through the opt-in
@@ -30,9 +36,11 @@ import (
 func main() {
 	state := flag.String("state", os.Getenv("WINUSE_FIXTURE_STATE"), "path of the JSON state file to keep updated, or set WINUSE_FIXTURE_STATE")
 	originArg := flag.String("origin", os.Getenv("WINUSE_FIXTURE_ORIGIN"), "x,y screen position of the main window, or set WINUSE_FIXTURE_ORIGIN")
+	activateOnRestore := flag.Bool("activate-on-restore", false, "bring the main window to the foreground whenever it is restored from minimized")
+	allowForeground := flag.Uint("allow-foreground", 0, "process ID allowed to set the foreground window whenever this fixture is activated")
 	flag.Parse()
 	if *state == "" {
-		fmt.Fprintln(os.Stderr, "usage: winusefixture -state <path> [-origin x,y] (or set WINUSE_FIXTURE_STATE)")
+		fmt.Fprintln(os.Stderr, "usage: winusefixture -state <path> [-origin x,y] [-activate-on-restore] [-allow-foreground pid] (or set WINUSE_FIXTURE_STATE)")
 		os.Exit(2)
 	}
 	origin, err := parseOrigin(*originArg)
@@ -40,7 +48,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "winusefixture:", err)
 		os.Exit(2)
 	}
-	os.Exit(fixture.Main(*state, origin))
+	os.Exit(fixture.Main(*state, origin, fixture.Options{ActivateOnRestore: *activateOnRestore, AllowForeground: uint32(*allowForeground)}))
 }
 
 // parseOrigin parses "x,y" (signed: monitors left of or above the primary

@@ -64,6 +64,20 @@ func ResolveWindow(windows []WindowInfo, ref string) (WindowInfo, error) {
 	}
 }
 
+// WindowsOfApp returns the Windows whose App is ref, in their given
+// order: the App matching of a Window reference (appMatches), for
+// `list-windows --app`.
+func WindowsOfApp(windows []WindowInfo, ref string) []WindowInfo {
+	ref = strings.TrimSpace(ref)
+	var out []WindowInfo
+	for _, w := range windows {
+		if appMatches(w, ref) {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
 // appMatches reports whether WindowInfo w's App is ref (case-insensitive,
 // exact). Both the App display name (what list-windows prints) and the
 // executable's base name (with and without extension) match, so

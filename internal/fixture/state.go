@@ -26,6 +26,33 @@ type State struct {
 	DialogResult   string `json:"dialogResult"`
 	DialogFileName string `json:"dialogFileName"`
 
+	// The Classic Dialog (a real #32770 dialog; see ClassicDialogTitle).
+	// ClassicOpen is true while it exists; ClassicWindowID is its Window ID
+	// (the last one, kept after it closes); ClassicResult the way it last
+	// closed ("ok" or "cancel", "" while open or never opened).
+	// ClassicText and ClassicPassword are its two Edit controls' text, read
+	// on every change (EN_CHANGE). ClassicFocus names the Edit that last
+	// took the focus ("name" or "password", from EN_SETFOCUS).
+	// ClassicColor is the combo's selected item (one of ClassicColors,
+	// from CBN_SELCHANGE; "" until one is picked). ClassicComboDrops counts
+	// the times its drop-down list opened (CBN_DROPDOWN) since the dialog
+	// opened: a pick by name that never shows the drop-down leaves it 0.
+	ClassicOpen     bool   `json:"classicOpen"`
+	ClassicWindowID uint64 `json:"classicWindowId"`
+	ClassicResult   string `json:"classicResult"`
+	ClassicText     string `json:"classicText"`
+	ClassicPassword string `json:"classicPassword"`
+	ClassicFocus    string `json:"classicFocus"`
+	ClassicColor    string `json:"classicColor"`
+
+	ClassicComboDrops int `json:"classicComboDrops"`
+
+	// The MessageBox (see MessageBoxTitle): MessageBoxOpen while it is up,
+	// MessageBoxResult the button that closed it last ("ok" or "cancel",
+	// "" while open or never opened).
+	MessageBoxOpen   bool   `json:"messageBoxOpen"`
+	MessageBoxResult string `json:"messageBoxResult"`
+
 	// Text is the main window's Text Field content; Typed is the raw
 	// WM_CHAR stream (capped, last 200 runes, surrogate pairs recombined)
 	// so press-key/type tests can tell typed characters apart from focus

@@ -1,0 +1,21 @@
+Window: "Sign in - Google Chrome", App: chrome.exe.
+	0 window Sign in - Google Chrome
+		1 pane Google Chrome
+			2 tab list Tabs
+				3 tab (selectable, selected) Sign in Secondary Actions: Select
+				4 button New Tab
+			5 toolbar Address and search bar
+				6 button Back
+				7 edit (settable, string) Address and search bar Value: https://example.test/
+			8 document Sign in Value: https://example.test/
+				9 heading Sign in to Example
+				10 edit (settable, string) Email Value: ada@example.com
+				11 edit (settable, string) Password
+				12 check box Remember me off Secondary Actions: Toggle
+				13 button Sign in
+				14 link Forgot your password?
+				15 button (disabled) Create account Description: Opens the sign-up page
+			16 group "winuse" started debugging this browser
+				17 button Cancel
+
+The focused UI element is 10 edit (settable, string) Email Value: ada@example.com.

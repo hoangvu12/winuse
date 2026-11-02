@@ -192,12 +192,13 @@ type Client struct {
 	closed  bool
 	factory func() (*worker, error) // startWorker; faked in tests
 	store   *store
+	thin    *thinWindows // Windows whose settle ran out thin (retry.go); nil remembers nothing
 }
 
 // New creates a client. The worker thread starts lazily on first use, so a
 // helper that only ever lists windows never initialises COM.
 func New() *Client {
-	return &Client{factory: startWorker, store: newStore(addRef, release)}
+	return &Client{factory: startWorker, store: newStore(addRef, release), thin: newThinWindows()}
 }
 
 // Close releases the worker and the stored live Elements. Best effort: a
@@ -353,11 +354,15 @@ func (c *Client) Run(ctx context.Context, job func(w *worker, r *run)) error {
 // an earlier Window State can no longer resolve — they fail as stale in
 // later tickets instead of pointing at the wrong Element.
 //
-// A nearly empty first read is retried once after a short delay
-// (Chromium/Electron enable their accessibility tree lazily, at the first
-// UI Automation contact; see retry.go), so the Window State of Chrome,
-// Edge and Electron apps includes their web content, and a tree that
-// stays nearly empty carries a note pointing the agent at a screenshot.
+// Chromium/Electron enable their accessibility tree lazily, at the first
+// UI Automation contact (see retry.go): a Chromium Window whose web content
+// reads thin, and is not read over a Browser Connection, is read again
+// until it settles, within DefaultChromiumSettle (or the wider budget
+// WithSettle put on ctx, still bounded by its deadline), and one that stays thin
+// carries a note saying so (a Window that already stayed thin once gets one
+// short retry instead, until a read finds it built); any other nearly empty first read is retried
+// once after a short delay, and a tree that stays nearly empty carries a
+// note pointing the agent at a screenshot.
 //
 // Replacement is generation-aware (ticket 14's finding): the read takes a
 // sequence number when it starts, and its Elements are installed only if
@@ -369,11 +374,25 @@ func (c *Client) Run(ctx context.Context, job func(w *worker, r *run)) error {
 // title and app fill the Window State's header (the resolved Window's title
 // and executable file name).
 func (c *Client) Capture(ctx context.Context, hwnd uint64, title, app string, budget time.Duration) (*wstate.Tree, error) {
+	tree, _, err := c.CaptureFrame(ctx, hwnd, title, app, budget, nil)
+	return tree, err
+}
+
+// CaptureFrame is Capture for a browser Window whose Page is read over CDP
+// (browser merge ticket 04): the walk leaves out the descendants of the
+// Document Element cut names (WalkConfig.Cut), so the content the Page
+// replaces is never read through UI Automation. at is that Document's
+// Element Index, or -1 when every Document was read whole. A nil cut is
+// Capture.
+func (c *Client) CaptureFrame(ctx context.Context, hwnd uint64, title, app string, budget time.Duration, cut DocumentCut) (tree *wstate.Tree, at int, err error) {
 	// One read is one job on the COM thread; the retry delay is spent on
 	// the caller's goroutine so the worker stays free. Each successful read
 	// replaces the Window's live Elements, so the store ends up holding the
-	// Elements behind the Window State that is returned.
+	// Elements behind the Window State that is returned (the last read's,
+	// which at follows).
+	at = -1
 	read := func(cfg WalkConfig) (*readResult, error) {
+		cfg.Cut = cut
 		seq := c.store.beginRead()
 		var res *captureResult
 		var jobErr error
@@ -389,9 +408,14 @@ func (c *Client) Capture(ctx context.Context, hwnd uint64, title, app string, bu
 		if jobErr != nil {
 			return nil, jobErr
 		}
-		return &readResult{tree: res.tree, rootClass: res.rootClass}, nil
+		at = res.cut
+		return &readResult{tree: res.tree, rootClass: res.rootClass, paged: res.cut >= 0}, nil
 	}
-	return readTree(ctx, app, budget, read, sleepCtx)
+	tree, err = readTree(ctx, app, budget, SettleOf(ctx), c.thin.window(hwnd), read, sleepCtx)
+	if err != nil {
+		return nil, -1, err
+	}
+	return tree, at, nil
 }
 
 // installRead installs a completed read's Elements as hwnd's live Window
@@ -473,6 +497,7 @@ type windowState struct {
 	seq      uint64
 	elems    []comPtr
 	elements []wstate.Element
+	origins  map[int]any // the Page Elements' origins by Element Index (splice.go); nil for a UIA-only read
 }
 
 func newStore(addRef, release func(comPtr)) *store {

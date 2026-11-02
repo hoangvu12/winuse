@@ -1,0 +1,20 @@
+Window: "Checkout - Google Chrome", App: chrome.exe.
+	0 window Checkout - Google Chrome
+		1 pane Google Chrome
+			2 tab list Tabs
+				3 tab (selectable, selected) Checkout Secondary Actions: Select
+				4 button New Tab
+			5 toolbar Address and search bar
+				6 button Back
+				7 edit (settable, string) Address and search bar Value: https://example.test/
+			8 document Checkout Value: https://example.test/
+				9 heading Checkout
+				10 pane Payment
+					11 document Secure payment
+						12 edit (settable, string) Card number Value: 4242 4242 4242 4242
+						13 button Pay now
+				14 pane Help
+					15 document Help center
+						16 link Shipping questions
+			17 group "winuse" started debugging this browser
+				18 button Cancel

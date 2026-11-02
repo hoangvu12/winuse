@@ -128,6 +128,10 @@ func staticRect(e Elem) (win.Rect, bool) {
 
 	case ElemCheckboxNotify:
 		return win.Rect{Left: 8, Top: 180, Right: 160, Bottom: 204}, true
+	case ElemButtonClassic:
+		return win.Rect{Left: 168, Top: 180, Right: 300, Bottom: 206}, true
+	case ElemButtonMessageBox:
+		return win.Rect{Left: 304, Top: 180, Right: 436, Bottom: 206}, true
 
 	case ElemItemList:
 		return win.Rect{Left: listLeft, Top: listTop, Right: listRight, Bottom: listBottom}, true

@@ -345,3 +345,64 @@ func TestCanonicalNamesRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// TestBlocked pins the Blocked Combos: Alt+F4, Alt+Tab and
+// Ctrl+Shift+Escape on either side's modifiers, and any chord that holds
+// every key of one; near misses pass.
+func TestBlocked(t *testing.T) {
+	for key, want := range map[string]string{
+		"Alt_L+F4":                    "Alt+F4",
+		"alt+f4":                      "Alt+F4",
+		"Alt_R+F4":                    "Alt+F4",
+		"Control_L+Alt_L+F4":          "Alt+F4",
+		"Shift_L+Alt_R+F4":            "Alt+F4",
+		"Alt_L+Tab":                   "Alt+Tab",
+		"option+tab":                  "Alt+Tab",
+		"Alt_L+Shift_L+Tab":           "Alt+Tab",
+		"Control_L+Alt_L+Tab":         "Alt+Tab",
+		"Control_L+Shift_L+Escape":    "Ctrl+Shift+Escape",
+		"ctrl+shift+esc":              "Ctrl+Shift+Escape",
+		"Control_R+Shift_R+Escape":    "Ctrl+Shift+Escape",
+		"Control_L+Alt_L+Shift_L+Esc": "Ctrl+Shift+Escape",
+		"F4":                          "",
+		"Alt_L":                       "",
+		"Control_L+F4":                "",
+		"Tab":                         "",
+		"Control_L+Tab":               "",
+		"Shift_L+Tab":                 "",
+		"Escape":                      "",
+		"Control_L+Escape":            "",
+		"Shift_L+Escape":              "",
+		"Alt_L+F5":                    "",
+		"Control_L+a":                 "",
+	} {
+		chord, err := Parse(key)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", key, err)
+		}
+		got, blocked := Blocked(chord)
+		if got != want || blocked != (want != "") {
+			t.Errorf("Blocked(%s) = %q, %v; want %q", key, got, blocked, want)
+		}
+	}
+}
+
+// TestModifier pins which keys are modifiers (Control, Alt, Shift, left or
+// right): the keys Posted Keys refuse, because posted messages leave the
+// keyboard state that apps read untouched.
+func TestModifier(t *testing.T) {
+	for name, want := range map[string]bool{
+		"Control_L": true, "Control_R": true, "ctrl": true,
+		"Shift_L": true, "Shift_R": true, "shift": true,
+		"Alt_L": true, "Alt_R": true, "option": true,
+		"Return": false, "a": false, "Escape": false, "F4": false, "KP_Enter": false, "Tab": false,
+	} {
+		chord, err := Parse(name)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", name, err)
+		}
+		if got := chord[0].Modifier(); got != want {
+			t.Errorf("%s: Modifier = %v, want %v", name, got, want)
+		}
+	}
+}

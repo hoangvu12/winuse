@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
@@ -105,6 +106,13 @@ func click(s Services) Command {
 		target, terr := parseElementTarget("click", a.ElementIndex, a.Ref, a.Point, clickUsageHint)
 		if terr != nil {
 			return "", terr
+		}
+		// A Page Element routes over the Browser Connection (browser merge
+		// ticket 05, pageactions.go).
+		if out, rerr, ok := s.onPage(a.Window, target, func(w win.WindowInfo, index int, o *page.Origin) (string, *Error) {
+			return s.pageClick(ctx, w, index, o, target, button, count, a.Headed)
+		}); ok {
+			return out, rerr
 		}
 
 		if target.point != nil {
@@ -259,6 +267,8 @@ func elementError(err error, w win.WindowInfo, index int) *Error {
 	case errors.Is(err, uia.ErrStale):
 		return Fail(fmt.Sprintf("element %d is not available in the cached Window State for window %d", index, w.ID),
 			"the Window State has changed; run winuse get-window-state "+strconv.FormatUint(w.ID, 10)+" again and use fresh Element Indexes")
+	case errors.Is(err, uia.ErrPageElement):
+		return pageElementError(w, index)
 	}
 	return Fail(err.Error(), "")
 }

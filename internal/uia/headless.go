@@ -12,7 +12,9 @@ package uia
 // boxes), SelectionItem (list items, tabs, radio buttons), ExpandCollapse
 // (combo boxes, tree nodes, submenus), then LegacyIAccessible's default
 // action when it names one — the only affordance of many legacy Win32
-// controls (agent-desktop findings A19-6, A15-5).
+// controls (agent-desktop findings A19-6, A15-5). Toggle and
+// Expand/Collapse fall back to one Invoke call when the pattern call
+// leaves the state unchanged (invokeFallback).
 
 import (
 	"context"
@@ -31,25 +33,37 @@ var ErrNoClickRoute = errors.New("the Element offers no Invoke, Toggle, Select, 
 // WriteError is a pattern write that failed with an HRESULT that does not
 // prove the write was refused (unlike a stale or disabled Element): the
 // provider may have acted before failing, so the Action may have taken
-// effect.
+// effect. Err, when set, is a window message's failure instead of an
+// HRESULT (a timed-out message may still be processed).
 type WriteError struct {
 	What string
 	HR   HRESULT
+	Err  error
 }
 
-func (e *WriteError) Error() string { return fmt.Sprintf("%s failed (HRESULT %s)", e.What, e.HR) }
+func (e *WriteError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("%s failed: %v", e.What, e.Err)
+	}
+	return fmt.Sprintf("%s failed (HRESULT %s)", e.What, e.HR)
+}
 
 // VerifyError is a delivered Headless Action whose read-back does not show
 // the expected state: the pattern call succeeded, the Element did not
 // follow. Observed is the state read back ("" when withheld, e.g. a
-// password field).
+// password field). Msg, when set, is the whole message instead (a
+// read-back with its own wording, such as a scroll that did not move).
 type VerifyError struct {
 	Action   string
 	Expected string
 	Observed string
+	Msg      string
 }
 
 func (e *VerifyError) Error() string {
+	if e.Msg != "" {
+		return e.Msg
+	}
 	if e.Observed == "" {
 		return fmt.Sprintf("%s was delivered but the Element does not read %s afterwards", e.Action, e.Expected)
 	}
@@ -103,10 +117,12 @@ func (c *Client) HeadlessClick(ctx context.Context, hwnd uint64, index int) (str
 
 // SetValueHeadless writes value like SetValue but without focusing the
 // Element first (UIA SetFocus moves the desktop foreground), then reads a
-// Value-pattern write back.
+// Value-pattern write back (setToggle verifies a toggle write itself, and
+// selectItem the item it picks in a combo or list).
 func (c *Client) SetValueHeadless(ctx context.Context, hwnd uint64, index int, value string) error {
 	return c.onElement(ctx, hwnd, index, func(th *thread, el comPtr) error {
-		if err := th.setValue(el, value, false); err != nil {
+		selected, err := th.writeValue(el, value, false)
+		if err != nil || selected {
 			return err
 		}
 		return verifyValue(el, value)
@@ -121,19 +137,20 @@ var ErrRaiseHeadless = errors.New("Raise moves the foreground and cannot run hea
 
 // PerformSecondaryActionHeadless performs a Secondary Action like
 // PerformSecondaryAction and reads Toggle, Select, Expand and Collapse
-// back. action must be canonical; Raise (a foreground operation by
-// definition; the helper keeps it Headed) is refused with
-// ErrRaiseHeadless before the Element is touched.
+// back; Toggle, Expand and Collapse fall back to one Invoke call when the
+// pattern call left the state as it was (actWithInvokeFallback). action
+// must be canonical; Raise (a foreground operation by definition; the
+// helper keeps it Headed) is refused with ErrRaiseHeadless before the
+// Element is touched.
 func (c *Client) PerformSecondaryActionHeadless(ctx context.Context, hwnd uint64, index int, action string) error {
 	if action == "Raise" {
 		return ErrRaiseHeadless
 	}
 	return c.onElement(ctx, hwnd, index, func(th *thread, el comPtr) error {
 		before := currentState(el, statePropFor(action))
-		if err := th.performSecondary(el, index, action); err != nil {
-			return err
-		}
-		return verifySecondary(el, action, before)
+		return actWithInvokeFallback(el, action, before, func() error {
+			return th.performSecondary(el, index, action)
+		})
 	})
 }
 
@@ -203,10 +220,12 @@ func (th *thread) headlessClick(el comPtr) (string, error) {
 	} else if pat != nil {
 		defer release(pat)
 		before := currentState(el, propToggleState)
-		if hr := call(pat, toggleToggle); hr.Failed() {
-			return "", callErr(hr, "toggling the Element")
-		}
-		return "Toggle", verifySecondary(el, "Toggle", before)
+		return "Toggle", actWithInvokeFallback(el, "Toggle", before, func() error {
+			if hr := call(pat, toggleToggle); hr.Failed() {
+				return callErr(hr, "toggling the Element")
+			}
+			return nil
+		})
 	}
 
 	if pat, hr := currentPattern(el, patternSelectionItem, &iidSelectionItemPattern); hrStale(hr) {
@@ -229,10 +248,12 @@ func (th *thread) headlessClick(el comPtr) (string, error) {
 			if state == expandExpanded {
 				action, slot = "Collapse", ecCollapse
 			}
-			if hr := call(pat, slot); hr.Failed() {
-				return "", callErr(hr, "performing "+action)
-			}
-			return action, verifySecondary(el, action, state)
+			return action, actWithInvokeFallback(el, action, state, func() error {
+				if hr := call(pat, slot); hr.Failed() {
+					return callErr(hr, "performing "+action)
+				}
+				return nil
+			})
 		}
 	}
 
@@ -303,6 +324,95 @@ func verifySecondary(el comPtr, action string, before int32) error {
 		return nil // Scroll, Invoke, default action: no readable outcome
 	}
 	return pollVerify(action, expected, ok)
+}
+
+// invokeFallback decides whether a Toggle, Expand or Collapse falls back
+// to one Invoke call (headless-parity spec, "Invoke fallbacks"): some web
+// widgets expose the pattern but act only on Invoke. It fires only from a
+// known state before (any readable toggle state; collapsed for Expand,
+// expanded for Collapse) and only when after still reads that state, after
+// a pattern call that failed with a WriteError (a refusal such as a stale
+// or disabled Element sent nothing to fall back from) or delivered
+// without effect. A changed or unreadable state after never invokes: the
+// first call may have acted, and Invoke could undo it.
+func invokeFallback(action string, before, after int32, callErr error) bool {
+	switch action {
+	case "Toggle":
+		if before != toggleOff && before != toggleOn && before != toggleIndeterminate {
+			return false
+		}
+	case "Expand":
+		if before != expandCollapsed {
+			return false
+		}
+	case "Collapse":
+		if before != expandExpanded {
+			return false
+		}
+	default:
+		return false
+	}
+	if callErr != nil {
+		var write *WriteError
+		if !errors.As(callErr, &write) {
+			return false
+		}
+	}
+	return after == before
+}
+
+// fallbackSteps are the live operations runWithInvokeFallback drives: the
+// COM code binds them to an Element, the offline tests to fakes.
+type fallbackSteps struct {
+	perform func() error         // the pattern call
+	verify  func() error         // the read-back (verifySecondary)
+	state   func() int32         // the action's state now, -1 when unreadable
+	invoke  func() (bool, error) // one Invoke call; false when the Element offers no Invoke (nothing sent)
+}
+
+// runWithInvokeFallback performs a Secondary Action and reads it back,
+// then, when invokeFallback says so, calls Invoke once and reads the
+// action's outcome back again. A missing or failed Invoke leaves the
+// first outcome, which already says whether the Action was delivered.
+func runWithInvokeFallback(action string, before int32, s fallbackSteps) error {
+	callErr := s.perform()
+	err := callErr
+	if callErr == nil {
+		err = s.verify()
+		var verify *VerifyError
+		if !errors.As(err, &verify) {
+			return err
+		}
+	}
+	if !invokeFallback(action, before, s.state(), callErr) {
+		return err
+	}
+	if invoked, ierr := s.invoke(); !invoked || ierr != nil {
+		return err
+	}
+	return s.verify()
+}
+
+// actWithInvokeFallback is runWithInvokeFallback on a live Element:
+// perform is the pattern call, before the action's state read before it.
+// The Headed v1 Secondary Actions do not use it (they read nothing back).
+func actWithInvokeFallback(el comPtr, action string, before int32, perform func() error) error {
+	return runWithInvokeFallback(action, before, fallbackSteps{
+		perform: perform,
+		verify:  func() error { return verifySecondary(el, action, before) },
+		state:   func() int32 { return currentState(el, statePropFor(action)) },
+		invoke: func() (bool, error) {
+			pat, _ := currentPattern(el, patternInvoke, &iidInvokePattern)
+			if pat == nil {
+				return false, nil
+			}
+			defer release(pat)
+			if hr := call(pat, invokeInvoke); hr.Failed() {
+				return true, callErr(hr, "invoking the Element")
+			}
+			return true, nil
+		},
+	})
 }
 
 // verifyValue reads a Value-pattern write back. Password fields are

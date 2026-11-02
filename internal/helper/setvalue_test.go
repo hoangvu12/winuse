@@ -198,6 +198,18 @@ func TestSetValueFailuresAndHints(t *testing.T) {
 			wantHint: "numeric",
 		},
 		{
+			name:     "a toggle takes on or off",
+			err:      fmt.Errorf("%w: maybe", uia.ErrToggleValue),
+			wantMsg:  "toggle value must be on, off, true, false, checked or unchecked: maybe",
+			wantHint: "on or off",
+		},
+		{
+			name:     "an unreadable toggle state",
+			err:      uia.ErrToggleUnreadable,
+			wantMsg:  uia.ErrToggleUnreadable.Error(),
+			wantHint: "perform-secondary-action",
+		},
+		{
 			name:     "focus failure",
 			err:      uia.ErrFocusBeforeValue,
 			wantMsg:  "focus element before setting value",
@@ -219,6 +231,24 @@ func TestSetValueFailuresAndHints(t *testing.T) {
 			name:     "no cached state",
 			err:      fmt.Errorf("%w: window 101", uia.ErrNoState),
 			wantMsg:  "no cached Window State is available for window 101",
+			wantHint: "get-window-state 101",
+		},
+		{
+			name:     "a combo or list with no item by the name lists its items",
+			err:      &uia.SelectItemError{Label: "Purple", Items: []string{"Red", "Blue"}},
+			wantMsg:  `no item named "Purple"; its items are "Red", "Blue"`,
+			wantHint: "item names exactly",
+		},
+		{
+			name:     "several items by the name ask for the exact one",
+			err:      &uia.SelectItemError{Label: "blue", Matches: []string{"Blue", "BLUE"}, Opened: true},
+			wantMsg:  `the list was opened and closed; 2 items match "blue": "Blue", "BLUE"`,
+			wantHint: "exact name wins",
+		},
+		{
+			name:     "a search that failed after the Expand keeps the opened-and-closed wording",
+			err:      &uia.SelectItemError{Label: "Red", Opened: true, Err: fmt.Errorf("%w: gone", uia.ErrStale)},
+			wantMsg:  "the list was opened and closed; " + uia.ErrStale.Error() + ": gone",
 			wantHint: "get-window-state 101",
 		},
 		{

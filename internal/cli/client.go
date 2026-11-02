@@ -115,6 +115,21 @@ func (c *Client) Call(ctx context.Context, req *protocol.Request) (*protocol.Res
 	return nil, lastErr
 }
 
+// CallExisting sends one request to a helper that is already running and
+// never starts one: no helper is an error wrapping ErrNoHelper, and a
+// stale answer or a dropped connection is returned as is, with no retry
+// (winuse status, desktop parity ticket 16).
+func (c *Client) CallExisting(ctx context.Context, req *protocol.Request) (*protocol.Response, error) {
+	dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
+	defer cancel()
+	conn, err := c.Dial(dialCtx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	return c.roundTrip(conn, req)
+}
+
 // waitPipeGone dials until the helper pipe stops answering (or the wait
 // runs out), so a restart does not race the old helper's exit.
 func (c *Client) waitPipeGone(ctx context.Context, wait time.Duration) {
@@ -182,13 +197,10 @@ func (c *Client) roundTrip(conn net.Conn, req *protocol.Request) (*protocol.Resp
 			return nil, fmt.Errorf("verifying helper: %w", err)
 		}
 	}
-	// The command's budget (the explicit entry, else the default) plus the
-	// exchange slack for the connection deadline.
-	budget := protocol.RequestTimeout
-	if d, ok := protocol.CommandTimeout(req.Cmd); ok {
-		budget = d
-	}
-	deadline := budget + exchangeSlack
+	// The command's budget (the explicit entry, else the default, widened
+	// by a caller-set --timeout) plus the exchange slack for the
+	// connection deadline.
+	deadline := protocol.Budget(req, protocol.RequestTimeout) + exchangeSlack
 	if err := conn.SetDeadline(time.Now().Add(deadline)); err != nil {
 		return nil, err
 	}

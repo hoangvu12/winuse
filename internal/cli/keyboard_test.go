@@ -7,8 +7,11 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/hoangvu12/winuse/internal/protocol"
 )
 
 func TestParseTypeTextArgs(t *testing.T) {
@@ -105,10 +108,18 @@ func TestKeyboardUsageErrorsExit2WithoutDialing(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"type-text with no arguments", []string{"type-text"}, "usage: winuse type-text <window> <text>"},
-		{"type-text with only a window", []string{"type-text", "101"}, "usage: winuse type-text <window> <text>"},
-		{"press-key with no arguments", []string{"press-key"}, "usage: winuse press-key <window> <key>"},
-		{"press-key with only a window", []string{"press-key", "101"}, "usage: winuse press-key <window> <key>"},
+		{"type-text with no arguments", []string{"type-text"}, "usage: winuse type-text <window> [--post | --into <element>] <text>"},
+		{"type-text with only a window", []string{"type-text", "101"}, "usage: winuse type-text <window> [--post | --into <element>] <text>"},
+		{"press-key with no arguments", []string{"press-key"}, "usage: winuse press-key <window> <key> [--post]"},
+		{"press-key with only a window", []string{"press-key", "101"}, "usage: winuse press-key <window> <key> [--post]"},
+		// Posted Keys (ticket 07): --post needs text or a key, and never
+		// combines with --headed.
+		{"type-text --post with no text", []string{"type-text", "101", "--post"}, "usage: winuse type-text <window> [--post | --into <element>] <text>"},
+		{"press-key --post with no key", []string{"press-key", "101", "--post"}, "usage: winuse press-key <window> <key> [--post]"},
+		{"press-key --post --headed", []string{"press-key", "101", "Return", "--post", "--headed"}, "--post and --headed cannot be combined"},
+		{"--headed press-key --post", []string{"--headed", "press-key", "101", "--post", "Return"}, "--post and --headed cannot be combined"},
+		{"--headed type-text --post", []string{"--headed", "type-text", "101", "--post", "hi"}, "--post and --headed cannot be combined"},
+		{"type-text --headed before the window with --post", []string{"type-text", "--headed", "101", "--post", "hi"}, "--post and --headed cannot be combined"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -150,6 +161,185 @@ func TestKeyboardUnknownCommandStillExits2(t *testing.T) {
 	for _, cmd := range []string{"type-texts", "presskey"} {
 		if code := Main([]string{cmd}); code != 2 {
 			t.Errorf("%s: exit = %d, want 2", cmd, code)
+		}
+	}
+}
+
+// TestHeadedReachesPressKeyRequests pins ticket 05's CLI half: press-key
+// has a Headless form now (Return and Escape on a classic dialog), so the
+// global --headed flag, wherever it stands, reaches its request.
+func TestHeadedReachesPressKeyRequests(t *testing.T) {
+	for _, line := range []string{
+		"press-key 101 Return --headed",
+		"--headed press-key 101 Return",
+		"press-key --headed 101 Return",
+		"press-key 101 Return",
+	} {
+		rest, headed := extractHeaded(split(line))
+		req, err := pressKeyRequest(rest[1:], headed)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		want := protocol.PressKeyArgs{Window: "101", Key: "Return", Headed: strings.Contains(line, "--headed")}
+		if req != want {
+			t.Errorf("%q: request = %+v, want %+v", line, req, want)
+		}
+	}
+}
+
+// TestHeadedReachesTypeTextRequests pins ticket 06's CLI half: type-text
+// has a Headless form now (text into a focused classic edit control), so
+// the global --headed flag reaches its request when it stands before the
+// text; inside the text it stays literal.
+func TestHeadedReachesTypeTextRequests(t *testing.T) {
+	cases := []struct {
+		line   string
+		text   string
+		headed bool
+	}{
+		{"--headed type-text 101 hello", "hello", true},
+		{"type-text --headed 101 hello", "hello", true},
+		{"type-text 101 hello", "hello", false},
+		{"type-text 101 hello --headed", "hello --headed", false},
+	}
+	for _, tc := range cases {
+		rest, headed := extractHeaded(split(tc.line))
+		req, err := typeTextRequest(rest[1:], headed)
+		if err != nil {
+			t.Fatalf("%q: %v", tc.line, err)
+		}
+		want := protocol.TypeTextArgs{Window: "101", Text: tc.text, Headed: tc.headed}
+		if req != want {
+			t.Errorf("%q: request = %+v, want %+v", tc.line, req, want)
+		}
+	}
+}
+
+// TestPostReachesKeyboardRequests pins ticket 07's CLI parsing: on
+// press-key, --post may stand right after the Window or after the key; on
+// type-text it must stand right after the Window, because everything
+// after that is the text (a later --post is text).
+func TestPostReachesKeyboardRequests(t *testing.T) {
+	keyCases := []struct {
+		line string
+		want protocol.PressKeyArgs
+	}{
+		{"press-key 101 --post Return", protocol.PressKeyArgs{Window: "101", Key: "Return", Post: true}},
+		{"press-key 101 Return --post", protocol.PressKeyArgs{Window: "101", Key: "Return", Post: true}},
+		{"press-key 101 Control_L + a --post", protocol.PressKeyArgs{Window: "101", Key: "Control_L + a", Post: true}},
+		{"press-key 101 Return", protocol.PressKeyArgs{Window: "101", Key: "Return"}},
+	}
+	for _, tc := range keyCases {
+		rest, headed := extractHeaded(split(tc.line))
+		req, err := pressKeyRequest(rest[1:], headed)
+		if err != nil {
+			t.Fatalf("%q: %v", tc.line, err)
+		}
+		if req != tc.want {
+			t.Errorf("%q: request = %+v, want %+v", tc.line, req, tc.want)
+		}
+	}
+	textCases := []struct {
+		line string
+		want protocol.TypeTextArgs
+	}{
+		{"type-text 101 --post hello world", protocol.TypeTextArgs{Window: "101", Text: "hello world", Post: true}},
+		{"type-text 101 hello --post", protocol.TypeTextArgs{Window: "101", Text: "hello --post"}},
+		{"type-text 101 --post --post", protocol.TypeTextArgs{Window: "101", Text: "--post", Post: true}},
+		{"type-text 101 --post --headed", protocol.TypeTextArgs{Window: "101", Text: "--headed", Post: true}},
+	}
+	for _, tc := range textCases {
+		rest, headed := extractHeaded(split(tc.line))
+		req, err := typeTextRequest(rest[1:], headed)
+		if err != nil {
+			t.Fatalf("%q: %v", tc.line, err)
+		}
+		if req != tc.want {
+			t.Errorf("%q: request = %+v, want %+v", tc.line, req, tc.want)
+		}
+	}
+	if _, err := pressKeyRequest([]string{"101", "Return", "--post"}, true); err == nil || !strings.Contains(err.Error(), "--post and --headed") {
+		t.Errorf("press-key --post with headed: err = %v, want the usage error", err)
+	}
+	if _, err := typeTextRequest([]string{"101", "--post", "hi"}, true); err == nil || !strings.Contains(err.Error(), "--post and --headed") {
+		t.Errorf("type-text --post with headed: err = %v, want the usage error", err)
+	}
+}
+
+// TestIntoReachesTypeTextRequests pins desktop-parity ticket 23's CLI
+// parsing: --into and its Element stand right after the Window (a later
+// --into is text), take an Element Index or a name:/id: reference but no
+// @x,y, and a --headed before the text is the global flag.
+func TestIntoReachesTypeTextRequests(t *testing.T) {
+	three := 3
+	cases := []struct {
+		line string
+		want protocol.TypeTextArgs
+	}{
+		{"type-text 101 --into 3 hello world", protocol.TypeTextArgs{Window: "101", Text: "hello world", IntoIndex: &three}},
+		{"type-text 101 --into id:1001 hi", protocol.TypeTextArgs{Window: "101", Text: "hi", IntoRef: "id:1001"}},
+		{"type-text 101 --into name:Search --into", protocol.TypeTextArgs{Window: "101", Text: "--into", IntoRef: "name:Search"}},
+		{"type-text 101 hello --into 3", protocol.TypeTextArgs{Window: "101", Text: "hello --into 3"}},
+		{"type-text 101 --into 3 --headed", protocol.TypeTextArgs{Window: "101", Text: "--headed", IntoIndex: &three}},
+		{"type-text 101 --headed --into 3 hi", protocol.TypeTextArgs{Window: "101", Text: "hi", IntoIndex: &three, Headed: true}},
+		{"type-text 101 --into --headed 3 hi", protocol.TypeTextArgs{Window: "101", Text: "hi", IntoIndex: &three, Headed: true}},
+		{"--headed type-text 101 --into 3 hi", protocol.TypeTextArgs{Window: "101", Text: "hi", IntoIndex: &three, Headed: true}},
+	}
+	for _, tc := range cases {
+		rest, headed := extractHeaded(split(tc.line))
+		req, err := typeTextRequest(rest[1:], headed)
+		if err != nil {
+			t.Fatalf("%q: %v", tc.line, err)
+		}
+		if !reflect.DeepEqual(req, tc.want) {
+			t.Errorf("%q: request = %+v, want %+v", tc.line, req, tc.want)
+		}
+	}
+	for _, c := range []struct{ line, want string }{
+		{"type-text 101 --into", "--into takes an element index"},
+		{"type-text 101 --into 3", "type-text takes a window reference and text"},
+		{"type-text 101 --into @10,20 hi", "not @x,y coordinates"},
+		{"type-text 101 --into -2 hi", "non-negative element index"},
+	} {
+		rest, headed := extractHeaded(split(c.line))
+		if _, err := typeTextRequest(rest[1:], headed); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%q: err = %v, want %q", c.line, err, c.want)
+		}
+	}
+}
+
+// TestForceReachesPressKeyRequests pins desktop-parity ticket 05's CLI
+// parsing: --force may stand anywhere after the Window and combines with
+// --post and --headed.
+func TestForceReachesPressKeyRequests(t *testing.T) {
+	cases := []struct {
+		line string
+		want protocol.PressKeyArgs
+	}{
+		{"press-key 101 Alt_L+F4 --force", protocol.PressKeyArgs{Window: "101", Key: "Alt_L+F4", Force: true}},
+		{"press-key 101 --force Alt_L+Tab", protocol.PressKeyArgs{Window: "101", Key: "Alt_L+Tab", Force: true}},
+		{"press-key 101 --force Return --post", protocol.PressKeyArgs{Window: "101", Key: "Return", Post: true, Force: true}},
+		{"--headed press-key 101 ctrl+shift+esc --force", protocol.PressKeyArgs{Window: "101", Key: "ctrl+shift+esc", Headed: true, Force: true}},
+	}
+	for _, tc := range cases {
+		rest, headed := extractHeaded(split(tc.line))
+		req, err := pressKeyRequest(rest[1:], headed)
+		if err != nil {
+			t.Fatalf("%q: %v", tc.line, err)
+		}
+		if req != tc.want {
+			t.Errorf("%q: request = %+v, want %+v", tc.line, req, tc.want)
+		}
+	}
+	if _, err := pressKeyRequest([]string{"101", "--force"}, false); err == nil {
+		t.Error("press-key 101 --force: want the missing-key usage error")
+	}
+}
+
+func TestUsageMentionsPost(t *testing.T) {
+	for _, want := range []string{"type-text <window> [--post | --into <element index | name: | id:>] <text>", "press-key <window> <key> [--post] [--force]", "posted", "Alt+F4, Alt+Tab, Ctrl+Shift+Escape"} {
+		if !strings.Contains(Usage, want) {
+			t.Errorf("usage text missing %q", want)
 		}
 	}
 }

@@ -24,6 +24,9 @@ type app struct {
 	dialogHwnd uintptr
 	font       uintptr
 
+	classicHwnd uintptr // the open Classic Dialog, 0 when closed (classic.go)
+	classicProc uintptr // its dialog procedure callback
+
 	uia *uiaProviders
 
 	focusMain   Elem // logical focus inside the main window
@@ -42,6 +45,9 @@ type app struct {
 	dialogTree *TreeMap
 
 	status string // current status text (the status element's suffix)
+
+	opts      Options // the self-activation modes (Main)
+	minimized bool    // the main window is minimized (WM_SIZE)
 }
 
 var theApp *app
@@ -53,12 +59,26 @@ type Origin struct {
 	Set  bool
 }
 
+// Options are the fixture's self-activation modes (headless-max ticket 02).
+type Options struct {
+	// ActivateOnRestore makes the main window call SetForegroundWindow on
+	// itself whenever it is restored from minimized: an App that brings
+	// itself to the front on restore.
+	ActivateOnRestore bool
+	// AllowForeground, when not 0, is a process ID the fixture lets set the
+	// foreground window (AllowSetForegroundWindow) each time it is
+	// activated. Windows lets a background process take the foreground
+	// only with such a grant from the foreground process, or in input
+	// states a test cannot arrange.
+	AllowForeground uint32
+}
+
 // Main runs the fixture app: creates the windows, pumps messages until the
 // app closes, and keeps the state file current. It must be called once from
 // the process entry point on a locked thread. origin places the main window
 // (e.g. on a secondary monitor, for the display acceptance runs); the
-// dialog keeps its offset from it.
-func Main(statePath string, origin Origin) int {
+// dialog keeps its offset from it. opts turns on the self-activation modes.
+func Main(statePath string, origin Origin, opts Options) int {
 	runtime.LockOSThread()
 	if err := windows.CoInitializeEx(0, windows.COINIT_APARTMENTTHREADED); err == nil {
 		defer windows.CoUninitialize()
@@ -68,7 +88,7 @@ func Main(statePath string, origin Origin) int {
 		os.Stderr.WriteString("winusefixture: dpi awareness: " + err.Error() + "\n")
 	}
 
-	a := &app{state: initial(), statePath: statePath, focusMain: ElemTextField, status: "ready"}
+	a := &app{state: initial(), statePath: statePath, focusMain: ElemTextField, status: "ready", opts: opts}
 	theApp = a
 	if err := a.createWindows(origin); err != nil {
 		os.Stderr.WriteString("winusefixture: " + err.Error() + "\n")
@@ -92,6 +112,7 @@ func (a *app) createWindows(origin Origin) error {
 
 	mainProc := newCallback(a.wndMain)
 	dialogProc := newCallback(a.wndDialog)
+	a.classicProc = newCallback(a.dlgClassic)
 	if err := registerClass(MainWindowClass, mainProc, hmod); err != nil {
 		return err
 	}
@@ -175,6 +196,13 @@ func (a *app) loop() {
 		if int32(r) <= 0 {
 			return
 		}
+		// The Classic Dialog is modeless: its keyboard handling (Tab,
+		// Return, Escape) is the dialog manager's, as in any real app.
+		if a.classicHwnd != 0 {
+			if r, _, _ := procIsDialogMessageW.Call(a.classicHwnd, uintptr(unsafe.Pointer(&m))); r != 0 {
+				continue
+			}
+		}
 		procTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))
 		procDispatchMessageW.Call(uintptr(unsafe.Pointer(&m)))
 	}
@@ -202,6 +230,9 @@ func (a *app) wndMain(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		a.writeState() // CanvasRect follows the window
 		procInvalidateRect.Call(hwnd, 0, 1)
 	case wmTimer:
+		// A restore from minimized can leave CanvasRect at the minimized
+		// position after its WM_WINDOWPOSCHANGED; the tick catches up.
+		a.updateCanvasRect()
 		a.writeState()
 		return 0
 	case wmMouseLeave:
@@ -248,6 +279,28 @@ func (a *app) wndMain(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 	case wmChar:
 		a.onChar(rune(uint32(wp)))
 		return 0
+	case wmOpenClassic:
+		a.openClassic()
+		return 0
+	case wmOpenMessageBox:
+		a.openMessageBox()
+		return 0
+	case wmSize:
+		// Self-activation mode: a restore from minimized brings the
+		// window to the foreground, as some real Apps do.
+		switch wp {
+		case sizeMinimized:
+			a.minimized = true
+		case sizeRestored:
+			if a.minimized && a.opts.ActivateOnRestore {
+				procSetForegroundWindow.Call(hwnd)
+			}
+			a.minimized = false
+		}
+	case wmActivateApp:
+		if wp != 0 && a.opts.AllowForeground != 0 {
+			procAllowSetForegroundWindow.Call(uintptr(a.opts.AllowForeground))
+		}
 	}
 	r, _, _ := procDefWindowProcW.Call(hwnd, uintptr(msg), wp, lp)
 	return r
@@ -439,7 +492,7 @@ func (a *app) hitTest(p point) Elem {
 		ElemMenuFile, ElemMenuEdit, ElemMenuHelp,
 		ElemTextField, ElemButtonClick, ElemButtonSaveAs, ElemButtonDisabled,
 		ElemTwinA, ElemTwinB, ElemSoloOne, ElemSoloTwo,
-		ElemCheckboxNotify, ElemDetailsExpander,
+		ElemCheckboxNotify, ElemButtonClassic, ElemButtonMessageBox, ElemDetailsExpander,
 	} {
 		if r, ok := Rect(e, a.state.ListFirstVisible); ok && inRect(p.X, p.Y, r) {
 			return e
@@ -489,6 +542,14 @@ func (a *app) click(elem Elem, canvas Point) {
 		a.changed()
 	case elem == ElemButtonSaveAs:
 		a.openDialog()
+	case elem == ElemButtonClassic, elem == ElemButtonMessageBox:
+		// Posted, so that a UI Automation Invoke returns at once: the
+		// MessageBox runs a modal loop until it closes.
+		msg := uintptr(wmOpenClassic)
+		if elem == ElemButtonMessageBox {
+			msg = wmOpenMessageBox
+		}
+		procPostMessageW.Call(a.mainHwnd, msg, 0, 0)
 	case elem == ElemButtonDisabled:
 		// Disabled elements ignore input (IsEnabled is false).
 	case isListItem(elem):
@@ -937,6 +998,12 @@ func keyName(vk uint32) string {
 
 // ---- painting ----
 
+// SelectedItemCOLORREF fills the selected list item (COLORREF 0x00BBGGRR:
+// RGB 0, 154, 204). No other part of the window is painted in it, so the
+// e2e tests use it to tell a capture of this window from a capture of
+// whatever covers it.
+const SelectedItemCOLORREF = 0x00CC9A00
+
 // Colors (COLORREF: 0x00BBGGRR).
 const (
 	colWindowBg = 0x00F0F0F0 // window background
@@ -946,7 +1013,7 @@ const (
 	colGray     = 0x00999999
 	colLight    = 0x00C8C8C8
 	colAccent   = 0x00B34700 // focus frames (BGR: strong orange)
-	colSelect   = 0x00CC9A00 // selected list item
+	colSelect   = SelectedItemCOLORREF
 	colText     = 0x00222222
 	colMark     = 0x002200CC // canvas click marks (BGR: red-ish)
 )
@@ -986,7 +1053,7 @@ func (a *app) paintMain(hwnd uintptr) {
 		a.paintToolbar(hdc)
 	}
 	a.paintTextField(hdc)
-	for _, e := range []Elem{ElemButtonClick, ElemButtonSaveAs, ElemButtonDisabled, ElemTwinA, ElemTwinB, ElemSoloOne, ElemSoloTwo} {
+	for _, e := range []Elem{ElemButtonClick, ElemButtonSaveAs, ElemButtonDisabled, ElemTwinA, ElemTwinB, ElemSoloOne, ElemSoloTwo, ElemButtonClassic, ElemButtonMessageBox} {
 		a.paintButton(hdc, e)
 	}
 	a.paintCheckbox(hdc)

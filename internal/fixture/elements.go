@@ -32,6 +32,45 @@ const WindowTitle = "winuse fixture app"
 // its own Window of the same App (ticket 01's dialog contract).
 const DialogTitle = "Save As"
 
+// The classic Win32 windows. Unlike the main window and the Save As dialog,
+// they are not drawn by the fixture and have no fixture UIA provider: they
+// are the system's own dialog class (#32770) and controls (Edit, Button,
+// Static), so they carry the window messages that winuse's keyboard routes
+// use (DM_GETDEFID, EM_REPLACESEL, WM_COMMAND). UI Automation sees them
+// through the system's Win32 proxies, whose AutomationId of a dialog control
+// is its control ID ("1001", "1002"). They appear in `winuse list-windows`
+// as Windows of their own while open.
+const (
+	// ClassicDialogTitle is the modeless classic dialog the Classic
+	// Dialog... button opens. It holds a single-line Edit (ClassicEditID,
+	// focused when the dialog opens), a password Edit (ClassicPasswordID),
+	// OK (IDOK, the default button) and Cancel (IDCANCEL). OK closes it with
+	// classicResult "ok", Cancel, Escape and the close box with "cancel".
+	// It is owned by the main window and does not disable it.
+	ClassicDialogTitle = "Classic Dialog"
+
+	// MessageBoxTitle is the caption of the MessageBox (MB_OKCANCEL, OK the
+	// default) the Message Box... button opens. Return presses OK
+	// (messageBoxResult "ok"), Escape presses Cancel ("cancel"). While it is
+	// open, Windows disables the main window (it is modal).
+	MessageBoxTitle = "winuse fixture message"
+	MessageBoxText  = "Proceed with the fixture action?"
+
+	// Control IDs inside the Classic Dialog. ClassicComboID is a drop-down
+	// list (CBS_DROPDOWNLIST) of ClassicColors, nothing selected when the
+	// dialog opens: UI Automation's Win32 proxy gives it ExpandCollapse,
+	// Selection and a read-only Value, and its items SelectionItem — the
+	// combo set-value picks an item in by name (desktop-parity 12).
+	ClassicEditID     = 1001
+	ClassicPasswordID = 1002
+	ClassicComboID    = 1003
+)
+
+// ClassicColors are the Classic Dialog combo's items, in order. "Blue" and
+// "blue" differ only in case: set-value picks either by its exact name and
+// refuses "BLUE" as ambiguous.
+var ClassicColors = []string{"Red", "Green", "Blue", "blue"}
+
 // Window class names (also the ClassName the provider reports for the
 // window roots).
 const (
@@ -76,6 +115,9 @@ const (
 	ElemSoloTwo Elem = "solo-two"
 
 	ElemCheckboxNotify Elem = "checkbox-notify"
+
+	ElemButtonClassic    Elem = "button-classic-dialog"
+	ElemButtonMessageBox Elem = "button-message-box"
 
 	ElemItemList    Elem = "item-list"
 	ElemItemAlpha   Elem = "item-alpha"
@@ -198,6 +240,9 @@ var Specs = []Spec{
 	{ElemSoloTwo, "Solo Two", RoleButton, []Pattern{PatternInvoke}, "same AutomationId (\"solo\") as solo-one, different Names"},
 
 	{ElemCheckboxNotify, "Notify me", RoleCheckBox, []Pattern{PatternToggle}, "check box; toggle/click/space flips the state file's checkbox"},
+
+	{ElemButtonClassic, "Classic Dialog...", RoleButton, []Pattern{PatternInvoke}, "opens the Classic Dialog: a real #32770 modeless dialog with Win32 Edit controls (see ClassicDialogTitle)"},
+	{ElemButtonMessageBox, "Message Box...", RoleButton, []Pattern{PatternInvoke}, "opens a real MessageBox (MB_OKCANCEL) owned by the main window (see MessageBoxTitle)"},
 
 	{ElemItemList, "Item List", RoleList, []Pattern{PatternSelection, PatternScroll}, "single-selection list with 8 items; 5 visible, items 6-8 are below the fold (IsOffscreen=true) until scrolled"},
 	{ElemItemAlpha, "Alpha", RoleListItem, []Pattern{PatternSelectionItem, PatternScrollItem}, "list item; Select selects it (selection is exclusive)"},

@@ -1,0 +1,35 @@
+{
+  "source": "hand-authored read of a checkout page with a cross-origin payment iframe (read over its own auto-attached session CHILD1 and inlined under the iframe) and a same-origin help iframe (already in the main tree, under its own RootWebArea).",
+  "browser": "chrome",
+  "targetId": "T3",
+  "title": "Checkout",
+  "url": "https://shop.test/checkout",
+  "main": {
+    "sessionId": "S3",
+    "frameId": "F1",
+    "loaders": { "F1": "L1", "F3": "L3" },
+    "marks": {},
+    "nodes": [
+      { "nodeId": "1", "role": { "type": "internalRole", "value": "RootWebArea" }, "name": { "type": "computedString", "value": "Checkout" }, "childIds": ["2", "3", "5"], "backendDOMNodeId": 1, "frameId": "F1" },
+      { "nodeId": "2", "role": { "type": "role", "value": "heading" }, "name": { "type": "computedString", "value": "Checkout" }, "parentId": "1", "backendDOMNodeId": 2 },
+      { "nodeId": "3", "role": { "type": "internalRole", "value": "Iframe" }, "name": { "type": "computedString", "value": "Payment" }, "parentId": "1", "backendDOMNodeId": 300 },
+      { "nodeId": "5", "role": { "type": "internalRole", "value": "Iframe" }, "name": { "type": "computedString", "value": "Help" }, "parentId": "1", "childIds": ["6"], "backendDOMNodeId": 310 },
+      { "nodeId": "6", "role": { "type": "internalRole", "value": "RootWebArea" }, "name": { "type": "computedString", "value": "Help center" }, "parentId": "5", "childIds": ["7"], "backendDOMNodeId": 311, "frameId": "F3" },
+      { "nodeId": "7", "role": { "type": "role", "value": "link" }, "name": { "type": "computedString", "value": "Shipping questions" }, "parentId": "6", "backendDOMNodeId": 312, "frameId": "F3" }
+    ]
+  },
+  "frames": [
+    {
+      "owner": 300,
+      "sessionId": "CHILD1",
+      "frameId": "F2",
+      "loaders": { "F2": "L2" },
+      "marks": {},
+      "nodes": [
+        { "nodeId": "1", "role": { "type": "internalRole", "value": "RootWebArea" }, "name": { "type": "computedString", "value": "Secure payment" }, "childIds": ["2", "4"], "backendDOMNodeId": 1, "frameId": "F2" },
+        { "nodeId": "2", "role": { "type": "role", "value": "textbox" }, "name": { "type": "computedString", "value": "Card number" }, "value": { "type": "string", "value": "4242 4242 4242 4242" }, "properties": [{ "name": "editable", "value": { "type": "token", "value": "plaintext" } }], "parentId": "1", "backendDOMNodeId": 20, "frameId": "F2" },
+        { "nodeId": "4", "role": { "type": "role", "value": "button" }, "name": { "type": "computedString", "value": "Pay now" }, "parentId": "1", "backendDOMNodeId": 40, "frameId": "F2" }
+      ]
+    }
+  ]
+}

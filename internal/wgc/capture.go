@@ -120,7 +120,8 @@ type Method struct {
 }
 
 // New creates the capture method, reading its environment knobs: WINUSE_WGC
-// ("off" disables it — the chain then starts at the screen-region capture)
+// ("off" disables it, and the chain then starts at its next method: the
+// screen-region capture under --headed, PrintWindow otherwise)
 // and WINUSE_WGC_BUDGET (a duration like "1500ms" or a plain number of
 // seconds; the default is DefaultBudget). Invalid values keep the
 // defaults. The knobs are helper-side: they are read once per helper

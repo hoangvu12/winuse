@@ -1,0 +1,23 @@
+# 12: Posted Clicks (opt-in)
+
+**What to build:** `click ... --post` posts mouse messages to the classic Win32 control under the target, for double, right and middle clicks on an Element and for clicks at a point. Best effort, like Posted Keys.
+
+Measured (`../headless-gaps/headless-100.md` G1): posted WM_LBUTTONDOWN/UP/DBLCLK/UP to a background `Edit` selected a word; posted WM_RBUTTONDOWN/UP opened its context menu; foreground unchanged both times. The same messages to charmap's `RICHEDIT50W` did nothing. cua uses this as its Win32 background route (`platform-windows/src/input/mouse.rs:138-200`, MIT).
+
+- Target HWND: the deepest child of the target Window at the point, from `ChildWindowFromPointEx` (skip invisible and transparent), never `WindowFromPoint`, so a covered Window is still addressed.
+- Messages: WM_MOUSEMOVE first, then the button sequence for the button and count (DBLCLK for the second click of a double), client coordinates, MK_* flags in wParam. WM_CANCELMODE afterwards to drop a stale capture.
+- Only for HWND-backed classic controls (class allow-list: Edit, RichEdit*, SysListView32, SysTreeView32, Button, ComboBox, ListBox, `#32770` children, MFC/WinForms classes as measured). Anything else: "nothing was sent" with the `--headed` hint.
+- Output: `ok (posted; the app may ignore posted clicks, read the Window State to check)`.
+- Refuse administrator Windows, a locked desktop, a modal-blocked or minimized Window, as Posted Keys do.
+- `--post` and `--headed` together are a usage error. Batch steps accept `--post`.
+
+**Blocked by:** none (shares the point mapping with 11)
+
+**Status:** needs-triage (extends ADR 0011 Decision 5 to the mouse; headless-parity spec out-of-scope "double, right or middle clicks"; new CONTEXT.md term)
+
+- [ ] Win32 layer: child at point, posted sequence, WM_CANCELMODE
+- [ ] Class allow-list and refusals
+- [ ] CLI and Batch `--post` on click
+- [ ] Offline tests: message sequence per button and count, allow-list, flag conflicts
+- [ ] Opt-in e2e: fixture edit box double and right click, covered
+- [ ] CONTEXT.md, SKILL.md

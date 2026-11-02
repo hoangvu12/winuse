@@ -14,3 +14,9 @@
 - [x] Process is per-monitor DPI aware v2 before any window call
 - [x] Builds as a single static Go binary without cgo
 - [x] Default test command runs only offline tests and passes
+
+## Comments
+
+### 2026-11-03: the idle period counts from the end of the last request
+
+The idle timer used to restart only when a connection arrived. A request longer than the idle period let the helper exit right after it answered, which dropped the Window State it had just cached. The server now counts connections being served: it never exits while one is in flight, and the idle period restarts when the last one ends (`TestServeIdleCountsFromTheEndOfTheLastRequest`). Details: `.scratch/headless-parity/issues/07-posted-keys.md`, 2026-11-03.
