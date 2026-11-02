@@ -971,6 +971,26 @@ func (o Origin) SetValue(ctx context.Context, in *Input, f Field, value string) 
 	return ValueMatches(f, value, got)
 }
 
+// TypeInto types text into a field the way type-text types into the
+// Page's focus, with no OS focus: DOM.focus, then TypeText (runs through
+// Input.insertText, a newline as Return, a tab as Tab). The text lands at
+// the field's own caret or replaces its selection, as typing does, so a
+// select-text before it makes a replacement. There is no read-back: the
+// text may be only part of the field's value.
+func (o Origin) TypeInto(ctx context.Context, in *Input, text string) error {
+	c, err := o.caller()
+	if err != nil {
+		return err
+	}
+	if in.stopped != nil && in.stopped() {
+		return ErrStopped
+	}
+	if _, err := c.CallSession(ctx, o.SessionID, "DOM.focus", map[string]any{"backendNodeId": o.BackendNodeID}); err != nil {
+		return staleOr(err)
+	}
+	return in.TypeText(ctx, text)
+}
+
 // ValueMatches compares a field's read-back with the value sent: exactly
 // for inputs and text areas, and for editable text with spaces and the
 // trailing newline normalized. A mismatch never shows a password field's

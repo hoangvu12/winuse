@@ -345,11 +345,20 @@ type ResizeWindowArgs struct {
 // Decision 4) unless headed. With post, the text is posted as Posted Keys
 // instead (WM_CHAR to the focused control, no foreground); post and
 // headed do not combine.
+//
+// With an Element in IntoIndex or IntoRef (desktop-parity ticket 23), the
+// text goes into that Element instead of whatever has the focus: a Page
+// Element over the Browser Connection, an Element whose own window is a
+// classic edit control through EM_REPLACESEL, both Headless; any other
+// Element only with headed (activate, click it, type). into does not
+// combine with post.
 type TypeTextArgs struct {
-	Window string `json:"window"`
-	Text   string `json:"text"`
-	Headed bool   `json:"headed,omitempty"` // force v1's activate-and-type, even where a Headless route exists
-	Post   bool   `json:"post,omitempty"`   // Posted Keys: post WM_CHAR to the Window's focused control (ADR 0011, Decision 5)
+	Window    string `json:"window"`
+	Text      string `json:"text"`
+	Headed    bool   `json:"headed,omitempty"`     // force v1's activate-and-type, even where a Headless route exists
+	Post      bool   `json:"post,omitempty"`       // Posted Keys: post WM_CHAR to the Window's focused control (ADR 0011, Decision 5)
+	IntoIndex *int   `json:"into_index,omitempty"` // type into this Element, from the Window's latest Window State
+	IntoRef   string `json:"into_ref,omitempty"`   // name:<text> or id:<AutomationId>: type into this Element
 }
 
 // PressKeyArgs are press-key's arguments — Codex's press_key parameters:

@@ -75,3 +75,36 @@ The user asked for everything to be as headless as possible.
 - Everything that UIPI blocks (posted messages, SetWindowPos, pattern
   writes) refuses an administrator Window up front with "nothing was
   sent".
+
+## Amendment: type-text routes by a named Element too (2026-11-03)
+
+Ticket 19 of `.scratch/headless-max/` and ticket 23 of
+`.scratch/desktop-parity/`. The first live e2e run found that a covered
+Windows 11 Notepad (a XAML-island app) reports no focused control on its
+thread: GetGUIThreadInfo answers no focus window once another Window is
+in the foreground. Decision 4 routes type-text by that focus, so the
+text went Headed, took the foreground and lost keys. `select-text` was
+not affected, because it aims at the Element's own window (UIA
+NativeWindowHandle), and the editor's RichEditD2DPT keeps its selection
+while deactivated.
+
+Decision 4 now reads: `press-key Return|Escape` on a classic dialog and
+`type-text` into a focused classic edit control are Headless, and so is
+`type-text --into <element>` when the Element is a Page Element (through
+the Browser Connection) or its own window is a writable classic edit
+control and the text has no control characters (EM_REPLACESEL into that
+window, at its own selection, with the length read back). The route is
+still decided before anything is sent.
+
+- An unheaded `--into` with no Headless route is refused with "nothing
+  was sent" and the `--headed` retry. It never falls back to Headed, so
+  a Batch counts such a step as Headless without reading the Element.
+- `--headed --into` activates the Window, clicks the Element and types
+  with real keys. On a Page Element it is refused, as
+  `set-value --headed` is: there is no UIA Element to click.
+- Plain `type-text` keeps its Headed fallback. When it goes Headed
+  because the Window reports no focused control, its `ok` says so and
+  points at `--into`.
+
+Remembering a Window's last focused edit control from an earlier read
+was rejected: a stale handle could type into the wrong tab.

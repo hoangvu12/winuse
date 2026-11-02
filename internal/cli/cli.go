@@ -32,7 +32,8 @@ headless (the default; your foreground, pointer and keyboard stay untouched):
   click (left, single), set-value, perform-secondary-action (except Raise)
   and scroll on an element index, name: or id:; select-text, which has no
   headed form; press-key Return or Escape
-  on a classic dialog; type-text into a focused classic edit control, for
+  on a classic dialog; type-text into a focused classic edit control, or
+  with --into into a classic edit control or Page field it names, for
   text with no newline, tab or other control character; screenshots from
   get-window-state --screenshot and zoom (--headed activates the Window
   first); and the Window Actions restore-, minimize-, move-, resize- and
@@ -79,13 +80,20 @@ commands:
                                coordinates from the Window's latest
                                screenshot; options: --count 1|2|3 (default 1),
                                --button left|middle|right (default left)
-  type-text <window> [--post] <text>
+  type-text <window> [--post | --into <element index | name: | id:>] <text>
                                type Unicode text into the Window's focused
                                Element (headless into a classic edit control
                                such as Notepad's or a Win32 dialog's).
                                --post, right after the Window, posts the text
                                to the focused control without the foreground
-                               instead: best effort, as for press-key
+                               instead: best effort, as for press-key.
+                               --into, right after the Window, types into
+                               that Element instead, whatever has the focus:
+                               headless into a classic edit control (a
+                               covered Notepad's editor too) or a Page
+                               field; any other Element only with --headed
+                               (click it, then type), otherwise refused with
+                               nothing sent
   press-key <window> <key> [--post] [--force]
                                press a key or key combination by Codex's key
                                names, e.g. Return, Tab, Control_L+a, Numpad_0

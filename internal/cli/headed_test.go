@@ -49,6 +49,14 @@ func TestExtractHeadedPositions(t *testing.T) {
 		{"batch set-value value", "batch 101 set-value 4 --headed", "batch 101 set-value 4 --headed", false},
 		{"batch set-value flag before the ref", "batch 101 set-value --headed 4 x", "batch 101 set-value 4 x", true},
 		{"batch text then flag in the next step", "batch 101 type-text --headed THEN click 3 --headed", "batch 101 type-text --headed THEN click 3", true},
+		// type-text --into (desktop-parity ticket 23): the text starts after
+		// the Element, so a --headed before it is the flag.
+		{"type-text --into text", "type-text 101 --into 3 --headed", "type-text 101 --into 3 --headed", false},
+		{"type-text --into flag before the element", "type-text 101 --into --headed 3 hi", "type-text 101 --into 3 hi", true},
+		{"type-text --into flag before --into", "type-text 101 --headed --into 3 hi", "type-text 101 --into 3 hi", true},
+		{"batch type-text --into text", "batch 101 type-text --into 3 --headed", "batch 101 type-text --into 3 --headed", false},
+		{"batch type-text --into flag before the element", "batch 101 type-text --into --headed 3 hi", "batch 101 type-text --into 3 hi", true},
+		{"batch type-text text that says --into", "batch 101 type-text hi --into --headed", "batch 101 type-text hi --into --headed", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

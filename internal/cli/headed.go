@@ -31,7 +31,7 @@ func extractHeaded(args []string) (rest []string, headed bool) {
 	var h bool
 	switch cmd {
 	case "type-text":
-		cmdArgs, h = stripHeadedBefore(args[1:], 1) // <window> <text...>
+		cmdArgs, h = stripHeadedBefore(args[1:], typeTextTextAfter(args[1:])) // <window> [--into <element>] <text...>
 	case "set-value":
 		cmdArgs, h = stripHeadedBefore(args[1:], 2) // <window> <element> <value...>
 	case "batch":
@@ -63,6 +63,26 @@ func stripHeadedBefore(args []string, n int) (rest []string, headed bool) {
 	return rest, headed
 }
 
+// typeTextTextAfter is how many positionals standalone type-text takes
+// before its literal text: the Window, and with --into right after it
+// the flag and its Element too. --headed tokens before the text do not
+// count.
+func typeTextTextAfter(args []string) int {
+	var pos []string
+	for _, tok := range args {
+		if tok != headedFlag {
+			pos = append(pos, tok)
+		}
+		if len(pos) == 2 {
+			break
+		}
+	}
+	if len(pos) == 2 && pos[1] == intoFlag {
+		return 3
+	}
+	return 1
+}
+
 // stripHeadedBatch removes --headed tokens from a batch command line (the
 // Window, then steps separated by `then`), keeping the literal text of
 // type-text and set-value steps verbatim. Any --headed elsewhere makes
@@ -70,8 +90,9 @@ func stripHeadedBefore(args []string, n int) (rest []string, headed bool) {
 func stripHeadedBatch(args []string) (rest []string, headed bool) {
 	rest = make([]string, 0, len(args))
 	windowSeen := false
-	kind := "" // the current step's Action; "" between steps
-	seen := 0  // positionals of the current step after its Action
+	kind := ""     // the current step's Action; "" between steps
+	seen := 0      // positionals of the current step after its Action
+	textAfter := 0 // batchTextAfter(kind), or 2 for type-text --into
 	for _, tok := range args {
 		switch {
 		case !windowSeen:
@@ -87,9 +108,13 @@ func stripHeadedBatch(args []string) (rest []string, headed bool) {
 				headed = true
 				continue
 			}
-			kind = tok
+			kind, textAfter = tok, batchTextAfter(tok)
 		default:
-			if n := batchTextAfter(kind); n >= 0 && seen >= n {
+			if kind == "type-text" && seen == 0 && tok == intoFlag {
+				textAfter = 2 // --into <element>, then the text
+			}
+			if textAfter >= 0 && seen >= textAfter {
+				seen++
 				break // literal text: kept verbatim
 			}
 			if tok == headedFlag {
@@ -105,7 +130,8 @@ func stripHeadedBatch(args []string) (rest []string, headed bool) {
 
 // batchTextAfter is how many positionals a batch step takes before its
 // literal text starts (-1: the step has none): type-text's text is all of
-// its arguments, set-value's value follows the Element Reference.
+// its arguments (after --into and its Element, when the step starts with
+// --into), set-value's value follows the Element Reference.
 func batchTextAfter(kind string) int {
 	switch kind {
 	case "type-text":

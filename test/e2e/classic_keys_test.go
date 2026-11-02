@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -244,11 +245,73 @@ func TestHeadlessTypeTextIntoNotepad(t *testing.T) {
 
 	cover := coverWindow(t, window)
 	logKeyTarget(t, id)
+
+	// Covered, Windows 11 Notepad reports no focused control, so plain
+	// type-text has no Headless route (headless-max ticket 19). --into
+	// names the editor's Element, whose own window is the RichEditD2DPT:
+	// the one line of the Window State named "Text editor".
+	state := readState(t, window)
+	m := regexp.MustCompile(`(?m)^\t+(\d+) [^\n]*Text editor`).FindAllStringSubmatch(state, -1)
+	if len(m) != 1 {
+		t.Fatalf("want one Element named Text editor in Notepad's Window State, found %d:\n%s", len(m), state)
+	}
+	editor := m[0][1]
+
 	text := "hello notepad from winuse"
-	stdout, stderr, exit := runTypeText(t, []string{window, text})
-	assertActionOK(t, "type-text into Notepad", stdout, stderr, exit)
-	assertForeground(t, "type-text into Notepad", cover)
+	res, overlaySeen := runWatched(t, []string{"type-text", window, "--into", editor, text})
+	assertActionOK(t, "type-text --into Notepad's editor", res.stdout, res.stderr, res.exit)
+	assertForeground(t, "type-text --into Notepad's editor", cover)
+	if overlaySeen {
+		t.Error("the in-control banner was shown during type-text --into")
+	}
 	if got := controlText(t, focus.HWND); !strings.Contains(got, text) {
 		t.Errorf("Notepad's editor holds %q, want it to contain %q", got, text)
 	}
+}
+
+// TestHeadlessTypeTextIntoElement types into an Element by its reference,
+// not the focus (desktop-parity ticket 23): with the focus in the Classic
+// Dialog's name Edit, --into id:1002 types into the password Edit, and a
+// Batch step --into id:1001 into the name Edit, all covered.
+func TestHeadlessTypeTextIntoElement(t *testing.T) {
+	optIn(t)
+	fix, window := startFixtureWithState(t)
+	cover := coverWindow(t, window)
+	dialog := openClassicDialog(t, fix, window, cover)
+	logKeyTarget(t, mustWindowID(t, dialog))
+	pointer := pointerPos(t)
+	readState(t, dialog) // the references resolve against it
+
+	// The name Edit holds the focus (openClassicDialog waits for it); the
+	// text goes into the password Edit all the same.
+	secret := "s3cret into"
+	password := "id:" + strconv.Itoa(fixture.ClassicPasswordID)
+	res, overlaySeen := runWatched(t, []string{"type-text", dialog, "--into", password, secret})
+	assertActionOK(t, "type-text --into the password Edit", res.stdout, res.stderr, res.exit)
+	st := fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.ClassicPassword == secret })
+	if st.ClassicText != "" {
+		t.Errorf("text reached the focused name Edit: %q", st.ClassicText)
+	}
+	assertForeground(t, "type-text --into the password Edit", cover)
+	if overlaySeen {
+		t.Error("the in-control banner was shown during type-text --into")
+	}
+	if got := pointerPos(t); got != pointer {
+		t.Errorf("the real pointer moved from %v to %v during type-text --into", pointer, got)
+	}
+
+	// A Batch step, by the name Edit's ID.
+	name := "id:" + strconv.Itoa(fixture.ClassicEditID)
+	stdout, stderr, exit := runWinuse(t, []string{"batch", dialog, "type-text", "--into", name, "hello", "into"}, "WINUSE_HELPER_IDLE="+e2eIdle)
+	assertActionOK(t, "batch type-text --into the name Edit", stdout, stderr, exit)
+	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.ClassicText == "hello into" && s.ClassicPassword == secret })
+	assertForeground(t, "batch type-text --into the name Edit", cover)
+
+	// A button has no Headless route: refused, nothing sent, the
+	// --headed retry in the hint.
+	stdout, stderr, exit = runTypeText(t, []string{dialog, "--into", "id:1", "x"})
+	if exit == 0 || !strings.Contains(stderr, "nothing was sent") || !strings.Contains(stderr, "winuse --headed type-text "+dialog+" --into id:1 <text>") {
+		t.Errorf("type-text --into a button: exit %d, stdout %q, stderr %q", exit, stdout, stderr)
+	}
+	assertForeground(t, "type-text --into a button", cover)
 }
