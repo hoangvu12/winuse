@@ -102,8 +102,9 @@ func runCoveredLaunch(t *testing.T, sys *browser.System, b browser.Browser, srv 
 		(&browserProbe{sys: sys, pid: p.pid, port: port, rep: &probeReport{}}).closeBrowser(t, profile, profileExisted)
 	})
 
-	// Cover the Window as soon as it exists, before it has shown anything.
-	first := findWindowOf(t, p.pid, "Chrome_WidgetWin_1", "", 30*time.Second)
+	// Cover the Window as soon as it is steady (launchedBrowserWindow, half
+	// a second), before it has shown the page.
+	first := launchedBrowserWindow(t, p.pid, 30*time.Second)
 	p.cover = coverWindow(t, strconv.FormatUint(first, 10))
 	coverOver(t, p.cover, first)
 
@@ -124,7 +125,7 @@ func runCoveredLaunch(t *testing.T, sys *browser.System, b browser.Browser, srv 
 			t.Fatalf("winuse navigate %s %s failed (exit %d): %s", p.window, u, exit, strings.TrimSpace(stderr))
 		}
 		time.Sleep(time.Second)
-		first = findWindowOf(t, p.pid, "Chrome_WidgetWin_1", "", 10*time.Second)
+		first = launchedBrowserWindow(t, p.pid, 10*time.Second)
 		coverOver(t, p.cover, first)
 	}
 	coverOver(t, p.cover, p.main)

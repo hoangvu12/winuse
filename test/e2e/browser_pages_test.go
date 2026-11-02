@@ -564,15 +564,17 @@ func (p *pageRun) launch(t *testing.T, sys *browser.System) {
 		(&browserProbe{sys: sys, pid: p.pid, port: port, rep: &probeReport{}}).closeBrowser(t, profile, profileExisted)
 	})
 
-	first := strconv.FormatUint(findWindowOf(t, p.pid, "Chrome_WidgetWin_1", "", 30*time.Second), 10)
+	var first string
 	u := p.srv.mainURL(false, "")
 	exit = -1
-	// The Window's title may still be settling on the New Tab page's: a
-	// few tries before the fallback.
+	// The Window's title may still be settling on the New Tab page's, or a
+	// cold Chrome may have replaced its first Window: a few tries, picking
+	// the Window again each time, before the fallback.
 	for try := 0; try < 3 && exit != 0; try++ {
 		if try > 0 {
 			time.Sleep(time.Second)
 		}
+		first = strconv.FormatUint(launchedBrowserWindow(t, p.pid, 30*time.Second), 10)
 		_, stderr, exit = p.run(t, "navigate", first, u)
 	}
 	if exit != 0 {
@@ -966,6 +968,43 @@ func pageLines(state, role, name string) []string {
 
 // waitBrowserWindowTitled waits for a browser Window whose title starts
 // with the page title (the browser adds " - Google Chrome" and the like).
+// windowSteady is how long a launched browser's Window must stay the only
+// one before a test acts on it.
+const windowSteady = 500 * time.Millisecond
+
+// launchedBrowserWindow waits for the one Window of browser process pid
+// that winuse lists (win.KeepWindow, the set Window IDs resolve against)
+// and returns it once it has stayed the only one for windowSteady. A full
+// run once saw both browser tests fail with "no open Window with ID N" on
+// a cold Chrome's first Window, a Window findWindowOf took (it checks only
+// the class, visibility and title) that winuse no longer, or never,
+// listed; the tests also pick it again on each retry.
+func launchedBrowserWindow(t *testing.T, pid uint32, timeout time.Duration) uint64 {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var id uint64
+	var since time.Time
+	for time.Now().Before(deadline) {
+		var kept []uint64
+		for _, w := range browserWindows(t, pid) {
+			if win.KeepWindow(w) {
+				kept = append(kept, w.ID)
+			}
+		}
+		switch {
+		case len(kept) != 1:
+			id = 0
+		case kept[0] != id:
+			id, since = kept[0], time.Now()
+		case time.Since(since) >= windowSteady:
+			return id
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("browser process %d showed no single, steady Window that winuse lists within %s", pid, timeout)
+	return 0
+}
+
 func waitBrowserWindowTitled(t *testing.T, pid uint32, title string, timeout time.Duration) uint64 {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
