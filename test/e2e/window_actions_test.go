@@ -91,7 +91,12 @@ func TestWindowActionsKeepTheForeground(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading the window rectangle: %v", err)
 	}
-	canvas0 := fix.waitState(t, time.Second, func(*fixture.State) bool { return true }).CanvasRect
+	// The restore is asynchronous: wait for the fixture to report its
+	// canvas inside the restored frame, not the minimized position.
+	canvas0 := fix.waitState(t, 2*time.Second, func(s *fixture.State) bool {
+		c := s.CanvasRect
+		return c[0] >= r0.Left && c[1] >= r0.Top && c[2] <= r0.Right && c[3] <= r0.Bottom
+	}).CanvasRect
 	x, y := r0.Left+60, r0.Top+40
 	stdout, stderr, exit = runWindowAction(t, "move-window", window, int(x), int(y))
 	assertActionOK(t, "move-window", stdout, stderr, exit)

@@ -107,9 +107,27 @@ func runCoveredLaunch(t *testing.T, sys *browser.System, b browser.Browser, srv 
 	p.cover = coverWindow(t, strconv.FormatUint(first, 10))
 	coverOver(t, p.cover, first)
 
-	p.main = first
-	p.window = strconv.FormatUint(first, 10)
-	p.act(t, "navigate", p.window, srv.mainURL(false, ""))
+	// A cold Chrome may replace its first Window or still be settling its
+	// title on the New Tab page: a few tries, re-finding the Window, as
+	// the page tests' launch does.
+	u := srv.mainURL(false, "")
+	for try := 0; ; try++ {
+		p.main = first
+		p.window = strconv.FormatUint(first, 10)
+		var stderr string
+		var exit int
+		p.guard(t, "winuse navigate "+p.window+" "+u, func() { _, stderr, exit = p.run(t, "navigate", p.window, u) })
+		if exit == 0 {
+			break
+		}
+		if try == 2 {
+			t.Fatalf("winuse navigate %s %s failed (exit %d): %s", p.window, u, exit, strings.TrimSpace(stderr))
+		}
+		time.Sleep(time.Second)
+		first = findWindowOf(t, p.pid, "Chrome_WidgetWin_1", "", 10*time.Second)
+		coverOver(t, p.cover, first)
+	}
+	coverOver(t, p.cover, p.main)
 	p.main = waitBrowserWindowTitled(t, p.pid, pagesTitle, 20*time.Second)
 	p.window = strconv.FormatUint(p.main, 10)
 	coverOver(t, p.cover, p.main)

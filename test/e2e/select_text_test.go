@@ -2,10 +2,10 @@
 
 // select-text (ticket 10 of headless-max): `select-text <window>
 // <element> <start> <length>` and `select-text <window> <element> all`
-// with no keys, no mouse and no foreground, then type-text replacing the
-// selection. The targets are the covered fixture's Classic Dialog name
-// Edit (EM_SETSEL) and the Windows 11 Notepad editor where installed
-// (RichEditD2DPT, EM_SETSEL); the Page input is covered in
+// with no keys, no mouse and no foreground. The targets are the covered
+// fixture's Classic Dialog name Edit (EM_SETSEL, then type-text replacing
+// the selection) and the Windows 11 Notepad editor where installed
+// (RichEditD2DPT, EM_SETSEL, read back with EM_GETSEL); the Page input is covered in
 // browser_pages_test.go's pageActions. User-run only (see the package
 // comment and test/e2e/README.md); an agent must never start them.
 //
@@ -110,7 +110,10 @@ func TestHeadlessSelectTextInNotepad(t *testing.T) {
 
 	name := "winuse-e2e-select-" + strconv.FormatInt(time.Now().UnixNano(), 36) + ".txt"
 	path := filepath.Join(t.TempDir(), name)
-	if err := os.WriteFile(path, nil, 0o644); err != nil {
+	// The text is in the file, not typed: once covered, Windows 11
+	// Notepad reports no focused control, so type-text takes its Headed
+	// route there (the classic edit route needs the thread's focus).
+	if err := os.WriteFile(path, []byte("hello notepad"), 0o644); err != nil {
 		t.Fatalf("writing %s: %v", path, err)
 	}
 	if err := exec.Command("notepad.exe", path).Start(); err != nil {
@@ -137,8 +140,6 @@ func TestHeadlessSelectTextInNotepad(t *testing.T) {
 	}
 
 	cover := coverWindow(t, window)
-	stdout, stderr, exit := runTypeText(t, []string{window, "hello notepad"})
-	assertActionOK(t, "type-text into Notepad", stdout, stderr, exit)
 
 	// The editor's Element: the one line of the Window State named "Text
 	// editor" (Windows 11 Notepad's editor), whatever its role.
@@ -155,13 +156,23 @@ func TestHeadlessSelectTextInNotepad(t *testing.T) {
 	if overlaySeen {
 		t.Error("the in-control banner was shown during select-text")
 	}
-	stdout, stderr, exit = runTypeText(t, []string{window, "winuse"})
-	assertActionOK(t, "type-text replacing the selection in Notepad", stdout, stderr, exit)
-	if got := controlText(t, focus.HWND); !strings.Contains(got, "hello winuse") || strings.Contains(got, "notepad") {
-		t.Errorf("Notepad's editor holds %q, want hello winuse", got)
-	}
+	assertEditSelection(t, "select-text 6 7 in Notepad", focus.HWND, 6, 13)
 
-	stdout, stderr, exit = runSelectText(t, window, editor, "all")
+	stdout, stderr, exit := runSelectText(t, window, editor, "all")
 	assertActionOK(t, "select-text all in Notepad", stdout, stderr, exit)
 	assertForeground(t, "select-text all in Notepad", cover)
+	assertEditSelection(t, "select-text all in Notepad", focus.HWND, 0, 13)
+}
+
+// assertEditSelection reads an edit control's selection (EM_GETSEL, read
+// only) and wants start to end.
+func assertEditSelection(t *testing.T, what string, edit uint64, start, end int) {
+	t.Helper()
+	st, err := win.ReadEditState(edit)
+	if err != nil {
+		t.Fatalf("%s: reading the editor's selection: %v", what, err)
+	}
+	if !st.SelKnown || min(st.SelStart, st.SelEnd) != start || max(st.SelStart, st.SelEnd) != end {
+		t.Errorf("%s: the editor selects %d to %d (known %v), want %d to %d", what, st.SelStart, st.SelEnd, st.SelKnown, start, end)
+	}
 }
