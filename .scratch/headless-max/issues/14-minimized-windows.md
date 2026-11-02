@@ -18,7 +18,7 @@ Plan:
 
 **Blocked by:** none
 
-**Status:** ready-for-agent (classic Win32 now; WPF and XAML after the laptop probe)
+**Status:** ready-for-agent (classic Win32, WPF and WinUI 3 measured; see Comments)
 
 - [ ] Probe per framework, recorded in this ticket
 - [ ] Readiness check by framework class
@@ -43,3 +43,7 @@ Plan:
 ### 2026-11-03: triage decision (user)
 
 Drop the minimized refusal for Headless Element Actions on classic Win32 now (measured in round 3). Keep it for Chromium: its activation messages restore it and take the foreground. WPF and XAML follow the probe, the laptop probe chat (358cd6b7) runs it; the user is never at the laptop during probes. Screenshots stay refused.
+
+### 2026-11-03: WPF and WinUI 3 measured (`../headless-gaps/probes-round4.md` section 1)
+
+On the laptop, the probe's own WPF and WinUI 3 windows were minimized with SW_SHOWMINNOACTIVE. Invoke, Toggle, SetValue (read back) and SelectionItem.Select all worked; the windows stayed iconic; foreground and cursor were unchanged; the tree size was the same as when restored. Scope now: lift the minimized refusal for UIA-pattern Actions on classic Win32, WPF and WinUI 3. Keep it for Chromium (message routes and the Chromium frame), for packaged UWP (`ApplicationFrameWindow`, not measured) and for screenshots. The laptop probe for this ticket is done.
