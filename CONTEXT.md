@@ -27,7 +27,7 @@ The web content of a browser Window's active Tab, read and acted on through the 
 _Avoid_: Document, DOM, site
 
 **Browser Connection**:
-winuse's live link to one running Chromium browser, through the winuse extension or a browser winuse launched or cloned. The user's own Chrome and a Chrome winuse launched are two browsers with two Browser Connections, and a browser Window is always reached through the one of the browser it belongs to. Without one, that Window is read through UI Automation alone.
+winuse's live link to one running Chromium browser, through the winuse extension or a browser winuse launched or cloned. The user's own Chrome and a Chrome winuse launched are two browsers with two Browser Connections, and a browser Window is always reached through the one of the browser it belongs to. Without one, that Window is read through UI Automation alone, and a cold or fully covered Chromium may expose its page there late or not at all: the read waits a few seconds for a thin tree to build, then says it is still thin.
 _Avoid_: CDP session, debug port, endpoint
 
 ### Observation

@@ -353,11 +353,13 @@ func (c *Client) Run(ctx context.Context, job func(w *worker, r *run)) error {
 // an earlier Window State can no longer resolve — they fail as stale in
 // later tickets instead of pointing at the wrong Element.
 //
-// A nearly empty first read is retried once after a short delay
-// (Chromium/Electron enable their accessibility tree lazily, at the first
-// UI Automation contact; see retry.go), so the Window State of Chrome,
-// Edge and Electron apps includes their web content, and a tree that
-// stays nearly empty carries a note pointing the agent at a screenshot.
+// Chromium/Electron enable their accessibility tree lazily, at the first
+// UI Automation contact (see retry.go): a Chromium Window whose web content
+// reads thin, and is not read over a Browser Connection, is read again
+// until it settles, within DefaultChromiumSettle, and one that stays thin
+// carries a note saying so; any other nearly empty first read is retried
+// once after a short delay, and a tree that stays nearly empty carries a
+// note pointing the agent at a screenshot.
 //
 // Replacement is generation-aware (ticket 14's finding): the read takes a
 // sequence number when it starts, and its Elements are installed only if
@@ -404,9 +406,9 @@ func (c *Client) CaptureFrame(ctx context.Context, hwnd uint64, title, app strin
 			return nil, jobErr
 		}
 		at = res.cut
-		return &readResult{tree: res.tree, rootClass: res.rootClass}, nil
+		return &readResult{tree: res.tree, rootClass: res.rootClass, paged: res.cut >= 0}, nil
 	}
-	tree, err = readTree(ctx, app, budget, read, sleepCtx)
+	tree, err = readTree(ctx, app, budget, DefaultChromiumSettle, read, sleepCtx)
 	if err != nil {
 		return nil, -1, err
 	}

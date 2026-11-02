@@ -51,7 +51,10 @@ commands:
   get-window-state <window> [--screenshot]
                                print a Window's State: its Element tree as text,
                                and with --screenshot a screenshot saved to a file
-                               whose path is printed
+                               whose path is printed; a Chromium or Electron
+                               Window without a Browser Connection whose web
+                               content reads thin is read again for up to 5 s
+                               while it builds
   record-tree <window> <file> record a Window's real tree to a fixture file
   zoom <window> <x>,<y>,<w>,<h>
                                save a full-resolution crop of a region of the

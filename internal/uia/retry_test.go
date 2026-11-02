@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,10 @@ import (
 // chromiumRootClass is the Win32 class of a Chromium-derived main window
 // (Chrome, Edge, Electron), as the walk records it from the root element.
 const chromiumRootClass = "Chrome_WidgetWin_1"
+
+// canvasRootClass is the Win32 class of a non-Chromium canvas app's main
+// window: its nearly empty tree takes the one-retry path, not the settle.
+const canvasRootClass = "WinUseCanvasWnd"
 
 // fakeReader serves queued read results in order, recording the configs it
 // was given; an entry in errs makes that read fail. Reads happen
@@ -76,7 +81,7 @@ func readFixtureTree(t *testing.T, app string, results []*readResult, sleepErr e
 	t.Helper()
 	r := &fakeReader{t: t, results: results}
 	s := &fakeSleep{err: sleepErr}
-	tree, err := readTree(context.Background(), app, time.Minute, r.read, s.sleep)
+	tree, err := readTree(context.Background(), app, time.Minute, DefaultChromiumSettle, r.read, s.sleep)
 	if err != nil {
 		t.Fatalf("readTree: %v", err)
 	}
@@ -93,7 +98,7 @@ func assertElementLine(t *testing.T, rendered, role, name string) {
 	}
 }
 
-func TestReadTreeRetriesNearEmptyChromiumFirstRead(t *testing.T) {
+func TestReadTreeSettlesNearEmptyChromiumFirstRead(t *testing.T) {
 	first := loadReadFixture(t, "testdata/chromium-first-read.json", chromiumRootClass)
 	second := loadReadFixture(t, "testdata/chromium-second-read.json", chromiumRootClass)
 	// The recorded first read must be the sparse one (guards the fixture's
@@ -102,16 +107,17 @@ func TestReadTreeRetriesNearEmptyChromiumFirstRead(t *testing.T) {
 		t.Fatal("the recorded first read must carry the nearly-empty note")
 	}
 
-	rendered, reader, sleeper := readFixtureTree(t, "chrome.exe", []*readResult{first, second}, nil)
+	rendered, reader, sleeper := readFixtureTree(t, "chrome.exe", []*readResult{first, second, second}, nil)
 
-	// Exactly one retry, after the short delay.
-	if reader.calls != 2 {
-		t.Errorf("reads = %d, want exactly 2 (the first read plus one retry)", reader.calls)
+	// The settle: the tree grows on the first poll and is the same on the
+	// second, which ends it.
+	if reader.calls != 3 {
+		t.Errorf("reads = %d, want 3 (the first read, the poll it grew on, the poll it stopped growing on)", reader.calls)
 	}
-	if len(sleeper.delays) != 1 || sleeper.delays[0] != a11yRetryDelay {
-		t.Errorf("sleep delays = %v, want exactly one %s", sleeper.delays, a11yRetryDelay)
+	if len(sleeper.delays) != 2 || sleeper.delays[0] != chromiumSettleEvery || sleeper.delays[1] != chromiumSettleEvery {
+		t.Errorf("sleep delays = %v, want two of %s", sleeper.delays, chromiumSettleEvery)
 	}
-	// The retried Window State is the second read: the page's web content
+	// The settled Window State is the last read: the page's web content
 	// (document, link, button, edit, check box) is exposed, with no sparse
 	// note left.
 	assertElementLine(t, rendered, "document", "winuse e2e page 14")
@@ -119,8 +125,8 @@ func TestReadTreeRetriesNearEmptyChromiumFirstRead(t *testing.T) {
 	assertElementLine(t, rendered, "button", "winuse e2e button")
 	assertElementLine(t, rendered, "edit", "winuse e2e input")
 	assertElementLine(t, rendered, "check box", "winuse e2e checkbox")
-	if strings.Contains(rendered, "nearly empty") {
-		t.Errorf("a successful retry must not leave a sparse note:\n%s", rendered)
+	if strings.Contains(rendered, "nearly empty") || strings.Contains(rendered, "still thin") {
+		t.Errorf("a settled tree must not carry a sparse or thin note:\n%s", rendered)
 	}
 	// Both reads ran under the walk's budget with the default caps.
 	for i, cfg := range reader.configs {
@@ -134,8 +140,9 @@ func TestReadTreeRetriesNearEmptyChromiumFirstRead(t *testing.T) {
 }
 
 func TestReadTreePersistentSparseTreeGetsScreenshotNote(t *testing.T) {
-	sparse := loadReadFixture(t, "testdata/electron-sparse.json", chromiumRootClass)
-	rendered, reader, sleeper := readFixtureTree(t, "electronapp.exe", []*readResult{sparse, sparse}, nil)
+	// A non-Chromium canvas app: one retry, then the screenshot note.
+	sparse := loadReadFixture(t, "testdata/electron-sparse.json", canvasRootClass)
+	rendered, reader, sleeper := readFixtureTree(t, "canvasapp.exe", []*readResult{sparse, sparse}, nil)
 
 	if reader.calls != 2 {
 		t.Errorf("reads = %d, want exactly 2 (the sparse tree is retried once)", reader.calls)
@@ -166,7 +173,7 @@ func TestReadTreeFullFirstReadIsNotRetried(t *testing.T) {
 	assertElementLine(t, rendered, "link", "winuse e2e link")
 }
 
-func TestReadTreeChromiumDocumentlessCompleteTreeIsRetried(t *testing.T) {
+func TestReadTreeChromiumDocumentlessCompleteTreeIsSettled(t *testing.T) {
 	// The first read caught the tree mid-build: browser chrome, complete,
 	// but no Document element yet.
 	midBuild := &readResult{
@@ -185,10 +192,10 @@ func TestReadTreeChromiumDocumentlessCompleteTreeIsRetried(t *testing.T) {
 	}
 	full := loadReadFixture(t, "testdata/chromium-second-read.json", chromiumRootClass)
 
-	rendered, reader, sleeper := readFixtureTree(t, "chrome.exe", []*readResult{midBuild, full}, nil)
+	rendered, reader, sleeper := readFixtureTree(t, "chrome.exe", []*readResult{midBuild, full, full}, nil)
 
-	if reader.calls != 2 || len(sleeper.delays) != 1 {
-		t.Errorf("reads = %d, sleeps = %v; a documentless Chromium tree must be retried once", reader.calls, sleeper.delays)
+	if reader.calls != 3 || len(sleeper.delays) != 2 {
+		t.Errorf("reads = %d, sleeps = %v; a documentless Chromium tree must be settled", reader.calls, sleeper.delays)
 	}
 	assertElementLine(t, rendered, "document", "winuse e2e page 14")
 }
@@ -260,16 +267,16 @@ func TestReadTreeChromiumByExeNameWithoutClass(t *testing.T) {
 	}
 	full := loadReadFixture(t, "testdata/chromium-second-read.json", chromiumRootClass)
 
-	_, reader, sleeper := readFixtureTree(t, "Chrome.exe", []*readResult{midBuild, full}, nil)
-	if reader.calls != 2 || len(sleeper.delays) != 1 {
-		t.Errorf("reads = %d, sleeps = %v; exe-name matching must be case-insensitive and trigger the retry", reader.calls, sleeper.delays)
+	_, reader, sleeper := readFixtureTree(t, "Chrome.exe", []*readResult{midBuild, full, full}, nil)
+	if reader.calls != 3 || len(sleeper.delays) != 2 {
+		t.Errorf("reads = %d, sleeps = %v; exe-name matching must be case-insensitive and trigger the settle", reader.calls, sleeper.delays)
 	}
 }
 
 func TestReadTreeFirstReadErrorPropagates(t *testing.T) {
 	r := &fakeReader{t: t, errs: []error{ErrWindowGone}}
 	s := &fakeSleep{}
-	_, err := readTree(context.Background(), "chrome.exe", time.Minute, r.read, s.sleep)
+	_, err := readTree(context.Background(), "chrome.exe", time.Minute, DefaultChromiumSettle, r.read, s.sleep)
 	if !errors.Is(err, ErrWindowGone) {
 		t.Fatalf("readTree error = %v, want ErrWindowGone", err)
 	}
@@ -279,20 +286,20 @@ func TestReadTreeFirstReadErrorPropagates(t *testing.T) {
 }
 
 func TestReadTreeSecondReadErrorPropagates(t *testing.T) {
-	sparse := loadReadFixture(t, "testdata/electron-sparse.json", chromiumRootClass)
+	sparse := loadReadFixture(t, "testdata/electron-sparse.json", canvasRootClass)
 	r := &fakeReader{t: t, results: []*readResult{sparse}, errs: []error{nil, ErrWindowGone}}
 	s := &fakeSleep{}
-	_, err := readTree(context.Background(), "electronapp.exe", time.Minute, r.read, s.sleep)
+	_, err := readTree(context.Background(), "canvasapp.exe", time.Minute, DefaultChromiumSettle, r.read, s.sleep)
 	if !errors.Is(err, ErrWindowGone) {
 		t.Fatalf("readTree error = %v, want the retry's ErrWindowGone", err)
 	}
 }
 
 func TestReadTreeNoTimeForRetryReturnsFirstRead(t *testing.T) {
-	sparse := loadReadFixture(t, "testdata/electron-sparse.json", chromiumRootClass)
+	sparse := loadReadFixture(t, "testdata/electron-sparse.json", canvasRootClass)
 	r := &fakeReader{t: t, results: []*readResult{sparse}}
 	s := &fakeSleep{err: context.DeadlineExceeded}
-	tree, err := readTree(context.Background(), "electronapp.exe", time.Minute, r.read, s.sleep)
+	tree, err := readTree(context.Background(), "canvasapp.exe", time.Minute, DefaultChromiumSettle, r.read, s.sleep)
 	if err != nil {
 		t.Fatalf("an interrupted retry must return the first read, got error %v", err)
 	}
@@ -314,12 +321,12 @@ func TestReadTreeWalkBudgetRespectsRequestDeadline(t *testing.T) {
 	// A tight request deadline caps each read's walk budget to the
 	// remaining slack minus the response margin; the second read gets the
 	// time that is left after the first read and the delay.
-	sparse := loadReadFixture(t, "testdata/electron-sparse.json", chromiumRootClass)
+	sparse := loadReadFixture(t, "testdata/electron-sparse.json", canvasRootClass)
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 	r := &fakeReader{t: t, results: []*readResult{sparse, sparse}}
 	s := &fakeSleep{}
-	_, err := readTree(ctx, "electronapp.exe", time.Minute, r.read, s.sleep)
+	_, err := readTree(ctx, "canvasapp.exe", time.Minute, DefaultChromiumSettle, r.read, s.sleep)
 	if err != nil {
 		t.Fatalf("readTree: %v", err)
 	}
@@ -336,14 +343,312 @@ func TestReadTreeWalkBudgetRespectsRequestDeadline(t *testing.T) {
 func TestReadTreeRetryDelayBoundedBySleep(t *testing.T) {
 	// The policy asks to sleep for exactly a11yRetryDelay (the real sleep
 	// honours the request deadline; that is sleepCtx's own contract).
-	sparse := loadReadFixture(t, "testdata/electron-sparse.json", chromiumRootClass)
+	sparse := loadReadFixture(t, "testdata/electron-sparse.json", canvasRootClass)
 	r := &fakeReader{t: t, results: []*readResult{sparse, sparse}}
 	s := &fakeSleep{}
-	if _, err := readTree(context.Background(), "electronapp.exe", time.Minute, r.read, s.sleep); err != nil {
+	if _, err := readTree(context.Background(), "canvasapp.exe", time.Minute, DefaultChromiumSettle, r.read, s.sleep); err != nil {
 		t.Fatalf("readTree: %v", err)
 	}
 	if len(s.delays) != 1 || s.delays[0] != a11yRetryDelay {
 		t.Errorf("delays = %v, want [%s]", s.delays, a11yRetryDelay)
+	}
+}
+
+// The settle tests (ticket 18 of .scratch/headless-max): a faked Chromium
+// tree whose web content grows from read to read, or never does (a fully
+// covered cold Chrome), fed through the settle loop with a faked sleep.
+
+// chromeRead is one read of a Chrome Window whose Document holds n
+// Elements (no Document at all when n < 0).
+func chromeRead(n int) *readResult {
+	els := []wstate.Element{
+		{Depth: 0, Role: "window", Name: "winuse e2e page 14 - Google Chrome"},
+		{Depth: 1, Role: "pane"},
+		{Depth: 2, Role: "toolbar", Name: "Address and search bar"},
+		{Depth: 3, Role: "button", Name: "Reload"},
+	}
+	if n >= 0 {
+		els = append(els, wstate.Element{Depth: 2, Role: "document", Name: "winuse e2e page 14"})
+		for i := 0; i < n; i++ {
+			els = append(els, wstate.Element{Depth: 3, Role: "button", Name: "winuse e2e button " + strconv.Itoa(i)})
+		}
+	}
+	return &readResult{
+		tree: &wstate.Tree{
+			Title:        "winuse e2e page 14 - Google Chrome",
+			App:          "chrome.exe",
+			Elements:     els,
+			FocusedIndex: -1,
+		},
+		rootClass: chromiumRootClass,
+	}
+}
+
+// chromeReads is one chromeRead per size, in order.
+func chromeReads(sizes ...int) []*readResult {
+	rs := make([]*readResult, len(sizes))
+	for i, n := range sizes {
+		rs[i] = chromeRead(n)
+	}
+	return rs
+}
+
+func TestReadTreeSettleWaitsForGrowthToStop(t *testing.T) {
+	// The web content builds over a few polls, then stops growing: the
+	// settle returns the first read after it stopped.
+	rendered, reader, sleeper := readFixtureTree(t, "chrome.exe", chromeReads(0, 0, 2, 6, 10, 10), nil)
+
+	if reader.calls != 6 {
+		t.Errorf("reads = %d, want 6 (it stopped growing on the sixth)", reader.calls)
+	}
+	if len(sleeper.delays) != 5 {
+		t.Errorf("sleeps = %v, want 5 polls", sleeper.delays)
+	}
+	for _, d := range sleeper.delays {
+		if d != chromiumSettleEvery {
+			t.Errorf("poll delay %s, want %s", d, chromiumSettleEvery)
+		}
+	}
+	assertElementLine(t, rendered, "button", "winuse e2e button 9")
+	if strings.Contains(rendered, "Note: ") {
+		t.Errorf("a settled tree carries no note:\n%s", rendered)
+	}
+}
+
+func TestReadTreeSettleNeverSettlesGetsThinNote(t *testing.T) {
+	// A fully covered cold Chrome: the Document stays empty for the whole
+	// settle budget. Every poll fits in the budget, and the thin tree is
+	// returned with the thin-page note, once.
+	polls := int(DefaultChromiumSettle / chromiumSettleEvery)
+	sizes := make([]int, polls+1)
+	rendered, reader, sleeper := readFixtureTree(t, "chrome.exe", chromeReads(sizes...), nil)
+
+	if reader.calls != polls+1 {
+		t.Errorf("reads = %d, want %d (the first read plus every poll)", reader.calls, polls+1)
+	}
+	var slept time.Duration
+	for _, d := range sleeper.delays {
+		slept += d
+	}
+	if slept > DefaultChromiumSettle {
+		t.Errorf("the settle slept %s, more than its %s budget", slept, DefaultChromiumSettle)
+	}
+	if got := strings.Count(rendered, "Note: "); got != 1 {
+		t.Fatalf("note lines = %d, want exactly 1:\n%s", got, rendered)
+	}
+	if !strings.Contains(rendered, "Note: "+thinPageNote) {
+		t.Errorf("the never-settled tree must carry %q:\n%s", thinPageNote, rendered)
+	}
+}
+
+func TestReadTreeSettleElectronSparseGetsOneThinNote(t *testing.T) {
+	// A persistently sparse Electron window (Chromium class): settled, and
+	// the walk's nearly-empty note is replaced by the thin-page note, which
+	// also names the screenshot.
+	sparse := func() *readResult { return loadReadFixture(t, "testdata/electron-sparse.json", chromiumRootClass) }
+	polls := int(DefaultChromiumSettle / chromiumSettleEvery)
+	results := make([]*readResult, polls+1)
+	for i := range results {
+		results[i] = sparse()
+	}
+	rendered, reader, _ := readFixtureTree(t, "electronapp.exe", results, nil)
+
+	if reader.calls != polls+1 {
+		t.Errorf("reads = %d, want %d", reader.calls, polls+1)
+	}
+	if got := strings.Count(rendered, "Note: "); got != 1 {
+		t.Fatalf("note lines = %d, want exactly 1:\n%s", got, rendered)
+	}
+	if !strings.Contains(rendered, "Note: "+thinPageNote) {
+		t.Errorf("the sparse Electron tree must carry the thin-page note:\n%s", rendered)
+	}
+	if !strings.Contains(thinPageNote, "request a screenshot") {
+		t.Errorf("the thin-page note must name the screenshot for Electron: %q", thinPageNote)
+	}
+}
+
+func TestReadTreeSettleStillGrowingAtTheEndHasNoNote(t *testing.T) {
+	// The tree grew past thin and was still growing when the budget ran
+	// out: it is returned as it is, without the thin note.
+	polls := int(DefaultChromiumSettle / chromiumSettleEvery)
+	sizes := make([]int, polls+1)
+	for i := range sizes {
+		sizes[i] = i
+	}
+	rendered, reader, _ := readFixtureTree(t, "chrome.exe", chromeReads(sizes...), nil)
+
+	if reader.calls != polls+1 {
+		t.Errorf("reads = %d, want %d", reader.calls, polls+1)
+	}
+	assertElementLine(t, rendered, "button", "winuse e2e button "+strconv.Itoa(polls-1))
+	if strings.Contains(rendered, "Note: ") {
+		t.Errorf("a grown tree must not be called thin:\n%s", rendered)
+	}
+}
+
+func TestReadTreeSettleStopsWhenThePageTakesOver(t *testing.T) {
+	// The Browser Connection's Page read ends during the settle: the next
+	// poll leaves the Document out (paged), which ends the settle.
+	paged := chromeRead(0)
+	paged.paged = true
+	rendered, reader, sleeper := readFixtureTree(t, "chrome.exe", []*readResult{chromeRead(0), paged}, nil)
+
+	if reader.calls != 2 || len(sleeper.delays) != 1 {
+		t.Errorf("reads = %d, sleeps = %v; a paged poll must end the settle", reader.calls, sleeper.delays)
+	}
+	if strings.Contains(rendered, "Note: ") {
+		t.Errorf("a paged read gets no thin note:\n%s", rendered)
+	}
+}
+
+func TestReadTreePagedFirstReadIsNotSettled(t *testing.T) {
+	// A Window whose Page is read over a Browser Connection: its Document
+	// was left out, so it reads thin, and that is not a cold tree.
+	paged := chromeRead(0)
+	paged.paged = true
+	_, reader, sleeper := readFixtureTree(t, "chrome.exe", []*readResult{paged}, nil)
+
+	if reader.calls != 1 || len(sleeper.delays) != 0 {
+		t.Errorf("reads = %d, sleeps = %v; a paged read must not be settled", reader.calls, sleeper.delays)
+	}
+}
+
+func TestReadTreeSettleStopsOnPartialPoll(t *testing.T) {
+	// A poll that comes back partial is too big for the walk, so not thin:
+	// it ends the settle with its own note.
+	partial := chromeRead(5)
+	partial.tree.Notes = []string{partialNotePrefix + " the tree read exceeded the 8s time limit."}
+	rendered, reader, _ := readFixtureTree(t, "chrome.exe", []*readResult{chromeRead(0), partial}, nil)
+
+	if reader.calls != 2 {
+		t.Errorf("reads = %d, want 2", reader.calls)
+	}
+	if !strings.Contains(rendered, "Note: "+partialNotePrefix) || strings.Contains(rendered, "still thin") {
+		t.Errorf("the partial poll's note must stand alone:\n%s", rendered)
+	}
+}
+
+func TestReadTreeWarmChromiumIsNotSettled(t *testing.T) {
+	_, reader, sleeper := readFixtureTree(t, "chrome.exe", chromeReads(thinDocumentNodes), nil)
+	if reader.calls != 1 || len(sleeper.delays) != 0 {
+		t.Errorf("reads = %d, sleeps = %v; a built page must not be settled", reader.calls, sleeper.delays)
+	}
+}
+
+func TestReadTreeSettlePollErrorPropagates(t *testing.T) {
+	r := &fakeReader{t: t, results: chromeReads(0), errs: []error{nil, ErrWindowGone}}
+	s := &fakeSleep{}
+	_, err := readTree(context.Background(), "chrome.exe", time.Minute, DefaultChromiumSettle, r.read, s.sleep)
+	if !errors.Is(err, ErrWindowGone) {
+		t.Fatalf("readTree error = %v, want the poll's ErrWindowGone", err)
+	}
+}
+
+func TestReadTreeSettleInterruptedSleepReturnsLastRead(t *testing.T) {
+	// The request ends during a poll's sleep: the last read stands, with
+	// the thin note since it is thin.
+	r := &fakeReader{t: t, results: chromeReads(0)}
+	s := &fakeSleep{err: context.DeadlineExceeded}
+	tree, err := readTree(context.Background(), "chrome.exe", time.Minute, DefaultChromiumSettle, r.read, s.sleep)
+	if err != nil {
+		t.Fatalf("readTree: %v", err)
+	}
+	if r.calls != 1 {
+		t.Errorf("reads = %d, want 1", r.calls)
+	}
+	if !strings.Contains(wstate.Render(tree), "Note: "+thinPageNote) {
+		t.Errorf("the thin tree must carry the thin note:\n%s", wstate.Render(tree))
+	}
+}
+
+func TestReadTreeSettleBoundedByRequestDeadline(t *testing.T) {
+	// A 4 s request leaves room for fewer polls than the 5 s settle: the
+	// polls stop with the read reserve and the response margin still left.
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	sizes := make([]int, 40)
+	r := &fakeReader{t: t, results: chromeReads(sizes...)}
+	s := &fakeSleep{}
+	if _, err := readTree(ctx, "chrome.exe", time.Minute, DefaultChromiumSettle, r.read, s.sleep); err != nil {
+		t.Fatalf("readTree: %v", err)
+	}
+	var slept time.Duration
+	for _, d := range s.delays {
+		slept += d
+	}
+	if limit := 4*time.Second - responseMargin - settleReadReserve; slept > limit || slept == 0 {
+		t.Errorf("the settle slept %s, want some polls and at most %s", slept, limit)
+	}
+	for i, cfg := range r.configs {
+		if cfg.Budget <= 0 || cfg.Budget > 4*time.Second-responseMargin {
+			t.Errorf("read %d budget = %s, want it capped by the request deadline", i, cfg.Budget)
+		}
+	}
+	if got := settlePolls(ctx, time.Minute); got > int((4*time.Second-responseMargin-settleReadReserve)/chromiumSettleEvery) {
+		t.Errorf("a wide settle must still be bounded by the deadline: %d polls", got)
+	}
+}
+
+func TestReadTreeWiderSettleWaitsLonger(t *testing.T) {
+	// A caller-set settle (desktop-parity ticket 14's --timeout) widens the
+	// loop past the default when the request has the time.
+	wide := 2 * DefaultChromiumSettle
+	polls := int(wide / chromiumSettleEvery)
+	r := &fakeReader{t: t, results: chromeReads(make([]int, polls+1)...)}
+	s := &fakeSleep{}
+	if _, err := readTree(context.Background(), "chrome.exe", time.Minute, wide, r.read, s.sleep); err != nil {
+		t.Fatalf("readTree: %v", err)
+	}
+	if r.calls != polls+1 {
+		t.Errorf("reads = %d, want %d under a %s settle", r.calls, polls+1, wide)
+	}
+	if settlePolls(context.Background(), 0) != 0 {
+		t.Error("a zero settle must not poll")
+	}
+}
+
+func TestDocumentSize(t *testing.T) {
+	cases := []struct {
+		name string
+		els  []wstate.Element
+		want int
+	}{
+		{"no document", []wstate.Element{{Depth: 0, Role: "window"}, {Depth: 1, Role: "pane"}}, 0},
+		{"empty document", []wstate.Element{{Depth: 0, Role: "window"}, {Depth: 1, Role: "document"}, {Depth: 1, Role: "toolbar"}}, 0},
+		{"document then frame", []wstate.Element{
+			{Depth: 0, Role: "window"},
+			{Depth: 1, Role: "document"}, {Depth: 2, Role: "link"}, {Depth: 3, Role: "text"},
+			{Depth: 1, Role: "toolbar"}, {Depth: 2, Role: "button"},
+		}, 2},
+		{"iframe counted once", []wstate.Element{
+			{Depth: 0, Role: "window"},
+			{Depth: 1, Role: "document"}, {Depth: 2, Role: "document"}, {Depth: 3, Role: "button"},
+		}, 2},
+		{"two documents summed", []wstate.Element{
+			{Depth: 0, Role: "window"},
+			{Depth: 1, Role: "document"}, {Depth: 2, Role: "link"},
+			{Depth: 1, Role: "document"}, {Depth: 2, Role: "link"}, {Depth: 2, Role: "button"},
+		}, 3},
+	}
+	for _, tc := range cases {
+		if got := documentSize(&wstate.Tree{Elements: tc.els}); got != tc.want {
+			t.Errorf("%s: documentSize = %d, want %d", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestSettleContracts(t *testing.T) {
+	// The ticket's 250-500 ms poll and 5 s budget, and the note's parts.
+	if chromiumSettleEvery < 250*time.Millisecond || chromiumSettleEvery > 500*time.Millisecond {
+		t.Errorf("chromiumSettleEvery %s, want 250-500 ms", chromiumSettleEvery)
+	}
+	if DefaultChromiumSettle != 5*time.Second {
+		t.Errorf("DefaultChromiumSettle %s, want 5s", DefaultChromiumSettle)
+	}
+	for _, part := range []string{"still thin", "fully covered", "winuse browser", "uncover the Window"} {
+		if !strings.Contains(thinPageNote, part) {
+			t.Errorf("thinPageNote must say %q: %q", part, thinPageNote)
+		}
 	}
 }
 

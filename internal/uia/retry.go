@@ -16,21 +16,49 @@ import (
 // happens after a short delay (spec: Observation details; uia-go notes
 // §5). readTree implements that policy around one Window's reads:
 //
-//   - a nearly empty first read (the walk's sparse note) is retried once
-//     after a short delay, so the tree Chromium has meanwhile built is read;
-//   - a Chromium/Electron window whose tree is complete but carries no
-//     Document element (the web content's root) is retried once too: the
-//     first read may have caught the tree mid-build;
+//   - a Chromium/Electron window whose complete tree has thin web content
+//     (no Document element, or one with almost nothing under it) and whose
+//     Page is not read over a Browser Connection is settled: it is read
+//     again every chromiumSettleEvery until the Documents grow and then
+//     stop growing, within a settle budget (ticket 18 of
+//     .scratch/headless-max: a cold Chromium can take 10-25 s, and a fully
+//     covered one may not build its web tree at all). A tree still thin at
+//     the end carries the thin-page note;
+//   - any other nearly empty first read (the walk's sparse note) is
+//     retried once after a short delay, so the tree the app has meanwhile
+//     built is read;
 //   - a tree that is still nearly empty after the retry is reported with
 //     the sparse-after-retry note, which tells the agent to request a
-//     screenshot instead (canvas apps and some Electron apps never expose
-//     more; spec user story 22).
+//     screenshot instead (canvas apps expose little; spec user story 22).
+//
+// Neither ever activates or uncovers the Window to make it build.
 
 // a11yRetryDelay is the delay before the retry: long enough for Chromium
 // to switch its accessibility tree on and build it after the first contact,
 // short enough to stay well inside the request budget (research proposal
 // 300–500 ms, uia-go notes §5; the value is 500 ms).
 const a11yRetryDelay = 500 * time.Millisecond
+
+// DefaultChromiumSettle is the settle budget for a thin Chromium tree: how
+// long readTree keeps polling for the web content to build. Capture passes
+// it; a caller-set timeout (desktop-parity ticket 14) can pass a wider one
+// through readTree's settle parameter. The request's own deadline always
+// bounds it.
+const DefaultChromiumSettle = 5 * time.Second
+
+// chromiumSettleEvery is the settle loop's poll interval (the ticket's
+// 250-500 ms): each poll is one tree read.
+const chromiumSettleEvery = 300 * time.Millisecond
+
+// settleReadReserve is kept between the last settle poll and the response
+// margin, so the poll's read still has time to walk.
+const settleReadReserve = time.Second
+
+// thinDocumentNodes is the web content size below which a Chromium tree is
+// thin: fewer Elements than this under its Document elements (none at all
+// when there is no Document). A cold or covered Chromium exposes its
+// Document empty or not at all; a built page has far more.
+const thinDocumentNodes = 3
 
 // chromiumClassPrefix marks Chromium-derived apps (Chrome, Edge, Electron
 // and the other Chromium-based browsers): their main windows use Win32
@@ -61,6 +89,13 @@ var documentRole = wstate.RoleName(wstate.ControlTypeDocument)
 // (spec user story 22).
 const sparseAfterRetryNote = "this Window's tree is nearly empty even after one retry; request a screenshot to see its content (Chromium and Electron expose web content lazily, and canvas apps expose little to UI Automation)"
 
+// thinPageNote is the note on a Chromium tree that stayed thin through the
+// whole settle. Chromium builds its web tree only while the Window renders;
+// a fully covered Window may never build it, and winuse never uncovers it.
+// An Electron or WebView2 App has no Browser Connection, so it gets the
+// screenshot instead.
+const thinPageNote = "the page's accessibility tree is still thin; Chromium may not build it while the Window is fully covered. Connect the browser (winuse browser status says how) or uncover the Window; for an Electron or WebView2 App, request a screenshot"
+
 // treeRead performs one bounded tree read. cfg is the walk's budget
 // (bounded to the request's remaining time by walkConfig).
 type treeRead func(cfg WalkConfig) (*readResult, error)
@@ -69,18 +104,23 @@ type treeRead func(cfg WalkConfig) (*readResult, error)
 type readResult struct {
 	tree      *wstate.Tree
 	rootClass string // the root element's UIA ClassName
+	paged     bool   // a Document was left out: its Page is read over CDP
 }
 
 // readTree reads one Window's tree through read, applying the
-// Chromium/Electron lazy-accessibility retry. app is the App's exe file
-// name (header App line); budget is the per-read walk budget. sleep is
-// injectable for tests.
-func readTree(ctx context.Context, app string, budget time.Duration, read treeRead, sleep func(context.Context, time.Duration) error) (*wstate.Tree, error) {
+// Chromium/Electron settle and the lazy-accessibility retry. app is the
+// App's exe file name (header App line); budget is the per-read walk
+// budget; settle is the Chromium settle budget (DefaultChromiumSettle, or
+// a caller's wider one). sleep is injectable for tests.
+func readTree(ctx context.Context, app string, budget, settle time.Duration, read treeRead, sleep func(context.Context, time.Duration) error) (*wstate.Tree, error) {
 	first, err := read(walkConfig(ctx, budget))
 	if err != nil {
 		return nil, err
 	}
-	if !worthRetry(first, app) {
+	if worthSettle(first, app) {
+		return settleTree(ctx, first, budget, settle, read, sleep)
+	}
+	if !treeIsSparse(first.tree) {
 		return first.tree, nil
 	}
 	// The retry is bounded by the request's own deadline: if there is no
@@ -101,17 +141,63 @@ func readTree(ctx context.Context, app string, budget time.Duration, read treeRe
 	return second.tree, nil
 }
 
-// worthRetry reports whether a read should be retried once. Either the
-// tree is nearly empty (any app: the accessibility tree may be switching
-// on), or the Window is Chromium/Electron and its tree is complete but
-// carries no Document element, so the web content has not been exposed
-// yet. A partial (cut) tree is never retried on the second signal: the
-// Document may simply be past the cut.
-func worthRetry(r *readResult, app string) bool {
-	if treeIsSparse(r.tree) {
-		return true
+// settleTree polls a thin Chromium tree until its web content has built:
+// the Documents grow and then stop growing. It stops early when a read
+// leaves the Document to a Browser Connection or comes back partial (too
+// big for the walk, so not thin). A tree still thin when the polls run out
+// gets the thin-page note; one that grew but had not stopped growing is
+// returned as it is. A poll that fails fails the read, as the retry does.
+func settleTree(ctx context.Context, first *readResult, budget, settle time.Duration, read treeRead, sleep func(context.Context, time.Duration) error) (*wstate.Tree, error) {
+	last, size, grew := first, documentSize(first.tree), false
+	for polls := settlePolls(ctx, settle); polls > 0; polls-- {
+		if serr := sleep(ctx, chromiumSettleEvery); serr != nil {
+			break
+		}
+		next, err := read(walkConfig(ctx, budget))
+		if err != nil {
+			return nil, err
+		}
+		last = next
+		if next.paged || !treeIsComplete(next.tree) {
+			return next.tree, nil
+		}
+		n := documentSize(next.tree)
+		if grew && n <= size {
+			return next.tree, nil
+		}
+		if n > size {
+			grew = true
+		}
+		size = n
 	}
-	return treeIsComplete(r.tree) && isChromium(r.rootClass, app) && !hasDocument(r.tree)
+	if isThin(last.tree) {
+		noteThin(last.tree)
+	}
+	return last.tree, nil
+}
+
+// settlePolls is how many polls fit in the settle budget, which the
+// request deadline bounds: each poll needs its interval, and the last one
+// the read's reserve before the response margin. Polls are counted, not
+// timed, so a faked sleep keeps the tests instant.
+func settlePolls(ctx context.Context, settle time.Duration) int {
+	if d, ok := ctx.Deadline(); ok {
+		if left := time.Until(d) - responseMargin - settleReadReserve; left < settle {
+			settle = left
+		}
+	}
+	if settle <= 0 {
+		return 0
+	}
+	return int(settle / chromiumSettleEvery)
+}
+
+// worthSettle reports whether a read is a thin Chromium/Electron tree the
+// settle loop should wait on: a Chromium Window read whole (a partial
+// tree's Document may simply be past the cut), whose web content is not
+// read over a Browser Connection, and whose Documents are thin.
+func worthSettle(r *readResult, app string) bool {
+	return isChromium(r.rootClass, app) && !r.paged && treeIsComplete(r.tree) && isThin(r.tree)
 }
 
 // isChromium reports whether the Window belongs to a Chromium-derived app,
@@ -148,15 +234,29 @@ func treeIsComplete(t *wstate.Tree) bool {
 	return true
 }
 
-// hasDocument reports whether the tree carries a Document Element
-// (Chromium's web-content root).
-func hasDocument(t *wstate.Tree) bool {
+// documentSize counts the Elements under the tree's Document Elements
+// (Chromium's web-content roots), each counted once: a Document nested in
+// another (an iframe) counts as part of the outer one.
+func documentSize(t *wstate.Tree) int {
+	n, inside := 0, -1 // inside: the depth of the Document being counted
 	for i := range t.Elements {
-		if t.Elements[i].Role == documentRole {
-			return true
+		e := &t.Elements[i]
+		if inside >= 0 && e.Depth > inside {
+			n++
+			continue
+		}
+		inside = -1
+		if e.Role == documentRole {
+			inside = e.Depth
 		}
 	}
-	return false
+	return n
+}
+
+// isThin reports whether the tree's web content is thin: fewer than
+// thinDocumentNodes Elements under its Documents.
+func isThin(t *wstate.Tree) bool {
+	return documentSize(t) < thinDocumentNodes
 }
 
 // noteRetry upgrades a tree that stayed nearly empty across the retry: the
@@ -168,6 +268,19 @@ func noteRetry(t *wstate.Tree) {
 			t.Notes[i] = sparseAfterRetryNote
 		}
 	}
+}
+
+// noteThin marks a Chromium tree that stayed thin through the settle with
+// the thin-page note, replacing the walk's nearly-empty note when it has
+// one, so the agent gets one note that says what to do.
+func noteThin(t *wstate.Tree) {
+	for i, n := range t.Notes {
+		if n == nearEmptyNote {
+			t.Notes[i] = thinPageNote
+			return
+		}
+	}
+	t.Notes = append(t.Notes, thinPageNote)
 }
 
 // sleepCtx pauses for d, returning early with ctx's error if the context

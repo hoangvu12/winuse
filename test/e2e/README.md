@@ -585,3 +585,26 @@ and the helper, and puts the pin and the foreground back.
 set WINUSE_E2E=1
 go test -tags e2e -v -timeout 10m -run TestLaunchedBrowserCoveredKeepsItsTree ./test/e2e
 ```
+
+## The cold Electron settle test
+
+`electron_settle_test.go` (ticket 18 of `.scratch/headless-max/`) reads
+a covered Electron App cold. An Electron App has no Browser Connection,
+so its Window State comes from UI Automation alone, and get-window-state
+waits up to 5 s for a thin Chromium tree to settle. The test needs the
+prebuilt Electron binary: set `WINUSE_E2E_ELECTRON` to `electron.exe`
+from an Electron release (it skips without it). It starts Electron with
+an isolated profile on `testdata/chromium-fixture.html`, covers the new
+Window with the fixture at once, and reads its Window State once. The
+read must answer within the 10 s request budget, the fixture must keep
+the foreground, and the Window State must show either the page's
+"winuse e2e button" or the thin-page note ("the page's accessibility
+tree is still thin"), not both; the note must come after about 5 s of
+settling. The log says which one happened. It closes Electron, the
+fixture and the helper, and puts the foreground back.
+
+```
+set WINUSE_E2E=1
+set WINUSE_E2E_ELECTRON=C:\path\to\electron\electron.exe
+go test -tags e2e -v -timeout 5m -run TestCoveredElectronReadCold ./test/e2e
+```

@@ -96,7 +96,10 @@ connect in four ways.
   its remote debugging switch and allow the connection.
 
 Without a connection, winuse reads the page through UI Automation like
-any other window.
+any other window. Chromium builds that tree slowly the first time, so
+winuse waits up to 5 s for it, in browsers and in Electron and WebView2
+apps alike. A fully covered window may not build it at all, and winuse
+says so.
 
 ## Commands
 
