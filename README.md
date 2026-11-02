@@ -2,82 +2,91 @@
 
 Let your coding agent use Windows apps.
 
-winuse is a command-line tool that reads any open window as text (its
-accessibility tree), takes screenshots when needed, and clicks, types and
-scrolls for you. Any agent that can run shell commands can use it: Claude
-Code, Pi, Codex, and others. The commands and output match Codex Computer
-Use.
+![The agent's cursor clicks 7, +, 2 and = in Windows Calculator](docs/images/winuse-calculator.gif)
 
-```
-> winuse list-windows
-101     Example    Example App
-
-> winuse get-window-state 101
-Window: "Example", App: app.exe.
-	0 window Example Secondary Actions: Raise
-		1 edit (settable, string) Search ID: searchBox
-		2 button OK ID: okButton
-
-> winuse set-value 101 id:searchBox "hello"
-ok
-> winuse click 101 name:OK
-ok
-```
+winuse is a command-line tool for Windows. It reads any open window as
+text, clicks and fills in its controls, and types and scrolls when a task
+needs it. Any agent that can run shell commands can use it, including
+Claude Code, Codex and Cursor. The commands and output follow Codex
+Computer Use.
 
 ## Install
 
-One command in PowerShell installs both winuse and the skill your agent
-loads:
+Run this in PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/hoangvu12/winuse/main/install.ps1 | iex
 ```
 
-The binary goes to `%LOCALAPPDATA%\winuse` and onto your PATH. The skill
-is installed with `npx skills add hoangvu12/winuse -g` for every agent it
-detects (Claude Code, Codex, Cursor, …), which needs Node.js. Without
-Node.js, or with `WINUSE_NO_SKILL=1`, only the binary is installed.
+It puts `winuse.exe` in `%LOCALAPPDATA%\winuse`, adds that folder to your
+PATH, and installs the skill for every agent it finds. The skill step uses
+`npx skills` and needs Node.js. Set `WINUSE_NO_SKILL=1` to skip it.
 
-Building from source instead (Go 1.27+):
+Then ask your agent something like "open Calculator and work out 7 + 2
+using winuse".
+
+To build from source instead, use Go 1.27 or newer:
 `$env:CGO_ENABLED=0; go build -o winuse.exe ./cmd/winuse`, then
 `npx skills add hoangvu12/winuse`.
 
-Now ask it something like "open Notepad and type hello world using winuse".
+## How it works
+
+The agent reads a window as a tree of elements, then acts on them by
+index, `name:` or `id:`.
+
+```
+> winuse launch-app Calculator
+19203320	Application Frame Host	Calculator
+
+> winuse get-window-state 19203320
+Window: "Calculator", App: CalculatorApp.exe.
+	0 window Calculator Secondary Actions: Raise
+	...
+					14 text Display is 0 ID: CalculatorResults
+	...
+						46 button Seven ID: num7Button
+
+> winuse batch 19203320 click name:Seven then click name:Plus then click name:Two then click name:Equals
+ok
+```
+
+Screenshots are available with `--screenshot` when the tree is not
+enough.
+
+## Headless and headed actions
+
+Clicking a button, setting a field and expanding or toggling an element
+happen in the background through Windows UI Automation. winuse does not
+move your mouse, press keys or bring the window to the front, so you can
+keep working in another window. A second cursor shows where the agent is
+acting.
+
+Typing, key presses, scrolling, dragging and clicks at screen coordinates
+need the real mouse and keyboard. For those, winuse brings the window to
+the front and frames it with a banner. Pass `--headed` to make any action
+work this way.
+
+Press Esc at any time to stop winuse. It refuses to act on administrator
+windows or a locked screen, and it never presses the Windows key.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `list-windows`, `list-apps` | See what's open |
-| `launch-app <name>` | Start an app |
-| `get-window-state <window> [--screenshot]` | Read a window as text, optionally with a screenshot |
-| `zoom <window> <x>,<y>,<w>,<h>` | Full-resolution crop of a screenshot region |
-| `click`, `type-text`, `press-key` | Click an element, type text, press keys like `Control_L+a` |
-| `set-value`, `perform-secondary-action` | Fill a field, or expand/toggle/select an element |
-| `scroll`, `drag`, `hover` | Pointer actions at screenshot coordinates |
-| `batch <window> ... then ...` | Several actions in one call |
+| `list-windows`, `list-apps` | Lists open windows, and running and recently used apps |
+| `launch-app <name>` | Starts an app and prints its window |
+| `get-window-state <window> [--screenshot]` | Prints a window's element tree, with an optional screenshot |
+| `click`, `set-value`, `perform-secondary-action` | Clicks, fills in, expands or toggles an element |
+| `type-text`, `press-key` | Types text or presses keys such as `Control_L+a` |
+| `scroll`, `drag`, `hover`, `zoom` | Pointer actions and close-ups at screenshot coordinates |
+| `batch <window> ... then ...` | Runs several actions in one call |
 
-Elements are referenced by index, `name:OK`, `id:okButton`, or `@x,y` from
-the latest screenshot. The full guide, which your agent loads with the
-skill, is [SKILL.md](skills/winuse/SKILL.md).
-
-## Staying in control
-
-Clicking buttons, filling fields and toggling options run headless by
-default: the window can stay behind your own work, and your mouse, keyboard
-and focus are left alone. A second cursor, the agent's, shows each step.
-Typing, keys and pointer gestures (or any action with `--headed`) take the
-foreground instead, and a banner frames the window: "winuse is in control —
-press Esc to stop". Pressing the physical Esc key stops winuse right away
-either way. winuse refuses to act on administrator windows or a locked
-screen, and it never presses the Windows key.
+[SKILL.md](skills/winuse/SKILL.md) is the full guide your agent loads.
 
 ## More
 
-- [SKILL.md](skills/winuse/SKILL.md): how to use every command
-- [test/e2e/README.md](test/e2e/README.md): the end-to-end tests
-- [tasksuite/README.md](tasksuite/README.md): real tasks for measuring agent performance
-- [docs/codex-parity.md](docs/codex-parity.md): comparison with Codex Computer Use
-- [CONTEXT.md](CONTEXT.md) and [docs/adr/](docs/adr/): terms and design decisions
+- [docs/codex-parity.md](docs/codex-parity.md) compares winuse with Codex Computer Use.
+- [CONTEXT.md](CONTEXT.md) and [docs/adr/](docs/adr/) record the terms and design decisions.
+- [test/e2e/README.md](test/e2e/README.md) and [tasksuite/README.md](tasksuite/README.md) describe the tests.
 
 Windows only. No telemetry. MIT licensed.
