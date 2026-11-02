@@ -153,14 +153,21 @@ var iidTextPattern = windows.GUID{
 func (c *Client) ElementWindow(ctx context.Context, hwnd uint64, index int) (uint64, error) {
 	var h uint64
 	err := c.onElement(ctx, hwnd, index, func(th *thread, el comPtr) error {
-		v := currentProp(el, propNativeWindowHandle)
-		defer clearVariant(&v)
-		if v.has(vtI4) {
-			h = uint64(uint32(v.i4()))
-		}
+		h = nativeWindow(el)
 		return nil
 	})
 	return h, err
+}
+
+// nativeWindow reads el's NativeWindowHandle: its own HWND for a classic
+// control, 0 for an Element drawn inside another window.
+func nativeWindow(el comPtr) uint64 {
+	v := currentProp(el, propNativeWindowHandle)
+	defer clearVariant(&v)
+	if v.has(vtI4) {
+		return uint64(uint32(v.i4()))
+	}
+	return 0
 }
 
 // SelectText selects the span of the Element behind index through its

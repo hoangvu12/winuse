@@ -50,6 +50,12 @@ func TestHeadlessSelectByNameRefusals(t *testing.T) {
 			wantMsg:  `set-value selected "Red" but the list shows "Blue" selected afterwards`,
 			wantHint: "do not repeat it",
 		},
+		{
+			name:     "a failed notification after the selection was delivered",
+			err:      &uia.VerifyError{Action: "set-value", Msg: `set-value selected "Red", but telling the app about the change failed (hung); the app may not have reacted to it`},
+			wantMsg:  `set-value selected "Red", but telling the app about the change failed (hung); the app may not have reacted to it`,
+			wantHint: "do not repeat it",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

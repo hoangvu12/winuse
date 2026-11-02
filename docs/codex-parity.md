@@ -168,7 +168,13 @@ topmost popup over the user's work; it is expanded, searched again and
 collapsed afterwards only when the collapsed search finds no item at all.
 Several matches or none are refused with the names, with nothing sent
 unless the combo had to be opened; the error then says it was opened and
-closed. An editable combo keeps the Value write.
+closed. An editable combo keeps the Value write. A classic Win32 combo
+(window class ComboBox, including a drop-down list whose proxy reports
+a writable Value) is matched the same way through its own messages and
+never opened: CB_GETLBTEXT, CB_SETCURSEL, read back with CB_GETCURSEL.
+After the read-back, a classic combo's parent (or a LBS_NOTIFY list
+box's) gets the CBN_SELCHANGE (LBN_SELCHANGE) a user's choice sends,
+which a programmatic selection does not.
 
 ### drag
 

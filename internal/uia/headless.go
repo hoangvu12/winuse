@@ -33,13 +33,20 @@ var ErrNoClickRoute = errors.New("the Element offers no Invoke, Toggle, Select, 
 // WriteError is a pattern write that failed with an HRESULT that does not
 // prove the write was refused (unlike a stale or disabled Element): the
 // provider may have acted before failing, so the Action may have taken
-// effect.
+// effect. Err, when set, is a window message's failure instead of an
+// HRESULT (a timed-out message may still be processed).
 type WriteError struct {
 	What string
 	HR   HRESULT
+	Err  error
 }
 
-func (e *WriteError) Error() string { return fmt.Sprintf("%s failed (HRESULT %s)", e.What, e.HR) }
+func (e *WriteError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("%s failed: %v", e.What, e.Err)
+	}
+	return fmt.Sprintf("%s failed (HRESULT %s)", e.What, e.HR)
+}
 
 // VerifyError is a delivered Headless Action whose read-back does not show
 // the expected state: the pattern call succeeded, the Element did not

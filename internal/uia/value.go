@@ -38,6 +38,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 // secondaryAction is one row of the canonical Secondary Actions table
@@ -588,14 +590,19 @@ func (th *thread) writeValue(el comPtr, value string, focus bool) (selected bool
 	}
 	// ValuePattern: a read-only value cannot be set (Codex's refusal),
 	// unless the Element is a combo or list (a drop-down list's Value is
-	// read-only): then the value names the item to pick. An editable combo
-	// keeps the Value write.
+	// read-only): then the value names the item to pick. A classic Win32
+	// drop-down list picks by name too, although its proxy reports the
+	// Value writable (win.Control.DropDownList). An editable combo keeps
+	// the Value write.
 	if pat, hr := currentPattern(el, patternValue, &iidValuePattern); hrStale(hr) {
 		return false, staleErr(hr)
 	} else if pat != nil {
 		defer release(pat)
 		var ro int32
 		call(pat, valueCurrentRO, uintptr(unsafe.Pointer(&ro))) // unreadable → writable
+		if win.ReadControl(nativeWindow(el)).DropDownList() {
+			return true, th.selectItem(el, value)
+		}
 		if ro != 0 {
 			if selectsByName(el) {
 				return true, th.selectItem(el, value)

@@ -14,10 +14,18 @@ package uia
 // (ExpandCollapse) and searched again, since an open drop-down shows on
 // the user's screen. Then realize a virtualized item
 // (VirtualizedItem.Realize), select it (SelectionItem.Select), collapse
-// what was expanded, and read the selection back. Several matches at one
-// rule, or none, refuse; an Expand made for the search is collapsed again
-// first. The driver (selectByName) runs over selectSteps, so the offline
-// tests drive it with fakes; the COM bindings below only run live.
+// what was expanded, and read the selection back. A classic Win32 combo
+// or list then tells its parent, as a user's choice would
+// (win.NotifySelectionChange): a programmatic selection sends no
+// CBN_SELCHANGE. Several matches at one rule, or none, refuse; an Expand
+// made for the search is collapsed again first. The driver (selectByName)
+// runs over selectSteps, so the offline tests drive it with fakes; the
+// COM bindings below only run live.
+//
+// A classic Win32 ComboBox runs the same driver over its own messages
+// instead (classicComboSteps: CB_GETLBTEXT, CB_SETCURSEL, CB_GETCURSEL),
+// never opened: its UIA proxy exposes no items while closed, and the
+// Collapse after the pick cancels it (win/selnotify.go).
 
 import (
 	"errors"
@@ -27,6 +35,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 // Pattern ids, IIDs, slots and properties the select route adds (SDK
@@ -65,7 +75,10 @@ var (
 
 // The bounded search: a combo's items sit at most a few levels down (a
 // Win32 combo's list, then its items); a list with more items than
-// maxSelectItems is searched through ItemContainer instead.
+// maxSelectItems is searched through ItemContainer instead. An Element
+// with its own window searches only the windows that belong to it
+// (win.WithinControl): the Win32 combo proxy lists every top-level window
+// among an opened combo's children.
 const (
 	maxSelectDepth = 4
 	maxSelectNodes = 2000
@@ -172,6 +185,11 @@ type selectSteps struct {
 	// read-back wait passes; observed is what it reads ("" when it cannot
 	// read the selection, which then counts as shown).
 	selected func(name string) (ok bool, observed string)
+	// notify tells the app about the new selection the way a user's
+	// choice would: the WM_COMMAND notification a classic Win32 combo or
+	// list sends its parent, which the proxy's Select does not. Nothing
+	// for any other Element.
+	notify func() error
 }
 
 // selectByName picks the item named label (set-value on a combo or list).
@@ -184,7 +202,9 @@ type selectSteps struct {
 // then ItemContainer's exact lookup, then ignoring case and spacing;
 // several matches at one rule are an error, never a guess. A refusal
 // after an Expand collapses the list again and says so
-// (SelectItemError.Opened); one without it sent nothing.
+// (SelectItemError.Opened); one without it sent nothing. Only a selection
+// read back is notified; a failed notification still reports the Select
+// as delivered (VerifyError).
 func selectByName(label string, s selectSteps) error {
 	opened := false
 	closeAgain := func() bool {
@@ -231,6 +251,10 @@ func selectByName(label string, s selectSteps) error {
 			msg = fmt.Sprintf("set-value selected %q but the list shows %s selected afterwards", found.name, observed)
 		}
 		return &VerifyError{Action: "set-value", Msg: msg}
+	}
+	if err := s.notify(); err != nil {
+		return &VerifyError{Action: "set-value", Msg: fmt.Sprintf(
+			"set-value selected %q, but telling the app about the change failed (%v); the app may not have reacted to it", found.name, err)}
 	}
 	return nil
 }
@@ -302,9 +326,14 @@ func selectsByName(el comPtr) bool {
 }
 
 // selectItem binds selectByName to the live Element el (the combo or
-// list) on the worker thread. Every element it obtains is released before
-// it returns.
+// list) on the worker thread: a classic Win32 ComboBox through its own
+// messages (classicComboSteps), anything else through UI Automation. Every
+// element it obtains is released before it returns.
 func (th *thread) selectItem(el comPtr, label string) error {
+	native := nativeWindow(el)
+	if c := win.ReadControl(native); c.Combo() {
+		return selectByName(label, classicComboSteps(c.HWND, liveCombo))
+	}
 	var ec comPtr
 	if pat, hr := currentPattern(el, patternExpandCollapse, &iidExpandCollapsePattern); hrStale(hr) {
 		return staleErr(hr)
@@ -352,7 +381,7 @@ func (th *thread) selectItem(el comPtr, label string) error {
 			releaseAll(found)
 			found = nil
 			var err error
-			found, err = th.selectableDescendants(el)
+			found, err = th.selectableDescendants(el, native)
 			if err != nil {
 				return nil, err
 			}
@@ -393,14 +422,19 @@ func (th *thread) selectItem(el comPtr, label string) error {
 		selected: func(name string) (bool, string) {
 			return readSelection(el, chosen, name)
 		},
+		notify: func() error {
+			return win.NotifySelectionChange(native)
+		},
 	})
 }
 
 // selectableDescendants is the bounded search: a breadth-first walk of
 // el's control-view children, maxSelectDepth levels down and maxSelectNodes
 // elements at most, keeping the ones that offer SelectionItem (an item's
-// own children are not searched). The caller releases the items.
-func (th *thread) selectableDescendants(el comPtr) ([]comPtr, error) {
+// own children are not searched). native is el's own window, or 0: then an
+// element with a window of its own outside it is skipped, with its
+// subtree. The caller releases the items.
+func (th *thread) selectableDescendants(el comPtr, native uint64) ([]comPtr, error) {
 	var cond comPtr
 	if hr := call(th.auto, uiaGetControlViewCondition, uintptr(unsafe.Pointer(&cond))); hr.Failed() || cond == nil {
 		return nil, fmt.Errorf("get_ControlViewCondition failed (HRESULT %s)", hr)
@@ -421,6 +455,12 @@ func (th *thread) selectableDescendants(el comPtr) ([]comPtr, error) {
 			}
 			for _, k := range kids {
 				visited++
+				if native != 0 {
+					if h := nativeWindow(k); h != 0 && !win.WithinControl(native, h) {
+						release(k) // another window: not the Element's
+						continue
+					}
+				}
 				switch {
 				case len(items) < maxSelectItems && visited <= maxSelectNodes && currentBool(k, propIsSelectionItemAvailable):
 					items = append(items, k)
@@ -537,6 +577,71 @@ func realizeAndSelect(item comPtr) error {
 		return callErr(hr, "selecting the item")
 	}
 	return nil
+}
+
+// comboCalls are the classic combo messages classicComboSteps drives:
+// liveCombo binds them to the win package, the offline tests to a fake
+// combo.
+type comboCalls struct {
+	items     func(combo uint64) ([]string, error) // the item texts in index order
+	setCurSel func(combo uint64, index int) error  // CB_SETCURSEL
+	curSel    func(combo uint64) (int, error)      // CB_GETCURSEL
+	notify    func(combo uint64) error             // CBN_SELCHANGE to the combo's parent
+}
+
+var liveCombo = comboCalls{
+	items:     func(combo uint64) ([]string, error) { return win.ComboItems(combo, maxSelectItems) },
+	setCurSel: win.SelectComboItem,
+	curSel:    win.ComboSelection,
+	notify:    win.NotifySelectionChange,
+}
+
+// classicComboSteps binds selectByName to a classic Win32 ComboBox through
+// its own messages: the items are its texts by index; it is never opened
+// (no ExpandCollapse: the drop-down is a topmost popup, and the Collapse
+// would cancel the pick); the pick is CB_SETCURSEL and the read-back
+// CB_GETCURSEL, polled like readSelection; then the parent is told with
+// CBN_SELCHANGE, as a user's choice would.
+func classicComboSteps(combo uint64, calls comboCalls) selectSteps {
+	var names []string
+	picked := -1
+	return selectSteps{
+		expandState: func() int32 { return -1 },
+		expand:      func() error { return errors.New("a classic combo is never opened") },
+		collapse:    func() error { return nil },
+		items: func() ([]string, error) {
+			var err error
+			names, err = calls.items(combo)
+			return names, err
+		},
+		findHidden: func(string) (int, string, error) { return 0, "", nil },
+		pick: func(i int) error {
+			picked = i
+			if err := calls.setCurSel(combo, i); err != nil {
+				return &WriteError{What: "selecting the combo's item (CB_SETCURSEL)", Err: err}
+			}
+			return nil
+		},
+		selected: func(string) (bool, string) {
+			deadline := time.Now().Add(verifyWait)
+			for {
+				now, err := calls.curSel(combo)
+				switch {
+				case err == nil && now == picked:
+					return true, ""
+				case time.Now().Before(deadline):
+					time.Sleep(verifyInterval)
+					continue
+				case err != nil:
+					return false, ""
+				case now < 0 || now >= len(names):
+					return false, "nothing"
+				}
+				return false, fmt.Sprintf("%q", names[now])
+			}
+		},
+		notify: func() error { return calls.notify(combo) },
+	}
 }
 
 // readSelection polls the selection until name shows or verifyWait
