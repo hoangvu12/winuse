@@ -31,12 +31,12 @@ Do it like cua (`tools/hotkey.rs:262-300`): a matching AcceleratorKey is Invoked
 
 - **AcceleratorKey is filled by:** WinForms MenuStrip, WinUI 3 MenuFlyoutItems (menu items only, not Buttons), and Paint's ribbon buttons.
 - **Not filled by:** WPF (never), WinUI Buttons, or classic dialogs.
-- Classic Win32 menus put the shortcut in the Name after a tab ("Save	Ctrl+S"). Chromium menus put it at the end of the Name ("Select all Ctrl+A") and use AcceleratorKey for the mnemonic letter.
+- Classic Win32 menus put the shortcut in the Name after a tab ("Save\tCtrl+S"). Chromium menus put it at the end of the Name ("Select all Ctrl+A") and use AcceleratorKey for the mnemonic letter.
 
 Build it like cua, plus:
 
 1. Match AcceleratorKey when it is a chord (has a "+"). A single letter is a mnemonic: skip it.
-2. Also match the "	<chord>" suffix of a Name, and Chromium's trailing " <chord>" on MenuItems.
+2. Also match the "\t<chord>" suffix of a Name, and Chromium's trailing " <chord>" on MenuItems.
 3. For classic menu bars, read the HMENU (GetMenu, GetSubMenu, GetMenuStringW) without opening it, and run the command through ticket 08's posted WM_COMMAND. Don't Expand (it fails on HMENU bars).
 4. For WinUI and WinForms menus, the items exist only once the menu bar item is expanded. Expand (no foreground change, measured), search, Invoke, and close.
 
