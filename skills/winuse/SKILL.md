@@ -192,8 +192,9 @@ default:
   `scroll`, and `select-text`, which has no Headed form.
 - Every Window Action: `restore-window`, `minimize-window`, `move-window`,
   `resize-window` and `close-window`.
-- `press-key` Return or Escape on a classic dialog, and `type-text` into a
-  classic edit box, as described in "Fill in fields, keys and text".
+- `press-key` Return or Escape on a classic dialog, `type-text` into a
+  focused classic edit box, and `type-text --into` a classic edit box or a
+  Page field you name, as described in "Fill in fields, keys and text".
 - Every Action on a browser's Page through a Browser Connection, as
   described in "Browser Windows".
 
@@ -307,6 +308,35 @@ is elsewhere, click the field with `--headed` or at its `@x,y` point, read
 the Window State to confirm focus, then type. Documents and canvases work the
 same way, with the click inside the work surface.
 
+Some Windows report no focused control while they are in the background. A
+covered Windows 11 Notepad is one. Plain `type-text` then goes Headed, and
+its `ok` says why and points at `--into`.
+
+### Type into a named field
+
+```
+winuse type-text <window> --into <ref> <text>
+```
+
+`--into` goes right after the Window and takes an Element Index, `name:` or
+`id:` (not `@x,y`). winuse types into that Element, whatever has the focus,
+and picks the route from the Element before it sends anything.
+
+- A classic edit box, such as Notepad's editor or a text box in a Win32
+  dialog, is Headless when the text has no newline, tab or other control
+  character. This is how you type into a covered Windows 11 Notepad: name
+  its `Text editor` Element. The text replaces the box's selection or goes in
+  at its caret, and winuse checks the length afterwards.
+- A Page field in a browser Window with a Browser Connection is Headless.
+  winuse focuses the field and types the text there; a newline is a real
+  Return and a tab a real Tab, as in plain `type-text` on the Page.
+- Anything else, and text with a control character in a classic edit box,
+  is refused with nothing sent. The hint gives the `--headed` retry, which
+  activates the Window, clicks the Element and types with real keys.
+
+`--into` works on a Batch step too: `type-text --into id:1001 hello`. It does
+not combine with `--post`.
+
 ### Select text
 
 ```
@@ -321,7 +351,9 @@ one, an emoji two. A length of 0 puts the caret at the start.
 
 - In a classic edit box, such as Notepad's or a Win32 dialog's, a
   `type-text` afterwards replaces the selection Headless. So `select-text`
-  then `type-text` replaces a word without the foreground.
+  then `type-text` replaces a word without the foreground. Where the box is
+  not focused, as in a covered Windows 11 Notepad, use `type-text --into` on
+  the same Element.
 - In a Page field, winuse focuses the field too, so `type-text` replaces the
   selection there as well.
 - Elsewhere winuse selects through the field's UI Automation Text pattern
@@ -667,7 +699,7 @@ zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right]
 set-value <window> <ref> <value|on|off|item name>
 perform-secondary-action <window> <ref> <action>   # Raise, Scroll Up/Down/Left/Right, Expand, Collapse, Toggle, Select
-type-text <window> [--post] <text>
+type-text <window> [--post | --into <ref>] <text>
 press-key <window> <key> [--post] [--force]
 select-text <window> <ref> <start> <length> | select-text <window> <ref> all
 scroll <window> <ref> <up|down|left|right> [steps] | scroll <window> <ref> into-view

@@ -7,6 +7,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -107,13 +108,13 @@ func TestKeyboardUsageErrorsExit2WithoutDialing(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"type-text with no arguments", []string{"type-text"}, "usage: winuse type-text <window> [--post] <text>"},
-		{"type-text with only a window", []string{"type-text", "101"}, "usage: winuse type-text <window> [--post] <text>"},
+		{"type-text with no arguments", []string{"type-text"}, "usage: winuse type-text <window> [--post | --into <element>] <text>"},
+		{"type-text with only a window", []string{"type-text", "101"}, "usage: winuse type-text <window> [--post | --into <element>] <text>"},
 		{"press-key with no arguments", []string{"press-key"}, "usage: winuse press-key <window> <key> [--post]"},
 		{"press-key with only a window", []string{"press-key", "101"}, "usage: winuse press-key <window> <key> [--post]"},
 		// Posted Keys (ticket 07): --post needs text or a key, and never
 		// combines with --headed.
-		{"type-text --post with no text", []string{"type-text", "101", "--post"}, "usage: winuse type-text <window> [--post] <text>"},
+		{"type-text --post with no text", []string{"type-text", "101", "--post"}, "usage: winuse type-text <window> [--post | --into <element>] <text>"},
 		{"press-key --post with no key", []string{"press-key", "101", "--post"}, "usage: winuse press-key <window> <key> [--post]"},
 		{"press-key --post --headed", []string{"press-key", "101", "Return", "--post", "--headed"}, "--post and --headed cannot be combined"},
 		{"--headed press-key --post", []string{"--headed", "press-key", "101", "--post", "Return"}, "--post and --headed cannot be combined"},
@@ -265,6 +266,48 @@ func TestPostReachesKeyboardRequests(t *testing.T) {
 	}
 }
 
+// TestIntoReachesTypeTextRequests pins desktop-parity ticket 23's CLI
+// parsing: --into and its Element stand right after the Window (a later
+// --into is text), take an Element Index or a name:/id: reference but no
+// @x,y, and a --headed before the text is the global flag.
+func TestIntoReachesTypeTextRequests(t *testing.T) {
+	three := 3
+	cases := []struct {
+		line string
+		want protocol.TypeTextArgs
+	}{
+		{"type-text 101 --into 3 hello world", protocol.TypeTextArgs{Window: "101", Text: "hello world", IntoIndex: &three}},
+		{"type-text 101 --into id:1001 hi", protocol.TypeTextArgs{Window: "101", Text: "hi", IntoRef: "id:1001"}},
+		{"type-text 101 --into name:Search --into", protocol.TypeTextArgs{Window: "101", Text: "--into", IntoRef: "name:Search"}},
+		{"type-text 101 hello --into 3", protocol.TypeTextArgs{Window: "101", Text: "hello --into 3"}},
+		{"type-text 101 --into 3 --headed", protocol.TypeTextArgs{Window: "101", Text: "--headed", IntoIndex: &three}},
+		{"type-text 101 --headed --into 3 hi", protocol.TypeTextArgs{Window: "101", Text: "hi", IntoIndex: &three, Headed: true}},
+		{"type-text 101 --into --headed 3 hi", protocol.TypeTextArgs{Window: "101", Text: "hi", IntoIndex: &three, Headed: true}},
+		{"--headed type-text 101 --into 3 hi", protocol.TypeTextArgs{Window: "101", Text: "hi", IntoIndex: &three, Headed: true}},
+	}
+	for _, tc := range cases {
+		rest, headed := extractHeaded(split(tc.line))
+		req, err := typeTextRequest(rest[1:], headed)
+		if err != nil {
+			t.Fatalf("%q: %v", tc.line, err)
+		}
+		if !reflect.DeepEqual(req, tc.want) {
+			t.Errorf("%q: request = %+v, want %+v", tc.line, req, tc.want)
+		}
+	}
+	for _, c := range []struct{ line, want string }{
+		{"type-text 101 --into", "--into takes an element index"},
+		{"type-text 101 --into 3", "type-text takes a window reference and text"},
+		{"type-text 101 --into @10,20 hi", "not @x,y coordinates"},
+		{"type-text 101 --into -2 hi", "non-negative element index"},
+	} {
+		rest, headed := extractHeaded(split(c.line))
+		if _, err := typeTextRequest(rest[1:], headed); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%q: err = %v, want %q", c.line, err, c.want)
+		}
+	}
+}
+
 // TestForceReachesPressKeyRequests pins desktop-parity ticket 05's CLI
 // parsing: --force may stand anywhere after the Window and combines with
 // --post and --headed.
@@ -294,7 +337,7 @@ func TestForceReachesPressKeyRequests(t *testing.T) {
 }
 
 func TestUsageMentionsPost(t *testing.T) {
-	for _, want := range []string{"type-text <window> [--post] <text>", "press-key <window> <key> [--post] [--force]", "posted", "Alt+F4, Alt+Tab, Ctrl+Shift+Escape"} {
+	for _, want := range []string{"type-text <window> [--post | --into <element index | name: | id:>] <text>", "press-key <window> <key> [--post] [--force]", "posted", "Alt+F4, Alt+Tab, Ctrl+Shift+Escape"} {
 		if !strings.Contains(Usage, want) {
 			t.Errorf("usage text missing %q", want)
 		}

@@ -135,6 +135,17 @@ func TestParseBatchStepRemainingActions(t *testing.T) {
 		{name: "type-text with a later --post types it", tokens: []string{"type-text", "hello", "--post"},
 			want: protocol.TypeTextArgs{Text: "hello --post"}},
 		{name: "type-text --post needs text", tokens: []string{"type-text", "--post"}, wantErr: "a batch type-text Action needs text"},
+		// type-text into an Element (desktop-parity ticket 23): --into and
+		// its Element first in the step; a later --into is text.
+		{name: "type-text --into an index", tokens: []string{"type-text", "--into", "3", "hello", "world"},
+			want: protocol.TypeTextArgs{Text: "hello world", IntoIndex: intPtr(3)}},
+		{name: "type-text --into an id", tokens: []string{"type-text", "--into", "id:1001", "hi"},
+			want: protocol.TypeTextArgs{Text: "hi", IntoRef: "id:1001"}},
+		{name: "type-text with a later --into types it", tokens: []string{"type-text", "hi", "--into", "3"},
+			want: protocol.TypeTextArgs{Text: "hi --into 3"}},
+		{name: "type-text --into needs an element", tokens: []string{"type-text", "--into"}, wantErr: "a batch type-text Action: --into takes an element index"},
+		{name: "type-text --into needs text", tokens: []string{"type-text", "--into", "3"}, wantErr: "a batch type-text Action needs text"},
+		{name: "type-text --into takes no point", tokens: []string{"type-text", "--into", "@1,2", "hi"}, wantErr: "not @x,y coordinates"},
 		{name: "press-key --post before the key", tokens: []string{"press-key", "--post", "Return"},
 			want: protocol.PressKeyArgs{Key: "Return", Post: true}},
 		{name: "press-key --post after the key", tokens: []string{"press-key", "Tab", "--post"},

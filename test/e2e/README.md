@@ -377,9 +377,19 @@ still the foreground window afterwards. The shared helpers are in
 - `TestHeadlessTypeTextIntoNotepad` **needs the Windows 11 Notepad**
   (RichEditD2DPT editor) and skips otherwise. It also skips while Notepad
   is running, because it ends the Notepad process it types into. It opens
-  an empty temp file, types into it while covered, and reads the editor's
-  text back with WM_GETTEXT. If Notepad restores sessions, its next start
-  may show that temp file's tab with the test text: close it.
+  an empty temp file, covers it, and types with `type-text --into` aimed
+  at the `Text editor` Element from `get-window-state` (covered, Notepad
+  reports no focused control, so plain `type-text` would go Headed;
+  headless-max ticket 19). It reads the editor's text back with
+  WM_GETTEXT and wants the foreground unchanged and no banner. If
+  Notepad restores sessions, its next start may show that temp file's
+  tab with the test text: close it.
+- `TestHeadlessTypeTextIntoElement`: with the focus in the covered
+  Classic Dialog's name Edit, `type-text --into id:1002` fills the
+  password Edit (the name Edit stays empty), a Batch step `type-text
+  --into id:1001` fills the name Edit, and `--into id:1` (the OK button)
+  is refused with "nothing was sent" and the `--headed` retry. The
+  foreground and the pointer stay put.
 - `TestHeadlessSelectTextInClassicEdit` (`select_text_test.go`): types
   `hello world` into the covered Classic Dialog's Edit, `select-text`
   6 5 on it by `id:1001`, then `type-text winuse` replaces the selection

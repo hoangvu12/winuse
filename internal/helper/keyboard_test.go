@@ -104,8 +104,10 @@ func TestTypeTextPrintsOK(t *testing.T) {
 	if cmdErr != nil {
 		t.Fatalf("type-text: %v", cmdErr.Error())
 	}
-	if out != "ok\n" {
-		t.Errorf("output = %q, want %q", out, "ok\n")
+	// The fake Window reports no focused control: ok, with why it went
+	// Headed and the --into hint (headless-max ticket 19).
+	if want := noFocusOutput(fakeWindows()[0]); out != want {
+		t.Errorf("output = %q, want %q", out, want)
 	}
 	// The pipeline order: checks, activation, then input.
 	want := []string{"locked", "integrity", "activate", "type"}

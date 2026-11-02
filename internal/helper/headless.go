@@ -145,8 +145,9 @@ func takesHeaded(kind string) bool {
 // when there is none, which keeps every keyboard step Headed. Return or
 // Escape with no modifiers on a classic dialog is Headless
 // (dialogKeyRoute), and so is text with no control characters into a
-// focused, writable classic edit control (editTypeRoute). The other kinds
-// ignore route.
+// focused, writable classic edit control (editTypeRoute). type-text
+// aimed at an Element (--into, typeinto.go) needs no probe: unheaded, it
+// is Headless or sends nothing. The other kinds ignore route.
 //
 // Posted Keys (`post`, ADR 0011, Decision 5) are no Headless Action:
 // Windows does not promise that an app handles them. They take no
@@ -159,6 +160,11 @@ func headlessStep(kind string, args json.RawMessage, route *win.KeyTarget) bool 
 		var a protocol.TypeTextArgs
 		if json.Unmarshal(args, &a) != nil || a.Headed {
 			return false
+		}
+		if typesInto(a) {
+			// Headless or nothing sent, never Headed (typeinto.go); with
+			// post the command fails.
+			return !a.Post
 		}
 		if a.Post {
 			return true

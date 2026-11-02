@@ -100,16 +100,19 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 			MouseButton:  o.button,
 		}
 	case "type-text":
-		// --post first in the step posts the text (Posted Keys, ticket 07);
-		// anywhere later it is text, as in the standalone form.
-		post := len(rest) > 0 && rest[0] == postFlag
-		if post {
-			rest = rest[1:]
+		// --post first in the step posts the text (Posted Keys, ticket 07),
+		// and --into <element> there types into that Element
+		// (desktop-parity ticket 23); anywhere later either is text, as in
+		// the standalone form.
+		ta, text, err := typeTextFlags(rest)
+		if err != nil {
+			return protocol.Step{}, fmt.Errorf("a batch type-text Action: %v", err)
 		}
-		if len(rest) == 0 {
+		if len(text) == 0 {
 			return protocol.Step{}, errors.New("a batch type-text Action needs text")
 		}
-		args = protocol.TypeTextArgs{Text: strings.Join(rest, " "), Post: post}
+		ta.Text = strings.Join(text, " ")
+		args = ta
 	case "press-key":
 		// --post before or after the key posts it (Posted Keys, ticket 07);
 		// --force sends a Blocked Combo, for this step only.

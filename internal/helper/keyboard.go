@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 
 	"github.com/hoangvu12/winuse/internal/keys"
 	"github.com/hoangvu12/winuse/internal/protocol"
@@ -22,7 +23,7 @@ import (
 // typeTextUsageHint and pressKeyUsageHint are the recovery hints for the
 // commands' argument failures.
 const (
-	typeTextUsageHint = "usage: winuse type-text <window> [--post] <text>"
+	typeTextUsageHint = "usage: winuse type-text <window> [--post | --into <element>] <text>"
 	pressKeyUsageHint = "usage: winuse press-key <window> <key> [--post] [--force]"
 )
 
@@ -39,7 +40,12 @@ const (
 // resolves, the probe reads its focused control, and the shared predicate
 // decides the route before anything is sent. With `headed` the probe is
 // skipped and the typing is v1's. With `post` the text is posted to the
-// focused control as Posted Keys (Decision 5).
+// focused control as Posted Keys (Decision 5). With an Element (--into)
+// the text goes into that Element instead (typeinto.go).
+//
+// When the probe finds no focused control at all (a covered Windows 11
+// Notepad reports none), the text still goes Headed, and the output says
+// why and points at --into (headless-max ticket 19).
 func typeText(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.TypeTextArgs
@@ -49,6 +55,9 @@ func typeText(s Services) Command {
 		if a.Text == "" {
 			return "", Fail("type-text: text is required",
 				"pass the text as one argument; quote it if it contains spaces")
+		}
+		if typesInto(a) {
+			return s.typeTextInto(ctx, a)
 		}
 		if a.Post {
 			// Posted Keys (ADR 0011, Decision 5): WM_CHAR per UTF-16 unit
@@ -67,6 +76,7 @@ func typeText(s Services) Command {
 				return out, rerr
 			}
 		}
+		out := okOutput
 		if !a.Headed && s.KeyRoute != nil {
 			w, rerr := resolveWindow(s, a.Window)
 			if rerr != nil {
@@ -78,6 +88,9 @@ func typeText(s Services) Command {
 				if edit, ok := editTypeRoute(a.Text, *route); ok {
 					return s.typeIntoEdit(ctx, w, edit, a.Text)
 				}
+				if route.Focus.HWND == 0 {
+					out = noFocusOutput(w)
+				}
 			}
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
@@ -87,9 +100,18 @@ func typeText(s Services) Command {
 			if err := s.TypeText(a.Text, func() bool { return s.Esc.Stopped() || ctx.Err() != nil }); err != nil {
 				return "", inputAbortError(s, ctx, err, "while typing (the text injected so far landed)")
 			}
-			return okOutput, nil
+			return out, nil
 		})
 	}
+}
+
+// noFocusOutput is plain type-text's success when the Window reported no
+// focused control, so the text went Headed (headless-max ticket 19): why,
+// and the --into form that needs no focus.
+func noFocusOutput(w win.WindowInfo) string {
+	id := strconv.FormatUint(w.ID, 10)
+	return "ok (typed Headed: window " + id + " reports no focused control while it is in the background, so winuse brought it to the foreground; " +
+		"to type without the foreground, name the field: winuse type-text " + id + " --into <element> <text>)\n"
 }
 
 // pressKey runs `winuse press-key <window> <key>`: the Window is activated

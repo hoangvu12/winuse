@@ -11,7 +11,8 @@ package cli
 // key or text to the Window's focused control without the foreground. On
 // type-text it must stand right after the Window, because everything
 // after that is the text; on press-key it may stand after the key too.
-// `--post` with the global --headed flag is a usage error.
+// `--post` with the global --headed flag is a usage error. type-text's
+// `--into <element>` (desktop-parity ticket 23) stands in the same place.
 
 import (
 	"errors"
@@ -23,15 +24,16 @@ import (
 )
 
 // postFlag is the Posted Keys option's spelling; forceFlag sends a Blocked
-// Combo press-key otherwise refuses.
+// Combo press-key otherwise refuses; intoFlag aims type-text at an Element.
 const (
 	postFlag  = "--post"
 	forceFlag = "--force"
+	intoFlag  = "--into"
 )
 
 // The keyboard commands' usage lines.
 const (
-	typeTextUsage = "usage: winuse type-text <window> [--post] <text>"
+	typeTextUsage = "usage: winuse type-text <window> [--post | --into <element>] <text>"
 	pressKeyUsage = "usage: winuse press-key <window> <key> [--post] [--force]"
 )
 
@@ -57,29 +59,57 @@ func parsePressKeyArgs(args []string) (window, key string, err error) {
 	return args[0], strings.Join(args[1:], " "), nil
 }
 
+// typeTextFlags takes type-text's one flag from the front of its text
+// arguments (right after the Window, or first in a Batch step): --post,
+// or --into and the Element Reference after it (desktop-parity ticket
+// 23). Anything later is text, flag-looking or not.
+func typeTextFlags(rest []string) (a protocol.TypeTextArgs, text []string, err error) {
+	switch {
+	case len(rest) > 0 && rest[0] == postFlag:
+		a.Post = true
+		return a, rest[1:], nil
+	case len(rest) > 0 && rest[0] == intoFlag:
+		if len(rest) < 2 {
+			return a, nil, errors.New("--into takes an element index, name:<text> or id:<id> reference, then the text")
+		}
+		if isPointToken(rest[1]) {
+			return a, nil, errors.New("--into takes an element index or name:/id: reference, not @x,y coordinates")
+		}
+		a.IntoIndex, a.IntoRef, err = parseElementRefToken(rest[1])
+		return a, rest[2:], err
+	}
+	return a, rest, nil
+}
+
 // typeTextRequest builds type-text's request from its arguments and the
 // global --headed flag (ADR 0011: text into a focused classic edit control
 // is Headless unless headed). A --post right after the Window posts the
-// text instead; anywhere later it is text.
+// text instead, and --into <element> there types into that Element;
+// anywhere later either is text.
 func typeTextRequest(args []string, headed bool) (protocol.TypeTextArgs, error) {
-	post := false
-	if len(args) >= 2 && args[1] == postFlag {
-		post = true
-		args = append([]string{args[0]}, args[2:]...)
+	var req protocol.TypeTextArgs
+	if len(args) >= 2 {
+		flags, text, err := typeTextFlags(args[1:])
+		if err != nil {
+			return protocol.TypeTextArgs{}, err
+		}
+		req = flags
+		args = append([]string{args[0]}, text...)
 	}
 	window, text, err := parseTypeTextArgs(args)
 	if err != nil {
 		return protocol.TypeTextArgs{}, err
 	}
-	if post && headed {
+	if req.Post && headed {
 		return protocol.TypeTextArgs{}, errPostHeaded
 	}
-	return protocol.TypeTextArgs{Window: window, Text: text, Headed: headed, Post: post}, nil
+	req.Window, req.Text, req.Headed = window, text, headed
+	return req, nil
 }
 
-// typeTextCmd implements `winuse type-text <window> [--post] <text>`: type
-// Unicode text into the Window's focused Element. headed is the global
-// --headed flag.
+// typeTextCmd implements `winuse type-text <window> [--post | --into
+// <element>] <text>`: type Unicode text into the Window's focused Element,
+// or into the one --into names. headed is the global --headed flag.
 func typeTextCmd(args []string, headed bool) int {
 	req, err := typeTextRequest(args, headed)
 	if err != nil {
