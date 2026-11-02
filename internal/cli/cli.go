@@ -30,7 +30,8 @@ global options:
 
 headless (the default; your foreground, pointer and keyboard stay untouched):
   click (left, single), set-value, perform-secondary-action (except Raise)
-  and scroll on an element index, name: or id:; press-key Return or Escape
+  and scroll on an element index, name: or id:; select-text, which has no
+  headed form; press-key Return or Escape
   on a classic dialog; type-text into a focused classic edit control, for
   text with no newline, tab or other control character; screenshots from
   get-window-state --screenshot and zoom (--headed activates the Window
@@ -106,6 +107,11 @@ const usageTail = `);
                                scroll the Window at a point of its latest
                                screenshot: positive dy scrolls down, positive
                                dx right; one wheel notch is 120
+  select-text <window> <element index | name: | id:> <start> <length> | all
+                               select text in a field without keys or the
+                               mouse: length characters (UTF-16 units) from
+                               start, counting from 0, or all of it; a
+                               type-text afterwards replaces the selection
   drag <window> @x,y @x,y     drag the pointer from one point to another,
                                both in the Window's latest screenshot's pixels;
                                drag <window> <element> <element | @x,y> drags
@@ -283,6 +289,8 @@ func Main(args []string) int {
 		return batchCmd(args[1:], headed)
 	case "scroll":
 		return scrollCmd(args[1:], headed)
+	case "select-text":
+		return selectTextCmd(args[1:])
 	case "drag":
 		return dragCmd(args[1:])
 	case "hover":

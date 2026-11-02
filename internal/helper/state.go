@@ -102,6 +102,14 @@ type Services struct {
 	EditState     func(edit uint64) (win.EditState, error)             // WM_GETTEXTLENGTH and EM_GETSEL
 	ReplaceSel    func(edit uint64, text string) error                 // SendMessageTimeout(EM_REPLACESEL, TRUE)
 
+	// select-text's classic edit route (headless-max ticket 10,
+	// selecttext.go): EditControl reads the window behind an Element's
+	// NativeWindowHandle, SetEditSel selects in it; EditState (above) reads
+	// the length and the selection back. Nil values fall back to the real
+	// calls; tests fake them so offline tests never send a message.
+	EditControl func(hwnd uint64) win.Control           // class, style and enabled state, never the text
+	SetEditSel  func(edit uint64, start, end int) error // SendMessageTimeout(EM_SETSEL, start, end)
+
 	// Posted Keys (ADR 0011, Decision 5; keyroute.go): press-key and
 	// type-text with `post`. Each returns how many messages it posted, so
 	// a failure can tell "nothing was sent" from a partial post. Nil values
@@ -225,6 +233,7 @@ func CommandsWith(s Services) map[string]Command {
 		"set-value":                setValue(s),
 		"perform-secondary-action": performSecondaryAction(s),
 		"scroll":                   scroll(s),
+		"select-text":              selectText(s),
 		"drag":                     drag(s),
 		"hover":                    hover(s),
 		"list-apps":                listApps(store),
@@ -380,6 +389,12 @@ func defaultServices(s Services) Services {
 	}
 	if s.ReplaceSel == nil {
 		s.ReplaceSel = win.ReplaceSelection
+	}
+	if s.EditControl == nil {
+		s.EditControl = win.ReadControl
+	}
+	if s.SetEditSel == nil {
+		s.SetEditSel = win.SetEditSelection
 	}
 	if s.PostKeys == nil {
 		s.PostKeys = win.PostKeys

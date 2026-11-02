@@ -45,6 +45,7 @@ type headlessSpy struct {
 	hAction string
 
 	scroll scrollRecord // Element scroll's fake (scroll_test.go)
+	text   textRecord   // select-text's fake (selecttext_test.go)
 
 	esc    *scopeEsc
 	cursor *cursorSpy

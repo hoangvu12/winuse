@@ -310,6 +310,40 @@ func editSelectionOf(reply uintptr) (start, end int, ok bool) {
 	return int(uint16(reply)), int(uint16(reply >> 16)), true
 }
 
+// emSetSel is EM_SETSEL: select-text's classic route (headless-max ticket
+// 10). Below WM_USER with no pointers, so it crosses processes as is.
+const emSetSel = 0x00B1
+
+// RichEdit reports whether the control is a RichEdit control (RichEdit20A,
+// RichEdit20W, RichEdit50W or RichEditD2DPT), which counts a paragraph
+// break as two units in WM_GETTEXTLENGTH but one in EM_GETSEL.
+func (c Control) RichEdit() bool {
+	return c.IsEdit() && strings.HasPrefix(strings.ToLower(c.Class), "richedit")
+}
+
+// ReadControl reads one window as the keyboard routing sees a control
+// (class, style, enabled state, rectangle; never its text). select-text
+// reads the window behind an Element's NativeWindowHandle with it. A
+// window that is gone reads as a control of no class.
+func ReadControl(hwnd uint64) Control {
+	return controlOf(windows.HWND(hwnd), false)
+}
+
+// SetEditSelection selects the UTF-16 units start to end of an edit
+// control: SendMessageTimeout(EM_SETSEL, start, end), which moves no
+// focus and needs no foreground (measured cross-thread, headless-100.md
+// G8). end -1 selects to the end of the text. A timed-out message may
+// still be processed afterwards, so a failure here may have taken effect.
+func SetEditSelection(edit uint64, start, end int) error {
+	if err := LiveDesktopGuard(); err != nil {
+		return err
+	}
+	if _, err := sendMessageTimeout(windows.HWND(edit), emSetSel, uintptr(start), uintptr(end), editTimeout); err != nil {
+		return fmt.Errorf("EM_SETSEL on edit control %d failed: %v", edit, err)
+	}
+	return nil
+}
+
 // ReplaceSelection inserts text into an edit control the way typing does:
 // SendMessageTimeout(EM_REPLACESEL, TRUE, text) replaces the selection, or
 // inserts at the caret, and the change can be undone (wParam TRUE). The

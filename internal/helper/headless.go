@@ -129,8 +129,10 @@ func takesHeaded(kind string) bool {
 // with the left button and a single click; `set-value` and
 // `perform-secondary-action` on an Element Index or reference, except the
 // Raise Secondary Action; `scroll` on an Element Index or reference with a
-// direction or into-view (headless-parity spec, "Element scroll"); never
-// with `headed: true`. `@x,y` is never
+// direction or into-view (headless-parity spec, "Element scroll");
+// `select-text` on an Element Index or reference with a valid span, which
+// has no headed form (headless-max ticket 10); never with `headed: true`.
+// `@x,y` is never
 // Headless: a screen point names whatever is topmost there, which for a
 // covered Window is another Window's Element. Arguments that do not
 // parse (or name an unknown Secondary Action) are not Headless: the
@@ -206,6 +208,10 @@ func headlessStep(kind string, args json.RawMessage, route *win.KeyTarget) bool 
 	case "scroll":
 		var a protocol.ScrollArgs
 		return json.Unmarshal(args, &a) == nil && headlessElementScroll(a)
+	case "select-text":
+		// Always Headless: there is no headed form (selecttext.go).
+		var a protocol.SelectTextArgs
+		return json.Unmarshal(args, &a) == nil && headlessSelectText(a)
 	}
 	return false
 }
@@ -537,7 +543,9 @@ func refusedBeforeCall(err error) bool {
 	case errors.Is(err, uia.ErrStale), errors.Is(err, uia.ErrNoState), errors.Is(err, uia.ErrDisabled),
 		errors.Is(err, uia.ErrNotSettable), errors.Is(err, uia.ErrRangeValue),
 		errors.Is(err, uia.ErrToggleValue), errors.Is(err, uia.ErrToggleUnreadable), errors.As(err, &unavail),
-		errors.Is(err, uia.ErrNotScrollable), errors.Is(err, uia.ErrNoScrollItem), errors.Is(err, uia.ErrScrollSteps):
+		errors.Is(err, uia.ErrNotScrollable), errors.Is(err, uia.ErrNoScrollItem), errors.Is(err, uia.ErrScrollSteps),
+		errors.Is(err, uia.ErrNoTextPattern), errors.Is(err, uia.ErrNoTextSelection), errors.Is(err, uia.ErrTextUnreadable),
+		errors.Is(err, uia.ErrTextRange), errors.Is(err, uia.ErrTextSpan):
 		return true
 	}
 	return false

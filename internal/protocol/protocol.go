@@ -318,6 +318,19 @@ type SecondaryActionArgs struct {
 	Headed       bool   `json:"headed,omitempty"` // force v1's activate-first pipeline (ADR 0010); default Headless except Raise
 }
 
+// SelectTextArgs are select-text's arguments (headless-max ticket 10):
+// the Element (an Index or a name:/id: reference) and the span to select,
+// Length UTF-16 code units from Start, or with All the whole text. Always
+// Headless: there is no headed form.
+type SelectTextArgs struct {
+	Window       string `json:"window"`        // Window ID, or an App name when that App has exactly one Window
+	ElementIndex *int   `json:"element_index"` // the Element whose text to select, from that Window's latest Window State
+	Ref          string `json:"ref,omitempty"` // name:<text> or id:<AutomationId>: the Element whose text to select
+	Start        int    `json:"start"`         // the first UTF-16 unit selected
+	Length       int    `json:"length"`        // how many UTF-16 units to select; 0 places the caret at Start
+	All          bool   `json:"all,omitempty"` // select the whole text (Start and Length stay 0)
+}
+
 // BatchArgs are batch's arguments (ticket 11): several Actions on one
 // Window in a single call, run in order, stopping at the first failure.
 type BatchArgs struct {
@@ -349,6 +362,9 @@ var BatchStepKinds = []string{
 	// Browser merge ticket 06: the page-only Actions (what navigate, wait
 	// and eval print is dropped in a Batch, which prints only ok).
 	"navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval",
+	// Headless-max ticket 10: select-text, so a Batch can select a word
+	// and type its replacement.
+	"select-text",
 }
 
 // Response is the helper's answer.
