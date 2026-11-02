@@ -202,6 +202,10 @@ const usageTail = `);
   eval <window> <expression>  run a JavaScript expression in the Page and
                                print its value (JSON for objects, cut at 4000
                                characters)
+  skill                       print the agent skill (SKILL.md) this binary
+                               was built with; read it again after an upgrade
+  skill install <dir>         write that SKILL.md to <dir>\winuse\SKILL.md, for
+                               a skills folder such as ~\.agents\skills
   version                     print the winuse version
 
 a <window> is a Window ID, or an App name when that App has exactly one Window;
@@ -309,6 +313,8 @@ func Main(args []string) int {
 		return tabCmd(args[1:])
 	case "navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval":
 		return pageCmd(args[0], args[1:]) // page.go, browser merge ticket 06
+	case "skill":
+		return skillCmd(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "winuse: unknown command %q\n\n%s", args[0], Usage)
 		return 2

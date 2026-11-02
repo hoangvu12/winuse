@@ -35,6 +35,10 @@ antivirus settings to the user. To build from source instead, clone
 `$env:CGO_ENABLED=0; go build -o winuse.exe ./cmd/winuse` with Go 1.27 or
 newer.
 
+`winuse skill` prints this file as the installed binary has it. After an
+upgrade, read it again with `winuse skill`. `winuse skill install <dir>` writes it to
+`<dir>\winuse\SKILL.md` for a skills folder such as `~\.agents\skills`.
+
 ## The loop
 
 Every task is the same loop.
@@ -619,6 +623,7 @@ browser use [browser|auto]          # pin a browser (it persists); auto removes 
 browser clone [browser] [--profile <folder>] [--fresh] [--close-source]
 browser ext install [browser|all] | browser ext status [browser]
 record-tree <window> <file>         # development only, records a tree fixture for winuse's own tests
+skill | skill install <dir>         # print this file from the binary, or write it to <dir>\winuse\SKILL.md
 version
 ```
 

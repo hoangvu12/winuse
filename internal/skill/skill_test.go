@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hoangvu12/winuse"
 	"github.com/hoangvu12/winuse/internal/cli"
 )
 
@@ -200,5 +201,19 @@ func TestSkillMentionsEscExitCode(t *testing.T) {
 	}
 	if info.Size() > 64<<10 {
 		t.Errorf("SKILL.md is %d bytes — keep it lean; the whole file is loaded when used", info.Size())
+	}
+}
+
+// TestEmbeddedSkillMatchesTheShippedFile pins `winuse skill`: the copy
+// embedded in the binary is byte for byte skills/winuse/SKILL.md, so an
+// agent that re-reads it after an upgrade gets the text `npx skills add`
+// ships for the same commit.
+func TestEmbeddedSkillMatchesTheShippedFile(t *testing.T) {
+	raw, err := os.ReadFile("../../skills/winuse/SKILL.md")
+	if err != nil {
+		t.Fatalf("reading SKILL.md: %v", err)
+	}
+	if winuse.Skill != string(raw) {
+		t.Errorf("the embedded skill (%d bytes) differs from skills/winuse/SKILL.md (%d bytes); rebuild, or fix the go:embed in the root skill.go", len(winuse.Skill), len(raw))
 	}
 }
