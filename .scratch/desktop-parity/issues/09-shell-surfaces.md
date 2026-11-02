@@ -26,3 +26,13 @@ Do it like agent-desktop (Start, taskbar, tray, tray overflow, Action Center), H
 ### 2026-11-03: shell probe, partial (`../../headless-gaps/probes-round4.md` section 7)
 
 Reading works: Shell_TrayWnd's UIA tree has 24 Elements, with Start, Search, the tray buttons ("Show Hidden Icons", Clock and so on) and the running-App buttons, read Headless with the foreground unchanged. The tray overflow window exists but has no Elements while it is hidden. **Not measured:** Invoke on the chevron and the Clock (it opens a flyout on the user's shell, and the user has not approved that yet). Build the listing and the reads now. The Invoke routes wait for that probe.
+
+### 2026-11-03: Invoke routes measured (`../../headless-gaps/probes-round5.md` section 6)
+
+- **Taskbar reads:** Headless (round 4).
+- **Tray overflow:** Invoke on the chevron opens it and its 5 icons can be read, but **it takes the foreground** (the overflow window becomes the foreground, and Shell_TrayWnd keeps it after closing).
+  - So opening the overflow is a Headed Action: it needs `--headed` (spec rule).
+  - Close it with Escape posted to the island's InputSite child.
+  - Match the chevron by AutomationId, not by Name: the Name changes to "Show Hidden Icons Hide" while open.
+- **Clock and notification panel:** Invoke and DoDefaultAction return S_OK but open nothing. It cannot be opened through UIA. With `--headed`, use agent-desktop's shell accelerator route (Win+N) as the fallback.
+- **Start:** unchanged (Headed through Control_L+Escape).

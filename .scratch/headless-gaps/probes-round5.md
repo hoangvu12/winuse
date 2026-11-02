@@ -117,3 +117,27 @@ Read-only. Foreground and cursor were unchanged throughout, including the launch
 - [M] Never-minimized leg: Invoke on Seven gave "Display is 7", but the foreground was already Calculator from the launch, so this is not a background measurement.
 - [M] Close: WindowPattern.Close on the frame returned S_OK, and no CalculatorApp process remained after 2.5 s (all runs).
 - [I] **Store apps: launch and restore both cost the foreground, and minimizing kills the tree.** The only background state is "restored but covered", which can only be reached through a foreground-taking launch. winuse should treat a minimized UWP app as not Headless and say so.
+
+## 6. Taskbar pop-ups through UIA (desktop-parity 09)
+
+No running-app button was touched.
+
+**The "Show Hidden Icons" chevron** (AutomationId SystemTrayIcon, class SystemTray.NormalButton; patterns Invoke and Legacy only, no Toggle or ExpandCollapse):
+- [M] Before opening, `TopLevelWindowForOverflowXamlIsland` (explorer) is hidden, with 0 descendants.
+- [M] Invoke: S_OK. Within 1.2 s the overflow became visible (351x111), with 11 descendants: an InputSite, then 5 NotifyItemIcon buttons (SystemTray.NormalButton, Invoke and Legacy), each with an Image. The names include an IME toggle, a GPU-vendor settings icon, a chat app, "Bluetooth Devices" and Task Manager (whose name is a live CPU and memory readout). Exact names withheld.
+- [M] **The foreground was taken**: GetForegroundWindow became the overflow window ("System tray overflow window."). The leg stopped there, except for closing it.
+- [M] While it is open, the chevron's Name changes to "Show Hidden Icons Hide", so a match on "Show Hidden Icons" alone misses it. Escape posted to the overflow hwnd did not close it.
+- [M] What closed it: Escape posted to its children (the DesktopWindowXamlSource bridge and Windows.UI.Input.InputSite.WindowClass), within 1.2 s (visible=False). The foreground then went to Shell_TrayWnd, not back to the user's window. Following the rules nothing was clicked, so the user's window stayed without the foreground for the rest of the run.
+
+**The Clock OmniButton** ("Clock 06:47\n11/3/2026", SystemTray.OmniButton, Invoke and Legacy):
+- [M] Invoke returned S_OK, and so did LegacyIAccessible.DoDefaultAction ("Press"). Neither opened anything in 3 tries:
+  - no new visible or uncloaked top-level window;
+  - no change in the ShellExperienceHost and explorer CoreWindows (all v0 c0 before and after);
+  - the UIA root's children unchanged (Taskbar, explorer windows, Progman).
+
+  The foreground was unchanged.
+- [I] The calendar and notification panel does not open from a UIA call. It probably needs real input or a caller in the foreground. So desktop-parity 18 cannot reach the panel's tree this way.
+
+**Reading:**
+- [I] The tray overflow can be read Headless only by opening it, which takes the foreground. Mark tray-overflow reads as foreground-taking.
+- [I] Close the overflow with Escape to its island InputSite, not to the top-level.
