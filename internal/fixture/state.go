@@ -33,12 +33,15 @@ type State struct {
 	// ClassicText and ClassicPassword are its two Edit controls' text, read
 	// on every change (EN_CHANGE). ClassicFocus names the Edit that last
 	// took the focus ("name" or "password", from EN_SETFOCUS).
+	// ClassicColor is the combo's selected item (one of ClassicColors,
+	// from CBN_SELCHANGE; "" until one is picked).
 	ClassicOpen     bool   `json:"classicOpen"`
 	ClassicWindowID uint64 `json:"classicWindowId"`
 	ClassicResult   string `json:"classicResult"`
 	ClassicText     string `json:"classicText"`
 	ClassicPassword string `json:"classicPassword"`
 	ClassicFocus    string `json:"classicFocus"`
+	ClassicColor    string `json:"classicColor"`
 
 	// The MessageBox (see MessageBoxTitle): MessageBoxOpen while it is up,
 	// MessageBoxResult the button that closed it last ("ok" or "cancel",

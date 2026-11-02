@@ -33,6 +33,7 @@ var (
 	procDispatchMessageW    = user32.NewProc("DispatchMessageW")
 	procPostQuitMessage     = user32.NewProc("PostQuitMessage")
 	procPostMessageW        = user32.NewProc("PostMessageW")
+	procSendMessageW        = user32.NewProc("SendMessageW")
 	procInvalidateRect      = user32.NewProc("InvalidateRect")
 	procBeginPaint          = user32.NewProc("BeginPaint")
 	procEndPaint            = user32.NewProc("EndPaint")

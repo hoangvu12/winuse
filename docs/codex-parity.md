@@ -150,12 +150,22 @@ it and winuse's code refuses it (see cross-cutting).
 |---|---|---|---|
 | `window` | the Window holding the Element | `<window>` | matched |
 | `element_index` | the Element to write | the Element Index, a `name:`/`id:` reference, or `@x,y` (the Element UIA finds under the point of the latest screenshot) | matched (extended) |
-| `value` | the string to set | the value; numeric Elements (RangeValue) take it parsed as a number | matched |
+| `value` | the string to set | the value; numeric Elements (RangeValue) take it parsed as a number; a combo box or list with no writable value takes an item's name | matched |
 | (delivery) | activates the Window, focuses the Element, then writes | by Element Index or reference **Headless**: no activation and no focus (UIA SetFocus moves the desktop foreground), a text write read back live; `@x,y` and `--headed` keep Codex's activate-and-focus order | intentionally different |
 
 Non-settable Elements fail with Codex's `Cannot set a value for an
 element that is not settable` plus the click-and-type-text hint. A
 Headed write focuses the Element first — Codex's `set_value` order.
+
+A UIA combo box or list (Selection or ItemContainer pattern) whose Value
+is missing or read-only picks the item the value names, a winuse
+extension that mirrors agent-desktop's `select`: Expand when collapsed,
+a bounded descendant search matching the exact name, then
+ItemContainer's lookup for a virtualized list's unbuilt items, then the
+name ignoring case and spacing; Realize, SelectionItem.Select, Collapse,
+then the selection read back. Several matches or none are refused with
+the names; a combo opened for the search is closed again and the error
+says so. An editable combo keeps the Value write.
 
 ### drag
 

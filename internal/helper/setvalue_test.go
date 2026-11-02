@@ -234,6 +234,24 @@ func TestSetValueFailuresAndHints(t *testing.T) {
 			wantHint: "get-window-state 101",
 		},
 		{
+			name:     "a combo or list with no item by the name lists its items",
+			err:      &uia.SelectItemError{Label: "Purple", Items: []string{"Red", "Blue"}},
+			wantMsg:  `no item named "Purple"; its items are "Red", "Blue"`,
+			wantHint: "item names exactly",
+		},
+		{
+			name:     "several items by the name ask for the exact one",
+			err:      &uia.SelectItemError{Label: "blue", Matches: []string{"Blue", "BLUE"}, Opened: true},
+			wantMsg:  `the list was opened and closed; 2 items match "blue": "Blue", "BLUE"`,
+			wantHint: "exact name wins",
+		},
+		{
+			name:     "a search that failed after the Expand keeps the opened-and-closed wording",
+			err:      &uia.SelectItemError{Label: "Red", Opened: true, Err: fmt.Errorf("%w: gone", uia.ErrStale)},
+			wantMsg:  "the list was opened and closed; " + uia.ErrStale.Error() + ": gone",
+			wantHint: "get-window-state 101",
+		},
+		{
 			name:     "a COM failure surfaces verbatim",
 			err:      errors.New("setting the Element's value failed (HRESULT 0x8000ffff)"),
 			wantMsg:  "setting the Element's value failed (HRESULT 0x8000ffff)",

@@ -151,6 +151,30 @@ func TestClassicDialogControls(t *testing.T) {
 	if b := byID[idCancel]; b.class != classButton || b.text != "Cancel" {
 		t.Errorf("Cancel = %+v", b)
 	}
+	// The combo is a drop-down list (no edit part: its Value is read-only,
+	// so set-value picks an item instead of writing text).
+	if c := byID[ClassicComboID]; c.class != classCombo || c.style&0x3 != cbsDropDownList || c.style&wsTabStop == 0 {
+		t.Errorf("the combo = %+v, want a CBS_DROPDOWNLIST tab stop", c)
+	}
+}
+
+func TestClassicColors(t *testing.T) {
+	// The e2e test relies on two items that differ only in case.
+	seen := map[string]bool{}
+	for _, c := range ClassicColors {
+		if seen[c] {
+			t.Errorf("%q appears twice: an exact name must stay unique", c)
+		}
+		seen[c] = true
+	}
+	if !seen["Blue"] || !seen["blue"] {
+		t.Errorf("ClassicColors = %v, want both Blue and blue", ClassicColors)
+	}
+	for sel, want := range map[int32]string{-1: "", 0: "Red", 3: "blue", 4: ""} {
+		if got := classicColor(sel); got != want {
+			t.Errorf("classicColor(%d) = %q, want %q", sel, got, want)
+		}
+	}
 }
 
 func TestCommandResultAndFocusNames(t *testing.T) {

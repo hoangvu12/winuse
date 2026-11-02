@@ -56,10 +56,20 @@ const (
 	MessageBoxTitle = "winuse fixture message"
 	MessageBoxText  = "Proceed with the fixture action?"
 
-	// Control IDs inside the Classic Dialog.
+	// Control IDs inside the Classic Dialog. ClassicComboID is a drop-down
+	// list (CBS_DROPDOWNLIST) of ClassicColors, nothing selected when the
+	// dialog opens: UI Automation's Win32 proxy gives it ExpandCollapse,
+	// Selection and a read-only Value, and its items SelectionItem — the
+	// combo set-value picks an item in by name (desktop-parity 12).
 	ClassicEditID     = 1001
 	ClassicPasswordID = 1002
+	ClassicComboID    = 1003
 )
+
+// ClassicColors are the Classic Dialog combo's items, in order. "Blue" and
+// "blue" differ only in case: set-value picks either by its exact name and
+// refuses "BLUE" as ambiguous.
+var ClassicColors = []string{"Red", "Green", "Blue", "blue"}
 
 // Window class names (also the ClassName the provider reports for the
 // window roots).

@@ -558,70 +558,88 @@ func (c *Client) PerformSecondaryAction(ctx context.Context, hwnd uint64, index 
 	return jobErr
 }
 
-// setValue writes an Element's value on the worker thread: focus first
+// setValue writes an Element's value on the worker thread (writeValue).
+func (th *thread) setValue(el comPtr, value string, focus bool) error {
+	_, err := th.writeValue(el, value, focus)
+	return err
+}
+
+// writeValue writes an Element's value on the worker thread: focus first
 // (Headed only — UIA SetFocus moves the desktop foreground, so a Headless
 // write skips it), then Value.SetValue(BSTR), or RangeValue.SetValue(number)
 // for range Elements, or Toggle calls to set a toggle Element on or off
-// (setToggle), else Codex's not-settable refusal.
-func (th *thread) setValue(el comPtr, value string, focus bool) error {
+// (setToggle); a combo or list with no writable Value picks the item the
+// value names (selectItem, which reads its own selection back: selected
+// reports that route), else Codex's not-settable refusal.
+func (th *thread) writeValue(el comPtr, value string, focus bool) (selected bool, err error) {
 	if focus {
 		if hr := call(el, elSetFocus); hr.Failed() {
 			// Codex's set_value focuses the Element first; a stale or
 			// disabled Element maps to its sentinel, anything else to
 			// Codex's message.
 			if hrStale(hr) {
-				return staleErr(hr)
+				return false, staleErr(hr)
 			}
 			if hr == uiaErrElementDisabled {
-				return ErrDisabled
+				return false, ErrDisabled
 			}
-			return ErrFocusBeforeValue
+			return false, ErrFocusBeforeValue
 		}
 	}
-	// ValuePattern: a read-only value cannot be set (Codex's refusal).
+	// ValuePattern: a read-only value cannot be set (Codex's refusal),
+	// unless the Element is a combo or list (a drop-down list's Value is
+	// read-only): then the value names the item to pick. An editable combo
+	// keeps the Value write.
 	if pat, hr := currentPattern(el, patternValue, &iidValuePattern); hrStale(hr) {
-		return staleErr(hr)
+		return false, staleErr(hr)
 	} else if pat != nil {
 		defer release(pat)
 		var ro int32
 		call(pat, valueCurrentRO, uintptr(unsafe.Pointer(&ro))) // unreadable → writable
 		if ro != 0 {
-			return ErrNotSettable
+			if selectsByName(el) {
+				return true, th.selectItem(el, value)
+			}
+			return false, ErrNotSettable
 		}
 		bstr := sysAllocString(value)
 		defer freeBSTR(bstr)
 		if hr := call(pat, valueSetValue, uintptr(unsafe.Pointer(bstr))); hr.Failed() {
-			return callErr(hr, "setting the Element's value")
+			return false, callErr(hr, "setting the Element's value")
 		}
-		return nil
+		return false, nil
 	}
 	// RangeValuePattern: the value must parse as a number.
 	if pat, hr := currentPattern(el, patternRangeValue, &iidRangeValuePattern); hrStale(hr) {
-		return staleErr(hr)
+		return false, staleErr(hr)
 	} else if pat != nil {
 		defer release(pat)
 		f, perr := strconv.ParseFloat(strings.TrimSpace(value), 64)
 		if perr != nil {
-			return fmt.Errorf("%w: %s", ErrRangeValue, value)
+			return false, fmt.Errorf("%w: %s", ErrRangeValue, value)
 		}
 		if runtime.GOARCH != "amd64" {
 			// RangeValue.SetValue takes a double by value; Go's windows/arm64
 			// syscall trampoline cannot pass those (uia-go notes §2).
-			return errors.New("setting a range value is not supported on this architecture")
+			return false, errors.New("setting a range value is not supported on this architecture")
 		}
 		if hr := call(pat, rangeValueSetValue, uintptr(math.Float64bits(f))); hr.Failed() {
-			return callErr(hr, "setting the Element's value")
+			return false, callErr(hr, "setting the Element's value")
 		}
-		return nil
+		return false, nil
 	}
 	// TogglePattern with neither value pattern: a check box set on or off.
 	if pat, hr := currentPattern(el, patternToggle, &iidTogglePattern); hrStale(hr) {
-		return staleErr(hr)
+		return false, staleErr(hr)
 	} else if pat != nil {
 		defer release(pat)
-		return setToggle(el, pat, value)
+		return false, setToggle(el, pat, value)
 	}
-	return ErrNotSettable
+	// A combo or list with no Value pattern: pick the item by name.
+	if selectsByName(el) {
+		return true, th.selectItem(el, value)
+	}
+	return false, ErrNotSettable
 }
 
 // parseToggleValue reads set-value's value for a toggle Element: on, true

@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
@@ -212,9 +213,25 @@ func performSecondaryAction(s Services) Command {
 }
 
 // valueError maps a set-value failure to the user-facing line: the
-// not-settable refusal points at type-text (the ticket's contract);
-// anything element-side falls through to the shared stale/state mapping.
+// not-settable refusal points at type-text (the ticket's contract); a
+// combo or list with no item, or several, by the name asked for points at
+// the names it lists (desktop-parity 12); anything element-side falls
+// through to the shared stale/state mapping.
 func valueError(err error, w win.WindowInfo, index int) *Error {
+	var sel *uia.SelectItemError
+	if errors.As(err, &sel) {
+		id := strconv.FormatUint(w.ID, 10)
+		switch {
+		case errors.Is(err, uia.ErrAmbiguousItem):
+			return Fail(err.Error(), "name one item exactly as the list spells it: an exact name wins over one that differs only in case or spacing")
+		case errors.Is(err, uia.ErrNoSuchItem):
+			return Fail(err.Error(), "pass one of the list's item names exactly; read a fresh Window State (winuse get-window-state "+id+") if the list has changed")
+		case sel.Opened:
+			// The search failed after the Expand: keep the opened-and-closed
+			// wording the shared mapping would drop.
+			return Fail(err.Error(), "read a fresh Window State (winuse get-window-state "+id+") and retry")
+		}
+	}
 	switch {
 	case errors.Is(err, uia.ErrNotSettable):
 		return Fail(err.Error(),
