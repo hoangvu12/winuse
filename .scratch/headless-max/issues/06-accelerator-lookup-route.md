@@ -13,10 +13,16 @@ cua does this (`tools/hotkey.rs:262-300`). It is verifiable through the Element 
 
 **Blocked by:** none (uses 08 for classic menus once it exists)
 
-**Status:** needs-triage (one more live-Window route in ADR 0011 Decision 4; CONTEXT.md "Headed Action" lists keys)
+**Status:** ready-for-agent (low priority)
 
 - [ ] AcceleratorKey search with normalization
 - [ ] Routing: lookup before the existing press-key routes; Batch probe picks it up
 - [ ] Offline tests: match, ambiguous, disabled, none
 - [ ] Opt-in e2e: Ctrl+O on Notepad and WordPad behind a covering Window
 - [ ] SKILL.md keys section
+
+## Comments
+
+### 2026-11-03: triage decision (user)
+
+Do it like cua (`tools/hotkey.rs:262-300`): a matching AcceleratorKey is Invoked Headless, with no match or two matches the existing routing runs. Low priority: few apps fill AcceleratorKey. The ADR 0011 Decision 4 change goes into ADR 0013 (ticket 17).

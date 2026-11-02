@@ -9,10 +9,20 @@
 
 **Blocked by:** 01 (Desktop command term), 09 (shell surfaces)
 
-**Status:** needs-triage
+**Status:** ready-for-agent (after 01 and 09; probe the toast and Action Center routes first, with the user away)
 
 - [ ] Probe: toast and Action Center trees, Invoke on toast buttons, foreground before and after
 - [ ] Commands and the identity guard
 - [ ] Offline tests over recorded trees
 - [ ] Opt-in e2e: a toast raised by the e2e test itself
 - [ ] SKILL.md
+
+## Comments
+
+### 2026-11-03: triage decision (user)
+
+Do it like agent-desktop: list, act, dismiss, `wait notification`, with the identity guard. Opening the Action Center follows 09: Headless first, the shell-accelerator route only with `--headed`.
+
+### 2026-11-03: shell probe, partial (`../../headless-gaps/probes-round4.md` section 7)
+
+Not measured: toasts are turned off on the laptop (ToastEnabled = 0), so no toast appeared, and the probe left the setting alone. The Clock OmniButton is the Action Center's entry point on Windows 11 (see dp-09). The toast and Action Center probe is still pending, on a machine with toasts on and with the user's OK.

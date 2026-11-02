@@ -8,9 +8,19 @@
 
 **Blocked by:** none
 
-**Status:** ready-for-agent
+**Status:** wontfix (duplicate of `../../multi-agent/issues/04-cursor-per-agent.md`)
 
 - [ ] Caret rectangle from TextPattern selection bounds
 - [ ] Environment options
 - [ ] Offline tests of option parsing
 - [ ] Opt-in e2e: visual check by the user
+
+## Comments
+
+### 2026-11-03: triage decision (user)
+
+Kept as written.
+
+### 2026-11-03: folded into multi-agent 04
+
+The multi-agent plan rewrites the Agent Cursor as one cursor per agent, placed like cua's. This ticket's caret and label/colour options are now part of `../../multi-agent/issues/04-cursor-per-agent.md`, so the cursor code is changed once.

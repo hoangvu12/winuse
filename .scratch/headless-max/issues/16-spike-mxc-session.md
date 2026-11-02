@@ -21,8 +21,14 @@ Answer: recommend adopt, defer or reject, with measurements.
 
 **Blocked by:** none
 
-**Status:** needs-triage (spike; may conflict with ADR 0002 and 0003)
+**Status:** wontfix (the user dropped it, 2026-11-03)
 
 - [ ] Availability and licensing checked against primary sources
 - [ ] A throwaway probe if the API is reachable
 - [ ] Findings appended under `## Answer`
+
+## Comments
+
+### 2026-11-03: triage decision (user)
+
+Dropped. MXC runs an invisible separate session that cannot reach the user's own Apps and blocks SendInput. Both research chats called it a dead end for winuse.

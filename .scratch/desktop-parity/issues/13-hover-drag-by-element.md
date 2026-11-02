@@ -15,3 +15,9 @@
 - [ ] Offline tests of parsing and point resolution
 - [ ] Opt-in e2e: fixture drag between two Elements
 - [ ] SKILL.md
+
+## Comments
+
+### 2026-11-03: triage decision (user)
+
+Kept as written.

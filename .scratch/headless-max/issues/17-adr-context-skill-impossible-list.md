@@ -18,9 +18,25 @@ Write the ADR before the tickets that reverse earlier decisions land; update CON
 
 **Blocked by:** none for the ADR; the documentation pass follows 01-15
 
-**Status:** needs-triage (the user accepts or edits the policy first)
+**Status:** ready-for-agent (ADR 0013 accepted by the user)
 
 - [ ] ADR 0013 drafted and accepted by the user
 - [ ] CONTEXT.md terms
 - [ ] SKILL.md impossible list and routing rules
 - [ ] codex-parity rows reworded; parity guard test passes
+
+## Comments
+
+### 2026-11-03: round 3 probes (`../headless-gaps/probes-round3.md`)
+
+- Add to the policy: **UIA SetFocus is never used in a Headless or Posted path.** It takes the foreground for any App, even without foreground rights (measured).
+- Impossible list: take "keys into native Chromium without CDP" off (ticket 20), and "attaching CDP to an Electron app that is already running" too, when its fuse is on (ticket 15, opt-in). Minimized Chromium stays on the list.
+
+### 2026-11-03: triage decision (user)
+
+The policy is accepted, with two additions:
+
+- UIA SetFocus is never used in a Headless or Posted path. It takes the foreground for any App (round 3).
+- An exception the user chose: ticket 20's Chromium and Electron route is automatic, with no `--post`, even where no read-back exists. Its output then says the text was not verified.
+
+Update the impossible list from round 3: Chromium and Electron keys without CDP come off; a running Electron with the fuse on comes off (opt-in, ticket 15); minimized Chromium stays on.

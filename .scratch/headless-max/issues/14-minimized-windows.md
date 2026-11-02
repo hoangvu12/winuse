@@ -18,7 +18,7 @@ Plan:
 
 **Blocked by:** none
 
-**Status:** needs-triage (probe first; ADR 0010 minimized refusal; CONTEXT.md)
+**Status:** ready-for-agent (classic Win32, WPF and WinUI 3 measured; see Comments)
 
 - [ ] Probe per framework, recorded in this ticket
 - [ ] Readiness check by framework class
@@ -33,3 +33,17 @@ Plan:
 - Minimized tree counts, minimized Invoke/Toggle/SetValue/Select, and the SW_SHOWNOACTIVATE restore were not reached. The batch aborted earlier, when a fixture dialog took the foreground.
 - Lesson for the rerun: on this PC the foreground lock does not protect once the last-input process has exited. Restores and App-opened dialogs can take the foreground.
 - Recommendation: keep `needs-triage`. Probe still pending; run it with the user away. Details: `../../headless-gaps/probes-safe-batch.md`.
+
+### 2026-11-03: round 3 probes (`../headless-gaps/probes-round3.md`)
+
+- **Classic Win32: measured working** on the PC. A minimized window stayed iconic with the foreground unchanged. UIA read all 120 Elements, and Invoke (WM_COMMAND), Value.SetValue (read back), EM_REPLACESEL and SelectionItem.Select (LB_GETCURSEL=7) all worked.
+- **Chromium: no.** The activation messages restore it and take the foreground (see ticket 20).
+- WPF and XAML are still to test.
+
+### 2026-11-03: triage decision (user)
+
+Drop the minimized refusal for Headless Element Actions on classic Win32 now (measured in round 3). Keep it for Chromium: its activation messages restore it and take the foreground. WPF and XAML follow the probe, the laptop probe chat (358cd6b7) runs it; the user is never at the laptop during probes. Screenshots stay refused.
+
+### 2026-11-03: WPF and WinUI 3 measured (`../headless-gaps/probes-round4.md` section 1)
+
+On the laptop, the probe's own WPF and WinUI 3 windows were minimized with SW_SHOWMINNOACTIVE. Invoke, Toggle, SetValue (read back) and SelectionItem.Select all worked; the windows stayed iconic; foreground and cursor were unchanged; the tree size was the same as when restored. Scope now: lift the minimized refusal for UIA-pattern Actions on classic Win32, WPF and WinUI 3. Keep it for Chromium (message routes and the Chromium frame), for packaged UWP (`ApplicationFrameWindow`, not measured) and for screenshots. The laptop probe for this ticket is done.

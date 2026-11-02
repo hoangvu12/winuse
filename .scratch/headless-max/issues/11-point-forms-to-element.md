@@ -14,10 +14,16 @@ Today they are always Headed (`internal/helper/actions.go:115-129`, `setvalue.go
 
 **Blocked by:** none
 
-**Status:** needs-triage (reverses ADR 0010 Decision 1; CONTEXT.md "Headed Action"; codex-parity click row)
+**Status:** ready-for-agent
 
 - [ ] Point hit-test inside a Window's subtree, bounded by the request budget
 - [ ] Routing: point forms Headless when the hit-test finds a routable Element; Batch predicate follows
 - [ ] Offline tests: nested bounds, overlap refusal, Window-only refusal, scroll conversion
 - [ ] Opt-in e2e: fixture button and list by point, covered, foreground unchanged
 - [ ] ADR amendment (ticket 17), SKILL.md
+
+## Comments
+
+### 2026-11-03: triage decision (user)
+
+Adopt. It reverses ADR 0010 Decision 1, recorded in ADR 0013 (ticket 17). agent-desktop's open PR #438 does the same on macOS (hit-test the named App, press the Element, refuse when nothing can be pressed).

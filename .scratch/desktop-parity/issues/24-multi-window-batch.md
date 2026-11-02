@@ -11,10 +11,16 @@ Today a Batch is `batch <window> <action> ... then ...`, one Window for all step
 
 **Blocked by:** 02 (for `in new`), 17 (for `name:` on unread Windows)
 
-**Status:** needs-triage (SKILL.md Batch rules; Batch scope design)
+**Status:** ready-for-agent (after 02 and 17)
 
 - [ ] Parser and protocol per-step Window
 - [ ] `in new`
 - [ ] Offline tests
 - [ ] Opt-in e2e: click a fixture button, then Return in the message box, in one Batch
 - [ ] SKILL.md Batch section
+
+## Comments
+
+### 2026-11-03: triage decision (user)
+
+Do it like agent-desktop (each step may name its own Window) with the `in <window>` syntax, plus winuse's `in new` (the Window the previous step opened, from 02).

@@ -11,7 +11,7 @@ Routes, most headless first:
 
 **Blocked by:** none (the Posted leg needs headless-max 12)
 
-**Status:** needs-triage (codex-parity click row: add as extension; decide whether the UIA multi-select route is worth it)
+**Status:** ready-for-agent (UIA multi-select leg measured; the Posted leg after headless-max 12)
 
 - [ ] `--modifiers` in CLI, protocol, Batch
 - [ ] CDP modifiers; UIA AddToSelection route; Headed modifier hold with guaranteed release
@@ -26,3 +26,16 @@ Routes, most headless first:
 - The WPF leg was not reached: attached Ctrl + UIA Invoke, posted click with MK_CONTROL, and AddToSelection on two ListBox items. The batch aborted earlier, when a fixture dialog took the foreground from the user's game client.
 - The probe is ready to rerun: `wpf.go`/`wpf.ps1` under the batch's scratchpad.
 - Recommendation: keep `needs-triage`. Details: `../../headless-gaps/probes-safe-batch.md`.
+
+### 2026-11-03: triage decision (user)
+
+Prefer Headless, agent-desktop's way as the fallback: CDP modifiers on Pages; UIA AddToSelection on lists once a probe proves it; Posted with MK_* once headless-max 12 is decided; otherwise agent-desktop's held-modifier SendInput click, which needs `--headed` like every Headed Action. The codex-parity click row gains this as an extension.
+
+### 2026-11-03: UIA multi-select measured (`../../headless-gaps/probes-round4.md` section 6)
+
+AddToSelection read back correctly, Headless and covered, on WPF ListBox (Extended and Multiple), Win32 SysListView32 and WinUI 3 ListView. Build it:
+
+- `click <item> --modifiers ctrl` on a SelectionItem whose container has CanSelectMultiple uses AddToSelection.
+- Shift is a range of AddToSelection from the container's last selected item.
+- Read the selection back afterwards.
+- This route is preferred over the Headed modifier hold.

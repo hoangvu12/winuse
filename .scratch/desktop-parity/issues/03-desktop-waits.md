@@ -23,3 +23,9 @@ agent-desktop's predicates are in `ad:docs/commands/` (row 52 of the research) p
 - [ ] Offline tests per predicate with faked state over time
 - [ ] Opt-in e2e: wait for a fixture dialog, a value change, a closed Window
 - [ ] SKILL.md waits section
+
+## Comments
+
+### 2026-11-03: triage decision (user)
+
+Kept as written.
