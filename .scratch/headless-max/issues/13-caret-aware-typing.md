@@ -40,3 +40,16 @@ The de-duplication pass found that desktop-parity 23's last `--into` route, "the
 ### 2026-11-03: triage decision (user)
 
 Adopt, preferring Headless everywhere: the splice serves both `type-text --into <element>` and plain `type-text` when the Window's focused Element can be found inside its subtree. When it cannot be found, plain `type-text` keeps today's behaviour (the Headed fallback with ticket 19's note). It fires no key events and loses undo, and the output and the skill say so. Chromium-frame fields prefer ticket 20's real key events.
+
+### 2026-11-03: measured on WPF and WinUI 3 (`../headless-gaps/probes-round5.md` section 1)
+
+- **The splice works Headless:** GetSelection, then SetValue(prefix + text + suffix), read back exactly, TextChanged fired, foreground unchanged.
+- **No focused Element can be found in a background WPF or WinUI window** (no HasKeyboardFocus, and the app's own focus is empty). So in practice the route serves `type-text --into <element>` only. Plain `type-text` into these Windows keeps today's Headed fallback, and its note should suggest `--into`, as ticket 19's does. The user's "prefer Headless everywhere" is met as far as Windows allows.
+
+Implementation notes from the probe:
+
+- Read offsets as DocumentRange.Clone + MoveEndpointByRange(End, selection, Start) + GetText(-1).Length (UTF-16).
+- To place the caret: collapse, Move(Character, n), collapse again, Select. Then read it back with GetSelection and adjust, because the Character unit is a whole emoji in WPF but UTF-16 units in WinUI.
+- SetValue resets the caret to 0, so place it again after the splice.
+- Undo: WPF keeps one undo step; WinUI keeps none. Say so in the output.
+- Refuse IsPassword and Value.IsReadOnly before sending (a read-only SetValue fails with 0x80131509).
