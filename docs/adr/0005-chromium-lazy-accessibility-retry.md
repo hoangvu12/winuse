@@ -34,7 +34,9 @@ but carries no document Element — the read may have caught Chromium's tree
 mid-build, with the browser chrome present and the web content not yet
 attached. A partial (cut) tree never triggers this: the document may simply
 be past the cut. This signal is a robustness refinement beyond the spec's
-near-empty rule; Win32 apps are unaffected.
+near-empty rule; Win32 apps are unaffected. *(Amended below: for a
+Chromium Window this trigger and the near-empty one now start a settle
+loop of up to 5 s instead of the one retry.)*
 
 **Notes.** The walk's nearly-empty note stays as it is (ticket 03) for a
 sparse read that was not retried. A tree that is still nearly empty after
@@ -67,3 +69,70 @@ serving live reads, recorded fixtures and the offline tests.
   over a local HTML page).
 - `a11yRetryDelay` (500 ms) and the note texts are contracts; changing them
   means updating the recorded fixtures' note text in step.
+
+## Amendment: a settle loop for a cold Chromium tree (2026-11-02)
+
+Ticket 18 of `.scratch/headless-max/`. The Laptop probe measured that a
+cold Chromium can take 10-25 s to build its UIA tree, and that a fully
+covered cold Chrome never built its web tree (36 nodes for 14 s), while a
+partly visible one settled in about 0.1 s. One retry after 500 ms is too
+short for that, so for Chromium the one retry becomes a settle loop.
+
+- **Trigger.** A Chromium Window (the `Chrome_` class or a known browser
+  exe, as above), read whole (no partial-tree note or truncation), whose
+  Document is not left to a Browser Connection (the walk did not cut it
+  for a CDP Page), and whose web content is thin: fewer than 3 Elements
+  under its Document Elements, or no Document at all. This replaces the
+  "complete tree with no Document" trigger, and it also takes Chromium's
+  nearly empty reads, so Electron and WebView2 go through it too. A
+  Window with a built page is read once, as before.
+- **Loop.** `readTree` reads again every 300 ms until the Documents'
+  size has grown and then stopped growing, up to a settle budget
+  (`DefaultChromiumSettle`, 5 s). The polls are counted, not timed, and
+  bounded by the request deadline: each needs its interval, with 1 s for
+  the last read and the 500 ms response margin left over. A poll whose
+  read leaves the Document to the Page (the Browser Connection answered
+  meanwhile) or comes back partial ends the loop. A poll that fails
+  fails the command, as the retry does.
+- **Note.** A tree still thin at the end carries "the page's
+  accessibility tree is still thin; Chromium may not build it while the
+  Window is fully covered. Connect the browser (winuse browser status
+  says how) or uncover the Window; for an Electron or WebView2 App,
+  request a screenshot". It replaces the walk's nearly-empty note, so the
+  agent gets one note. A tree that grew but was still growing at the end
+  is returned without a note.
+- **Once per Window.** The Client remembers (by HWND) a Window whose
+  settle ended thin, including one that grew a little and stopped under
+  the threshold. Later thin reads of that Window get the one 500 ms retry
+  instead of the loop, and still carry the thin-page note when they stay
+  thin. A read of it that is not thin (built, or partial) clears the
+  mark, so a Window that builds and later goes thin again settles again.
+  A paged read leaves the mark alone. The memory holds at most 256
+  Windows; when full, an arbitrary mark is dropped, which costs that
+  Window one more settle. Closed Windows are not pruned one by one, and a
+  reused HWND inherits a stale mark, which costs it one retry instead of a
+  settle until a read finds it built.
+- **Never activates or uncovers the Window** to make it build.
+- **The non-Chromium path is unchanged**: a nearly empty read gets one
+  retry after 500 ms and the sparse-after-retry note.
+
+Consequences:
+
+- A Chromium Window without a Browser Connection that never builds a
+  Document, or legitimately shows an almost empty page (Chrome's own
+  popups, menus and bubbles, `about:blank`, an empty new tab, a
+  canvas-only Electron App), costs the full 5 s on its first read, and
+  then 500 ms per read, as before this amendment. It gets the thin note,
+  whose "may" covers that case, in place of the sparse-after-retry note.
+  Without a covered-Window signal in the walk, size is the only cue.
+- `readTree` takes the Window's mark (`thinMark`, from the Client's
+  `thinWindows`; the zero mark remembers nothing) and the settle budget
+  as parameters. `CaptureFrame`
+  passes `DefaultChromiumSettle`; the caller's `--timeout` from
+  desktop-parity ticket 14 can pass a wider one there, and the request
+  deadline still bounds it.
+- `chromiumSettleEvery` (300 ms), `DefaultChromiumSettle` (5 s),
+  `thinDocumentNodes` (3) and the note text are pinned by
+  `internal/uia/retry_test.go`. None of them has been measured live; the
+  user-run e2e test `test/e2e/electron_settle_test.go` reads a covered
+  Electron App cold.

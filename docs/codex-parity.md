@@ -85,7 +85,12 @@ identifiers"). The 15 s launch budget and Codex's failure message
 Codex's default is screenshot-first (macOS inheritance); the spec flips
 it deliberately — a text-first read is cheaper and enough for ordinary
 tasks, and a note tells the agent when a Window's tree is too sparse to
-trust (canvas apps). Popups and menus drawn over the Window appear in
+trust (canvas apps). A Chromium or Electron Window read through UI
+Automation alone (no Browser Connection) whose web content reads thin is
+read again for up to 5 s while Chromium builds its lazy tree (once per
+Window; a Window that stayed thin gets one short retry on later reads),
+and a tree still thin after that carries a note that names the fully
+covered Window as the likely cause (ADR 0005). Popups and menus drawn over the Window appear in
 the one frame (Codex composites several `zIndex` layers).
 
 ### click
