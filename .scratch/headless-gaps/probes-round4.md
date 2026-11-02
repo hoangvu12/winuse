@@ -120,3 +120,16 @@ The chord is refused if the target thread owns the foreground (never the case he
   - Without activation, the window got WM_SYSKEYDOWN, WM_SYSCHAR 'f' and WM_SYSCOMMAND SC_KEYMENU 'f', but **no menu opened** (no `#32768`, no WM_ENTERMENULOOP). A directly posted WM_SYSCOMMAND(SC_KEYMENU, 'f') did nothing either.
   - **With the activation pair, the File menu opened** (WM_ENTERMENULOOP, `#32768` 291x111; MN_GETHMENU items Save 301, Save As 302, Open 303). Posting the mnemonic 'S' to the `#32768` chose Save (WM_COMMAND 301, the menu closed). Foreground unchanged throughout.
 - MFC: skipped; no MFC app was easy to build or find.
+
+## 6. Multi-select through AddToSelection (desktop-parity 06)
+
+All windows were covered: WindowFromPoint at each window's centre returned another window. Foreground and cursor were unchanged in every step [M].
+
+| Control | Steps | Result [M] |
+|---|---|---|
+| WPF ListBox, SelectionMode=Extended | AddToSelection it2, then it4 (hr 0 each) | SelectedItems it2, then it2,it4; IsSelected 1 and 1 |
+| WPF ListBox, SelectionMode=Multiple | AddToSelection m1, then m3 (hr 0 each) | SelectedItems m1,m3; IsSelected 1 and 1 |
+| Win32 SysListView32 (LVS_LIST, multi-select allowed) | AddToSelection row2, then row4 (hr 0 each) | LVM_GETSELECTEDCOUNT 1, then 2; IsSelected 1 and 1 |
+| WinUI 3 ListView, SelectionMode=Extended | AddToSelection it1, then it3 (hr 0 each) | SelectedItems it1,it3; IsSelected 1 and 1 |
+
+AddToSelection works Headless on all three stacks, with no activation.

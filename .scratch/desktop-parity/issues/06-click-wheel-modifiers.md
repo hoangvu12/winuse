@@ -11,7 +11,7 @@ Routes, most headless first:
 
 **Blocked by:** none (the Posted leg needs headless-max 12)
 
-**Status:** ready-for-agent (CDP and the Headed fallback now; the UIA multi-select leg after a live probe with the user away; the Posted leg after headless-max 12)
+**Status:** ready-for-agent (UIA multi-select leg measured; the Posted leg after headless-max 12)
 
 - [ ] `--modifiers` in CLI, protocol, Batch
 - [ ] CDP modifiers; UIA AddToSelection route; Headed modifier hold with guaranteed release
@@ -30,3 +30,12 @@ Routes, most headless first:
 ### 2026-11-03: triage decision (user)
 
 Prefer Headless, agent-desktop's way as the fallback: CDP modifiers on Pages; UIA AddToSelection on lists once a probe proves it; Posted with MK_* once headless-max 12 is decided; otherwise agent-desktop's held-modifier SendInput click, which needs `--headed` like every Headed Action. The codex-parity click row gains this as an extension.
+
+### 2026-11-03: UIA multi-select measured (`../../headless-gaps/probes-round4.md` section 6)
+
+AddToSelection read back correctly, Headless and covered, on WPF ListBox (Extended and Multiple), Win32 SysListView32 and WinUI 3 ListView. Build it:
+
+- `click <item> --modifiers ctrl` on a SelectionItem whose container has CanSelectMultiple uses AddToSelection.
+- Shift is a range of AddToSelection from the container's last selected item.
+- Read the selection back afterwards.
+- This route is preferred over the Headed modifier hold.

@@ -19,7 +19,8 @@ agent-desktop and cua both serialize every input-producing action machine-wide. 
 ## Decisions (user, 2026-11-03)
 
 1. **Truly parallel.**
-   - Background (Headless, Posted, Page) Actions on different Windows run at the same time.
+   - Background (Headless, Posted) Actions on Windows of different UI threads run at the same time. Windows on the same UI thread take turns, because focus, key state and fake activation are per thread. That includes two Windows of one Chrome or Explorer.
+   - Page (CDP) Actions run in parallel per Tab.
    - Two agents in the same Window take turns.
    - Anything that uses the real mouse or keyboard (Headed) takes one desktop lane, so it always takes turns.
 2. **Element Indexes per agent.** Each agent keeps its own Window State per Window, so another agent's read never changes its indexes. Desktop-parity 04's option (c) numbering applies inside each agent's store. **If this causes problems, try agent-desktop's approach** (snapshot-qualified refs such as `@s8f3k2p9:e12`).
@@ -44,7 +45,7 @@ agent-desktop and cua both serialize every input-producing action machine-wide. 
 | 03 | Window States per agent | S-M | ready-for-agent |
 | 04 | A cursor per agent, like cua | M | ready-for-agent |
 | 05 | Esc stops every agent | S | ready-for-agent |
-| 06 | Per-Window lanes and a desktop lane | M | ready-for-agent |
+| 06 | Per-thread lanes and a desktop lane | M | ready-for-agent |
 | 07 | UIA worker pool with per-App affinity | M-L | ready-for-agent |
 | 08 | Polite real input | M | ready-for-agent |
 | 09 | Window identity check before writes | S | ready-for-agent |
