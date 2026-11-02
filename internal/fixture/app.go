@@ -213,6 +213,9 @@ func (a *app) wndMain(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		a.writeState() // CanvasRect follows the window
 		procInvalidateRect.Call(hwnd, 0, 1)
 	case wmTimer:
+		// A restore from minimized can leave CanvasRect at the minimized
+		// position after its WM_WINDOWPOSCHANGED; the tick catches up.
+		a.updateCanvasRect()
 		a.writeState()
 		return 0
 	case wmMouseLeave:

@@ -345,12 +345,14 @@ func TestScreenshotShowsOpenDropdownMenu(t *testing.T) {
 	}
 }
 
-func TestScreenshotOfBlockedWindowNamesDialog(t *testing.T) {
+func TestScreenshotOfBlockedWindowShowsDialog(t *testing.T) {
 	optIn(t)
 	fix, window, _ := startFixtureForShots(t)
 
-	// Open the Save As dialog; a screenshot of the blocked main Window
-	// fails naming the dialog (the region capture needs the foreground).
+	// Open the Save As dialog. A screenshot is an observation, captured
+	// headless since ADR 0011 (Windows.Graphics.Capture, then PrintWindow),
+	// so the blocked main Window screenshots too, and its tree shows the
+	// dialog; only Actions on the blocked Window are refused.
 	saveAs := mainElementIndexes()[fixture.ElemButtonSaveAs]
 	if _, _, exit := runClick(t, []string{window, strconv.Itoa(saveAs)}); exit != 0 {
 		t.Fatalf("click button-save-as: exit %d", exit)
@@ -359,10 +361,11 @@ func TestScreenshotOfBlockedWindowNamesDialog(t *testing.T) {
 	dialog := strconv.FormatUint(st.DialogWindowID, 10)
 
 	stdout, stderr, exit := runGetWindowStateScreenshot(t, window)
-	assertActionFailed(t, "screenshot of the blocked main window", stdout, stderr, exit,
-		"has a modal dialog open (window "+dialog+")")
-	if strings.Contains(stdout, "Screenshot:") {
-		t.Errorf("no screenshot line may be printed on failure:\n%s", stdout)
+	if exit != 0 {
+		t.Fatalf("screenshot of the blocked main window: exit %d, stderr:\n%s", exit, stderr)
+	}
+	if !strings.Contains(stdout, "Screenshot: ") || !strings.Contains(stdout, "Save As") {
+		t.Errorf("the blocked main window's state needs its screenshot line and the Save As dialog:\n%s", stdout)
 	}
 
 	// The dialog itself screenshots fine.
