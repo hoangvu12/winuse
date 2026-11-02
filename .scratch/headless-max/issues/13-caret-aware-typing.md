@@ -21,7 +21,7 @@ Limits stated in the output and the skill: no key events fire, the undo stack is
 
 **Blocked by:** none (uses 10's TextRange.Select)
 
-**Status:** needs-triage (headless-parity spec out-of-scope "Headless typing into WPF, WinUI or Chromium text fields")
+**Status:** ready-for-agent
 
 - [ ] Focused-Element lookup inside a background Window
 - [ ] Splice and read-back; caret placement after
@@ -36,3 +36,7 @@ Limits stated in the output and the skill: no key events fire, the undo stack is
 ### 2026-11-03: absorbed desktop-parity 23's Text-pattern leg
 
 The de-duplication pass found that desktop-parity 23's last `--into` route, "the caret splice of this ticket, aimed at this Element", was the same work as this ticket. That leg now lives here, in the `--into` paragraph and checkbox above. desktop-parity 23 keeps only `--interval-ms`. The `--into` CLI, protocol and the Page and classic-edit routes already exist (landed with headless-max 19). This ticket adds one route between the classic-edit route and the Headed fallback or refusal.
+
+### 2026-11-03: triage decision (user)
+
+Adopt, preferring Headless everywhere: the splice serves both `type-text --into <element>` and plain `type-text` when the Window's focused Element can be found inside its subtree. When it cannot be found, plain `type-text` keeps today's behaviour (the Headed fallback with ticket 19's note). It fires no key events and loses undo, and the output and the skill say so. Chromium-frame fields prefer ticket 20's real key events.

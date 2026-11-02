@@ -18,7 +18,7 @@ Rules:
 
 **Blocked by:** 01
 
-**Status:** needs-triage (ADR 0012 Decision 6 and Consequences; browser-merge spec out-of-scope)
+**Status:** ready-for-agent (after 01)
 
 - [ ] `--cdp` in the CLI and protocol
 - [ ] Electron and WebView2 argument injection; port discovery and owner verification
@@ -38,3 +38,7 @@ New scope, at the research chat's request: **attach to a running Electron App**,
 - It runs code inside the user's App. Ask first, never by default. Any same-user process can reopen the port.
 - This revises "a running App needs a restart" above: a restart is needed only when the fuse is off. WebView2 stays launch-time only.
 - Needs: a Node runtime or an equivalent `_debugProcess` signal (it sends SIGUSR1 to the process on Windows). Find out how to send it without bundling Node (ADR 0002 and 0003).
+
+### 2026-11-03: triage decision (user)
+
+Adopt both: `launch-app --cdp` and attaching to a running Electron App. The attach always asks the user first, never runs by default, and refuses when the nodeCliInspect fuse is off. It reverses ADR 0012 Decision 6, recorded in ADR 0013.

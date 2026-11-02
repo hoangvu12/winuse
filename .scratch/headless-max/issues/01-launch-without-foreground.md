@@ -31,3 +31,9 @@ Launch options (from desktop-parity research ticket 15): `--arg <a>` (repeatable
 - [ ] Offline tests: show state per mode, argument quoting, the note
 - [ ] Opt-in e2e: launch the fixture and Notepad behind a covering Window, foreground unchanged
 - [ ] Usage text and SKILL.md launch section
+
+## Comments
+
+### 2026-11-03: triage decision (user)
+
+Kept as written.

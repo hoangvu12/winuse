@@ -25,3 +25,9 @@ Route:
 - [ ] Offline tests: path matching, grey item, no menu bar, ambiguous names
 - [ ] Opt-in e2e: Notepad (classic) or the fixture with a menu bar, Edit > Select All, covered
 - [ ] CONTEXT.md Action list; SKILL.md
+
+## Comments
+
+### 2026-11-03: triage decision (user)
+
+Kept as written.

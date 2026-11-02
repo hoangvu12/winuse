@@ -10,10 +10,16 @@ Candidates, probe first:
 
 **Blocked by:** none (may use 03)
 
-**Status:** needs-triage (probe decides the route; changes ADR 0012 and the browser-merge spec "Tabs" section)
+**Status:** ready-for-agent (laptop probe first)
 
 - [ ] Probe: route 1 on a covered launched Chrome, foreground before and after; route 2's flag behaviour on the installed Chrome
 - [ ] Implement the measured route; keep the Headed route as `--headed`
 - [ ] Offline tests of the routing
 - [ ] Opt-in e2e: tab switch on a covered launched Chrome, foreground unchanged
 - [ ] ADR 0012 amendment and SKILL.md tabs section
+
+## Comments
+
+### 2026-11-03: triage decision (user)
+
+Build it once the probe picks the route. The probe of route 1 (SelectionItem.Select or Invoke on the tab-strip TabItem of a covered launched Chrome, foreground before and after) and route 2's `--load-extension` behaviour: the laptop probe chat (358cd6b7) runs it; the user is never at the laptop during probes. The ADR 0012 and browser-merge spec changes are accepted.

@@ -17,7 +17,7 @@ Then:
 
 **Blocked by:** none
 
-**Status:** needs-triage (new Secondary Action in CONTEXT.md; WinUI and cross-process item Invoke unmeasured)
+**Status:** ready-for-agent (laptop probe first)
 
 - [ ] Probe: cross-process WM_CONTEXTMENU, item Invoke on `#32768`, ShowContextMenu on Chrome and a WinUI app
 - [ ] Route selection and readback
@@ -33,3 +33,7 @@ Then:
 - Fixture's drawn text field, cross-process [M]: UIA ShowContextMenu returned S_OK and opened no menu, and a posted WM_CONTEXTMENU(-1) opened no menu either. This confirms the readback requirement.
 - Not measured: the real Edit routes, item choice (UIA Invoke on `#32768`, MN_GETHMENU, posted mnemonic), and the WPF TextBox. The guard fired while the fixture's Classic Dialog opened: its own `ShowWindow(SW_SHOW)` took the foreground from the League client.
 - Recommendation: keep `needs-triage`. Rerun with the user away. Details: `../../headless-gaps/probes-safe-batch.md`.
+
+### 2026-11-03: triage decision (user)
+
+Build it once the probe has measured the routes. It is also the preferred route for right-clicks on an Element (ticket 12's posted right-click is the fallback). Probe: cross-process WM_CONTEXTMENU on a classic Edit, ShowContextMenu on Chrome and on a WPF or WinUI window the probe builds, and item choice (UIA Invoke on `#32768`, MN_GETHMENU). the laptop probe chat (358cd6b7) runs it; the user is never at the laptop during probes.

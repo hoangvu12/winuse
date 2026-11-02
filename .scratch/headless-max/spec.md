@@ -1,4 +1,4 @@
-Status: needs-triage
+Status: ready-for-agent (triaged by the user 2026-11-03; ADR 0013 accepted)
 
 # Headless max: every Action headless where Windows allows it
 
@@ -35,24 +35,24 @@ Close every gap that has a route, and say plainly where none exists.
 |---|---|---|---|
 | 01 | Launch without the foreground, and launch options | S | ready-for-agent |
 | 02 | restore-window reports self-activation | S | done |
-| 03 | EnableWindow guard against self-activation | S | needs-triage |
+| 03 | EnableWindow guard against self-activation | S | ready-for-agent (detect and report) |
 | 04 | Occlusion flag for launched browsers | S | done |
-| 05 | Headless tab switch on launched browsers | S | needs-triage |
-| 06 | Accelerator lookup route for press-key | S | needs-triage |
-| 07 | Chords through attached key state (opt-in) | M | needs-triage |
+| 05 | Headless tab switch on launched browsers | S | ready-for-agent (laptop probe first) |
+| 06 | Accelerator lookup route for press-key | S | ready-for-agent (low priority) |
+| 07 | Chords through attached key state (opt-in) | M | ready-for-agent (classic Apps after the laptop probe) |
 | 08 | invoke-menu for classic menu bars | M | ready-for-agent |
-| 09 | ContextMenu Secondary Action | M | needs-triage |
+| 09 | ContextMenu Secondary Action | M | ready-for-agent (laptop probe first) |
 | 10 | select-text | S | done |
-| 11 | Point forms resolve to an Element in the target Window | M | needs-triage |
-| 12 | Posted Clicks (opt-in) | M | needs-triage |
-| 13 | Caret-aware typing into Text-pattern fields (and the `type-text --into` Text-pattern leg, from desktop-parity 23) | M | needs-triage |
-| 14 | Headless Actions on minimized Windows | S | needs-triage |
-| 15 | Electron and WebView2 Browser Connections at launch, and attach to a running Electron (opt-in) | L | needs-triage |
-| 16 | Spike: MXC session container | M | needs-triage |
-| 17 | ADR 0013, CONTEXT.md, skill and the impossible list | S | needs-triage |
+| 11 | Point forms resolve to an Element in the target Window | M | ready-for-agent |
+| 12 | Posted Clicks (opt-in) | M | ready-for-agent |
+| 13 | Caret-aware typing into Text-pattern fields (and the `type-text --into` Text-pattern leg, from desktop-parity 23) | M | ready-for-agent |
+| 14 | Headless Actions on minimized Windows | S | ready-for-agent (WPF/XAML after the laptop probe) |
+| 15 | Electron and WebView2 Browser Connections at launch, and attach to a running Electron (opt-in) | L | ready-for-agent (after 01) |
+| 16 | Spike: MXC session container | M | wontfix |
+| 17 | ADR 0013, CONTEXT.md, skill and the impossible list | S | ready-for-agent |
 | 18 | Longer settle for a cold Chromium UIA tree | S | done |
 | 19 | Headless typing into a covered Windows 11 Notepad | S-M | done |
-| 20 | Background typing, keys and clicks for Chromium and Electron without CDP | M | needs-triage |
+| 20 | Background typing, keys and clicks for Chromium and Electron without CDP | M | ready-for-agent |
 
 20 tickets: 10 S, 1 S-M, 8 M (one spike), 1 L. Done: 02, 04, 10, 18, 19.
 

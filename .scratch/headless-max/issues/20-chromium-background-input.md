@@ -23,7 +23,7 @@ Open for triage: Headless by default where the read-back exists, or opt-in with 
 
 **Blocked by:** none (the ADR 0013 policy from 17 decides default vs `--post`)
 
-**Status:** needs-triage (default vs `--post`; moves "keys into native Chromium without CDP" off the impossible list; ADR 0011 Decision 4)
+**Status:** ready-for-agent
 
 - [ ] Chromium detection (top-level class and process) and the iconic refusal
 - [ ] Activation, mouse, text and key message sequences; chords through attached key state
@@ -38,3 +38,7 @@ Open for triage: Headless by default where the read-back exists, or opt-in with 
 ### 2026-11-03: created from the round 3 probes
 
 Written for the "winuse multi-agent research" chat (690cfc8b), from measurements on the laptop (Chrome, Edge, Electron 45.2.1) in `../headless-gaps/probes-round3.md`. It overlaps 13 (caret-aware typing) only for Chromium-frame fields: there this route gives real key events, so 13 keeps WPF and WinUI.
+
+### 2026-11-03: triage decision (user)
+
+Automatic: no `--post`. Read back through UIA Value where it exists; where it does not, the output says the text was not verified. ADR 0013 records this as an exception to its opt-in rule. The laptop probe also checks double and right clicks through the sent mouse messages.

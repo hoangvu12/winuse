@@ -23,7 +23,7 @@ Rules:
 
 **Blocked by:** none (06 is the preferred route where an Element carries the shortcut)
 
-**Status:** needs-triage (probe first; changes ADR 0011 Decision 5 and the headless-parity spec out-of-scope "Posting chords with modifiers")
+**Status:** ready-for-agent (Chromium and Electron chords are in ticket 20; classic Apps after the laptop probe)
 
 - [ ] Probe on Notepad (Win11), WordPad, Paint, an MFC app, a WinForms app and a WPF app: Ctrl+S, Ctrl+A, Ctrl+Z, Shift+Tab, Alt+F; foreground and user key state before and after
 - [ ] If adopted: attach, state, post, restore on a disposable thread; restore on every exit path
@@ -44,3 +44,7 @@ Rules:
 
 - **Chromium and Electron: measured working.** Ctrl+A, Shift+Tab and Ctrl+V through AttachThreadInput + SetKeyboardState on Chrome's UI thread, with the PR #400 activation (Chrome, Edge, Electron). The foreground was unchanged, and the step was refused if that thread owned the foreground. That route is ticket 20.
 - Classic Win32, WPF and MFC Apps are still to test.
+
+### 2026-11-03: triage decision (user)
+
+Kept as an opt-in `--post` route for classic Win32 Apps. The Chromium and Electron chords are measured and built in ticket 20. The probe on real classic Apps (a Win32 accelerator loop, WinForms, WPF and MFC test windows the probe builds itself): the laptop probe chat (358cd6b7) runs it; the user is never at the laptop during probes. Adopt per App type only where it is measured.

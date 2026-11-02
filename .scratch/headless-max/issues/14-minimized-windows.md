@@ -18,7 +18,7 @@ Plan:
 
 **Blocked by:** none
 
-**Status:** needs-triage (probe first; ADR 0010 minimized refusal; CONTEXT.md)
+**Status:** ready-for-agent (classic Win32 now; WPF and XAML after the laptop probe)
 
 - [ ] Probe per framework, recorded in this ticket
 - [ ] Readiness check by framework class
@@ -39,3 +39,7 @@ Plan:
 - **Classic Win32: measured working** on the PC. A minimized window stayed iconic with the foreground unchanged. UIA read all 120 Elements, and Invoke (WM_COMMAND), Value.SetValue (read back), EM_REPLACESEL and SelectionItem.Select (LB_GETCURSEL=7) all worked.
 - **Chromium: no.** The activation messages restore it and take the foreground (see ticket 20).
 - WPF and XAML are still to test.
+
+### 2026-11-03: triage decision (user)
+
+Drop the minimized refusal for Headless Element Actions on classic Win32 now (measured in round 3). Keep it for Chromium: its activation messages restore it and take the foreground. WPF and XAML follow the probe, the laptop probe chat (358cd6b7) runs it; the user is never at the laptop during probes. Screenshots stay refused.
