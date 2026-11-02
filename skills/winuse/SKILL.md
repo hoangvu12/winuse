@@ -419,7 +419,9 @@ back, and print `ok`. They are not Batch steps.
   output says so. Use `activate-window` when the user wants it maximized and
   in front.
 - Some Apps bring themselves to the front when they are restored, even
-  though winuse does not activate them. `restore-window` then prints
+  though winuse does not activate them. Expect it most from an App that
+  has not been in front since it started, for example one launched in the
+  background and restored for the first time. `restore-window` then prints
   `ok (the App brought itself to the foreground)`. winuse does not take the
   foreground back. Tell the user their foreground moved if they were
   working elsewhere, and do not repeat the restore.

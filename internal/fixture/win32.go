@@ -51,6 +51,8 @@ var (
 	procKillTimer           = user32.NewProc("KillTimer")
 	procTrackMouseEvent     = user32.NewProc("TrackMouseEvent")
 
+	procAllowSetForegroundWindow = user32.NewProc("AllowSetForegroundWindow")
+
 	procCreateDialogIndirectParamW = user32.NewProc("CreateDialogIndirectParamW")
 	procIsDialogMessageW           = user32.NewProc("IsDialogMessageW")
 	procGetDlgItem                 = user32.NewProc("GetDlgItem")
@@ -110,6 +112,11 @@ const (
 	// so that a UI Automation Invoke returns before the window opens.
 	wmOpenClassic    = 0x8000 + 1
 	wmOpenMessageBox = 0x8000 + 2
+
+	wmActivateApp = 0x001C
+	wmSize        = 0x0005
+	sizeRestored  = 0
+	sizeMinimized = 1
 
 	csDblClks = 0x0008
 

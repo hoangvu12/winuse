@@ -6,6 +6,8 @@
 // cold while fully covered, get-window-state settles the tree for up to
 // 5 s and then either shows the page or says the tree is still thin; it
 // never uncovers or activates the Window to make it build.
+// Measured with Electron 45.2.1 (ticket 18, 2026-11-03): fully covered, it
+// never built its web tree (60 s), so the thin note is the usual outcome.
 //
 // User-run only (see the package comment and test/e2e/README.md); an agent
 // must never start it.

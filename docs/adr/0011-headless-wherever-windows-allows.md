@@ -67,7 +67,11 @@ The user asked for everything to be as headless as possible.
   did not), and giving the foreground back would need
   SetForegroundWindow, which winuse lacks the right to call and which
   would fight the user. The output reports it as
-  `ok (the App brought itself to the foreground)`.
+  `ok (the App brought itself to the foreground)`. Measured (headless-max
+  ticket 02, 2026-11-03): on its first restore, an App that has not been
+  the foreground since it started gets the foreground from Windows,
+  charmap and winuse's own test fixture alike. An App started in the
+  background and restored before it was ever in front is the likely case.
 - `close-window` only requests the close. An app that asks to save
   leaves its Window open, and the agent reads what it asks.
 - Posted Keys can do nothing and still report `ok`. The output says to
