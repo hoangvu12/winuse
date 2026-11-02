@@ -315,6 +315,11 @@ back, and print `ok`. They are not Batch steps.
   normal size, because Windows cannot maximize without activating. The
   output says so. Use `activate-window` when the user wants it maximized and
   in front.
+- Some Apps bring themselves to the front when they are restored, even
+  though winuse does not activate them. `restore-window` then prints
+  `ok (the App brought itself to the foreground)`. winuse does not take the
+  foreground back. Tell the user their foreground moved if they were
+  working elsewhere, and do not repeat the restore.
 - `move-window` and `resize-window` refuse a minimized or maximized Window;
   `restore-window` it first. They use the screenshot line's `window at
   X,Y WxH` rectangle, so feed its numbers to them directly. An app can
@@ -492,7 +497,8 @@ anything reached the app.
 - `may have taken effect` means the write failed part way. Read the Window
   State before you repeat anything.
 - `is minimized` means a Headless Action cannot reach the Window. Run
-  `restore-window`, which leaves the foreground alone, or `activate-window`,
+  `restore-window`, which does not take the foreground (some Apps bring
+  themselves to the front, and the output says so), or `activate-window`,
   which takes it, or pass `--headed`, then read the Window State and retry
   once.
 

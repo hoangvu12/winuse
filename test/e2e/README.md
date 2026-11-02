@@ -347,6 +347,16 @@ still the foreground window afterwards. The shared helpers are in
   `restore-window`, `move-window` (read back through GetWindowRect within
   8 px, and through the fixture's own canvas rectangle), `resize-window`
   and `close-window`, which must end the fixture process within 5 s.
+  The fixture does not activate itself, so `restore-window` prints a
+  plain `ok`.
+- `TestRestoreWindowReportsSelfActivation` (`window_actions_test.go`,
+  headless-max ticket 02) **starts and ends its own charmap**, a `#32770`
+  dialog App that activates itself when it is restored. Covered, then
+  minimized and restored, it must take the foreground and
+  `restore-window` must print
+  `ok (the App brought itself to the foreground)`. When charmap stays in
+  the background on a run, the output must be a plain `ok` and the test
+  skips with that reason.
 - `TestElementScrollByStepsAndIntoView` (`element_scroll_test.go`): the
   list scrolls by steps (2, then the default 3, which stops at the end),
   fails at the end with "the Element did not scroll; it may already be at

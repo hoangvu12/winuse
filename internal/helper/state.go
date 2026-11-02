@@ -147,6 +147,8 @@ type Services struct {
 	Maximized         func(hwnd uint64) bool                       // IsZoomed
 	RestoresMaximized func(hwnd uint64) bool                       // WPF_RESTORETOMAXIMIZED: the minimized Window was maximized
 	WindowOpen        func(hwnd uint64) bool                       // the Window still exists and is visible
+	Foreground        func() uint64                                // GetForegroundWindow: restore-window's self-activation check
+	WindowPID         func(hwnd uint64) uint32                     // the Window's process: another Window of the same App
 	Sleep             func(d time.Duration)                        // the verification polls' pause; nil: time.Sleep
 
 	// The in-control indicator (ticket 13): raised over the target Window
@@ -451,6 +453,12 @@ func defaultServices(s Services) Services {
 	}
 	if s.WindowOpen == nil {
 		s.WindowOpen = win.WindowOpen
+	}
+	if s.Foreground == nil {
+		s.Foreground = win.ForegroundWindow
+	}
+	if s.WindowPID == nil {
+		s.WindowPID = win.WindowPID
 	}
 	if s.Sleep == nil {
 		s.Sleep = time.Sleep

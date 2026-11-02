@@ -5,10 +5,13 @@ package helper
 // and close-window act on the Window itself rather than on one of its
 // Elements. They are Headless with no Headed form: non-activating Win32
 // calls alone (ShowWindowAsync, SetWindowPos with SWP_NOACTIVATE, a
-// posted WM_CLOSE), so they never activate the Window, move the pointer,
-// send keys or raise the in-control banner. The Agent Cursor does not
-// show them either: the Window itself moves visibly. They are not Batch
-// steps, because a Batch acts inside one Window.
+// posted WM_CLOSE), so winuse never activates the Window, moves the
+// pointer, sends keys or raises the in-control banner. The Agent Cursor
+// does not show them either: the Window itself moves visibly. They are not
+// Batch steps, because a Batch acts inside one Window.
+//
+// The calls are non-activating, but the outcome is not guaranteed: an App
+// can activate itself when it is restored, and restore-window reports it.
 //
 // Each one verifies its outcome by reading the Window back, polled with a
 // short bound: restore and minimize the iconic state, move and resize the
@@ -22,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
@@ -54,6 +58,13 @@ const (
 // maximize, so a Window that was maximized before it was minimized
 // (WPF_RESTORETOMAXIMIZED) comes back at its normal size, and the output
 // says so. A Window that is already normal is left alone.
+//
+// The call never activates, but some Apps activate themselves on restore
+// (charmap did in 6 of 6 runs, .scratch/headless-gaps/headless-100.md
+// section 0). restore-window compares the foreground before and after,
+// and says so when the App took it (selfActivated). It never gives the
+// foreground back: that needs SetForegroundWindow, which winuse cannot
+// call without the foreground right, and it would fight the user.
 func restoreWindow(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.WindowActionArgs
@@ -66,6 +77,7 @@ func restoreWindow(s Services) Command {
 				return okOutput, nil
 			}
 			toMaximized := minimized && s.RestoresMaximized(w.ID)
+			fgBefore := s.Foreground()
 			if err := s.RestoreWindow(w.ID); err != nil {
 				return "", windowCallError(err)
 			}
@@ -82,12 +94,39 @@ func restoreWindow(s Services) Command {
 				return "", Fail(fmt.Sprintf("window %d is still %s after the restore", w.ID, state),
 					"the restore was delivered and the Window did not change; read winuse list-windows, or bring it to the foreground with winuse activate-window "+id)
 			}
+			var notes []string
 			if toMaximized && !s.Maximized(w.ID) {
-				return "ok (restored at normal size: the Window was maximized before it was minimized, and Windows cannot maximize a Window without activating it)\n", nil
+				notes = append(notes, "restored at normal size: the Window was maximized before it was minimized, and Windows cannot maximize a Window without activating it")
 			}
-			return okOutput, nil
+			if s.selfActivated(w.ID, fgBefore) {
+				notes = append(notes, "the App brought itself to the foreground")
+			}
+			if len(notes) == 0 {
+				return okOutput, nil
+			}
+			return "ok (" + strings.Join(notes, "; ") + ")\n", nil
 		})
 	}
+}
+
+// selfActivated reports whether the restored Window's App took the
+// foreground during the restore: the foreground is now the Window or
+// another Window of its process, and was not before.
+func (s Services) selfActivated(hwnd, fgBefore uint64) bool {
+	fg := s.Foreground()
+	return fg != fgBefore && s.sameApp(fg, hwnd) && !s.sameApp(fgBefore, hwnd)
+}
+
+// sameApp reports whether other is hwnd or another Window of its process.
+func (s Services) sameApp(other, hwnd uint64) bool {
+	if other == 0 {
+		return false
+	}
+	if other == hwnd {
+		return true
+	}
+	pid := s.WindowPID(hwnd)
+	return pid != 0 && s.WindowPID(other) == pid
 }
 
 // minimizeWindow runs `winuse minimize-window <window>`: the Window is

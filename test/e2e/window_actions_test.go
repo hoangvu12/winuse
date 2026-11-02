@@ -15,6 +15,7 @@
 package e2e
 
 import (
+	"os/exec"
 	"strconv"
 	"strings"
 	"testing"
@@ -75,7 +76,9 @@ func TestWindowActionsKeepTheForeground(t *testing.T) {
 		t.Errorf("the refusal must say nothing was sent and name restore-window: %q", stderr)
 	}
 
-	// restore-window: back at its normal size, without the foreground.
+	// restore-window: back at its normal size, without the foreground. The
+	// fixture does not activate itself, so the output is a plain ok, with
+	// no self-activation note (headless-max ticket 02).
 	stdout, stderr, exit = runWindowAction(t, "restore-window", window)
 	assertActionOK(t, "restore-window", stdout, stderr, exit)
 	if win.IsMinimized(id) {
@@ -128,4 +131,53 @@ func TestWindowActionsKeepTheForeground(t *testing.T) {
 		t.Error("the fixture process is still running 5 s after close-window")
 	}
 	assertForeground(t, "close-window", cover)
+}
+
+// TestRestoreWindowReportsSelfActivation (headless-max ticket 02):
+// charmap, a #32770 dialog App, activates itself when it is restored, even
+// by the non-activating SW_SHOWNOACTIVATE (6 of 6 runs in
+// .scratch/headless-gaps/headless-100.md section 0). restore-window must
+// say so, and its note must match the foreground the test reads back.
+// winuse does not take the foreground back. The test starts its own
+// charmap and ends it afterwards.
+func TestRestoreWindowReportsSelfActivation(t *testing.T) {
+	optIn(t)
+	cmd := exec.Command("charmap.exe")
+	if err := cmd.Start(); err != nil {
+		t.Skipf("starting charmap.exe: %v", err)
+	}
+	proc := cmd.Process
+	t.Cleanup(func() {
+		_ = proc.Kill()
+		_, _ = proc.Wait()
+	})
+	pid := uint32(proc.Pid)
+	id := findWindowOf(t, pid, "#32770", "", 30*time.Second)
+	window := strconv.FormatUint(id, 10)
+	cover := coverWindow(t, window)
+
+	stdout, stderr, exit := runWindowAction(t, "minimize-window", window)
+	assertActionOK(t, "minimize-window (charmap)", stdout, stderr, exit)
+	assertForeground(t, "minimize-window (charmap)", cover)
+
+	stdout, stderr, exit = runWindowAction(t, "restore-window", window)
+	if exit != 0 {
+		t.Fatalf("restore-window (charmap): exit %d, stderr:\n%s", exit, stderr)
+	}
+	if win.IsMinimized(id) {
+		t.Error("restore-window: charmap is still minimized")
+	}
+	fg := win.ForegroundWindow()
+	if fg != id && win.WindowPID(fg) != pid {
+		// The note must not appear when the foreground stayed.
+		assertActionOK(t, "restore-window (charmap, no self-activation)", stdout, stderr, exit)
+		assertForeground(t, "restore-window (charmap)", cover)
+		t.Skipf("charmap did not bring itself to the foreground this run (the foreground is %s); the note is untested", describeWindow(t, fg))
+	}
+	if want := "ok (the App brought itself to the foreground)\n"; stdout != want {
+		t.Errorf("restore-window (charmap): stdout = %q, want %q (charmap took the foreground)", stdout, want)
+	}
+	if stderr != "" {
+		t.Errorf("restore-window (charmap): unexpected stderr: %q", stderr)
+	}
 }
