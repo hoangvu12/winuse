@@ -141,3 +141,34 @@ No running-app button was touched.
 **Reading:**
 - [I] The tray overflow can be read Headless only by opening it, which takes the foreground. Mark tray-overflow reads as foreground-taking.
 - [I] Close the overflow with Escape to its island InputSite, not to the top-level.
+
+## 7. Notifications (desktop-parity 18)
+
+**Before:**
+- [M] HKCU\...\PushNotifications: ToastEnabled=0, DatabaseMigrationCompleted=1.
+- [M] Notifications\Settings: NOC_GLOBAL_SETTING_ALLOW_NOTIFICATION_SOUND=0, NOC_GLOBAL_SETTING_ALLOW_CRITICAL_TOASTS_ABOVE_LOCK=0. No per-app key for the PowerShell AUMID.
+- [M] Do Not Disturb and Focus: every CloudStore windows.data.donotdisturb.* blob was the same 13-byte default (not set). SHQueryUserNotificationState=5.
+
+**Turning toasts on:**
+- [M] Writing ToastEnabled=1 alone did **not** take effect, even after 3 s: ToastNotifier.Setting stayed DisabledForUser and no toast window appeared.
+- [M] With the user's approval, the user's already-open Settings window was used. Toggle on SystemSettings_Notifications_ShowAppNotifications_ToggleSwitch: S_OK, Off to On, Setting=Enabled, and Settings itself wrote ToastEnabled=1. Settings took the foreground.
+- [M] Gotcha: launching ms-settings:notifications again on an open Settings window rebuilds the page. A switch found mid-rebuild is stale (Indeterminate; Toggle fails with E_FAIL 0x80004005). Toggle without navigating again.
+- [M] Windows PowerShell 5.1 cannot subscribe to WinRT events ("cannot subscribe to Windows RT events"), so activation results from toast.ps1 were invalid. The toasts were raised from the probe's C# driver instead (same PowerShell AUMID). A self-Hide fired Dismissed=ApplicationHidden in 16 ms, so the plumbing works.
+
+**The toast window and tree:**
+- [M] The toast is the existing ShellExperienceHost `Windows.UI.Core.CoreWindow` "New notification" (1966,1068 594x300). It is found as a UIA root child by name 0.78-1.03 s after Show. A "new window" diff never sees it, because the window is reused.
+- [M] Its tree has 11 Elements: ScrollViewer "ToastCenterScrollViewer" > FlexibleToastView "NormalToastView" (Invoke; Name "New notification from Windows PowerShell, ...") > SenderName, SettingsButton, DismissButton ("Move this notification to Notification Center"), Title, MessageText, and VerbButtons "Alpha" and "Beta" (Invoke).
+
+**Acting on toasts:**
+- [M] Invoke on VerbButton "Alpha": S_OK. The raising process got Activated with args=btnA-read about 0.76 s later. The banner cloaked (cloaked=2). Foreground unchanged.
+  - In an earlier PowerShell-raised run, with no listener, the same Invoke moved the foreground from Settings to explorer's ApplicationManager_DesktopShellWindow, and no new process was launched. [I] A foreground activation hands the foreground to the shell when there is no live listener.
+- [M] Invoke on DismissButton: S_OK. Dismissed reason=UserCanceled, the banner cloaked, foreground unchanged.
+- [M] A third toast was left alone: the banner timed out after 6.0 s (Dismissed reason=TimedOut) and moved to the notification center.
+  - The Clock Invoke again opened no panel, so the center's UI could not be read or acted on.
+  - Through the API: ToastNotificationManager.History.GetHistory(AUMID) listed 2 (winuseprobe/center, winuseprobe/dismiss). History.Remove(tag, group): S_OK, down to 1. History.Clear: S_OK, down to 0.
+
+**After:**
+- [M] The switch toggled On to Off: S_OK. ToastEnabled=0, Setting=DisabledForUser.
+- [M] The test had auto-created Notifications\Settings\{1AC14E77...}\WindowsPowerShell\v1.0\powershell.exe (LastNotificationAddedTime, PeriodicNotificationCount=8, PeriodicInteractionCount=2); the probe deleted it.
+- [M] Final diff against the exports taken before: PushNotifications 0 lines, Notifications\Settings 0 lines, the DND blobs byte-identical, SHQueryUserNotificationState=5. Restored exactly.
+- [M] The user's Settings window was left open on the Notifications page; its previous page is lost (the user accepted this).

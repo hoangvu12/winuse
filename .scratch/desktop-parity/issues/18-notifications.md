@@ -26,3 +26,22 @@ Do it like agent-desktop: list, act, dismiss, `wait notification`, with the iden
 ### 2026-11-03: shell probe, partial (`../../headless-gaps/probes-round4.md` section 7)
 
 Not measured: toasts are turned off on the laptop (ToastEnabled = 0), so no toast appeared, and the probe left the setting alone. The Clock OmniButton is the Action Center's entry point on Windows 11 (see dp-09). The toast and Action Center probe is still pending, on a machine with toasts on and with the user's OK.
+
+### 2026-11-03: toasts measured (`../../headless-gaps/probes-round5.md` section 7)
+
+**Visible toasts work Headless.**
+- The banner is ShellExperienceHost's reused `Windows.UI.Core.CoreWindow` "New notification". Find it by name (a new-window diff misses it, because the window is reused).
+- Its tree: the toast view, with the App name in its Name, then Title, MessageText, the action buttons (VerbButton) and DismissButton.
+- Invoke on an action button reached the App. Dismiss worked. The foreground was unchanged when the App was listening.
+- An action for an App with no live listener can hand the foreground to the shell: report it (headless-max 03's detect-and-report).
+
+**The Notification Center cannot be opened through UIA** (the Clock Invoke opens nothing, see dp-09).
+- Its list is reachable only through `ToastNotificationManager.History` for a known AUMID, which covers only Apps winuse can name. Other Apps' notifications there are out of reach.
+- So build `list-notifications`, `notification-action` and `notification-dismiss` on the visible banners only, plus `wait notification` (poll for the banner by name).
+- Older notifications need the panel, opened with `--headed` (Win+N through dp-09's fallback) and then read through UIA. That leg was not measured.
+
+The identity guard stays: re-read the App and text before acting.
+
+Probe notes:
+- Toasts were off on the laptop, and writing ToastEnabled alone did not enable them; the Settings toggle did.
+- An e2e test should raise its toast from a small native or C# helper (PowerShell 5.1 cannot receive the activation), and it needs toasts enabled.
