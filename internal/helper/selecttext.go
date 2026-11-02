@@ -94,8 +94,10 @@ func selectText(s Services) Command {
 		if serr != nil {
 			return "", serr
 		}
-		if w, index, o, ok := s.pageRoute(a.Window, target); ok {
+		if out, rerr, ok := s.onPage(a.Window, target, func(w win.WindowInfo, index int, o *page.Origin) (string, *Error) {
 			return s.pageSelectText(ctx, w, index, o, target, span)
+		}); ok {
+			return out, rerr
 		}
 		ha, ok := s.Actions.(HeadlessActor)
 		ts, ok2 := s.Actions.(TextSelector)
