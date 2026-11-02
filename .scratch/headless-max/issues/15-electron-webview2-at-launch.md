@@ -42,3 +42,16 @@ New scope, at the research chat's request: **attach to a running Electron App**,
 ### 2026-11-03: triage decision (user)
 
 Adopt both: `launch-app --cdp` and attaching to a running Electron App. The attach always asks the user first, never runs by default, and refuses when the nodeCliInspect fuse is off. It reverses ADR 0012 Decision 6, recorded in ADR 0013.
+
+### 2026-11-03: launch-time CDP measured (`../headless-gaps/probes-round5.md` section 3)
+
+Both work, with the foreground unchanged at launch.
+
+- **Electron:**
+  - `--remote-debugging-port=0` writes `DevToolsActivePort` into the App's userData folder (`%APPDATA%\<app name>` by default), and prints "DevTools listening on ws://127.0.0.1:<port>/..." on stderr.
+  - When winuse launches the App, read stderr for the port, or the file when the userData path is known.
+  - The port owner is the launched electron.exe.
+- **WebView2:**
+  - Set `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<free port>` in the child's environment only. winuse picks a free loopback port, because WebView2 needs a fixed one.
+  - The owner check: msedgewebview2.exe inside the launched App's process tree. The user's other msedgewebview2 processes are unaffected.
+- **Typing:** `Input.insertText` needs a DOM focus step first (the existing Page type-text --into route already does `DOM.focus`). No window activation.

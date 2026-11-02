@@ -53,3 +53,22 @@ Foreground and cursor were unchanged at every step.
 - [M] With occlusion off, ShowContextMenu on the textarea returned S_OK, and a new Chrome_WidgetWin_1 menu window appeared (425x715) with 12 items: Invoke on most, ExpandCollapse on Spell check and Writing Direction. Item names include the shortcut ("Select all Ctrl+A", "Undo Ctrl+Z").
 - [M] Invoke on "Select all": S_OK and the menu closed. **But it selected the document ("winuse probe page"), not the textarea**: activeElement stayed empty and the textarea's selection stayed 0,0. ShowContextMenu does not focus its target, so edit commands act on whatever Chrome considers focused.
 - [M] Closing: Collapse on the menu's SubmenuView fails with E_FAIL (0x80004005). Escape posted to the menu window closes it.
+
+## 3. Electron and WebView2 started in "controllable" mode (headless-max 15)
+
+Foreground and cursor were unchanged at launch and at every step, in both.
+
+**Electron 45.2.1** (a minimal app; main.js sets userData to `<app>\ud-<pid>` and uses showInactive):
+- [M] Launched with `--remote-debugging-port=0`, it wrote DevToolsActivePort into the userData folder (`<app>\ud-19264\DevToolsActivePort`), containing "16065 | /devtools/browser/<uuid>". The same line was printed on stderr ("DevTools listening on ws://127.0.0.1:16065/..."). Both appeared within about 2.8 s of launch.
+- [M] The port is owned by electron.exe itself (the launched pid). /json/version: Chrome/156.0.8078.75, Electron/45.2.1. /json/list: one page target (file:///.../page.html).
+- [I] Without app.setPath, the file lands in %APPDATA%\<app name>. winuse should read the userData path, or parse stderr when it launches the App itself.
+
+**WebView2** (the probe's own WinForms app with Microsoft.Web.WebView2 1.0.2903.40; runtime 156.0.4314.58; user data folder in the scratchpad; ShowWithoutActivation):
+- [M] Launched with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=16075` in the child's environment only (no registry). The port answered /json/version (Edg/156.0.4314.58) by 1.5 s; the page had loaded at 0.56 s.
+- [M] Owner: msedgewebview2.exe(22592), child of wv2probe.exe(6012), inside the app's process tree. The user's 6 existing msedgewebview2 processes were untouched, and none of them owned the port. /json/list: exactly one page target, the probe's page.
+- [M] Killing the app tree left none of the probe's msedgewebview2 processes, and the user data folder was deleted.
+
+**Input.insertText with the window covered** (same in both):
+- [M] With nothing focused in the page (activeElement empty, hasFocus=false), insertText returns {} and does nothing.
+- [M] After Runtime.evaluate("t.focus(); t.setSelectionRange(5,5)"), insertText("xy😀") gave the value "helloxy😀 page", one input event and caret 9,9 (UTF-16). document.hasFocus() became true, and the foreground was unchanged.
+- [I] So insertText needs a DOM focus step first. No window activation is required.
