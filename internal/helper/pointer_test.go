@@ -54,10 +54,10 @@ func newPointerSpy(t *testing.T) *pointerSpy {
 	s.svc.Shots = shot.NewStore()
 	// A default synthetic capture (800×470 at (100, 200)); set before
 	// CommandsWith, which copies Services by value and defaults a nil
-	// Capture to the real capture chain.
-	s.svc.Capture = func(hwnd uint64) (shot.Frame, error) {
+	// capture to the real capture chains.
+	fakeCapture(&s.svc, func(hwnd uint64) (shot.Frame, error) {
 		return syntheticFrame(800, 470, 100, 200), nil
-	}
+	})
 	s.svc.Locked = func() (bool, string) { return s.locked, "" }
 	s.svc.Integrity = func(win.WindowInfo) error { return nil }
 	s.svc.Activate = func(hwnd uint64) error { s.activations++; return s.activateErr }
@@ -123,9 +123,9 @@ func TestScrollHalfScaleFootprintCentre(t *testing.T) {
 	s := newPointerSpy(t)
 	// Set before CommandsWith (the services are copied by value): a
 	// 3136×1960 window over the cap, so the scale is exactly 0.5.
-	s.svc.Capture = func(hwnd uint64) (shot.Frame, error) {
+	fakeCapture(&s.svc, func(hwnd uint64) (shot.Frame, error) {
 		return syntheticFrame(3136, 1960, 100, 200), nil
-	}
+	})
 	cmds := CommandsWith(s.svc)
 	_, cmdErr := runJSON(t, cmds, "get-window-state", windowRef{Window: "101", Screenshot: true})
 	if cmdErr != nil {
@@ -436,10 +436,10 @@ func TestBatchRunsThePointerSteps(t *testing.T) {
 	if s.hovered != [3]int32{101, 550, 495} {
 		t.Errorf("hovered %+v, want target 101 at (550, 495)", s.hovered)
 	}
-	// Each step activated its Window once: three activations (plus the
-	// one the recorded screenshot's capture performed).
-	if s.activations != 4 {
-		t.Errorf("activations = %d, want 4 (one per step plus the screenshot's)", s.activations)
+	// Each step activated its Window once: three activations. The
+	// recorded screenshot activated nothing (ADR 0011).
+	if s.activations != 3 {
+		t.Errorf("activations = %d, want 3 (one per step, none for the headless screenshot)", s.activations)
 	}
 }
 

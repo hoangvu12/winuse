@@ -6,7 +6,8 @@ package helper
 // Window, activate and verify the foreground, then act) and keep the
 // output contract: `ok`, or a one-line failure with a recovery hint. Key
 // names and text are validated before the pipeline runs, so a bad key
-// never activates the Window or sends input.
+// never activates the Window or sends input. The headless-parity tickets
+// add the routes that need no foreground (keyroute.go).
 
 import (
 	"context"
@@ -21,8 +22,8 @@ import (
 // typeTextUsageHint and pressKeyUsageHint are the recovery hints for the
 // commands' argument failures.
 const (
-	typeTextUsageHint = "usage: winuse type-text <window> <text>"
-	pressKeyUsageHint = "usage: winuse press-key <window> <key>"
+	typeTextUsageHint = "usage: winuse type-text <window> [--post] <text>"
+	pressKeyUsageHint = "usage: winuse press-key <window> <key> [--post]"
 )
 
 // typeText runs `winuse type-text <window> <text>`: the Window is
@@ -32,6 +33,13 @@ const (
 // checkpoint rides along: typing aborts between its batches when the
 // user pressed Esc — the abort reports the exit-130 stop — or when
 // the request's deadline expires (finding 10).
+//
+// Text with no control characters into a focused classic edit control is
+// Headless instead (ADR 0011, Decision 4; keyroute.go): the Window
+// resolves, the probe reads its focused control, and the shared predicate
+// decides the route before anything is sent. With `headed` the probe is
+// skipped and the typing is v1's. With `post` the text is posted to the
+// focused control as Posted Keys (Decision 5).
 func typeText(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.TypeTextArgs
@@ -41,6 +49,36 @@ func typeText(s Services) Command {
 		if a.Text == "" {
 			return "", Fail("type-text: text is required",
 				"pass the text as one argument; quote it if it contains spaces")
+		}
+		if a.Post {
+			// Posted Keys (ADR 0011, Decision 5): WM_CHAR per UTF-16 unit
+			// to the focused control, no foreground.
+			if a.Headed {
+				return "", postFlagsError("type-text")
+			}
+			return s.postKeys(ctx, a.Window, "type", func(target uint64) (int, error) {
+				return s.PostText(target, a.Text)
+			})
+		}
+		if !a.Headed {
+			// The Page holds the focus: typing goes over the Browser
+			// Connection (pageactions.go).
+			if out, rerr, ok := s.pageTypeText(ctx, a.Window, a.Text); ok {
+				return out, rerr
+			}
+		}
+		if !a.Headed && s.KeyRoute != nil {
+			w, rerr := resolveWindow(s, a.Window)
+			if rerr != nil {
+				return "", rerr
+			}
+			// headlessStep's type-text case for an unposted, unheaded
+			// request: the route read once, then editTypeRoute.
+			if route := s.keyRoute(args, w); route != nil {
+				if edit, ok := editTypeRoute(a.Text, *route); ok {
+					return s.typeIntoEdit(ctx, w, edit, a.Text)
+				}
+			}
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
 			// The abort checkpoint polls the Esc stop and the request's
@@ -57,6 +95,13 @@ func typeText(s Services) Command {
 // pressKey runs `winuse press-key <window> <key>`: the Window is activated
 // and verified in the foreground, then the key (or chord, keys down in
 // order and up in reverse) is injected.
+//
+// Return and Escape on a classic dialog are Headless instead (ADR 0011,
+// Decision 4; keyroute.go): the Window resolves, the probe reads it, and
+// the shared predicate decides the route before anything is sent. With
+// `headed` the probe is skipped and the press is v1's. With `post` the key
+// is posted to the focused control as Posted Keys (Decision 5), refused
+// with modifiers.
 func pressKey(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.PressKeyArgs
@@ -66,6 +111,39 @@ func pressKey(s Services) Command {
 		chord, err := keys.Parse(a.Key)
 		if err != nil {
 			return "", keyError(err)
+		}
+		if a.Post {
+			// Posted Keys (ADR 0011, Decision 5): WM_KEYDOWN and WM_KEYUP
+			// to the focused control, no foreground, no modifiers.
+			if a.Headed {
+				return "", postFlagsError("press-key")
+			}
+			if postedModifier(chord) {
+				return "", modifierRefusal(chord)
+			}
+			return s.postKeys(ctx, a.Window, "press "+chord.String(), func(target uint64) (int, error) {
+				return s.PostKeys(target, chord)
+			})
+		}
+		if !a.Headed {
+			// The Page holds the focus: the key goes over the Browser
+			// Connection (pageactions.go).
+			if out, rerr, ok := s.pagePressKey(ctx, a.Window, chord); ok {
+				return out, rerr
+			}
+		}
+		if !a.Headed && s.KeyRoute != nil {
+			w, rerr := resolveWindow(s, a.Window)
+			if rerr != nil {
+				return "", rerr
+			}
+			// headlessStep's press-key case for an unposted, unheaded
+			// request: the route read once, then dialogKeyRoute.
+			if route := s.keyRoute(args, w); route != nil {
+				if dk, ok := dialogKeyRoute(chord, *route); ok {
+					return s.pressDialogKey(ctx, w, dk)
+				}
+			}
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
 			if err := s.PressKeys(chord); err != nil {

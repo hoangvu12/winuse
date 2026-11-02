@@ -106,6 +106,11 @@ func click(s Services) Command {
 		if terr != nil {
 			return "", terr
 		}
+		// A Page Element routes over the Browser Connection (browser merge
+		// ticket 05, pageactions.go).
+		if w, index, o, ok := s.pageRoute(a.Window, target); ok {
+			return s.pageClick(ctx, w, index, o, target, button, count, a.Headed)
+		}
 
 		if target.point != nil {
 			// The coordinate form (@x,y, ticket 08): input at the point

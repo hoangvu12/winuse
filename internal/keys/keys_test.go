@@ -345,3 +345,23 @@ func TestCanonicalNamesRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// TestModifier pins which keys are modifiers (Control, Alt, Shift, left or
+// right): the keys Posted Keys refuse, because posted messages leave the
+// keyboard state that apps read untouched.
+func TestModifier(t *testing.T) {
+	for name, want := range map[string]bool{
+		"Control_L": true, "Control_R": true, "ctrl": true,
+		"Shift_L": true, "Shift_R": true, "shift": true,
+		"Alt_L": true, "Alt_R": true, "option": true,
+		"Return": false, "a": false, "Escape": false, "F4": false, "KP_Enter": false, "Tab": false,
+	} {
+		chord, err := Parse(name)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", name, err)
+		}
+		if got := chord[0].Modifier(); got != want {
+			t.Errorf("%s: Modifier = %v, want %v", name, got, want)
+		}
+	}
+}

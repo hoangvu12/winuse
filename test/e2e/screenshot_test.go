@@ -66,10 +66,11 @@ type screenshotInfo struct {
 }
 
 // parseScreenshotLine finds and parses the "Screenshot: <path> (<W>x<H>
-// px, scale <s>)" line of a get-window-state --screenshot output.
+// px, scale <s>, window at <X>,<Y> <W>x<H>)" line of a get-window-state
+// --screenshot output. The Window's rectangle is matched, not kept.
 func parseScreenshotLine(t *testing.T, stdout string) screenshotInfo {
 	t.Helper()
-	re := regexp.MustCompile(`(?m)^Screenshot: (.*) \((\d+)x(\d+) px, scale ([0-9.]+)\)$`)
+	re := regexp.MustCompile(`(?m)^Screenshot: (.*) \((\d+)x(\d+) px, scale ([0-9.]+), window at -?\d+,-?\d+ \d+x\d+\)$`)
 	m := re.FindStringSubmatch(stdout)
 	if m == nil {
 		t.Fatalf("no parsable Screenshot line in:\n%s", stdout)

@@ -24,6 +24,9 @@ type app struct {
 	dialogHwnd uintptr
 	font       uintptr
 
+	classicHwnd uintptr // the open Classic Dialog, 0 when closed (classic.go)
+	classicProc uintptr // its dialog procedure callback
+
 	uia *uiaProviders
 
 	focusMain   Elem // logical focus inside the main window
@@ -92,6 +95,7 @@ func (a *app) createWindows(origin Origin) error {
 
 	mainProc := newCallback(a.wndMain)
 	dialogProc := newCallback(a.wndDialog)
+	a.classicProc = newCallback(a.dlgClassic)
 	if err := registerClass(MainWindowClass, mainProc, hmod); err != nil {
 		return err
 	}
@@ -175,6 +179,13 @@ func (a *app) loop() {
 		if int32(r) <= 0 {
 			return
 		}
+		// The Classic Dialog is modeless: its keyboard handling (Tab,
+		// Return, Escape) is the dialog manager's, as in any real app.
+		if a.classicHwnd != 0 {
+			if r, _, _ := procIsDialogMessageW.Call(a.classicHwnd, uintptr(unsafe.Pointer(&m))); r != 0 {
+				continue
+			}
+		}
 		procTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))
 		procDispatchMessageW.Call(uintptr(unsafe.Pointer(&m)))
 	}
@@ -247,6 +258,12 @@ func (a *app) wndMain(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		// Fall through too: modifier bookkeeping must not eat the key-up.
 	case wmChar:
 		a.onChar(rune(uint32(wp)))
+		return 0
+	case wmOpenClassic:
+		a.openClassic()
+		return 0
+	case wmOpenMessageBox:
+		a.openMessageBox()
 		return 0
 	}
 	r, _, _ := procDefWindowProcW.Call(hwnd, uintptr(msg), wp, lp)
@@ -439,7 +456,7 @@ func (a *app) hitTest(p point) Elem {
 		ElemMenuFile, ElemMenuEdit, ElemMenuHelp,
 		ElemTextField, ElemButtonClick, ElemButtonSaveAs, ElemButtonDisabled,
 		ElemTwinA, ElemTwinB, ElemSoloOne, ElemSoloTwo,
-		ElemCheckboxNotify, ElemDetailsExpander,
+		ElemCheckboxNotify, ElemButtonClassic, ElemButtonMessageBox, ElemDetailsExpander,
 	} {
 		if r, ok := Rect(e, a.state.ListFirstVisible); ok && inRect(p.X, p.Y, r) {
 			return e
@@ -489,6 +506,14 @@ func (a *app) click(elem Elem, canvas Point) {
 		a.changed()
 	case elem == ElemButtonSaveAs:
 		a.openDialog()
+	case elem == ElemButtonClassic, elem == ElemButtonMessageBox:
+		// Posted, so that a UI Automation Invoke returns at once: the
+		// MessageBox runs a modal loop until it closes.
+		msg := uintptr(wmOpenClassic)
+		if elem == ElemButtonMessageBox {
+			msg = wmOpenMessageBox
+		}
+		procPostMessageW.Call(a.mainHwnd, msg, 0, 0)
 	case elem == ElemButtonDisabled:
 		// Disabled elements ignore input (IsEnabled is false).
 	case isListItem(elem):
@@ -937,6 +962,12 @@ func keyName(vk uint32) string {
 
 // ---- painting ----
 
+// SelectedItemCOLORREF fills the selected list item (COLORREF 0x00BBGGRR:
+// RGB 0, 154, 204). No other part of the window is painted in it, so the
+// e2e tests use it to tell a capture of this window from a capture of
+// whatever covers it.
+const SelectedItemCOLORREF = 0x00CC9A00
+
 // Colors (COLORREF: 0x00BBGGRR).
 const (
 	colWindowBg = 0x00F0F0F0 // window background
@@ -946,7 +977,7 @@ const (
 	colGray     = 0x00999999
 	colLight    = 0x00C8C8C8
 	colAccent   = 0x00B34700 // focus frames (BGR: strong orange)
-	colSelect   = 0x00CC9A00 // selected list item
+	colSelect   = SelectedItemCOLORREF
 	colText     = 0x00222222
 	colMark     = 0x002200CC // canvas click marks (BGR: red-ish)
 )
@@ -986,7 +1017,7 @@ func (a *app) paintMain(hwnd uintptr) {
 		a.paintToolbar(hdc)
 	}
 	a.paintTextField(hdc)
-	for _, e := range []Elem{ElemButtonClick, ElemButtonSaveAs, ElemButtonDisabled, ElemTwinA, ElemTwinB, ElemSoloOne, ElemSoloTwo} {
+	for _, e := range []Elem{ElemButtonClick, ElemButtonSaveAs, ElemButtonDisabled, ElemTwinA, ElemTwinB, ElemSoloOne, ElemSoloTwo, ElemButtonClassic, ElemButtonMessageBox} {
 		a.paintButton(hdc, e)
 	}
 	a.paintCheckbox(hdc)

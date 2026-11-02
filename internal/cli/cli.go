@@ -22,17 +22,25 @@ import (
 const usageHead = `usage: winuse [--headed] <command> [arguments]
 
 global options:
-  --headed                    run Actions the v1 way: bring the Window to the
+  --headed                    run an Action the v1 way: bring the Window to the
                                foreground, use the real pointer and keyboard,
-                               and show the in-control banner. Without it,
-                               click on an Element (left, single), set-value
-                               and perform-secondary-action (except Raise) on
-                               an element index, name: or id: run headless
-                               through UI Automation and leave your
-                               foreground, pointer and keyboard alone; every
-                               other Action is always headed. Accepted before
+                               and show the in-control banner. Accepted before
                                or after the command; inside type-text's text
                                or set-value's value it is literal text
+
+headless (the default; your foreground, pointer and keyboard stay untouched):
+  click (left, single), set-value, perform-secondary-action (except Raise)
+  and scroll on an element index, name: or id:; press-key Return or Escape
+  on a classic dialog; type-text into a focused classic edit control, for
+  text with no newline, tab or other control character; screenshots from
+  get-window-state --screenshot and zoom (--headed activates the Window
+  first); and the Window Actions restore-, minimize-, move-, resize- and
+  close-window, which have no headed form. Every other Action is headed.
+  tab new and tab close are headless; tab switch is headless through the
+  winuse extension and headed on a launched or cloned browser. In a
+  browser Window with a Browser Connection, every Action on its Page is
+  headless, and so are navigate, back, forward, reload, upload, dialog,
+  wait and eval, which have no headed form.
 
 commands:
   list-windows                list visible Windows: Window ID, App and title
@@ -54,13 +62,29 @@ commands:
                                coordinates from the Window's latest
                                screenshot; options: --count 1|2|3 (default 1),
                                --button left|middle|right (default left)
-  type-text <window> <text>    type Unicode text into the Window's focused Element
-  press-key <window> <key>     press a key or key combination by Codex's key
+  type-text <window> [--post] <text>
+                               type Unicode text into the Window's focused
+                               Element (headless into a classic edit control
+                               such as Notepad's or a Win32 dialog's).
+                               --post, right after the Window, posts the text
+                               to the focused control without the foreground
+                               instead: best effort, as for press-key
+  press-key <window> <key> [--post]
+                               press a key or key combination by Codex's key
                                names, e.g. Return, Tab, Control_L+a, Numpad_0
+                               (Return or Escape on a classic dialog presses
+                               its default or Cancel button headless).
+                               --post posts the key to the focused control
+                               without the foreground instead: best effort,
+                               no modifiers, and the app may ignore it (the
+                               output says posted; read the Window State to
+                               check). --post and --headed do not combine
   set-value <window> <element index | name: | id: | @x,y> <value>
                                set an Element's value directly (a settable
-                               edit or a numeric range); @x,y sets the
-                               Element under a point of the latest screenshot
+                               edit, a numeric range, on|off for a check
+                               box or other toggle, or an option's label or
+                               value for a Page's list); @x,y sets the Element
+                               under a point of the latest screenshot
   perform-secondary-action <window> <element index | name: | id: | @x,y> <action>
                                perform one of the Element's Secondary Actions
                                (`
@@ -73,16 +97,103 @@ const usageTail = `);
                                stopping at the first failure (which names
                                the failed Action); e.g.
                                winuse batch 101 click name:File then type-text hello then press-key Return
+  scroll <window> <element index | name: | id:> <up|down|left|right> [steps]
+                               scroll the list or page holding an Element by
+                               steps (1 to 50, default 3)
+  scroll <window> <element index | name: | id:> into-view
+                               scroll an Element into view
   scroll <window> @x,y <dx> <dy>
                                scroll the Window at a point of its latest
                                screenshot: positive dy scrolls down, positive
                                dx right; one wheel notch is 120
   drag <window> @x,y @x,y     drag the pointer from one point to another,
-                               both in the Window's latest screenshot's pixels
+                               both in the Window's latest screenshot's pixels;
+                               drag <window> <element> <element | @x,y> drags
+                               a Page Element headless
   hover <window> @x,y         move the pointer to a point of the Window's
                                latest screenshot and leave it there (reveals
-                               hover-only UI and tooltips)
+                               hover-only UI and tooltips); hover <window>
+                               <element> hovers a Page Element headless
   activate-window <window>    bring a Window to the foreground
+  restore-window <window>     restore a minimized or maximized Window to its
+                               normal size without activating it
+  minimize-window <window>    minimize a Window without activating another
+  move-window <window> <x> <y>
+                               move the Window's visible frame top-left to a
+                               screen point, in physical pixels
+  resize-window <window> <width> <height>
+                               set the Window's visible frame size, in physical
+                               pixels (both use the screenshot line's window
+                               at X,Y WxH; they refuse a maximized or
+                               minimized Window: restore it first)
+  close-window <window>       ask a Window to close, as its close button does;
+                               an app may keep it open to ask about saving
+  browser status [browser]    connect to a Chromium browser (the pinned or
+                               only debuggable one) and say how, or say in
+                               one sentence what is wrong and what to run
+  browser use [browser|auto]  pin the browser the browser commands use (it
+                               persists); auto removes the pin, no argument
+                               prints it
+  browser launch [browser]    start the browser with winuse's own profile and
+                               connect (a normal browser window opens)
+  browser clone [browser] [--profile <folder>] [--fresh] [--close-source]
+                               copy your real profile (your logins) to
+                               winuse's clone, keep it synced, launch it and
+                               connect; --close-source first closes the
+                               running browser cleanly so logins copy, and
+                               reopens its tabs in the clone
+  browser connect [browser]   use your running browser through its inspect
+                               toggle: you turn on remote debugging, and
+                               Chrome asks once to allow the connection
+  browser stop [browser]      close a browser winuse launched or cloned,
+                               keeping its profile
+  browser ext install [browser|all]
+                               set up the winuse extension, which drives your
+                               running browser with your logins and no
+                               prompts, and print the one step the user does
+                               (Developer mode, Load unpacked)
+  browser ext status [browser]
+                               say whether the extension is connected, or in
+                               one sentence what is missing and what to run
+  tab list <window>           list the Tabs of a browser Window with a Browser
+                               Connection, one per line: * for the active
+                               Tab, its id, title and URL
+  tab new <window> [url]      open a Tab in the background of that Window and
+                               print its id
+  tab close <window> <tab>    close a Tab by its id from tab list (4 or more
+                               characters of it); the last Tab is refused,
+                               run close-window to close the Window
+  tab switch <window> <tab>   make a Tab the active one in its Window (the
+                               Page commands act on the active Tab)
+  navigate <window> <url> [--wait load|domcontentloaded|none]
+                               open a URL in the Window's active Tab, wait for
+                               it to load (default load), and print the URL it
+                               ended on; never type into the address bar
+  back <window> [--wait ...]  go one page back in the Tab's history
+  forward <window> [--wait ...]
+                               go one page forward in the Tab's history
+  reload <window> [--wait ...]
+                               reload the Tab's page
+  upload <window> [<element>] <file>...
+                               give files to a file input of the Page, or
+                               without an element to the file chooser a click
+                               opened (winuse holds it back, so no file dialog
+                               shows)
+  dialog <window> accept|dismiss [text]
+                               answer the JavaScript dialog the Page shows
+                               (alert, confirm, prompt, or leave the page);
+                               text answers a prompt. While one shows, every
+                               other Page Action fails and says so
+  wait <window> selector <css> | text <text> | url <url or pattern> | load [domcontentloaded] | download
+                               wait until an element shows, the text appears,
+                               the URL matches (* is a wildcard), or the page
+                               loads (10 s by default, --timeout <seconds> up
+                               to 25); wait download prints the path of the
+                               file a click downloaded, on a browser winuse
+                               launched or cloned
+  eval <window> <expression>  run a JavaScript expression in the Page and
+                               print its value (JSON for objects, cut at 4000
+                               characters)
   version                     print the winuse version
 
 a <window> is a Window ID, or an App name when that App has exactly one Window;
@@ -130,7 +241,8 @@ func secondaryActionsPhrase() string {
 //
 // The global --headed flag (headed.go, ADR 0010) is taken out first,
 // before the command or anywhere after it outside literal text, and
-// forwarded to the Actions that have a Headless form.
+// forwarded to the Actions that have a Headless form, and to
+// get-window-state and zoom, whose captures are headless (ADR 0011).
 func Main(args []string) int {
 	args, headed := extractHeaded(args)
 	if len(args) == 0 {
@@ -146,7 +258,7 @@ func Main(args []string) int {
 	case "get-window":
 		return getWindowCmd(args[1:])
 	case "get-window-state":
-		return getWindowStateCmd(args[1:])
+		return getWindowStateCmd(args[1:], headed)
 	case "record-tree":
 		return recordTreeCmd(args[1:])
 	case "list-apps":
@@ -154,13 +266,13 @@ func Main(args []string) int {
 	case "launch-app":
 		return launchAppCmd(args[1:])
 	case "zoom":
-		return zoomCmd(args[1:])
+		return zoomCmd(args[1:], headed)
 	case "click":
 		return clickCmd(args[1:], headed)
 	case "type-text":
-		return typeTextCmd(args[1:])
+		return typeTextCmd(args[1:], headed)
 	case "press-key":
-		return pressKeyCmd(args[1:])
+		return pressKeyCmd(args[1:], headed)
 	case "set-value":
 		return setValueCmd(args[1:], headed)
 	case "perform-secondary-action":
@@ -168,13 +280,25 @@ func Main(args []string) int {
 	case "batch":
 		return batchCmd(args[1:], headed)
 	case "scroll":
-		return scrollCmd(args[1:])
+		return scrollCmd(args[1:], headed)
 	case "drag":
 		return dragCmd(args[1:])
 	case "hover":
 		return hoverCmd(args[1:])
 	case "activate-window":
 		return activateWindowCmd(args[1:])
+	case "restore-window", "minimize-window", "close-window":
+		return windowActionCmd(args[0], args[1:])
+	case "move-window":
+		return moveWindowCmd(args[1:])
+	case "resize-window":
+		return resizeWindowCmd(args[1:])
+	case "browser":
+		return browserCmd(args[1:])
+	case "tab":
+		return tabCmd(args[1:])
+	case "navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval":
+		return pageCmd(args[0], args[1:]) // page.go, browser merge ticket 06
 	default:
 		fmt.Fprintf(os.Stderr, "winuse: unknown command %q\n\n%s", args[0], Usage)
 		return 2
@@ -214,7 +338,8 @@ func getWindowCmd(args []string) int {
 // Window.
 type windowArgs struct {
 	Window     string `json:"window"`
-	Screenshot bool   `json:"screenshot"` // get-window-state --screenshot
+	Screenshot bool   `json:"screenshot"`       // get-window-state --screenshot
+	Headed     bool   `json:"headed,omitempty"` // the global --headed flag: the screenshot activates first (ADR 0011)
 }
 
 // recordArgs is record-tree's CLI→helper argument shape.
@@ -225,14 +350,14 @@ type recordArgs struct {
 
 // getWindowStateCmd prints the Window State: Codex's depth-first,
 // indented, numbered Element tree — with --screenshot, the screenshot line
-// after it.
-func getWindowStateCmd(args []string) int {
-	window, screenshot, err := parseWindowStateArgs(args)
+// after it. headed is the global --headed flag.
+func getWindowStateCmd(args []string, headed bool) int {
+	req, err := windowStateRequest(args, headed)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "winuse: %v\nusage: winuse get-window-state <window> [--screenshot]\n", err)
 		return 2
 	}
-	if err := runWithArgs("get-window-state", windowArgs{Window: window, Screenshot: screenshot}); err != nil {
+	if err := runWithArgs("get-window-state", req); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}

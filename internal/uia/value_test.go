@@ -317,6 +317,151 @@ func TestUnavailableActionErrorFormat(t *testing.T) {
 	}
 }
 
+func TestParseToggleValue(t *testing.T) {
+	for value, want := range map[string]int32{
+		"on": toggleOn, "true": toggleOn, "checked": toggleOn,
+		"off": toggleOff, "false": toggleOff, "unchecked": toggleOff,
+		"ON": toggleOn, "Checked": toggleOn, " off ": toggleOff, "FALSE": toggleOff,
+	} {
+		got, err := parseToggleValue(value)
+		if err != nil || got != want {
+			t.Errorf("parseToggleValue(%q) = %d, %v; want %d, nil", value, got, err, want)
+		}
+	}
+	for _, value := range []string{"", "yes", "no", "1", "0", "indeterminate", "toggle", "on!"} {
+		_, err := parseToggleValue(value)
+		if !errors.Is(err, ErrToggleValue) {
+			t.Errorf("parseToggleValue(%q) error = %v, want ErrToggleValue", value, err)
+			continue
+		}
+		// The refusal names every accepted word.
+		for _, word := range []string{"on", "off", "true", "false", "checked", "unchecked"} {
+			if !strings.Contains(err.Error(), word) {
+				t.Errorf("parseToggleValue(%q) error = %q, want it to name %q", value, err, word)
+			}
+		}
+	}
+}
+
+// fakeBox is a toggle Element offline: each Toggle call moves it one step
+// along cycle, unless it ignores Toggle; settle reads the state back.
+type fakeBox struct {
+	state   int32
+	cycle   []int32 // the states Toggle steps through, in order
+	ignore  bool    // the app ignores the Toggle call
+	failAt  int     // the 1-based Toggle call that fails (0: none)
+	readsAs int32   // when not 0, settle reads this instead (an unreadable state: -1)
+	sent    int
+}
+
+var errToggleCall = errors.New("toggle call failed")
+
+func (b *fakeBox) steps() toggleSteps {
+	return toggleSteps{
+		toggle: func(sent int) error {
+			if sent != b.sent {
+				panic(fmt.Sprintf("toggle told %d were sent, the box counted %d", sent, b.sent))
+			}
+			b.sent++
+			if b.sent == b.failAt {
+				return errToggleCall
+			}
+			if b.ignore {
+				return nil
+			}
+			for i, s := range b.cycle {
+				if s == b.state {
+					b.state = b.cycle[(i+1)%len(b.cycle)]
+					break
+				}
+			}
+			return nil
+		},
+		settle: func(prev int32) int32 {
+			if b.readsAs != 0 {
+				return b.readsAs
+			}
+			return b.state
+		},
+	}
+}
+
+func TestToggleTo(t *testing.T) {
+	twoState := []int32{toggleOff, toggleOn}
+	// Win32 BS_AUTO3STATE and WPF's three-state CheckBox: off, on,
+	// indeterminate. UIA's documentation names on, off, indeterminate.
+	win32 := []int32{toggleOff, toggleOn, toggleIndeterminate}
+	documented := []int32{toggleOn, toggleOff, toggleIndeterminate}
+	cases := []struct {
+		name     string
+		box      fakeBox
+		target   int32
+		wantErr  error // nil: success; otherwise errors.Is, or any *VerifyError
+		wantSent int
+		observed string // the VerifyError's Observed
+	}{
+		{name: "already on: nothing is sent", box: fakeBox{state: toggleOn, cycle: twoState}, target: toggleOn},
+		{name: "already off: nothing is sent", box: fakeBox{state: toggleOff, cycle: win32}, target: toggleOff},
+		{name: "two-state off to on", box: fakeBox{state: toggleOff, cycle: twoState}, target: toggleOn, wantSent: 1},
+		{name: "two-state on to off", box: fakeBox{state: toggleOn, cycle: twoState}, target: toggleOff, wantSent: 1},
+		{name: "three-state on to off passes through indeterminate", box: fakeBox{state: toggleOn, cycle: win32}, target: toggleOff, wantSent: 2},
+		{name: "three-state indeterminate to on", box: fakeBox{state: toggleIndeterminate, cycle: win32}, target: toggleOn, wantSent: 2},
+		{name: "three-state indeterminate to off", box: fakeBox{state: toggleIndeterminate, cycle: win32}, target: toggleOff, wantSent: 1},
+		{name: "documented cycle off to on", box: fakeBox{state: toggleOff, cycle: documented}, target: toggleOn, wantSent: 2},
+		{name: "documented cycle indeterminate to off", box: fakeBox{state: toggleIndeterminate, cycle: documented}, target: toggleOff, wantSent: 2},
+		{
+			name: "an ignored toggle is not sent again", box: fakeBox{state: toggleOff, cycle: twoState, ignore: true},
+			target: toggleOn, wantErr: &VerifyError{}, wantSent: 1, observed: "off",
+		},
+		{
+			name: "an unreadable read-back fails verification", box: fakeBox{state: toggleOff, cycle: twoState, readsAs: -1},
+			target: toggleOn, wantErr: &VerifyError{}, wantSent: 1, observed: "unreadable",
+		},
+		{
+			name: "an unreadable state before refuses", box: fakeBox{state: -1, cycle: twoState},
+			target: toggleOn, wantErr: ErrToggleUnreadable,
+		},
+		{
+			name: "a failed first toggle is returned", box: fakeBox{state: toggleOff, cycle: twoState, failAt: 1},
+			target: toggleOn, wantErr: errToggleCall, wantSent: 1,
+		},
+		{
+			name: "a failed second toggle is returned", box: fakeBox{state: toggleOn, cycle: win32, failAt: 2},
+			target: toggleOff, wantErr: errToggleCall, wantSent: 2,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			box := tc.box
+			err := toggleTo(box.state, tc.target, box.steps())
+			switch want := tc.wantErr.(type) {
+			case nil:
+				if err != nil {
+					t.Fatalf("error = %v, want nil", err)
+				}
+				if box.state != tc.target {
+					t.Errorf("box state = %s, want %s", toggleWord(box.state), toggleWord(tc.target))
+				}
+			case *VerifyError:
+				var verify *VerifyError
+				if !errors.As(err, &verify) {
+					t.Fatalf("error = %v, want a VerifyError", err)
+				}
+				if verify.Action != "set-value" || verify.Expected != toggleWord(tc.target) || verify.Observed != tc.observed {
+					t.Errorf("VerifyError = %+v, want set-value expecting %s, observing %s", verify, toggleWord(tc.target), tc.observed)
+				}
+			default:
+				if !errors.Is(err, want) {
+					t.Fatalf("error = %v, want %v", err, want)
+				}
+			}
+			if box.sent != tc.wantSent {
+				t.Errorf("toggles sent = %d, want %d", box.sent, tc.wantSent)
+			}
+		})
+	}
+}
+
 // TestActionErrorSentinels pins the messages the helper maps hints onto:
 // they are Codex's texts and stay stable for the output contract.
 func TestActionErrorSentinels(t *testing.T) {
@@ -328,6 +473,7 @@ func TestActionErrorSentinels(t *testing.T) {
 		{ErrFocusBeforeValue, "focus element before setting value"},
 		{fmt.Errorf("%w: 1.2.3", ErrRangeValue), "range value must be a number: 1.2.3"},
 		{ErrDisabled, "the Element is disabled"},
+		{fmt.Errorf("%w: maybe", ErrToggleValue), "toggle value must be on, off, true, false, checked or unchecked: maybe"},
 	}
 	for _, tc := range cases {
 		if tc.err.Error() != tc.want {

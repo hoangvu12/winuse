@@ -50,6 +50,14 @@ var (
 	procKillTimer           = user32.NewProc("KillTimer")
 	procTrackMouseEvent     = user32.NewProc("TrackMouseEvent")
 
+	procCreateDialogIndirectParamW = user32.NewProc("CreateDialogIndirectParamW")
+	procIsDialogMessageW           = user32.NewProc("IsDialogMessageW")
+	procGetDlgItem                 = user32.NewProc("GetDlgItem")
+	procGetWindowTextW             = user32.NewProc("GetWindowTextW")
+	procGetWindowTextLengthW       = user32.NewProc("GetWindowTextLengthW")
+	procMessageBoxW                = user32.NewProc("MessageBoxW")
+	procSetWindowPos               = user32.NewProc("SetWindowPos")
+
 	procCreateSolidBrush = gdi32.NewProc("CreateSolidBrush")
 	procCreatePen        = gdi32.NewProc("CreatePen")
 	procCreateFontW      = gdi32.NewProc("CreateFontW")
@@ -94,6 +102,13 @@ const (
 	wmMouseWheel       = 0x020A
 	wmMouseHWheel      = 0x020E
 	wmMouseLeave       = 0x02A3
+	wmInitDialog       = 0x0110
+	wmCommand          = 0x0111
+
+	// The fixture's own messages (WM_APP range), posted to the main window
+	// so that a UI Automation Invoke returns before the window opens.
+	wmOpenClassic    = 0x8000 + 1
+	wmOpenMessageBox = 0x8000 + 2
 
 	csDblClks = 0x0008
 

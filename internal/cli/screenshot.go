@@ -109,20 +109,48 @@ func parseRegionArg(s string) (protocol.Region, error) {
 	return r, nil
 }
 
+// windowStateRequest builds get-window-state's request from its arguments
+// and the global --headed flag (ADR 0011: a screenshot activates only
+// when headed).
+func windowStateRequest(args []string, headed bool) (windowArgs, error) {
+	window, screenshot, err := parseWindowStateArgs(args)
+	if err != nil {
+		return windowArgs{}, err
+	}
+	return windowArgs{Window: window, Screenshot: screenshot, Headed: headed}, nil
+}
+
+// errZoomArgs is zoom's argument-count failure: the usage line alone says
+// it.
+var errZoomArgs = errors.New("zoom takes a window and a region")
+
+// zoomRequest builds zoom's request from its arguments and the global
+// --headed flag (ADR 0011: the fresh capture activates only when headed).
+func zoomRequest(args []string, headed bool) (protocol.ZoomArgs, error) {
+	if len(args) != 2 {
+		return protocol.ZoomArgs{}, errZoomArgs
+	}
+	region, err := parseRegionArg(args[1])
+	if err != nil {
+		return protocol.ZoomArgs{}, err
+	}
+	return protocol.ZoomArgs{Window: args[0], Region: region, Headed: headed}, nil
+}
+
 // zoomCmd implements `winuse zoom <window> <x>,<y>,<w>,<h>`: a
 // full-resolution crop of a region of the Window's latest screenshot, as
-// PNG, with the path printed.
-func zoomCmd(args []string) int {
-	if len(args) != 2 {
+// PNG, with the path printed. headed is the global --headed flag.
+func zoomCmd(args []string, headed bool) int {
+	req, err := zoomRequest(args, headed)
+	if errors.Is(err, errZoomArgs) {
 		fmt.Fprintln(os.Stderr, zoomUsage)
 		return 2
 	}
-	region, err := parseRegionArg(args[1])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, zoomUsage)
 		return 2
 	}
-	if err := runWithArgs("zoom", protocol.ZoomArgs{Window: args[0], Region: region}); err != nil {
+	if err := runWithArgs("zoom", req); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}

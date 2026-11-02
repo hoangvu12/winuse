@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "winuse",
+  "version": "0.1.3",
+  "description": "Lets winuse drive this browser's pages, with your logins, through chrome.debugger. Agent tabs open in the background. Click the icon to turn it off.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApABQwW6BdJZ7PIHqenY/teCH1kkRkz9xIn9mQKQA0vdKfQuxwAEeVM4AmEIyOSH36MCNwhWAQfd9TDhMqvvGPx1CTJUqOkcTb8trc4I3FTmDgOpSx22dBK9ZpJPmjvdv9wq3bxPp0fxoMdglJ7ji8P41iDebc7EUDCUZyYXuR5oqhEIL5NGlrhzRz4BOXZfq0lg36Lfg/60NZQgIl9XtotiYtqatjkqiQQibU1pLix5CU6DKYTVnK3rfiVQKXAItBxf8OqIPK2qi+dmZJp10mlVOmpeGud5ZpKhxbDXxqcu+3KkP34DTQ7FlFvSM0c2oIdYJ7DT6W+/Es/Xb3evRKQIDAQAB",
+  "minimum_chrome_version": "125",
+  "permissions": ["debugger", "tabs", "tabGroups", "nativeMessaging", "alarms", "storage"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "winuse" }
+}

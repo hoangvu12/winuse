@@ -1,6 +1,6 @@
 # winuse
 
-Let your coding agent use Windows apps.
+Let your coding agent use Windows apps and websites.
 
 ![The agent's cursor clicks 7, +, 2 and = in Windows Calculator](docs/images/winuse-calculator.gif)
 
@@ -50,24 +50,52 @@ Window: "Calculator", App: CalculatorApp.exe.
 ok
 ```
 
-Screenshots are available with `--screenshot` when the tree is not
-enough.
+Add `--screenshot` when the tree is not enough. winuse captures the
+window where it is and leaves it behind your other windows.
 
 ## Headless and headed actions
 
-Clicking a button, setting a field and expanding or toggling an element
-happen in the background through Windows UI Automation. winuse does not
-move your mouse, press keys or bring the window to the front, so you can
-keep working in another window. A second cursor shows where the agent is
-acting.
+winuse does most actions in the background. It clicks buttons, sets
+fields and check boxes, expands and toggles elements, scrolls elements,
+and restores, minimizes, moves, resizes and closes windows. It also
+presses Enter or Esc in a classic dialog and types into a classic edit
+box such as Notepad's. It does not move your mouse, press keys or bring
+the window to the front, so you can keep working in another window. A
+second cursor shows where the agent acts.
 
-Typing, key presses, scrolling, dragging and clicks at screen coordinates
-need the real mouse and keyboard. For those, winuse brings the window to
-the front and frames it with a banner. Pass `--headed` to make any action
-work this way.
+Other typing and key presses, dragging, hovering and clicks at screen
+coordinates need the real mouse and keyboard. For those, winuse brings the
+window to the front and frames it with a banner. Pass `--headed` to make
+any action other than a window action work this way. Pass `--post` to send
+keys and text to a background window instead, which some apps ignore.
 
 Press Esc at any time to stop winuse. It refuses to act on administrator
 windows or a locked screen, and it never presses the Windows key.
+
+## Browsers
+
+winuse also drives Chrome, Edge, Brave, Chromium, Vivaldi and Opera. With
+a connection to the browser, winuse reads the page through the browser
+and numbers the page's elements together with the window's own. It
+clicks, types, scrolls, hovers, drags, navigates, uploads files and
+answers dialogs in the page without the real mouse or keyboard, and it
+opens new tabs in the background.
+
+Run `winuse browser status` to see how winuse is connected. You can
+connect in four ways.
+
+- `winuse browser ext install` sets up the winuse extension, which drives
+  the browser you already use, with your logins. You load the extension
+  once from the browser's extensions page in Developer mode.
+- `winuse browser launch` starts the browser with a separate profile for
+  winuse.
+- `winuse browser clone` copies your profile, logins included, and
+  starts the copy.
+- `winuse browser connect` uses your running browser after you turn on
+  its remote debugging switch and allow the connection.
+
+Without a connection, winuse reads the page through UI Automation like
+any other window.
 
 ## Commands
 
@@ -78,8 +106,15 @@ windows or a locked screen, and it never presses the Windows key.
 | `get-window-state <window> [--screenshot]` | Prints a window's element tree, with an optional screenshot |
 | `click`, `set-value`, `perform-secondary-action` | Clicks, fills in, expands or toggles an element |
 | `type-text`, `press-key` | Types text or presses keys such as `Control_L+a` |
-| `scroll`, `drag`, `hover`, `zoom` | Pointer actions and close-ups at screenshot coordinates |
+| `scroll` | Scrolls an element by steps or into view, or scrolls at a point |
+| `drag`, `hover`, `zoom` | Drags or hovers at a point or on a page element, or saves a close-up of a screenshot |
+| `restore-window`, `minimize-window`, `move-window`, `resize-window`, `close-window` | Manages a window without bringing it to the front |
 | `batch <window> ... then ...` | Runs several actions in one call |
+| `navigate`, `back`, `forward`, `reload` | Opens a URL or moves through a tab's history |
+| `wait`, `eval` | Waits for an element, text, URL, load or download, or runs JavaScript in the page |
+| `dialog`, `upload` | Answers a JavaScript dialog, or gives files to a file input |
+| `tab list`, `tab new`, `tab switch`, `tab close` | Manages a browser window's tabs |
+| `browser status`, `browser ext install`, `browser launch`, `browser clone`, `browser connect` | Connects to a browser and reports how |
 
 [SKILL.md](skills/winuse/SKILL.md) is the full guide your agent loads.
 
@@ -89,4 +124,4 @@ windows or a locked screen, and it never presses the Windows key.
 - [CONTEXT.md](CONTEXT.md) and [docs/adr/](docs/adr/) record the terms and design decisions.
 - [test/e2e/README.md](test/e2e/README.md) and [tasksuite/README.md](tasksuite/README.md) describe the tests.
 
-Windows only. No telemetry. MIT licensed.
+winuse runs on Windows only, sends no telemetry and is MIT licensed.

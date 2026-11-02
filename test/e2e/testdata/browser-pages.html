@@ -1,0 +1,161 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>winuse e2e page</title>
+<!--
+  The browser page tests' main page (browser_pages_test.go, ticket 09 of
+  .scratch/browser-merge). The test serves it over a loopback httptest
+  server and drives it only through winuse. Every Element an Action targets
+  has an aria-label, which is its name in the Window State. What each
+  Action did is kept in window.e2e* variables and data attributes, which
+  the test reads back with `winuse eval`.
+
+  Query parameters:
+    frame  the URL of browser-pages-frame.html on another site, shown in an
+           iframe (a cross-origin, out-of-process iframe)
+    dl     the file name the download link asks for
+-->
+<style>
+  body { font: 14px sans-serif; margin: 8px; }
+  section { margin: 6px 0; }
+  .box { display: inline-block; width: 120px; height: 32px; line-height: 32px; text-align: center;
+         border: 1px solid #888; margin-right: 12px; user-select: none; }
+  #track { position: relative; width: 240px; height: 16px; background: #ddd; margin-top: 10px; }
+  #thumb { position: absolute; left: 0; top: -6px; width: 20px; height: 28px; background: #36c; touch-action: none; }
+  #slider-end { position: relative; left: 230px; width: 40px; height: 22px; margin-top: 14px; border: 1px dashed #888; }
+  #rows { height: 90px; width: 200px; overflow: auto; border: 1px solid #888; }
+  #rows div { height: 20px; }
+  iframe { width: 320px; height: 80px; border: 1px solid #888; }
+</style>
+</head>
+<body>
+<h1>winuse e2e page</h1>
+<div id="frame-status">frame waiting</div>
+<div id="frame-slot"></div>
+
+<section>
+  <div class="box" id="drag-source" role="button" aria-label="e2e drag source" draggable="true">drag me</div>
+  <div class="box" id="drop-target" role="button" aria-label="e2e drop target">drop here</div>
+  <div class="box" id="hover" role="button" aria-label="e2e hover">hover me</div>
+  <div id="track"><div id="thumb" role="slider" aria-label="e2e slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0"></div></div>
+  <div id="slider-end" role="button" aria-label="e2e slider end"></div>
+</section>
+
+<section>
+  <button id="count" type="button" aria-label="e2e count">count</button>
+  <input id="text" type="text" aria-label="e2e text">
+  <select id="fruit" aria-label="e2e fruit">
+    <option value="apple">Apple</option>
+    <option value="banana">Banana</option>
+    <option value="cherry">Cherry</option>
+  </select>
+  <input id="agree" type="checkbox" aria-label="e2e agree">
+</section>
+
+<section>
+  <div id="rows" role="list" aria-label="e2e rows"></div>
+</section>
+
+<section>
+  <button id="alert" type="button" aria-label="e2e alert" onclick="alert('e2e alert message')">alert</button>
+  <button id="confirm" type="button" aria-label="e2e confirm" onclick="window.e2eConfirm = confirm('e2e confirm message')">confirm</button>
+  <button id="prompt" type="button" aria-label="e2e prompt" onclick="window.e2ePrompt = prompt('e2e prompt message', 'default')">prompt</button>
+  <button id="later" type="button" aria-label="e2e later">later</button>
+</section>
+
+<section>
+  <input id="file" type="file" aria-label="e2e file">
+  <button id="choose" type="button" aria-label="e2e choose file">choose</button>
+  <input id="hidden-file" type="file" style="display: none">
+  <a id="dl" href="#no-download">e2e download</a>
+</section>
+
+<script>
+  const q = new URLSearchParams(location.search);
+  const $ = (id) => document.getElementById(id);
+
+  // The cross-origin iframe reports through postMessage: the parent cannot
+  // read its DOM, and eval runs in the parent.
+  window.e2eFrameClicks = 0;
+  window.addEventListener('message', (e) => {
+    const d = e.data || {};
+    if (d.kind === 'ready') $('frame-status').textContent = 'frame ready';
+    if (d.kind === 'click') window.e2eFrameClicks++;
+    if (d.kind === 'input') window.e2eFrameText = d.value;
+  });
+  if (q.get('frame')) {
+    const f = document.createElement('iframe');
+    f.title = 'e2e frame';
+    f.src = q.get('frame');
+    $('frame-slot').appendChild(f);
+  }
+
+  // HTML5 drag and drop.
+  $('drag-source').addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', 'e2e-payload'));
+  $('drop-target').addEventListener('dragover', (e) => e.preventDefault());
+  $('drop-target').addEventListener('drop', (e) => {
+    e.preventDefault();
+    window.e2eDropped = e.dataTransfer.getData('text/plain');
+    $('drop-target').textContent = 'dropped';
+  });
+
+  // A slider that follows the pointer only while it holds pointer capture:
+  // the drag ends on another Element, so the moves reach the thumb only
+  // through the capture.
+  const thumb = $('thumb'), track = $('track');
+  window.e2eSlider = 0;
+  window.e2eCaptured = false;
+  thumb.addEventListener('pointerdown', (e) => thumb.setPointerCapture(e.pointerId));
+  thumb.addEventListener('gotpointercapture', () => { window.e2eCaptured = true; });
+  thumb.addEventListener('pointermove', (e) => {
+    if (!thumb.hasPointerCapture(e.pointerId)) return;
+    const r = track.getBoundingClientRect();
+    const v = Math.max(0, Math.min(100, Math.round((e.clientX - r.left) / r.width * 100)));
+    thumb.style.left = (v / 100 * (r.width - 20)) + 'px';
+    thumb.setAttribute('aria-valuenow', String(v));
+    window.e2eSlider = v;
+  });
+  thumb.addEventListener('pointerup', (e) => thumb.releasePointerCapture(e.pointerId));
+
+  $('hover').addEventListener('mouseenter', () => { $('hover').dataset.hovered = 'yes'; });
+
+  $('count').addEventListener('click', () => {
+    const b = $('count');
+    b.dataset.count = String(Number(b.dataset.count || 0) + 1);
+    b.textContent = 'count ' + b.dataset.count;
+  });
+
+  window.e2eKeys = [];
+  document.addEventListener('keydown', (e) => {
+    window.e2eKeys.push((e.ctrlKey ? 'Control+' : '') + (e.shiftKey ? 'Shift+' : '') + (e.altKey ? 'Alt+' : '') + e.code);
+  });
+
+  for (let i = 1; i <= 30; i++) {
+    const r = document.createElement('div');
+    r.setAttribute('role', 'listitem');
+    r.setAttribute('aria-label', 'e2e row ' + i);
+    r.textContent = 'row ' + i;
+    $('rows').appendChild(r);
+  }
+
+  $('later').addEventListener('click', () => setTimeout(() => {
+    const p = document.createElement('p');
+    p.id = 'late';
+    p.textContent = 'e2e late text';
+    document.body.appendChild(p);
+  }, 700));
+
+  $('file').addEventListener('change', () => { window.e2eFile = $('file').files.length ? $('file').files[0].name : ''; });
+  $('choose').addEventListener('click', () => $('hidden-file').click());
+  $('hidden-file').addEventListener('change', () => {
+    window.e2eChosen = $('hidden-file').files.length ? $('hidden-file').files[0].name : '';
+  });
+
+  if (q.get('dl')) {
+    $('dl').href = '/e2e-download?name=' + encodeURIComponent(q.get('dl'));
+    $('dl').download = q.get('dl');
+  }
+</script>
+</body>
+</html>

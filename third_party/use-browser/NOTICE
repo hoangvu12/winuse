@@ -1,0 +1,48 @@
+use-browser
+
+Source: https://github.com/hoangvu12/use-browser
+Commit: 14aac7dd43cd8ecdc4feb7a9a9ac834bb8c49433 (tag v0.9.0)
+
+The code in internal/cdp, internal/browser and internal/bridge is ported
+from use-browser v0.9.0 at the commit above, and modified for winuse.
+
+What was ported:
+
+- internal/cdp/ws.go: the WebSocket client (use-browser ws.go), now safe
+  for a reader goroutine and checking Sec-WebSocket-Accept.
+- internal/cdp/client.go: the CDP client (use-browser cdp.go and the
+  msgConn transport in ext.go), now routing events to per-session
+  subscribers instead of dropping them.
+- internal/browser: the browser and profile tables, discovery,
+  DevToolsActivePort reading, the refusal to guess between two browsers,
+  launch, connect, stop and pinning (use-browser browsers.go and cdp.go),
+  the clone flow and its tests (use-browser clone.go and clone_test.go).
+  The port owner check reads the TCP listener table instead of running
+  netstat and tasklist.
+- internal/bridge/extension: the MV3 extension (use-browser
+  extension/manifest.json and extension/background.js), as winuse's own
+  extension: its own name, manifest key (so its own extension id), native
+  host name (com.hoangvu12.winuse) and tab group. It never focuses or
+  raises a browser window (use-browser's Target.activateTarget did), it
+  refuses Page.bringToFront, and it passes child sessions (out-of-process
+  iframes) through both ways.
+- internal/bridge: the native messaging host, the framing, the loopback
+  relay with its token, and the bridge files (use-browser ext.go), now
+  recording which browser process started the host and sending commands
+  over the 1 MB native messaging limit in chunks.
+- internal/browser/extension.go: discovery through the extension, its
+  self-update, and ext install and ext status (use-browser ext.go), without
+  opening a page in the user's browser or copying to the clipboard.
+
+use-browser and winuse have the same author. use-browser has no license
+file; its author relicenses the ported code under winuse's MIT license
+(see LICENSE at the root of this repository).
+
+Not ported: use-browser's find and run commands, which send page contents
+to a third-party API.
+
+agent-browser (https://github.com/vercel-labs/agent-browser, Apache-2.0)
+was a source of ideas only: the persistent connection, the 20 second hold
+for Chrome's remote-debugging approval with one prompt at a time, and
+Runtime.runIfWaitingForDebugger after attach are re-implemented here. No
+agent-browser code or text was copied.

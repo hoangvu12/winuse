@@ -369,11 +369,25 @@ func (c *Client) Run(ctx context.Context, job func(w *worker, r *run)) error {
 // title and app fill the Window State's header (the resolved Window's title
 // and executable file name).
 func (c *Client) Capture(ctx context.Context, hwnd uint64, title, app string, budget time.Duration) (*wstate.Tree, error) {
+	tree, _, err := c.CaptureFrame(ctx, hwnd, title, app, budget, nil)
+	return tree, err
+}
+
+// CaptureFrame is Capture for a browser Window whose Page is read over CDP
+// (browser merge ticket 04): the walk leaves out the descendants of the
+// Document Element cut names (WalkConfig.Cut), so the content the Page
+// replaces is never read through UI Automation. at is that Document's
+// Element Index, or -1 when every Document was read whole. A nil cut is
+// Capture.
+func (c *Client) CaptureFrame(ctx context.Context, hwnd uint64, title, app string, budget time.Duration, cut DocumentCut) (tree *wstate.Tree, at int, err error) {
 	// One read is one job on the COM thread; the retry delay is spent on
 	// the caller's goroutine so the worker stays free. Each successful read
 	// replaces the Window's live Elements, so the store ends up holding the
-	// Elements behind the Window State that is returned.
+	// Elements behind the Window State that is returned (the last read's,
+	// which at follows).
+	at = -1
 	read := func(cfg WalkConfig) (*readResult, error) {
+		cfg.Cut = cut
 		seq := c.store.beginRead()
 		var res *captureResult
 		var jobErr error
@@ -389,9 +403,14 @@ func (c *Client) Capture(ctx context.Context, hwnd uint64, title, app string, bu
 		if jobErr != nil {
 			return nil, jobErr
 		}
+		at = res.cut
 		return &readResult{tree: res.tree, rootClass: res.rootClass}, nil
 	}
-	return readTree(ctx, app, budget, read, sleepCtx)
+	tree, err = readTree(ctx, app, budget, read, sleepCtx)
+	if err != nil {
+		return nil, -1, err
+	}
+	return tree, at, nil
 }
 
 // installRead installs a completed read's Elements as hwnd's live Window
@@ -473,6 +492,7 @@ type windowState struct {
 	seq      uint64
 	elems    []comPtr
 	elements []wstate.Element
+	origins  map[int]any // the Page Elements' origins by Element Index (splice.go); nil for a UIA-only read
 }
 
 func newStore(addRef, release func(comPtr)) *store {

@@ -198,6 +198,18 @@ func TestSetValueFailuresAndHints(t *testing.T) {
 			wantHint: "numeric",
 		},
 		{
+			name:     "a toggle takes on or off",
+			err:      fmt.Errorf("%w: maybe", uia.ErrToggleValue),
+			wantMsg:  "toggle value must be on, off, true, false, checked or unchecked: maybe",
+			wantHint: "on or off",
+		},
+		{
+			name:     "an unreadable toggle state",
+			err:      uia.ErrToggleUnreadable,
+			wantMsg:  uia.ErrToggleUnreadable.Error(),
+			wantHint: "perform-secondary-action",
+		},
+		{
 			name:     "focus failure",
 			err:      uia.ErrFocusBeforeValue,
 			wantMsg:  "focus element before setting value",

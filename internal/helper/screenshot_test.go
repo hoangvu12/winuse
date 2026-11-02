@@ -27,19 +27,22 @@ import (
 )
 
 // shotSpy fakes the screenshot services over the standard fake windows:
-// a configurable capture (a synthetic frame), the real shot.Store, a
-// configurable frame origin, and the action pipeline's fakes.
+// a configurable capture (a synthetic frame) behind both chains, the real
+// shot.Store, a configurable frame origin, the minimized probe, and the
+// action pipeline's fakes.
 type shotSpy struct {
 	capture    func(hwnd uint64) (shot.Frame, error)
 	frame      shot.Frame // the default capture answer
 	captureErr error
-	captures   int
+	captures   int      // captures through either chain
+	steps      []string // "activate", "capture-full", "capture-headless" in order
 
 	origin    image.Point
 	originErr error
 
 	locked        bool
 	lockedDesktop string
+	minimized     bool
 	activateErr   error
 	activations   int
 
@@ -59,7 +62,11 @@ func newShotSpy(t *testing.T) *shotSpy {
 	s.svc.Shots = shot.NewStore() // visible to the test (CommandsWith copies Services by value)
 	s.svc.Locked = func() (bool, string) { return s.locked, s.lockedDesktop }
 	s.svc.Integrity = func(win.WindowInfo) error { return nil }
-	s.svc.Activate = func(hwnd uint64) error { s.activations++; return s.activateErr }
+	s.svc.Activate = func(hwnd uint64) error {
+		s.activations++
+		s.steps = append(s.steps, "activate")
+		return s.activateErr
+	}
 	s.svc.Actions = nil // coordinate clicks need no UIA client
 	s.svc.Click = func(target uint64, x, y int32, button win.MouseButton, count int) error {
 		s.clicks = append(s.clicks, [2]int32{x, y})
@@ -72,17 +79,31 @@ func newShotSpy(t *testing.T) *shotSpy {
 		}
 		return s.origin, nil
 	}
-	s.svc.Capture = func(hwnd uint64) (shot.Frame, error) {
-		s.captures++
-		if s.capture != nil {
-			return s.capture(hwnd)
+	take := func(chain string) func(hwnd uint64) (shot.Frame, error) {
+		return func(hwnd uint64) (shot.Frame, error) {
+			s.captures++
+			s.steps = append(s.steps, "capture-"+chain)
+			if s.capture != nil {
+				return s.capture(hwnd)
+			}
+			if s.captureErr != nil {
+				return shot.Frame{}, s.captureErr
+			}
+			return s.frame, nil
 		}
-		if s.captureErr != nil {
-			return shot.Frame{}, s.captureErr
-		}
-		return s.frame, nil
 	}
+	s.svc.Capture = take("full")
+	s.svc.CaptureHeadless = take("headless")
+	s.svc.Minimized = func(hwnd uint64) bool { return s.minimized }
 	return s
+}
+
+// fakeCapture installs f as both capture chains and a probe that never
+// finds the Window minimized, for tests that only need a frame: no
+// screenshot path can reach a real capture or a real window probe.
+func fakeCapture(svc *Services, f func(hwnd uint64) (shot.Frame, error)) {
+	svc.Capture, svc.CaptureHeadless = f, f
+	svc.Minimized = func(uint64) bool { return false }
 }
 
 // syntheticFrame builds a w×h frame anchored at its own rect top-left
@@ -139,12 +160,16 @@ func TestGetWindowStateScreenshotOutput(t *testing.T) {
 		t.Fatalf("want exactly one Screenshot line, got %d in:\n%s", len(shotLines), out)
 	}
 	line := shotLines[0]
-	if !strings.Contains(line, "(800x470 px, scale 1)") {
-		t.Errorf("screenshot line = %q, want the size and scale of a window under the cap", line)
+	// The size and scale of a window under the cap, then the frame's
+	// screen rectangle in physical px (ticket 01: the agent reads the
+	// Window's bounds here).
+	const suffix = " (800x470 px, scale 1, window at 100,200 800x470)"
+	if !strings.HasSuffix(line, suffix) {
+		t.Errorf("screenshot line = %q, want it to end %q", line, suffix)
 	}
 
 	// The path points at a real, decodable JPEG file under %TEMP%\winuse.
-	path := strings.TrimSuffix(strings.TrimPrefix(line, "Screenshot: "), " (800x470 px, scale 1)")
+	path := strings.TrimSuffix(strings.TrimPrefix(line, "Screenshot: "), suffix)
 	if !strings.HasPrefix(path, filepath.Join(os.TempDir(), "winuse")) {
 		t.Errorf("screenshot path = %q, want it under %%TEMP%%\\winuse", path)
 	}
@@ -161,10 +186,10 @@ func TestGetWindowStateScreenshotOutput(t *testing.T) {
 		t.Errorf("decoded size = %dx%d, want 800x470 (within the cap, no scaling)", cfg.Width, cfg.Height)
 	}
 
-	// The Window was activated before the capture (the region method needs
-	// the foreground), and the capture ran exactly once.
-	if s.activations != 1 || s.captures != 1 {
-		t.Errorf("activations/captures = %d/%d, want 1/1", s.activations, s.captures)
+	// Headless by default (ADR 0011): no activation, one capture through
+	// the headless chain.
+	if !equalStrings(s.steps, []string{"capture-headless"}) {
+		t.Errorf("steps = %v, want one headless capture and no activation", s.steps)
 	}
 }
 
@@ -177,7 +202,7 @@ func TestGetWindowStateScreenshotScalesBigWindow(t *testing.T) {
 	if cmdErr != nil {
 		t.Fatalf("screenshot: %v", cmdErr.Error())
 	}
-	if !strings.Contains(out, "(1568x882 px, scale 0.408)") {
+	if !strings.Contains(out, "(1568x882 px, scale 0.408, window at 0,0 3840x2160)") {
 		t.Errorf("the long edge must cap at 1568 px with the scale recorded:\n%s", out)
 	}
 	path := screenshotPath(t, out)
@@ -247,7 +272,8 @@ func TestGetWindowStateScreenshotActivationFailure(t *testing.T) {
 	s.activateErr = &win.ModalDialogError{WindowID: 101, DialogID: 404}
 	cmds := CommandsWith(s.svc)
 
-	_, cmdErr := runJSON(t, cmds, "get-window-state", windowRef{Window: "101", Screenshot: true})
+	// Only --headed activates; its failure fails the screenshot.
+	_, cmdErr := runJSON(t, cmds, "get-window-state", windowRef{Window: "101", Screenshot: true, Headed: true})
 	if cmdErr == nil {
 		t.Fatal("a failed activation must fail the screenshot")
 	}
@@ -319,8 +345,8 @@ func TestZoomCropIsFullResolution(t *testing.T) {
 	if s.captures != 1 {
 		t.Errorf("zoom must capture fresh once, captured %d times", s.captures)
 	}
-	if s.activations != 2 {
-		t.Errorf("activations = %d, want 2 (screenshot + zoom)", s.activations)
+	if s.activations != 0 {
+		t.Errorf("activations = %d, want 0 (the screenshot and the zoom are headless)", s.activations)
 	}
 	if !strings.HasPrefix(out, "Zoom: ") {
 		t.Errorf("output = %q", out)
@@ -463,9 +489,115 @@ func TestZoomLockedDesktopAndActivation(t *testing.T) {
 	}
 	s.locked = false
 	s.activateErr = &win.NotForegroundError{WindowID: 101}
-	_, cmdErr = runJSON(t, cmds, "zoom", protocol.ZoomArgs{Window: "101", Region: protocol.Region{X: 1, Y: 1, W: 5, H: 5}})
+	_, cmdErr = runJSON(t, cmds, "zoom", protocol.ZoomArgs{Window: "101", Region: protocol.Region{X: 1, Y: 1, W: 5, H: 5}, Headed: true})
 	if cmdErr == nil || !strings.Contains(cmdErr.Error(), "failed to activate window 101") {
 		t.Fatalf("want activation failure, got %v", cmdErr)
+	}
+}
+
+// TestScreenshotAndZoomAreHeadless pins ADR 0011's first decision:
+// observation never activates. Both commands capture through the headless
+// chain only, and the Window is never brought to the foreground.
+func TestScreenshotAndZoomAreHeadless(t *testing.T) {
+	s := newShotSpy(t)
+	s.frame = syntheticFrame(800, 470, 100, 200)
+	cmds := CommandsWith(s.svc)
+	if _, cmdErr := runJSON(t, cmds, "get-window-state", windowRef{Window: "101", Screenshot: true}); cmdErr != nil {
+		t.Fatalf("screenshot: %v", cmdErr.Error())
+	}
+	if _, cmdErr := runJSON(t, cmds, "zoom", protocol.ZoomArgs{
+		Window: "101", Region: protocol.Region{X: 10, Y: 10, W: 50, H: 50},
+	}); cmdErr != nil {
+		t.Fatalf("zoom: %v", cmdErr.Error())
+	}
+	if want := []string{"capture-headless", "capture-headless"}; !equalStrings(s.steps, want) {
+		t.Errorf("steps = %v, want %v (no activation, never the full chain)", s.steps, want)
+	}
+}
+
+// TestScreenshotAndZoomHeaded pins the --headed path: today's v1 path
+// unchanged, activation first, then the full chain (with the screen
+// region method, which needs the foreground).
+func TestScreenshotAndZoomHeaded(t *testing.T) {
+	s := newShotSpy(t)
+	s.frame = syntheticFrame(800, 470, 100, 200)
+	// A minimized Window is no refusal here: activation restores it.
+	s.minimized = true
+	cmds := CommandsWith(s.svc)
+	out, cmdErr := runJSON(t, cmds, "get-window-state", windowRef{Window: "101", Screenshot: true, Headed: true})
+	if cmdErr != nil {
+		t.Fatalf("screenshot --headed: %v", cmdErr.Error())
+	}
+	if !strings.Contains(out, "(800x470 px, scale 1, window at 100,200 800x470)") {
+		t.Errorf("the headed screenshot line must carry the rectangle too:\n%s", out)
+	}
+	if _, cmdErr := runJSON(t, cmds, "zoom", protocol.ZoomArgs{
+		Window: "101", Region: protocol.Region{X: 10, Y: 10, W: 50, H: 50}, Headed: true,
+	}); cmdErr != nil {
+		t.Fatalf("zoom --headed: %v", cmdErr.Error())
+	}
+	want := []string{"activate", "capture-full", "activate", "capture-full"}
+	if !equalStrings(s.steps, want) {
+		t.Errorf("steps = %v, want %v", s.steps, want)
+	}
+}
+
+// TestScreenshotRefusesMinimizedWindow pins the minimized refusal: a
+// minimized Window has nothing to capture headless, so both commands
+// refuse before any capture, and the hint names restore-window (which
+// restores without the foreground) and --headed.
+func TestScreenshotRefusesMinimizedWindow(t *testing.T) {
+	s := newShotSpy(t)
+	s.frame = syntheticFrame(800, 470, 100, 200)
+	cmds := CommandsWith(s.svc)
+	// A screenshot first, so the zoom passes its cheap checks.
+	if _, cmdErr := runJSON(t, cmds, "get-window-state", windowRef{Window: "101", Screenshot: true}); cmdErr != nil {
+		t.Fatalf("screenshot: %v", cmdErr.Error())
+	}
+	before, _ := s.svc.Shots.Lookup(101)
+	s.minimized = true
+	s.steps = nil
+
+	check := func(name string, cmdErr *Error) {
+		t.Helper()
+		if cmdErr == nil {
+			t.Fatalf("%s: a minimized Window must be refused", name)
+		}
+		if !strings.Contains(cmdErr.Error(), "window 101 is minimized") {
+			t.Errorf("%s: error = %q", name, cmdErr.Error())
+		}
+		for _, want := range []string{"winuse restore-window 101", "--headed"} {
+			if !strings.Contains(cmdErr.Hint, want) {
+				t.Errorf("%s: hint = %q, want it to name %q", name, cmdErr.Hint, want)
+			}
+		}
+	}
+	_, cmdErr := runJSON(t, cmds, "get-window-state", windowRef{Window: "101", Screenshot: true})
+	check("get-window-state --screenshot", cmdErr)
+	_, cmdErr = runJSON(t, cmds, "zoom", protocol.ZoomArgs{Window: "101", Region: protocol.Region{X: 1, Y: 1, W: 5, H: 5}})
+	check("zoom", cmdErr)
+
+	if len(s.steps) != 0 {
+		t.Errorf("steps = %v, want nothing captured or activated", s.steps)
+	}
+	// The refused screenshot recorded no Mapping: the earlier one stands.
+	if after, _ := s.svc.Shots.Lookup(101); after != before {
+		t.Errorf("the refused screenshot replaced the mapping: %+v, want %+v", after, before)
+	}
+}
+
+// TestScreenshotLineNegativeOrigin pins the rectangle on a monitor left of
+// the primary: the frame's screen position is printed as is, negative.
+func TestScreenshotLineNegativeOrigin(t *testing.T) {
+	s := newShotSpy(t)
+	s.frame = syntheticFrame(1200, 800, -1920, -40)
+	cmds := CommandsWith(s.svc)
+	out, cmdErr := runJSON(t, cmds, "get-window-state", windowRef{Window: "101", Screenshot: true})
+	if cmdErr != nil {
+		t.Fatalf("screenshot: %v", cmdErr.Error())
+	}
+	if !strings.Contains(out, "(1200x800 px, scale 1, window at -1920,-40 1200x800)") {
+		t.Errorf("screenshot line wrong:\n%s", out)
 	}
 }
 
@@ -647,8 +779,37 @@ func TestScreenshotCommandsRegistered(t *testing.T) {
 	}
 	// The default services carry the real capture chain and store.
 	s := defaultServices(Services{})
-	if s.Capture == nil || s.Shots == nil || s.FrameOrigin == nil {
-		t.Error("CommandsWith must default Capture, Shots and FrameOrigin")
+	if s.Capture == nil || s.CaptureHeadless == nil || s.Minimized == nil || s.Shots == nil || s.FrameOrigin == nil {
+		t.Error("CommandsWith must default Capture, CaptureHeadless, Minimized, Shots and FrameOrigin")
+	}
+}
+
+// TestHeadlessCaptureChainHasNoRegionMethod pins the two chains (ADR
+// 0011): the headless one is the first method (Windows.Graphics.Capture in
+// production), then PrintWindow, never the screen region, which captures
+// whatever covers the Window. The full chain keeps the region method for
+// --headed.
+func TestHeadlessCaptureChainHasNoRegionMethod(t *testing.T) {
+	first := captureFunc(func(hwnd uint64) (shot.Frame, error) { return shot.Frame{}, nil })
+	names := func(methods []shot.Method) []string {
+		var out []string
+		for _, m := range methods {
+			out = append(out, m.Name())
+		}
+		return out
+	}
+	if got, want := names(headlessCaptureMethods(nil, nil, first)), []string{"func", "PrintWindow"}; !equalStrings(got, want) {
+		t.Errorf("headless chain = %v, want %v", got, want)
+	}
+	if got, want := names(captureMethodsHiding(nil, nil, first)), []string{"func", "screen region", "PrintWindow"}; !equalStrings(got, want) {
+		t.Errorf("full chain = %v, want %v", got, want)
+	}
+	// With an indicator or a cursor wired, every headless method is
+	// bracketed like the full chain's.
+	for i, m := range headlessCaptureMethods(&overlaySpy{}, &cursorSpy{share: func(string) {}}, first) {
+		if _, wrapped := m.(hiddenDuringCapture); !wrapped {
+			t.Errorf("headless method %d is not wrapped in the capture bracket", i)
+		}
 	}
 }
 

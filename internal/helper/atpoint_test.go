@@ -30,9 +30,9 @@ func newAtPointSpy(t *testing.T) *atPointSpy {
 	base := newActorSpy()
 	s := &atPointSpy{actorSpy: base, origin: image.Point{X: 150, Y: 260}}
 	base.svc.Shots = shot.NewStore()
-	base.svc.Capture = func(hwnd uint64) (shot.Frame, error) {
+	fakeCapture(&base.svc, func(hwnd uint64) (shot.Frame, error) {
 		return syntheticFrame(800, 470, 100, 200), nil
-	}
+	})
 	base.svc.FrameOrigin = func(hwnd uint64) (image.Point, error) { return s.origin, nil }
 	return s
 }

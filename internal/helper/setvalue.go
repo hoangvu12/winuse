@@ -85,6 +85,10 @@ func setValue(s Services) Command {
 		if terr != nil {
 			return "", terr
 		}
+		// A Page Element routes over the Browser Connection (pageactions.go).
+		if w, index, o, ok := s.pageRoute(a.Window, target); ok {
+			return s.pageSetValue(ctx, w, index, o, target, a.Value, a.Headed)
+		}
 		if ha, ok := s.headless("set-value", args); ok {
 			return s.runHeadless(ctx, a.Window, ha, headlessRun{
 				cmd:    "set-value",
@@ -159,6 +163,9 @@ func performSecondaryAction(s Services) Command {
 			return "", Fail(fmt.Sprintf("unsupported secondary action: %s; expected %s", a.Action, uia.ExpectedSecondaryActions()),
 				"the Secondary Actions each Element offers are listed in its Window State line")
 		}
+		if w, index, _, ok := s.pageRoute(a.Window, target); ok {
+			return "", pageSecondaryRefusal(w, index, target, action)
+		}
 		if ha, ok := s.headless("perform-secondary-action", args); ok {
 			return s.runHeadless(ctx, a.Window, ha, headlessRun{
 				cmd:    "perform-secondary-action",
@@ -214,6 +221,14 @@ func valueError(err error, w win.WindowInfo, index int) *Error {
 			"use winuse click to focus the Element, then winuse type-text to type into it instead")
 	case errors.Is(err, uia.ErrRangeValue):
 		return Fail(err.Error(), "this Element takes a numeric value (a slider or spinner); pass a number")
+	case errors.Is(err, uia.ErrToggleValue):
+		return Fail(err.Error(), "this Element is a check box or toggle; pass on or off")
+	case errors.Is(err, uia.ErrToggleUnreadable):
+		toggle := "perform-secondary-action with the Toggle action"
+		if index >= 0 {
+			toggle = fmt.Sprintf("winuse perform-secondary-action %d %d Toggle", w.ID, index)
+		}
+		return Fail(err.Error(), "read a fresh Window State; to flip the Element whatever its state, use "+toggle)
 	case errors.Is(err, uia.ErrFocusBeforeValue):
 		return Fail(err.Error(), "the Element may not be focusable; read a fresh Window State and retry")
 	case errors.Is(err, uia.ErrDisabled):

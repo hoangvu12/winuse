@@ -7,8 +7,11 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/hoangvu12/winuse/internal/protocol"
 )
 
 func TestParseScrollArgs(t *testing.T) {
@@ -63,6 +66,58 @@ func TestParseScrollArgs(t *testing.T) {
 			if window != tc.wantWindow || x != tc.wantX || y != tc.wantY || dx != tc.wantDX || dy != tc.wantDY {
 				t.Errorf("parsed %q @%d,%d %d,%d, want %q @%d,%d %d,%d",
 					window, x, y, dx, dy, tc.wantWindow, tc.wantX, tc.wantY, tc.wantDX, tc.wantDY)
+			}
+		})
+	}
+}
+
+func TestParseScrollCommandElementForms(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		want    protocol.ScrollArgs
+		wantErr string
+	}{
+		{name: "index and direction", args: []string{"101", "4", "down"},
+			want: protocol.ScrollArgs{Window: "101", ElementIndex: intPtr(4), Direction: "down"}},
+		{name: "steps", args: []string{"101", "4", "Up", "10"},
+			want: protocol.ScrollArgs{Window: "101", ElementIndex: intPtr(4), Direction: "up", Steps: intPtr(10)}},
+		{name: "name reference", args: []string{"notepad", "name:File list", "left", "2"},
+			want: protocol.ScrollArgs{Window: "notepad", Ref: "name:File list", Direction: "left", Steps: intPtr(2)}},
+		{name: "id reference into view", args: []string{"101", "id:row40", "into-view"},
+			want: protocol.ScrollArgs{Window: "101", Ref: "id:row40", Direction: "into-view"}},
+		{name: "into view in any case", args: []string{"101", "7", "Into-View"},
+			want: protocol.ScrollArgs{Window: "101", ElementIndex: intPtr(7), Direction: "into-view"}},
+		{name: "the steps range is the helper's", args: []string{"101", "4", "down", "0"},
+			want: protocol.ScrollArgs{Window: "101", ElementIndex: intPtr(4), Direction: "down", Steps: intPtr(0)}},
+		{name: "the point form is unchanged", args: []string{"101", "@400,235", "0", "600"},
+			want: protocol.ScrollArgs{Window: "101", X: 400, Y: 235, ScrollY: 600}},
+
+		{name: "no direction", args: []string{"101", "4"}, wantErr: "scroll takes a window reference"},
+		{name: "bad direction", args: []string{"101", "4", "sideways"},
+			wantErr: `the scroll direction must be up, down, left, right or into-view, got "sideways"`},
+		{name: "steps not a number", args: []string{"101", "4", "down", "lots"}, wantErr: `steps must be an integer, got "lots"`},
+		{name: "into-view with steps", args: []string{"101", "4", "into-view", "3"}, wantErr: "into-view takes no steps"},
+		{name: "too many arguments", args: []string{"101", "4", "down", "3", "4"}, wantErr: "scroll takes a window reference"},
+		{name: "bad target", args: []string{"101", "four", "down"},
+			wantErr: `the scroll target must be an element index, name:<text>, id:<AutomationId> or @x,y, got "four"`},
+		{name: "unquoted name", args: []string{"101", "name:File", "list", "down"}, wantErr: `quote it, e.g. "name:File list"`},
+		{name: "unquoted name with steps", args: []string{"101", "name:My", "big", "list", "down", "3"}, wantErr: "quote it"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseScrollCommand(tc.args)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("error = %v, want %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("parsed %+v, want %+v", got, tc.want)
 			}
 		})
 	}
@@ -164,6 +219,8 @@ func TestPointerUsageErrorsExit2WithoutDialing(t *testing.T) {
 		{"scroll with no arguments", []string{"scroll"}, scrollUsage},
 		{"scroll with a bad point", []string{"scroll", "101", "1,2", "120", "120"}, "a coordinate reference must be @x,y"},
 		{"scroll with a bad amount", []string{"scroll", "101", "@1,2", "many", "120"}, "the scroll amount must be an integer"},
+		{"scroll with a bad direction", []string{"scroll", "101", "3", "sideways"}, "the scroll direction must be"},
+		{"scroll with --headed and no direction", []string{"--headed", "scroll", "101", "3"}, scrollUsage},
 		{"drag with one point", []string{"drag", "101", "@1,1"}, dragUsage},
 		{"hover with no point", []string{"hover", "101"}, hoverUsage},
 		{"hover with a bad point", []string{"hover", "101", "1,1"}, "a coordinate reference must be @x,y"},

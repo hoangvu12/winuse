@@ -21,6 +21,7 @@ type captureResult struct {
 	tree      *wstate.Tree
 	live      []comPtr
 	rootClass string // the root element's UIA ClassName, for Chromium/Electron detection
+	cut       int    // the Document Element whose descendants were left out (WalkConfig.Cut), or -1
 }
 
 // capture reads one Window's tree on the worker thread: it builds the cache
@@ -50,6 +51,7 @@ func (th *thread) capture(hwnd uintptr, title, app string, cfg WalkConfig) (*cap
 		},
 		live:      res.Live,
 		rootClass: src.rootClass,
+		cut:       res.Cut,
 	}, nil
 }
 

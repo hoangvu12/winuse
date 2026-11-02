@@ -1,15 +1,19 @@
 package helper
 
 // The screenshot half of observing a Window (ticket 08): get-window-state
-// --screenshot (the Window is activated, captured through the method chain,
-// scaled to a model-friendly size, saved as JPEG q80, its path printed and
-// its Mapping recorded for `@x,y` references and zoom regions) and zoom
-// (a full-resolution PNG crop of a region of the latest screenshot).
+// --screenshot (the Window is captured through the method chain, scaled to
+// a model-friendly size, saved as JPEG q80, its path printed and its
+// Mapping recorded for `@x,y` references and zoom regions) and zoom (a
+// full-resolution PNG crop of a region of the latest screenshot).
 //
-// Everything capture-shaped is injected through Services (Capture, Shots,
-// FrameOrigin), so the offline tests fake it and never touch the screen;
-// Commands wires the real chain (Windows.Graphics.Capture, then the GDI
-// methods: screen region, then PrintWindow).
+// Observation never activates (ADR 0011): both capture through the
+// headless chain (Windows.Graphics.Capture, then PrintWindow), which
+// captures a covered Window. Only --headed activates first and runs the
+// full chain, with the screen region method between the two.
+//
+// Everything capture-shaped is injected through Services (Capture,
+// CaptureHeadless, Minimized, Shots, FrameOrigin), so the offline tests
+// fake it and never touch the screen; Commands wires the real chains.
 
 import (
 	"bytes"
@@ -41,22 +45,22 @@ const jpegQuality = 80
 const zoomUsage = "usage: winuse zoom <window> <x>,<y>,<w>,<h>   (the region, in the latest screenshot's pixels)"
 
 // windowStateScreenshot is get-window-state's --screenshot path: refuse a
-// locked desktop, activate the Window (the screen-region capture needs the
-// foreground, spec: "capturing the Window's screen region (after it is in
-// the foreground)"), capture, save the scaled image, record the Mapping,
-// then read the tree — so the tree and the screenshot describe the same
-// activated Window. Any failure fails the whole command (Codex's
-// fail-loudly behaviour): the agent re-observes.
-func windowStateScreenshot(s Services, ctx context.Context, w win.WindowInfo) (string, *Error) {
+// locked desktop, capture (headless, or activated under --headed: see
+// captureObserved), save the scaled image, record the Mapping, then read
+// the tree, so the tree and the screenshot describe the same moment. Any
+// failure fails the whole command (Codex's fail-loudly behaviour): the
+// agent re-observes.
+//
+// The Screenshot line ends with the frame's screen rectangle in physical
+// px (ticket 01): the agent reads the Window's bounds there, for the
+// Window Actions that move or resize it.
+func windowStateScreenshot(s Services, ctx context.Context, w win.WindowInfo, headed bool) (string, *Error) {
 	if locked, desktop := s.Locked(); locked {
 		return "", lockedDesktopFailure(desktop)
 	}
-	if err := s.Activate(w.ID); err != nil {
-		return "", activationError(err)
-	}
-	frame, err := s.Capture(w.ID)
-	if err != nil {
-		return "", captureError(err)
+	frame, cerr := captureObserved(s, w, headed)
+	if cerr != nil {
+		return "", cerr
 	}
 	scale := shot.FitScale(frame.Rect.Dx(), frame.Rect.Dy())
 	img := shot.ScaleImage(frame.Image, scale)
@@ -67,20 +71,56 @@ func windowStateScreenshot(s Services, ctx context.Context, w win.WindowInfo) (s
 	if err != nil {
 		return "", Fail("saving the screenshot failed: "+err.Error(), "")
 	}
-	tree, err := s.Trees.Capture(ctx, w.ID, w.Title, win.AppExeName(w), s.Budget)
-	if err != nil {
-		return "", treeReadError(err)
+	tree, terr := readWindowTree(s, ctx, w)
+	if terr != nil {
+		return "", terr
 	}
 	// Recorded only on full success: the agent's @x,y references mean the
 	// screenshot it actually saw (the tree is part of the same answer).
 	s.Shots.Record(w.ID, m)
+	r := frame.Rect
 	return wstate.Render(tree) +
-		fmt.Sprintf("Screenshot: %s (%dx%d px, scale %s)\n", path, m.Width, m.Height, formatScale(m.Scale)), nil
+		fmt.Sprintf("Screenshot: %s (%dx%d px, scale %s, window at %d,%d %dx%d)\n",
+			path, m.Width, m.Height, formatScale(m.Scale), r.Min.X, r.Min.Y, r.Dx(), r.Dy()), nil
 }
 
-// zoom runs `winuse zoom <window> <region>`: the Window is activated and
-// captured fresh at full resolution through the same chain, and the
-// region — given in the latest screenshot's coordinate space — is mapped
+// captureObserved captures w for an observation. By default it is
+// headless (ADR 0011): a minimized Window is refused before any capture
+// (it has nothing on screen, and restoring it is the agent's call), then
+// the headless chain runs without touching the foreground. With headed it
+// is today's v1 path: activate (which restores a minimized Window), then
+// the full chain, whose screen region method needs the foreground.
+func captureObserved(s Services, w win.WindowInfo, headed bool) (shot.Frame, *Error) {
+	capture := s.CaptureHeadless
+	if headed {
+		if err := s.Activate(w.ID); err != nil {
+			return shot.Frame{}, activationError(err)
+		}
+		capture = s.Capture
+	} else if s.Minimized(w.ID) {
+		return shot.Frame{}, minimizedShotError(w)
+	}
+	frame, err := capture(w.ID)
+	if err != nil {
+		return shot.Frame{}, captureError(err)
+	}
+	return frame, nil
+}
+
+// minimizedShotError refuses a headless capture of a minimized Window.
+// restore-window (ticket 02) brings it back without the foreground;
+// --headed activates it, as v1 did.
+func minimizedShotError(w win.WindowInfo) *Error {
+	id := strconv.FormatUint(w.ID, 10)
+	return Fail((&win.MinimizedError{WindowID: w.ID}).Error()+"; there is nothing on screen to capture",
+		"restore it without taking the foreground with winuse restore-window "+id+
+			", or pass --headed to activate it and capture the v1 way")
+}
+
+// zoom runs `winuse zoom <window> <region>`: the Window is captured fresh
+// at full resolution through the same chain as the screenshot (headless,
+// or activated under --headed), and the region (given in the latest
+// screenshot's coordinate space) is mapped
 // through that screenshot's recorded Mapping and cropped. The crop is
 // saved as PNG (full resolution, no scaling) and its path printed.
 //
@@ -117,12 +157,9 @@ func zoom(s Services) Command {
 		if locked, desktop := s.Locked(); locked {
 			return "", lockedDesktopFailure(desktop)
 		}
-		if err := s.Activate(w.ID); err != nil {
-			return "", activationError(err)
-		}
-		frame, err := s.Capture(w.ID)
-		if err != nil {
-			return "", captureError(err)
+		frame, cerr := captureObserved(s, w, a.Headed)
+		if cerr != nil {
+			return "", cerr
 		}
 		// The fresh frame's window-space coverage; the crop is the
 		// requested region clipped to what the frame actually covers.

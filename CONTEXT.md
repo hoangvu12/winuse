@@ -18,6 +18,18 @@ _Avoid_: App (as an action target), screen, form
 The number that identifies a Window for as long as that Window exists. A Window can also be named by its App, but only when that App has exactly one Window.
 _Avoid_: Handle, HWND
 
+**Tab**:
+One web page slot in a browser Window. A browser Window shows exactly one active Tab; the others are in the background.
+_Avoid_: Target, page (for the slot)
+
+**Page**:
+The web content of a browser Window's active Tab, read and acted on through the browser's debugging connection rather than UI Automation. The Page's Elements belong to the Window's State like any other Elements.
+_Avoid_: Document, DOM, site
+
+**Browser Connection**:
+winuse's live link to one running Chromium browser, through the winuse extension or a browser winuse launched or cloned. The user's own Chrome and a Chrome winuse launched are two browsers with two Browser Connections, and a browser Window is always reached through the one of the browser it belongs to. Without one, that Window is read through UI Automation alone.
+_Avoid_: CDP session, debug port, endpoint
+
 ### Observation
 
 **Window State**:
@@ -35,8 +47,12 @@ _Avoid_: Element ID, ref
 ### Operation
 
 **Action**:
-A single operation the agent performs on a Window: click, set value, secondary action, scroll, drag, hover, press key or type text.
+A single operation the agent performs on a Window: click, set value, secondary action, scroll, drag, hover, press key, type text, or a Window Action.
 _Avoid_: Command, step, tool call
+
+**Window Action**:
+An Action on the Window itself rather than on one of its Elements: restore, minimize, move, resize or close.
+_Avoid_: Window management, window op
 
 **Secondary Action**:
 An operation an Element offers besides a plain click, such as Expand, Collapse, Toggle or Scroll Down, listed next to that Element in the Window State.
@@ -51,12 +67,16 @@ Several Actions sent in one call and run in order, stopping at the first one tha
 _Avoid_: Script, macro, sequence
 
 **Headless Action**:
-An Action performed on an Element through UI Automation alone, on a Window that stays where it is: no foreground change, no pointer, no keys, no banner. A click on an Element (left button, single), a set value and every Secondary Action except Raise are Headless unless the agent asks for Headed.
+An Action that winuse can deliver reliably without the foreground: no foreground change, no pointer, no real keys, no banner. Every Window Action is always Headless. These are Headless unless the agent asks for Headed: a click on an Element (left button, single), a set value, every Secondary Action except Raise, scrolling an Element, Return or Escape on a classic dialog, and typing into a classic edit box that has the focus. Actions on a Page Element through a Browser Connection are Headless too, whatever the button or click count, and so are keys and typing while the Page has the focus and scrolling at a point of the Page. The Actions on a Tab's Page as a whole (navigate, back, forward, reload, upload, dialog, wait and eval) are always Headless.
 _Avoid_: Background action, silent action, pattern action
 
 **Headed Action**:
-An Action performed the way a person would: the Window is brought to the foreground and real pointer or keyboard input is sent, under the in-control banner. Typing, keys, scrolling, dragging, hovering, any Action aimed at screen coordinates, double, right or middle clicks, activating a Window and Raise are always Headed; any other Action is Headed when the agent asks for it.
+An Action performed the way a person would: the Window is brought to the foreground and real pointer or keyboard input is sent, under the in-control banner. These are always Headed: dragging, hovering, any Action aimed at screen coordinates except a scroll at a point of the Page, double, right or middle clicks outside a Page, activating a Window and Raise. Keys and typing are Headed wherever they have no Headless route and are not sent as Posted Keys. Any other Action is Headed when the agent asks for it.
 _Avoid_: Foreground action, physical action, v1 mode
+
+**Posted Keys**:
+Keys or text that the agent explicitly asks to post to a Window's focused control without the foreground. Best effort: the app may ignore them, and they cannot carry modifiers. Neither Headless nor Headed.
+_Avoid_: Background keys, silent typing
 
 **Agent Cursor**:
 The second, presentation-only cursor that shows the user each Headless Action: it travels to the Element, says what is happening in a label and ripples on the click. It never takes the user's pointer, keyboard or foreground and never appears in winuse's own screenshots.

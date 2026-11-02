@@ -27,9 +27,10 @@ import (
 
 // The commands' usage lines (also the argument-failure hints).
 const (
-	scrollUsageHint = "usage: winuse scroll <window> @x,y <dx> <dy>   (positive dy scrolls down; one wheel notch is 120)"
-	dragUsageHint   = "usage: winuse drag <window> @x,y @x,y   (from, to — both in the latest screenshot's pixels)"
-	hoverUsageHint  = "usage: winuse hover <window> @x,y   (the point, in the latest screenshot's pixels)"
+	scrollUsageHint = "usage: winuse scroll <window> <element index | name:<text> | id:<id>> <up|down|left|right> [steps 1-50, default 3] | " +
+		"winuse scroll <window> <element> into-view | winuse scroll <window> @x,y <dx> <dy>   (positive dy scrolls down; one wheel notch is 120)"
+	dragUsageHint  = "usage: winuse drag <window> @x,y @x,y   (from, to; both in the latest screenshot's pixels) | winuse drag <window> <page element> <page element | @x,y>"
+	hoverUsageHint = "usage: winuse hover <window> @x,y   (the point, in the latest screenshot's pixels) | winuse hover <window> <page element>"
 )
 
 // maxScrollUnits bounds a scroll amount: the wheel delta travels as a
@@ -43,12 +44,19 @@ const maxScrollUnits = 1000000
 // activated and verified in the foreground, the point is mapped from the
 // latest screenshot's pixels to the screen, the cursor is moved there,
 // and the wheel is injected — vertical and horizontal, Codex's signs
-// (positive dy scrolls down).
+// (positive dy scrolls down). The Element forms (an Element with a
+// direction, or into-view) are scrollElement's (scroll.go).
 func scroll(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.ScrollArgs
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("scroll: "+err.Error(), scrollUsageHint)
+		}
+		if isElementScroll(a) {
+			return scrollElement(ctx, s, args, a)
+		}
+		if a.Direction != "" || a.Steps != nil {
+			return "", Fail("scroll: a direction or steps needs an element index, name: or id: reference", scrollUsageHint)
 		}
 		if a.X < 0 || a.Y < 0 {
 			return "", Fail("scroll: the @x,y coordinates must be non-negative integers", scrollUsageHint)
@@ -60,6 +68,11 @@ func scroll(s Services) Command {
 			return "", Fail(fmt.Sprintf("scroll amounts must be within ±%d wheel units (one notch is 120)", maxScrollUnits), scrollUsageHint)
 		}
 		x, y, dx, dy := a.X, a.Y, a.ScrollX, a.ScrollY
+		// A point on a browser Window's Page wheels over the Browser
+		// Connection, Headless (pageactions.go).
+		if out, rerr, ok := s.pageScrollAt(ctx, a.Window, x, y, dx, dy); ok {
+			return out, rerr
+		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
 			pt, serr := shotPoint(s, w, x, y, "scroll")
 			if serr != nil {
@@ -83,6 +96,9 @@ func drag(s Services) Command {
 		var a protocol.DragArgs
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("drag: "+err.Error(), dragUsageHint)
+		}
+		if a.FromIndex != nil || a.FromRef != "" {
+			return s.pageDrag(ctx, a) // from a Page Element, Headless (pageelements.go)
 		}
 		if a.FromX < 0 || a.FromY < 0 || a.ToX < 0 || a.ToY < 0 {
 			return "", Fail("drag: the @x,y coordinates must be non-negative integers", dragUsageHint)
@@ -116,6 +132,9 @@ func hover(s Services) Command {
 		var a protocol.HoverArgs
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("hover: "+err.Error(), hoverUsageHint)
+		}
+		if a.ElementIndex != nil || a.Ref != "" {
+			return s.pageHover(ctx, a) // a Page Element, Headless (pageelements.go)
 		}
 		if a.X < 0 || a.Y < 0 {
 			return "", Fail("hover: the @x,y coordinates must be non-negative integers", hoverUsageHint)

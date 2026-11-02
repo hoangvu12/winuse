@@ -64,14 +64,27 @@ func parseElementTarget(cmd string, index *int, ref string, point *protocol.Poin
 // reference resolves against the Window's latest Window State (exactly
 // one match, never a guess); an Element Index stays; the point form is
 // left to the Action's own step (it is not an index).
+//
+// An Element of a browser Window's Page (browser merge ticket 04) is
+// refused here, by either form, until ticket 05 routes Page Actions.
 func (t elementTarget) resolve(s Services, w win.WindowInfo) (int, *Error) {
-	if t.ref != "" {
-		return resolveElementRef(s, w, t.ref)
+	index := -1
+	switch {
+	case t.ref != "":
+		i, rerr := resolveElementRef(s, w, t.ref)
+		if rerr != nil {
+			return i, rerr
+		}
+		index = i
+	case t.index != nil:
+		index = *t.index
+	default:
+		return -1, nil
 	}
-	if t.index != nil {
-		return *t.index, nil
+	if perr := refusePageElement(s, w, index); perr != nil {
+		return 0, perr
 	}
-	return -1, nil
+	return index, nil
 }
 
 // ElementResolver resolves a name:/id: Element Reference against a

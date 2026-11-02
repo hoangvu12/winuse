@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>winuse e2e frame</title>
+<!--
+  The cross-origin iframe of browser-pages.html (browser_pages_test.go).
+  The test serves it from a second loopback server under "localhost", so
+  it is another site than the parent (127.0.0.1) and Chrome runs it out of
+  process. It tells the parent what happened through postMessage.
+-->
+<style>body { font: 14px sans-serif; margin: 6px; }</style>
+</head>
+<body>
+  <button id="frame-button" type="button" aria-label="frame button"
+    onclick="parent.postMessage({kind: 'click'}, '*')">frame button</button>
+  <input id="frame-text" type="text" aria-label="frame text"
+    oninput="parent.postMessage({kind: 'input', value: this.value}, '*')">
+  <script>parent.postMessage({kind: 'ready'}, '*');</script>
+</body>
+</html>

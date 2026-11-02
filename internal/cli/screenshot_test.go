@@ -231,6 +231,43 @@ func TestGetWindowStateUsageErrorsExit2WithoutDialing(t *testing.T) {
 	}
 }
 
+// TestHeadedReachesScreenshotRequests pins ticket 01's CLI half: the
+// global --headed flag, wherever it stands, reaches get-window-state's and
+// zoom's requests. Without it both are headless.
+func TestHeadedReachesScreenshotRequests(t *testing.T) {
+	for _, line := range []string{
+		"get-window-state 101 --screenshot --headed",
+		"--headed get-window-state --screenshot 101",
+		"get-window-state 101",
+	} {
+		rest, headed := extractHeaded(split(line))
+		req, err := windowStateRequest(rest[1:], headed)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		wantHeaded := strings.Contains(line, "--headed")
+		if req.Window != "101" || req.Headed != wantHeaded || req.Screenshot != strings.Contains(line, "--screenshot") {
+			t.Errorf("%q: request = %+v, want window 101, headed %v", line, req, wantHeaded)
+		}
+	}
+	for _, line := range []string{
+		"zoom 101 1,2,3,4 --headed",
+		"--headed zoom 101 1,2,3,4",
+		"zoom 101 1,2,3,4",
+	} {
+		rest, headed := extractHeaded(split(line))
+		req, err := zoomRequest(rest[1:], headed)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		wantHeaded := strings.Contains(line, "--headed")
+		want := protocol.ZoomArgs{Window: "101", Region: protocol.Region{X: 1, Y: 2, W: 3, H: 4}, Headed: wantHeaded}
+		if req != want {
+			t.Errorf("%q: request = %+v, want %+v", line, req, want)
+		}
+	}
+}
+
 func TestUsageMentionsScreenshotCommands(t *testing.T) {
 	for _, want := range []string{"--screenshot", "zoom", "@x,y", "screenshot"} {
 		if !strings.Contains(Usage, want) {

@@ -267,8 +267,11 @@ func TestBatchStepKindsAreBatchableActions(t *testing.T) {
 	// The list is the contract both ends of the wire share (the CLI's
 	// step parser and the helper's step dispatch): every entry is an
 	// Action command, and the set is exactly today's Actions (the ticket-10
-	// pointer Actions became steps in ticket 12).
-	want := []string{"click", "type-text", "press-key", "set-value", "perform-secondary-action", "activate-window", "scroll", "drag", "hover"}
+	// pointer Actions became steps in ticket 12; browser merge ticket 07
+	// adds the acting tab commands).
+	want := []string{"click", "type-text", "press-key", "set-value", "perform-secondary-action", "activate-window", "scroll", "drag", "hover",
+		"tab-new", "tab-close", "tab-switch",
+		"navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval"}
 	if len(BatchStepKinds) != len(want) {
 		t.Fatalf("BatchStepKinds = %q, want %q", BatchStepKinds, want)
 	}

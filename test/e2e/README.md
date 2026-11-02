@@ -36,6 +36,16 @@ app *is* a server-side UI Automation provider: buttons, a text field, a
 checkbox, a list, a menu bar with dropdown menus, a hover-only toolbar, a
 canvas with a sparse subtree, and the dialog.
 
+Two main-window buttons open real system windows that the fixture does
+not draw: **Classic Dialog...** opens a modeless `#32770` dialog with a
+Win32 Edit (focused when it opens), a password Edit, OK (the default
+button) and Cancel, and **Message Box...** opens a `MessageBox`
+(OK/Cancel). They carry the window messages that winuse's classic
+keyboard routes use, which the drawn Elements cannot. Their titles,
+control IDs and behaviour are documented in `elements.go` next to the
+Element table, and the state file reports their text, focus, and how they
+closed.
+
 **The Element contract lives in exactly one place:
 [`internal/fixture/elements.go`](../../internal/fixture/elements.go)** —
 every Element's Name, AutomationId, role, control patterns and behaviour.
@@ -310,3 +320,246 @@ Run only these tests:
 set WINUSE_E2E=1
 go test -tags e2e -v -run "Headless|Headed|AgentCursor" ./test/e2e
 ```
+
+The headless-parity tests (ADR 0011, `.scratch/headless-parity/`) cover
+the Actions that became Headless after ADR 0010. Each one covers its
+target the same way (a second fixture instance in front, brought to the
+foreground with `activate-window`) and checks that the covering Window is
+still the foreground window afterwards. The shared helpers are in
+`headless_parity_test.go`.
+
+- `TestHeadlessScreenshotAndZoomOfCoveredWindow` (`headless_parity_test.go`):
+  `get-window-state --screenshot` and `zoom` of the covered fixture. The
+  target has a list item selected and the cover does not, so the image
+  must contain the selected item's fill colour: a capture of the screen
+  region would show the cover instead. Also checks that the image is not
+  blank, the pointer did not move and the in-control banner never showed.
+- `TestHeadlessScreenshotRefusesMinimizedWindow`: after `minimize-window`,
+  the screenshot and zoom fail with "is minimized; there is nothing on
+  screen to capture" and the `restore-window` hint. The Window stays
+  minimized and the foreground does not change.
+- `TestSetValueOnOffTheCheckbox`: `set-value` with `on`, `ON`, `checked`,
+  `off`, `unchecked`, `True` and `false` on the covered checkbox. Setting
+  the state it already has sends nothing (the fixture's generation stays
+  put), and `maybe` is refused with "nothing was sent".
+- `TestWindowActionsKeepTheForeground` (`window_actions_test.go`):
+  `minimize-window`, a `move-window` refused while minimized,
+  `restore-window`, `move-window` (read back through GetWindowRect within
+  8 px, and through the fixture's own canvas rectangle), `resize-window`
+  and `close-window`, which must end the fixture process within 5 s.
+- `TestElementScrollByStepsAndIntoView` (`element_scroll_test.go`): the
+  list scrolls by steps (2, then the default 3, which stops at the end),
+  fails at the end with "the Element did not scroll; it may already be at
+  the end", scrolls through a list item (the nearest scrollable
+  ancestor), and brings Hotel into view. Scrolling with no scrollable
+  ancestor on the axis and `into-view` on the checkbox are refused with
+  "nothing was sent". The fixture's `listFirstVisible` counts the steps
+  exactly.
+- `TestHeadlessReturnAndEscapeOnClassicDialog` and
+  `TestHeadlessReturnAndEscapeOnMessageBox` (`classic_keys_test.go`):
+  `press-key Return` closes the Classic Dialog or the MessageBox with
+  "ok", and `press-key Escape` with "cancel".
+- `TestHeadlessTypeTextIntoClassicEdit`: `type-text` into the Classic
+  Dialog's Edit (non-ASCII text, then an appended character).
+- `TestHeadlessTypeTextIntoPasswordEdit`: a posted Tab moves the focus to
+  the password Edit, then `type-text` fills it and the output is exactly
+  `ok`, without the text.
+- `TestHeadlessTypeTextIntoNotepad` **needs the Windows 11 Notepad**
+  (RichEditD2DPT editor) and skips otherwise. It also skips while Notepad
+  is running, because it ends the Notepad process it types into. It opens
+  an empty temp file, types into it while covered, and reads the editor's
+  text back with WM_GETTEXT. If Notepad restores sessions, its next start
+  may show that temp file's tab with the test text: close it.
+- `TestPostedKeysIntoClassicEdit` (`posted_keys_test.go`):
+  `type-text --post` and `press-key BackSpace --post` reach the Classic
+  Dialog's Edit, the output starts with `ok (posted;`, and
+  `Control_L+a --post` is refused with "nothing was sent".
+- `TestPostedKeysRefusedOnBlockedAndMinimizedWindows`: posted keys and
+  text into the main window are refused while the Save As dialog blocks
+  it and while it is minimized, and no key reaches the fixture.
+- `TestPostedReturnIntoCoveredChromeAddressBar` **needs Chrome** (Edge
+  does not count) and skips without it. It is a measurement, not an
+  assertion: Chrome starts with an isolated temp profile on
+  `about:blank`, its address bar is set to a `data:` URL with
+  `set-value`, and Return is posted. Read the `MEASURED:` line in the
+  `-v` output: it says whether Chrome navigated. The test fails only if
+  winuse's own output is wrong or the foreground changed.
+
+What to look at when one fails. The keyboard routes are decided from the
+live Window: the focused control that GetGUIThreadInfo reports for its
+thread, and the dialog's default button. If the probe reads something
+other than the offline tests assume, the Action routes Headed and takes
+the foreground, and the test fails on the foreground check. The tests
+that use these routes log a `key route probe` line first, with the focus
+class, its style and the default button. The risks the tickets left to
+measure live are:
+
+- whether a background thread's focus reads back (Classic Dialog,
+  password Edit, Notepad);
+- whether a MessageBox answers DM_GETDEFID or has its default set only by
+  focus;
+- whether Notepad's RichEditD2DPT accepts EM_REPLACESEL from another
+  process while in the background;
+- whether Chrome acts on a posted Return (the `MEASURED:` line).
+
+Run only these tests:
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted" ./test/e2e
+```
+
+## The browser merge probe
+
+`TestBrowserProbe` (`browser_probe_test.go`, ticket 03 of
+`.scratch/browser-merge/`) is a measurement, not a test. It answers what
+tickets 04 to 07 need to know before they are built, and fails only when
+its own setup breaks (no launch, no connection, no window). Every finding
+is logged on a `MEASURED:` line and written to a report file.
+
+It runs against Chrome, then Edge, and skips a browser that is not
+installed. Each browser starts through the real `winuse browser launch`, in
+winuse's own launch profile, so the user's own browser and profile are
+never driven. A fixture Window covers the browser and holds the
+foreground. Per browser, it records:
+
+1. **Window to Tab mapping.** With 3 windows open and one title repeated in
+   a background tab: for each `Chrome_WidgetWin_1` Window, whether
+   `Browser.getWindowForTarget` bounds plus the active tab's title pick
+   exactly one tab, with the raw bounds and DPI.
+2. **Foreground safety.** The foreground and z-order before and after
+   `Target.createTarget {background:true}`, the same with `newWindow`, and
+   whether `winuse browser launch` itself took the foreground.
+3. **Screen coordinates.** On `testdata/browser-probe.html`, the error
+   between the UIA document top-left plus CSS rect x `devicePixelRatio`
+   and UIA's own bounds for the same Element, at page zoom 100%, 125% and
+   150%. The zoom keys are Headed `press-key Control_L+equal` on the
+   probe's own browser Window, so that Window comes to the front for a few
+   seconds; the zoom is reset to 100% afterwards.
+4. **Covered and minimized windows.** `Accessibility.getFullAXTree`,
+   `Input.insertText` and a `Input.dispatchMouseEvent` click while the
+   browser is uncovered, fully covered and minimized.
+5. **Posted keys in the address bar.** `type-text --post` and
+   `press-key Return --post` into a new window, then `set-value` plus a
+   posted Return, and whether the tab navigated.
+
+It also records the port owner check, whether `/json/version` or the dial
+raised a window, and whether the browser outlives the CDP connection and
+the helper. At the end it closes the browsers it launched, removes the
+launch profile if the run created it, puts back the browser pin, and gives
+the foreground back to the Window that had it.
+
+**The extension questions** (the `chrome.windows` ids in question 1, the
+tab create and `chrome.tabs.update` activation in question 2) use the
+user's own browser and run only when the winuse extension is connected to
+it. To include them, first run `winuse browser ext install chrome` (and
+`edge`), follow the printed steps, and check with
+`winuse browser ext status chrome` (exit 0). The probe then opens one
+background tab there, switches to it and back, and closes it. The user's
+tab titles are not written to the report. `ext status` updates the
+extension when its build differs from this checkout. Without the
+extension, the report says "extension not connected, skipped".
+
+**Before and between runs.** Other windows of Chrome or Edge can stay
+open: the probe uses its own profile. Do not use the mouse or keyboard
+while it runs (about 2 minutes per browser). Run it once at each display
+scale, 100%, 150% and 175% (Settings > System > Display > Scale), with
+nothing else changed. Each run writes
+`.scratch/browser-merge/probe-run-<browser>-<scale>-<time>.md` at the
+repo root and logs the path. `WINUSE_PROBE_REPORT` may name another folder,
+or a `.md` file (the browser name is added before the extension). Copy the
+results into `.scratch/browser-merge/probe-results.md`.
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -timeout 20m -run TestBrowserProbe ./test/e2e
+```
+
+## The browser page tests
+
+`browser_pages_test.go` (ticket 09 of `.scratch/browser-merge/`) drives
+every Page Action through the winuse CLI, as an agent would, against real
+Chrome and Edge. It skips a browser that is not installed. A fixture
+Window covers the browser and holds the foreground. After each Action the
+test checks four things: the fixture is still the foreground window, it
+kept its place in the z-order, no browser Window rose above it, and no
+native dialog Window of the browser appeared. Then it reads the Page back
+with `winuse eval` to check that the Action took effect.
+
+The pages are `testdata/browser-pages.html`, `browser-pages-frame.html`
+and `browser-pages-next.html`. Two loopback httptest servers serve them.
+The second server is addressed as `localhost`, another site than
+`127.0.0.1`, so its iframe is cross-origin and out of process.
+
+`TestBrowserPages` starts each browser through the real
+`winuse browser launch`, in winuse's own launch profile, so the user's own
+browser and profile are never driven. It skips the browser when that
+profile is already running: close it with `winuse browser stop chrome`
+first. The first step points the first tab, which shows the browser's
+New Tab page, at the test page with `winuse navigate`. If that fails, the
+test reports it and does the step over a CDP connection of its own, so the
+later subtests still run. Its subtests:
+
+- `page-actions`: click (single and `--count 2`); set-value on a text
+  field, a select (by label) and a check box (on, then off); a click into
+  the field, `press-key Control_L+a` and `type-text`, which replaces the
+  text; `press-key Control_L+Shift_L+k`, seen by the page as that chord;
+  `scroll` by steps on a list row and `into-view` on the last row; and
+  `hover`.
+- `drag-and-pointer-capture`: an HTML5 drag and drop between two Elements,
+  and a slider that follows the pointer only through pointer capture,
+  dragged to an Element outside its track.
+- `dialogs`: a click that opens an alert fails and names the dialog. While
+  the alert shows, click, set-value, eval and navigate fail within 5 s
+  with "nothing was sent", and the Window State carries the
+  `Note: the Page is read through UI Automation because it shows an alert
+  dialog` line. Then `dialog accept` answers the alert (the blocked click
+  never landed), `dialog dismiss` answers a confirm (the page sees false),
+  `dialog accept <text>` answers a prompt, and `dialog` with none open
+  fails.
+- `cross-origin-iframe`: the iframe's button and field are in the Window
+  State, and take a click and a set-value.
+- `upload`: `upload` on a file input; then a click that opens a file
+  chooser says so, no native file dialog Window appears, and `upload`
+  without an Element answers the chooser.
+- `download`: a click on a download link says it started a download, and
+  `wait download` prints the path. The file must be there, with the
+  served name and content. It lands in winuse's download folder
+  (`%USERPROFILE%\Downloads\winuse` unless the Downloads folder is
+  redirected), and the test removes it.
+- `navigation-wait-eval`: `navigate`, `back`, `forward` and `reload`
+  (a value set by eval is gone after the reload); `wait` for a selector,
+  text, a URL pattern and the load; and `eval`.
+- `tabs`: `tab new` opens a background tab (the active tab and the
+  Window's title stay), `tab list` lists it, and `tab close` closes it.
+  `tab switch` is Headed on a launched browser, so it is not run here.
+
+`TestBrowserPagesExtension` runs a short subset in the user's real browser
+through the winuse extension. It runs only when
+`winuse browser ext status chrome` (or `edge`) exits 0, and logs a skip
+otherwise. In the user's topmost browser Window, under the covering
+fixture, it opens one background tab with `tab new` and switches to it
+with `tab switch` (Headless through the extension). On that tab it runs
+click, set-value and eval. Then it switches back to the user's tab and
+closes its own. The user's tabs are never acted on; the Window shows the
+test's tab for a few seconds.
+
+**What they need.** Chrome installed (Edge too, to cover it; neither is
+required). The extension is optional. Do not use the mouse or keyboard
+while they run (a few minutes per browser). Both tests put the browser
+pin and the foreground back, and close every tab, window and browser they
+opened, the launched browser's new profile, the fixture and the helper.
+One helper serves a whole browser's run (a 10 minute idle time, killed at
+the end), because the open dialog, the held file chooser and the download
+tracking live in it. If that helper restarted while the extension is
+connected to the same browser, its next connection would go through the
+extension instead of the launched browser, and the Page Actions would
+fail because the Window belongs to another Chrome process.
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -timeout 20m -run "TestBrowserPages" ./test/e2e
+```
+
+`-run "TestBrowserPages$/chrome/dialogs"` runs one subtest, and
+`-run TestBrowserPagesExtension` only the extension subset.

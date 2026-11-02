@@ -11,6 +11,11 @@ func TestRegistryHasEveryCLICommand(t *testing.T) {
 		"list-windows", "list-apps", "launch-app", "get-window-state", "record-tree",
 		"zoom", "click", "activate-window", "type-text", "press-key",
 		"set-value", "perform-secondary-action", "batch", "scroll", "drag", "hover",
+		"restore-window", "minimize-window", "move-window", "resize-window", "close-window",
+		"browser-status", "browser-use", "browser-launch", "browser-clone", "browser-connect", "browser-stop",
+		"browser-ext-install", "browser-ext-status",
+		"tab-list", "tab-new", "tab-close", "tab-switch",
+		"navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval",
 	} {
 		if _, ok := cmds[name]; !ok {
 			t.Errorf("command %q is not registered in CommandsWith", name)

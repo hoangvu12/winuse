@@ -1,0 +1,25 @@
+Window: "Shop - Google Chrome", App: chrome.exe.
+	0 window Shop - Google Chrome
+		1 pane Google Chrome
+			2 tab list Tabs
+				3 tab (selectable, selected) Shop Secondary Actions: Select
+				4 button New Tab
+			5 toolbar Address and search bar
+				6 button Back
+				7 edit (settable, string) Address and search bar Value: https://example.test/
+			8 document Shop Value: https://example.test/
+				9 group Main
+					10 list
+						11 list item
+							12 link Home
+						13 list item
+							14 link Cart (2)
+				15 clickable Open settings
+				16 clickable Blue mug 12 EUR
+					17 heading Blue mug
+				18 button Buy
+				19 text Free shipping over 50 EUR.
+			20 group "winuse" started debugging this browser
+				21 button Cancel
+
+The focused UI element is 8 document Shop Value: https://example.test/.

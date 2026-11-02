@@ -92,6 +92,18 @@ type Key struct {
 	Extended bool
 }
 
+// Modifier reports whether the key is a modifier: Control, Shift or Alt,
+// left or right (the generic VK_SHIFT, VK_CONTROL and VK_MENU too). Posted
+// Keys refuse them: a posted message does not change the keyboard state
+// that apps read with GetKeyState.
+func (k Key) Modifier() bool {
+	switch k.VK {
+	case 0x10, 0x11, 0x12, vkLshift, vkRshift, vkLcontrol, vkRcontrol, vkLmenu, vkRmenu:
+		return true
+	}
+	return false
+}
+
 // Chord is a parsed key chord: one or more keys. Delivery order is part of
 // the chord: every key goes down in the given order, then up in reverse
 // (Codex's chord delivery, codex-surface.md §3).

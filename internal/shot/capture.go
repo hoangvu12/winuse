@@ -25,8 +25,10 @@ type Frame struct {
 
 // Method is one screenshot capture method in the chain. CaptureWindow may
 // fail (the chain then tries the next method); methods do not retry
-// internally. CaptureWindow runs after the Window was activated and is in
-// the foreground (the region method needs that; the others tolerate it).
+// internally. The headless chain runs without activating the Window (ADR
+// 0011); only the --headed chain, which adds the region method, runs after
+// the Window was activated and is in the foreground (the region method
+// needs that; the others tolerate either).
 type Method interface {
 	// Name identifies the method in failure messages.
 	Name() string

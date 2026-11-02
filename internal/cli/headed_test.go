@@ -26,7 +26,7 @@ func TestExtractHeadedPositions(t *testing.T) {
 		{"at the end", "click 101 3 --headed", "click 101 3", true},
 		{"among click flags", "click 101 3 --count 1 --headed --button left", "click 101 3 --count 1 --button left", true},
 		{"secondary action at the end", "perform-secondary-action 101 3 scroll down --headed", "perform-secondary-action 101 3 scroll down", true},
-		{"always-headed command ignores it", "press-key 101 Return --headed", "press-key 101 Return", true},
+		{"press-key at the end", "press-key 101 Return --headed", "press-key 101 Return", true},
 		{"observation command", "list-windows --headed", "list-windows", true},
 		{"only the flag", "--headed", "", true},
 
