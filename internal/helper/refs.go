@@ -65,8 +65,9 @@ func parseElementTarget(cmd string, index *int, ref string, point *protocol.Poin
 // one match, never a guess); an Element Index stays; the point form is
 // left to the Action's own step (it is not an index).
 //
-// An Element of a browser Window's Page (browser merge ticket 04) is
-// refused here, by either form, until ticket 05 routes Page Actions.
+// The commands route a Page Element over the Browser Connection before
+// they get here (pageactions.go); one that still arrives, by either form,
+// is refused with nothing sent (refusePageElement).
 func (t elementTarget) resolve(s Services, w win.WindowInfo) (int, *Error) {
 	index := -1
 	switch {

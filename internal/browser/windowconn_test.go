@@ -138,7 +138,7 @@ func TestAWindowOfAChromeWinuseCannotReach(t *testing.T) {
 	if p.PID != 777 || !slices.Equal(p.Others, []string{"100", "500"}) {
 		t.Errorf("problem = %+v", p)
 	}
-	if p.Sentence() != "This Chrome window belongs to Chrome process 777, which has no debugging connection winuse can use (winuse can reach Chrome processes 100 and 500)." {
+	if p.Sentence() != "this Chrome window belongs to Chrome process 777, which has no debugging connection winuse can use (winuse can reach Chrome processes 100 and 500)" {
 		t.Errorf("sentence = %q", p.Sentence())
 	}
 
@@ -172,7 +172,7 @@ func TestTwoEndpointsOfOneProcessAreRefused(t *testing.T) {
 	defer m.Close()
 	_, err := m.WindowConnection(context.Background(), "chrome", 100)
 	p := problemOf(t, err, SeveralEndpoints)
-	want := "Chrome process 100 answers on port 9301 (winuse's own profile) and port 9302 (winuse's copy of your profile, with your logins), so winuse will not guess which one to use."
+	want := "Chrome process 100 answers on port 9301 (winuse's own profile) and port 9302 (winuse's copy of your profile, with your logins), so winuse will not guess which one to use"
 	if p.Sentence() != want {
 		t.Errorf("sentence = %q", p.Sentence())
 	}

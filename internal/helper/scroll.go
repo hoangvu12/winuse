@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
@@ -137,8 +138,10 @@ func scrollElement(ctx context.Context, s Services, args json.RawMessage, a prot
 		return "", perr
 	}
 	// A Page Element routes over the Browser Connection (pageactions.go).
-	if w, index, o, ok := s.pageRoute(a.Window, plan.target); ok {
+	if out, rerr, ok := s.onPage(a.Window, plan.target, func(w win.WindowInfo, index int, o *page.Origin) (string, *Error) {
 		return s.pageScroll(ctx, w, index, o, plan, a.Headed)
+	}); ok {
+		return out, rerr
 	}
 	run := headlessRun{
 		cmd:    "scroll",

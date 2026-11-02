@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
@@ -86,8 +87,10 @@ func setValue(s Services) Command {
 			return "", terr
 		}
 		// A Page Element routes over the Browser Connection (pageactions.go).
-		if w, index, o, ok := s.pageRoute(a.Window, target); ok {
+		if out, rerr, ok := s.onPage(a.Window, target, func(w win.WindowInfo, index int, o *page.Origin) (string, *Error) {
 			return s.pageSetValue(ctx, w, index, o, target, a.Value, a.Headed)
+		}); ok {
+			return out, rerr
 		}
 		if ha, ok := s.headless("set-value", args); ok {
 			return s.runHeadless(ctx, a.Window, ha, headlessRun{
@@ -163,8 +166,10 @@ func performSecondaryAction(s Services) Command {
 			return "", Fail(fmt.Sprintf("unsupported secondary action: %s; expected %s", a.Action, uia.ExpectedSecondaryActions()),
 				"the Secondary Actions each Element offers are listed in its Window State line")
 		}
-		if w, index, _, ok := s.pageRoute(a.Window, target); ok {
+		if out, rerr, ok := s.onPage(a.Window, target, func(w win.WindowInfo, index int, _ *page.Origin) (string, *Error) {
 			return "", pageSecondaryRefusal(w, index, target, action)
+		}); ok {
+			return out, rerr
 		}
 		if ha, ok := s.headless("perform-secondary-action", args); ok {
 			return s.runHeadless(ctx, a.Window, ha, headlessRun{

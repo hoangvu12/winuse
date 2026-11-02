@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -42,19 +43,18 @@ import (
 	"github.com/hoangvu12/winuse/internal/win"
 )
 
-// The page-only commands' usage lines (also their argument hints).
-const (
-	navigateUsageHint = "usage: winuse navigate <window> <url> [--wait load|domcontentloaded|none]"
-	uploadUsageHint   = "usage: winuse upload <window> [<element index | name: | id:>] <file>..."
-	dialogUsageHint   = "usage: winuse dialog <window> accept|dismiss [text]"
-	waitUsageHint     = "usage: winuse wait <window> selector <css> | text <text> | url <url or pattern with *> | load [domcontentloaded] | download [--timeout <seconds>]"
-	evalUsageHint     = "usage: winuse eval <window> <expression>"
+// The page-only commands' usage lines, as the CLI prints them, are their
+// argument hints.
+var (
+	uploadUsageHint = protocol.PageUsage("upload")
+	dialogUsageHint = protocol.PageUsage("dialog")
+	waitUsageHint   = protocol.PageUsage("wait")
+	evalUsageHint   = protocol.PageUsage("eval")
 )
 
-// historyUsageHint is back's, forward's or reload's usage line.
-func historyUsageHint(cmd string) string {
-	return "usage: winuse " + cmd + " <window> [--wait load|domcontentloaded|none]"
-}
+// pageCommandsWord names the page-only Actions in a sentence: "navigate,
+// back, ... and eval".
+var pageCommandsWord = strings.Join(protocol.PageCommands[:len(protocol.PageCommands)-1], ", ") + " and " + protocol.PageCommands[len(protocol.PageCommands)-1]
 
 // pageWaitDefault is wait's default timeout; pageWaitMargin is kept
 // between any page wait and the request's deadline, to answer in time.
@@ -85,9 +85,10 @@ func pageCommands(s Services) map[string]Command {
 // fails them before anything is sent. hover and drag are Headless in their
 // Page Element forms only.
 func pageOnlyStep(kind string, args json.RawMessage) bool {
-	switch kind {
-	case "navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval":
+	if slices.Contains(protocol.PageCommands, kind) {
 		return true
+	}
+	switch kind {
 	case "hover":
 		var a protocol.HoverArgs
 		return json.Unmarshal(args, &a) == nil && (a.ElementIndex != nil || a.Ref != "")
@@ -98,52 +99,77 @@ func pageOnlyStep(kind string, args json.RawMessage) bool {
 	return false
 }
 
+// browserConn is a browser Window with its Browser Connection: what the
+// tab commands and the page-only Actions start from.
+type browserConn struct {
+	w      win.WindowInfo
+	name   string // the browser's short name
+	conn   *browser.Connection
+	g      page.Geometry // the Window as the Tab lookup sees it
+	reader *page.Reader  // the Window State reader, whose Tab sessions the page Actions share
+}
+
+func (bc browserConn) id() string { return strconv.FormatUint(bc.w.ID, 10) }
+
+// live is the helper's Pages service with its Browser Connections, or nil
+// for a helper without them (a fake in tests).
+func (s Services) live() *livePages {
+	lp, _ := s.Pages.(*livePages)
+	return lp
+}
+
+// browserWindow resolves the Window, names its browser and opens its
+// Browser Connection. A Window that is no browser is refused: lacks names
+// what it has none of ("Page", "Tabs"), and cmds the commands that need
+// one. Nothing is sent to the browser.
+func (s Services) browserWindow(ctx context.Context, ref, lacks, cmds string) (browserConn, *Error) {
+	w, rerr := resolveWindow(s, ref)
+	if rerr != nil {
+		return browserConn{}, rerr
+	}
+	lp := s.live()
+	if lp == nil {
+		return browserConn{}, Fail("this winuse helper has no Browser Connections", "run winuse browser status")
+	}
+	name, conn, err := lp.open(ctx, w)
+	switch {
+	case name == "":
+		return browserConn{}, Fail(fmt.Sprintf("window %d is not a browser Window, so it has no %s", w.ID, lacks),
+			cmds+" act on Chrome, Edge, Brave, Chromium, Vivaldi and Opera Windows; run winuse list-windows")
+	case err != nil:
+		return browserConn{}, windowConnError(err, w, name)
+	}
+	return browserConn{w: w, name: name, conn: conn, g: lp.geometry(w), reader: lp.reader}, nil
+}
+
 // pageWin is a browser Window's active Tab, ready for a page Action.
 type pageWin struct {
-	w       win.WindowInfo
-	name    string // the browser's short name
-	conn    *browser.Connection
-	reader  *page.Reader
+	browserConn
 	tab     page.Tab
 	session string // "" while the Tab shows a browser page (tab.Internal)
 	watch   *page.TabWatch
 }
-
-func (pw pageWin) id() string { return strconv.FormatUint(pw.w.ID, 10) }
 
 // pageWindow resolves the Window, its Browser Connection and the Tab it
 // shows, and attaches the Tab's session (with its watch). A Tab that shows
 // a browser page (chrome://newtab/) is not attached: runPageWindow refuses
 // it, but for navigate. Nothing reaches the Page's input.
 func (s Services) pageWindow(ctx context.Context, ref string) (pageWin, *Error) {
-	w, rerr := resolveWindow(s, ref)
+	bc, rerr := s.browserWindow(ctx, ref, "Page", pageCommandsWord)
 	if rerr != nil {
 		return pageWin{}, rerr
 	}
-	lp, ok := s.Pages.(*livePages)
-	if !ok {
-		return pageWin{}, Fail("this winuse helper has no Browser Connections", "run winuse browser status")
-	}
-	name := lp.Browser(w)
-	if name == "" {
-		return pageWin{}, Fail(fmt.Sprintf("window %d is not a browser Window, so it has no Page", w.ID),
-			"navigate, back, forward, reload, upload, dialog, wait and eval act on Chrome, Edge, Brave, Chromium, Vivaldi and Opera Windows; run winuse list-windows")
-	}
-	conn, err := lp.connection(ctx, w, name)
+	tab, err := page.FindTab(ctx, bc.conn, bc.g)
 	if err != nil {
-		return pageWin{}, windowConnError(err, w, name)
+		return pageWin{}, tabListError(err, bc.w, bc.name)
 	}
-	tab, err := page.FindTab(ctx, conn, lp.geometry(w))
-	if err != nil {
-		return pageWin{}, tabListError(err, w, name)
-	}
-	pw := pageWin{w: w, name: name, conn: conn, reader: lp.reader, tab: tab}
+	pw := pageWin{browserConn: bc, tab: tab}
 	if !tab.Internal {
 		if rerr := pw.attach(ctx); rerr != nil {
 			return pageWin{}, rerr
 		}
 	}
-	s.pageDownloads(ctx, conn)
+	s.pageDownloads(ctx, pw.conn)
 	return pw, nil
 }
 
@@ -206,12 +232,25 @@ func (s Services) pagePrelude(ctx context.Context, w win.WindowInfo, o *page.Ori
 	if rerr := pageNotReady(w, page.Ready(ctx, o.Client, o.TopSession())); rerr != nil {
 		return rerr
 	}
-	if lp, ok := s.Pages.(*livePages); ok && o.Browser != "" {
-		if conn, err := lp.connection(ctx, w, o.Browser); err == nil && conn.Client == o.Client {
-			s.pageDownloads(ctx, conn)
-		}
+	if conn := s.originConn(ctx, w, o); conn != nil {
+		s.pageDownloads(ctx, conn)
 	}
 	return nil
+}
+
+// originConn is the Browser Connection a Page Element was read over, while
+// it is still w's connection; nil otherwise (or for a helper without
+// Browser Connections).
+func (s Services) originConn(ctx context.Context, w win.WindowInfo, o *page.Origin) *browser.Connection {
+	lp := s.live()
+	if lp == nil || o.Browser == "" {
+		return nil
+	}
+	conn, err := lp.connection(ctx, w, o.Browser)
+	if err != nil || conn.Client != o.Client {
+		return nil
+	}
+	return conn
 }
 
 // pageDownloadDir is where launched and cloned browsers save downloads:
@@ -396,10 +435,7 @@ func (s Services) addressBarRect(ctx context.Context, pw pageWin) (win.Rect, boo
 // pageNav runs navigate, back, forward and reload.
 func pageNav(s Services, cmd string) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
-		hint := historyUsageHint(cmd)
-		if cmd == "navigate" {
-			hint = navigateUsageHint
-		}
+		hint := protocol.PageUsage(cmd)
 		var a protocol.NavigateArgs
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail(cmd+": "+err.Error(), hint)
@@ -824,7 +860,7 @@ func (s Services) waitDownload(ctx context.Context, pw pageWin, stopped func() b
 	case errors.As(err, &timeout):
 		return "", false, Fail(fmt.Sprintf("window %d: %s", pw.w.ID, timeout.Error()), "run winuse wait "+id+" download again to keep waiting")
 	}
-	return "", false, Fail(err.Error(), "")
+	return "", false, Fail(err.Error(), "run winuse wait "+id+" download again; run winuse browser status "+pw.name+" if it keeps failing")
 }
 
 // pageEval runs `winuse eval <window> <expression>`. It is a page Action
@@ -865,9 +901,9 @@ func pageEval(s Services) Command {
 				case errors.As(err, &dialog):
 					return "", true, Fail("the expression ran, and "+dialog.Error(), dialogHint(id))
 				case errors.Is(err, page.ErrNotJSON):
-					return "", true, Fail(err.Error(), "")
+					return "", true, Fail(err.Error(), "the expression ran; run winuse eval "+id+" again with an expression that returns a plain value")
 				case errors.As(err, &ce):
-					return "", false, nothingSent(Fail("the browser refused the expression: "+ce.Message, ""))
+					return "", false, nothingSent(Fail("the browser refused the expression: "+ce.Message, "fix the expression; run winuse browser status "+pw.name+" if the browser refuses every expression"))
 				}
 				return "", true, Fail(fmt.Sprintf("running the expression in window %d failed: %v", pw.w.ID, err),
 					"it may have run; read winuse get-window-state "+id+" before repeating it")

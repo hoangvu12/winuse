@@ -340,16 +340,16 @@ type Step struct {
 // extends the list with scroll, drag and hover. The CLI's batch step
 // parser and the helper's step dispatch share this list so the two ends
 // of the wire never disagree about what a Batch can run.
-var BatchStepKinds = []string{
+var BatchStepKinds = append([]string{
 	"click", "type-text", "press-key", "set-value", "perform-secondary-action", "activate-window",
 	"scroll", "drag", "hover",
 	// Browser merge ticket 07: the tab commands that act (tab-list prints
 	// the Tabs, so it is no step; tab-new's id is not printed in a Batch).
 	"tab-new", "tab-close", "tab-switch",
+},
 	// Browser merge ticket 06: the page-only Actions (what navigate, wait
 	// and eval print is dropped in a Batch, which prints only ok).
-	"navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval",
-}
+	PageCommands...)
 
 // Response is the helper's answer.
 type Response struct {

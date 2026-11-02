@@ -88,100 +88,102 @@ func (p *Problem) arg() string {
 }
 
 // Sentence is the one sentence that says what is wrong, for the agent to
-// relay as is.
+// relay as is. Like every winuse message it starts in lower case (a
+// browser's name keeps its capital) and has no full stop, so a caller can
+// add to it ("; nothing was sent").
 func (p *Problem) Sentence() string {
 	switch p.Kind {
 	case NoBrowser:
-		return "No Chromium browser is installed (winuse looked for Chrome, Brave, Edge, Chromium, Vivaldi and Opera)."
+		return "no Chromium browser is installed (winuse looked for Chrome, Brave, Edge, Chromium, Vivaldi and Opera)"
 	case UnknownBrowser:
-		return fmt.Sprintf("%q is not a browser winuse knows; use chrome, brave, edge, chromium, vivaldi or opera.", p.Browser)
+		return fmt.Sprintf("%q is not a browser winuse knows; use chrome, brave, edge, chromium, vivaldi or opera", p.Browser)
 	case NotInstalled:
 		s := p.name() + " is not installed"
 		if p.Pinned {
-			s = "The pinned browser, " + p.name() + ", is not installed"
+			s = "the pinned browser, " + p.name() + ", is not installed"
 		}
 		if p.Detail != "" {
 			s += " (installed: " + p.Detail + ")"
 		}
-		return s + "."
+		return s
 	case Ambiguous:
 		names := make([]string, len(p.Others))
 		for i, n := range p.Others {
 			names[i] = DisplayName(n)
 		}
-		return fmt.Sprintf("%s %s accept a debugging connection and no browser is pinned, so winuse will not guess.", joinAnd(names), bothOrAll(len(names)))
+		return fmt.Sprintf("%s %s accept a debugging connection and no browser is pinned, so winuse will not guess", joinAnd(names), bothOrAll(len(names)))
 	case NotRunning:
-		return p.name() + " is not running with a debugging connection winuse can use."
+		return p.name() + " is not running with a debugging connection winuse can use"
 	case NoDebugging:
-		return p.name() + " is running, but without a debugging connection winuse can use."
+		return p.name() + " is running, but without a debugging connection winuse can use"
 	case WrongOwner:
 		if p.Browser == "" {
-			return fmt.Sprintf("Port %d answers as a debugging endpoint, but it belongs to %s, which is not a browser winuse knows, so winuse will not use it.", p.Port, p.Owner)
+			return fmt.Sprintf("port %d answers as a browser's debugging connection, but it belongs to %s, which is not a browser winuse knows, so winuse will not use it", p.Port, p.Owner)
 		}
-		return fmt.Sprintf("Port %d answers as %s's debugging endpoint, but it belongs to %s, so winuse will not use it.", p.Port, p.name(), p.Owner)
+		return fmt.Sprintf("port %d answers as %s's debugging connection, but it belongs to %s, so winuse will not use it", p.Port, p.name(), p.Owner)
 	case UnknownOwner:
-		return fmt.Sprintf("winuse could not tell which process owns debugging port %d, so it will not use it.", p.Port)
+		return fmt.Sprintf("winuse could not tell which process owns port %d, so it will not use it", p.Port)
 	case NotLoopback:
-		return fmt.Sprintf("%s's debugging endpoint %s is not on this machine's loopback address, so winuse will not use it.", p.name(), p.URL)
+		return fmt.Sprintf("%s's debugging connection %s is not on this machine's loopback address, so winuse will not use it", p.name(), p.URL)
 	case AwaitingApproval:
-		return p.name() + " is waiting for remote-debugging approval; approve it in " + p.name() + " and retry."
+		return p.name() + " is waiting for the user to approve remote debugging in its \"Allow remote debugging?\" prompt"
 	case Refused:
-		return fmt.Sprintf("%s refused the debugging connection (%s); its approval prompt was probably declined.", p.name(), p.Detail)
+		return fmt.Sprintf("%s refused the debugging connection (%s); its approval prompt was probably declined", p.name(), p.Detail)
 	case Unreachable:
-		return fmt.Sprintf("%s's debugging port %d stopped answering (%s).", p.name(), p.Port, p.Detail)
+		return fmt.Sprintf("%s stopped answering on port %d (%s)", p.name(), p.Port, p.Detail)
 	case ToggleOff:
-		return "Remote debugging is still off in " + p.name() + "."
+		return "remote debugging is still off in " + p.name()
 	case ProfileBusy:
-		return fmt.Sprintf("A %s is already using winuse's %s profile at %s but is not serving DevTools.", p.name(), p.Mode, p.Dir)
+		return fmt.Sprintf("a %s is already using winuse's %s profile at %s but does not answer as a debugging connection", p.name(), p.Mode, p.Dir)
 	case NoUserData:
-		return fmt.Sprintf("No %s profile was found at %s (has %s ever been run?).", p.name(), p.Dir, p.name())
+		return fmt.Sprintf("no %s profile was found at %s (has %s ever been run?)", p.name(), p.Dir, p.name())
 	case NoSuchProfile:
-		return fmt.Sprintf("%s has no profile folder %q; it has %s.", p.name(), p.Profile, p.Detail)
+		return fmt.Sprintf("%s has no profile folder %q; it has %s", p.name(), p.Profile, p.Detail)
 	case NotStarted:
-		return fmt.Sprintf("%s started (pid %d) but its debugging endpoint never came up on port %d.", p.name(), p.PID, p.Port)
+		return fmt.Sprintf("%s started (pid %d) but never answered as a debugging connection on port %d", p.name(), p.PID, p.Port)
 	case CloseFailed:
-		return fmt.Sprintf("%s still holds its cookie database after winuse asked it to close.", p.name())
+		return fmt.Sprintf("%s still holds its cookie database after winuse asked it to close", p.name())
 	case SeveralOwned:
-		return fmt.Sprintf("More than one %s started by winuse is running.", p.name())
+		return fmt.Sprintf("more than one %s started by winuse is running", p.name())
 	case ExtNotInstalled:
 		if p.Detail != "" {
-			return fmt.Sprintf("The winuse native host points at %s, which no longer exists.", p.Detail)
+			return fmt.Sprintf("the winuse native host points at %s, which no longer exists", p.Detail)
 		}
-		return "The winuse extension is not installed."
+		return "the winuse extension is not installed"
 	case ExtNotRegistered:
-		return fmt.Sprintf("The winuse native host is not registered for %s, so %s cannot start it.", p.name(), p.name())
+		return fmt.Sprintf("the winuse native host is not registered for %s, so %s cannot start it", p.name(), p.name())
 	case ExtNotLoaded:
-		return fmt.Sprintf("The winuse extension is not loaded in %s yet.", p.name())
+		return fmt.Sprintf("the winuse extension is not loaded in %s yet", p.name())
 	case ExtDisabled:
-		return fmt.Sprintf("The winuse extension is loaded in %s (%s) but switched off.", p.name(), p.Detail)
+		return fmt.Sprintf("the winuse extension is loaded in %s (%s) but switched off", p.name(), p.Detail)
 	case ExtBrowserClosed:
-		return fmt.Sprintf("The winuse extension is set up in %s, but %s is not running.", p.name(), p.name())
+		return fmt.Sprintf("the winuse extension is set up in %s, but %s is not running", p.name(), p.name())
 	case ExtNotConnected:
-		s := fmt.Sprintf("The winuse extension is loaded in %s but has not connected to winuse", p.name())
+		s := fmt.Sprintf("the winuse extension is loaded in %s but has not connected to winuse", p.name())
 		if p.Detail != "" {
 			s += " (last host log: " + p.Detail + ")"
 		}
-		return s + "."
+		return s
 	case ExtOutdated:
-		return fmt.Sprintf("The winuse extension in %s is out of date and did not reload itself (%s).", p.name(), p.Detail)
+		return fmt.Sprintf("the winuse extension in %s is out of date and did not reload itself (%s)", p.name(), p.Detail)
 	case ExtPaused:
-		return fmt.Sprintf("The user turned winuse off in %s (Cancel on the debugging bar, or the winuse toolbar icon).", p.name())
+		return fmt.Sprintf("the user turned winuse off in %s (Cancel on the debugging bar, or the winuse toolbar icon)", p.name())
 	case ExtUnreachable:
-		return fmt.Sprintf("The winuse extension in %s is running but did not answer (%s).", p.name(), p.Detail)
+		return fmt.Sprintf("the winuse extension in %s is running but did not answer (%s)", p.name(), p.Detail)
 	case ExtSeveralProfiles:
-		return fmt.Sprintf("The winuse extension runs in %d %s profiles at once, so winuse will not guess which one to drive.", len(p.Others), p.name())
+		return fmt.Sprintf("the winuse extension runs in %d %s profiles at once, so winuse will not guess which one to drive", len(p.Others), p.name())
 	case ExtCannot:
-		return p.Detail + " needs a launched or cloned browser; the winuse extension cannot do it."
+		return p.Detail + " needs a launched or cloned browser; the winuse extension cannot do it"
 	case NoWindowEndpoint:
-		s := fmt.Sprintf("This %s window belongs to %s process %d, which has no debugging connection winuse can use", p.name(), p.name(), p.PID)
+		s := fmt.Sprintf("this %s window belongs to %s process %d, which has no debugging connection winuse can use", p.name(), p.name(), p.PID)
 		if r := p.Reachable(); r != "" {
 			s += " (winuse can reach " + r + ")"
 		}
-		return s + "."
+		return s
 	case SeveralEndpoints:
-		return fmt.Sprintf("%s process %d answers on %s, so winuse will not guess which one to use.", p.name(), p.PID, joinAnd(p.Others))
+		return fmt.Sprintf("%s process %d answers on %s, so winuse will not guess which one to use", p.name(), p.PID, joinAnd(p.Others))
 	}
-	return "The Browser Connection failed."
+	return "the Browser Connection failed"
 }
 
 // Reachable names the other processes of a NoWindowEndpoint's browser that

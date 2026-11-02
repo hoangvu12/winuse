@@ -424,10 +424,18 @@ winuse drag <window> <element> <element|@x,y>
   file dialog opens on the screen. Answer it with
   `winuse upload <window> <file>...`, or give files to a file input
   directly with `winuse upload <window> <element> <file>`.
+- Some pages open the chooser a moment after the click. A browser winuse
+  launched or cloned holds such a chooser back for 2 seconds after the
+  click, though the click prints only `ok`, so when an upload button's
+  click prints only `ok`, run `winuse upload <window> <file>...`. It says so
+  when no chooser waits. Through the extension, or later than that, the
+  Windows Open dialog appears as a new Window of the browser. Prefer giving
+  the files to the page's file input with
+  `winuse upload <window> <element> <file>`.
 - A click that starts a download says so, and
   `winuse wait <window> download` prints the file's path when it is done.
-  Downloads land in `Downloads\winuse`, and work only on a browser winuse
-  launched or cloned.
+  Downloads land in `Downloads\winuse`, which `winuse browser status`
+  prints, and work only on a browser winuse launched or cloned.
 - `eval` prints a string as is and anything else as JSON, cut at 4000
   characters. Return plain values, not DOM nodes. PowerShell 5.1 strips
   double quotes inside arguments, so quote the expression with single

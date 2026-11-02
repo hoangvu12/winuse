@@ -154,19 +154,41 @@ func TestPageCommandUsageErrorsExit2(t *testing.T) {
 		os.Stderr, os.Stdout = oldErr, oldOut
 		f.Close()
 		got, _ := os.ReadFile(path)
-		if code != 2 || !strings.Contains(string(got), "usage: winuse "+args[0]) {
+		if code != 2 || !strings.Contains(string(got), protocol.PageUsage(args[0])) {
 			t.Errorf("%q: exit %d, %q", args, code, got)
 		}
 	}
 }
 
+// TestEveryPageCommandIsDispatched: the CLI's dispatch and Batch step
+// switches name the page-only Actions one by one; each must reach the page
+// parsers (protocol.PageCommands is the list).
+func TestEveryPageCommandIsDispatched(t *testing.T) {
+	for _, cmd := range protocol.PageCommands {
+		path := filepath.Join(t.TempDir(), "stderr")
+		f, _ := os.Create(path)
+		oldErr, oldOut := os.Stderr, os.Stdout
+		os.Stderr, os.Stdout = f, f
+		code := Main([]string{cmd})
+		os.Stderr, os.Stdout = oldErr, oldOut
+		f.Close()
+		got, _ := os.ReadFile(path)
+		if code != 2 || !strings.Contains(string(got), cmd+" takes a window reference first") {
+			t.Errorf("%s: exit %d, %q", cmd, code, got)
+		}
+		if _, err := parseBatchStep([]string{cmd}); err != nil && strings.Contains(err.Error(), "unknown batch action") {
+			t.Errorf("batch %s: %v", cmd, err)
+		}
+	}
+}
+
 func TestPageCommandBudgets(t *testing.T) {
-	for _, cmd := range []string{"navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval"} {
+	for _, cmd := range protocol.PageCommands {
 		if d, ok := protocol.CommandTimeout(cmd); !ok || d != protocol.BrowserTimeout {
 			t.Errorf("%s budget %v", cmd, d)
 		}
 	}
-	for _, cmd := range []string{"navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval"} {
+	for _, cmd := range protocol.PageCommands {
 		if !strings.Contains(Usage, "\n  "+cmd+" <window>") {
 			t.Errorf("usage misses %s", cmd)
 		}

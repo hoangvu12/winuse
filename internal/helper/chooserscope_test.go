@@ -15,9 +15,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/bridge"
 	"github.com/hoangvu12/winuse/internal/bridge/bridgetest"
+	"github.com/hoangvu12/winuse/internal/browser"
 	"github.com/hoangvu12/winuse/internal/cdp"
 	"github.com/hoangvu12/winuse/internal/cdp/cdptest"
 	"github.com/hoangvu12/winuse/internal/page"
@@ -319,4 +321,55 @@ func TestChooserInterceptionThroughTheExtension(t *testing.T) {
 		t.Errorf("the chooser was not kept: %+v", ch)
 	}
 	r.noForeground(t)
+}
+
+// TestChooserInterceptionLingersOnlyInWinusesOwnBrowsers: a browser winuse
+// launched or cloned keeps interception chooserHold past an Action, so a
+// chooser the page opens a moment later is held back too; the user's own
+// browser (the extension, the inspect toggle) never does, and neither does
+// a Page read over another connection.
+func TestChooserInterceptionLingersOnlyInWinusesOwnBrowsers(t *testing.T) {
+	r := newPageRig(t)
+	w := browserWindow()
+	o := &page.Origin{Browser: "chrome", Client: r.client, TargetID: "T1", SessionID: "S"}
+	for _, tc := range []struct {
+		mode browser.Mode
+		want time.Duration
+	}{
+		{browser.ModeLaunch, chooserHold},
+		{browser.ModeClone, chooserHold},
+		{browser.ModeExtension, 0},
+		{browser.ModeToggle, 0},
+	} {
+		s := Services{Pages: &livePages{browsers: pageConns{conn: &browser.Connection{Browser: "chrome", Mode: tc.mode, PID: w.PID, Client: r.client}}}}
+		if got := s.chooserLinger(context.Background(), w, o); got != tc.want {
+			t.Errorf("%s: linger %s, want %s", tc.mode, got, tc.want)
+		}
+	}
+	other := &page.Origin{Browser: "chrome", Client: &cdp.Client{}, SessionID: "S"}
+	s := Services{Pages: &livePages{browsers: pageConns{conn: &browser.Connection{Browser: "chrome", Mode: browser.ModeLaunch, PID: w.PID, Client: r.client}}}}
+	if got := s.chooserLinger(context.Background(), w, other); got != 0 {
+		t.Errorf("another connection's Page: linger %s", got)
+	}
+	if got := (Services{}).chooserLinger(context.Background(), w, o); got != 0 {
+		t.Errorf("no Browser Connections: linger %s", got)
+	}
+
+	// The release itself: at once without a linger, linger later with one.
+	var mu sync.Mutex
+	offs := 0
+	off := func() error { mu.Lock(); offs++; mu.Unlock(); return nil }
+	count := func() int { mu.Lock(); defer mu.Unlock(); return offs }
+	releaseChoosers(off, "S", 0)()
+	if count() != 1 {
+		t.Fatalf("no linger: released %d times", count())
+	}
+	releaseChoosers(off, "S", 50*time.Millisecond)()
+	if count() != 1 {
+		t.Error("the linger released at once")
+	}
+	time.Sleep(200 * time.Millisecond)
+	if count() != 2 {
+		t.Errorf("the linger never released: %d", count())
+	}
 }

@@ -311,3 +311,33 @@ func TestAWindowOfAChromeProcessWinuseCannotReach(t *testing.T) {
 		t.Errorf("the user's Chrome = %q, %+v", out, e)
 	}
 }
+
+// TestAWindowStateNamesTheApprovalPrompt: the first read of a Chrome that
+// holds its handshake for the "Allow remote debugging?" prompt (longer than
+// the Page read's budget, shorter than browser.ApprovalWait) falls back to
+// UI Automation with a note that says the user must approve it, not that
+// the read took too long; and the read does not wait for the approval.
+func TestAWindowStateNamesTheApprovalPrompt(t *testing.T) {
+	m := newTwoChromes(t)
+	release := m.launched.Srv.Hold()
+	defer release()
+	r, _, mgr := m.helper(t)
+	if mgr.ApprovalWait <= pageBudget {
+		t.Fatalf("ApprovalWait %s is within the Page budget %s: the case this covers is gone", mgr.ApprovalWait, pageBudget)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), pageMargin+300*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	tree, e := readWindowTree(r.svc, ctx, launchedWindow)
+	if e != nil {
+		t.Fatal(e.Error())
+	}
+	if d := time.Since(start); d > pageMargin+300*time.Millisecond {
+		t.Errorf("the read took %s, past its request budget", d)
+	}
+	p := &browser.Problem{Kind: browser.AwaitingApproval, Browser: "chrome"}
+	want := page.FallbackNote(p.Sentence() + "; " + p.Next())
+	if got := tree.Notes[len(tree.Notes)-1]; got != want || !strings.Contains(got, "Allow remote debugging?") {
+		t.Errorf("note = %q\nwant %q", got, want)
+	}
+}

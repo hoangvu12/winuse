@@ -58,12 +58,11 @@ type pageTabMatcher interface {
 // PageActiveTab maps the browser Window to its active Tab now, with the
 // same rule the Window State read uses (page.FindTab).
 func (p *livePages) PageActiveTab(ctx context.Context, w win.WindowInfo) (string, error) {
-	name := p.Browser(w)
-	if name == "" {
+	name, conn, err := p.open(ctx, w)
+	switch {
+	case name == "":
 		return "", &page.Unavailable{Reason: "this Window is not a browser Window winuse knows"}
-	}
-	conn, err := p.connection(ctx, w, name)
-	if err != nil {
+	case err != nil:
 		return "", &page.Unavailable{Reason: fmt.Sprintf("no Browser Connection is open to %s", name)}
 	}
 	tab, err := page.FindTab(ctx, conn, p.geometry(w))
@@ -93,30 +92,55 @@ func (s Services) pageCapable() bool {
 // form, and anything that does not resolve; the command's own path then
 // runs and reports any failure exactly as before.
 func (s Services) pageRoute(ref string, t elementTarget) (w win.WindowInfo, index int, o *page.Origin, ok bool) {
+	w, index, o, refused := s.pageResolve(ref, t)
+	return w, index, o, o != nil && refused == nil
+}
+
+// onPage runs act on the Page Element an Element form names (handled), and
+// refuses a Page Element it has no route to. Anything else is not handled,
+// and the command's own routes run. The commands whose other routes may
+// activate the Window go through here, so a Page Element is refused before
+// any activation.
+func (s Services) onPage(ref string, t elementTarget, act func(w win.WindowInfo, index int, o *page.Origin) (string, *Error)) (out string, rerr *Error, handled bool) {
+	w, index, o, refused := s.pageResolve(ref, t)
+	switch {
+	case refused != nil:
+		return "", refused, true
+	case o == nil:
+		return "", nil, false
+	}
+	out, rerr = act(w, index, o)
+	return out, rerr, true
+}
+
+// pageResolve is pageRoute's and onPage's resolution: o is nil for anything
+// but a Page Element, and refused is set for a Page Element whose origin is
+// missing from the latest Window State (refusePageElement).
+func (s Services) pageResolve(ref string, t elementTarget) (w win.WindowInfo, index int, o *page.Origin, refused *Error) {
 	if t.point != nil || !s.pageCapable() {
-		return w, 0, nil, false
+		return w, 0, nil, nil
 	}
 	w, rerr := resolveWindow(s, ref)
 	if rerr != nil {
-		return w, 0, nil, false
+		return w, 0, nil, nil
 	}
 	switch {
 	case t.ref != "":
 		i, rerr := resolveElementRef(s, w, t.ref)
 		if rerr != nil {
-			return w, 0, nil, false
+			return w, 0, nil, nil
 		}
 		index = i
 	case t.index != nil:
 		index = *t.index
 	default:
-		return w, 0, nil, false
+		return w, 0, nil, nil
 	}
 	o, perr := pageOrigin(s, w, index)
-	if perr != nil || o == nil {
-		return w, 0, nil, false
+	if perr != nil {
+		return w, index, nil, refusePageElement(s, w, index)
 	}
-	return w, index, o, true
+	return w, index, o, nil
 }
 
 // pageDoc finds the Page of a Window's latest Window State: the origin of
@@ -290,7 +314,7 @@ func (s Services) runPage(ctx context.Context, run pageRun) (string, *Error) {
 		return "", pageFailure(err, run, 0)
 	}
 	defer in.Close()
-	defer holdChoosers(ctx, o)() // file chooser interception for this Action only (ticket 06)
+	defer s.holdChoosers(ctx, w, o)() // file chooser interception for this Action (ticket 06)
 	err = run.act(ctx, in, aim)
 	if shown && in.Sent > 0 {
 		s.cursorClick(rect)
@@ -348,7 +372,7 @@ func pageFailure(err error, run pageRun, sent int) *Error {
 		return nothingSent(Fail(err.Error(), "the Browser Connection may have ended; run winuse browser status"))
 	}
 	if sent == 0 {
-		return nothingSent(Fail(err.Error(), ""))
+		return nothingSent(Fail(err.Error(), "read winuse get-window-state "+id+" and retry; run winuse browser status if it keeps failing"))
 	}
 	return Fail(err.Error(), "the Action may have taken effect; read the Window State (winuse get-window-state "+id+") before repeating it")
 }
@@ -646,7 +670,7 @@ func (s Services) runPageInput(ctx context.Context, w win.WindowInfo, o *page.Or
 		return "", pageFailure(err, run, 0)
 	}
 	defer in.Close()
-	defer holdChoosers(ctx, o)() // Enter or Space on a file input opens a chooser too
+	defer s.holdChoosers(ctx, w, o)() // Enter or Space on a file input opens a chooser too
 	err = p.act(ctx, in)
 	if shown && in.Sent > 0 {
 		s.cursorClick(rect)

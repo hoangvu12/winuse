@@ -72,7 +72,7 @@ func browserClone(s Services) Command {
 func browserCommands(s Services) map[string]Command {
 	b := s.Browser
 	return map[string]Command{
-		"browser-status":  browserNamed("browser-status", b.Status),
+		"browser-status":  browserNamed("browser-status", s.browserStatus),
 		"browser-use":     browserNamed("browser-use", b.Use),
 		"browser-launch":  browserNamed("browser-launch", b.Launch),
 		"browser-clone":   browserClone(s),
@@ -82,6 +82,35 @@ func browserCommands(s Services) map[string]Command {
 		"browser-ext-install": browserNamed("browser-ext-install", b.ExtInstall),
 		"browser-ext-status":  browserNamed("browser-ext-status", b.ExtStatus),
 	}
+}
+
+// namedConnections is the BrowserService's lookup of the connection a
+// browser command resolves: *browser.Manager.
+type namedConnections interface {
+	Connection(ctx context.Context, name string) (*browser.Connection, error)
+}
+
+// browserStatus is browser status: the service's report, plus a note with
+// the folder winuse saves downloads in when the connection is to a browser
+// winuse launched or cloned. Download tracking is turned on here, if no
+// page Action did yet, so the note is true from now on (pageDownloads).
+func (s Services) browserStatus(ctx context.Context, name string) (string, error) {
+	out, err := s.Browser.Status(ctx, name)
+	if err != nil {
+		return "", err
+	}
+	nc, ok := s.Browser.(namedConnections)
+	if !ok {
+		return out, nil
+	}
+	c, err := nc.Connection(ctx, name)
+	if err != nil {
+		return out, nil
+	}
+	if d := s.pageDownloads(ctx, c); d != nil {
+		out += "note: downloads go to " + d.Dir + " (winuse wait <window> download prints each file's path)\n"
+	}
+	return out, nil
 }
 
 // browserError maps a Browser Connection failure to the user-facing line:
@@ -94,7 +123,7 @@ func browserError(err error) *Error {
 		return Fail(p.Sentence(), p.Next())
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return Fail(err.Error(), "")
+		return Fail(err.Error(), "retry; run winuse browser status if it keeps timing out")
 	}
 	return Fail(err.Error(), "run winuse browser status")
 }

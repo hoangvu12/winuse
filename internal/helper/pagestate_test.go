@@ -14,6 +14,7 @@ import (
 
 	"github.com/hoangvu12/winuse/internal/browser"
 	"github.com/hoangvu12/winuse/internal/page"
+	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
 	"github.com/hoangvu12/winuse/internal/wstate"
@@ -333,10 +334,10 @@ func TestActionsRefusePageElements(t *testing.T) {
 	w := browserWindow()
 	ten, seven := 10, 7
 	_, err := elementTarget{index: &ten}.resolve(s, w)
-	if err == nil || err.Msg != "element 10 is in the Page of window 301, and winuse cannot act on Page Elements yet" {
+	if err == nil || err.Msg != "element 10 is in the Page of window 301, and winuse could not route this Action to the Page; nothing was sent" {
 		t.Fatalf("page index: %+v", err)
 	}
-	if !strings.Contains(err.Hint, "winuse get-window-state 301 --screenshot") || strings.ContainsAny(err.Msg+err.Hint, "\u2013\u2014") {
+	if err.Hint != "every Element Action but perform-secondary-action takes Page Elements; run winuse get-window-state 301 again and retry with a fresh Element Index" || strings.ContainsAny(err.Msg+err.Hint, "\u2013\u2014") {
 		t.Errorf("hint = %q", err.Hint)
 	}
 	if _, err := (elementTarget{ref: "name:Email"}).resolve(s, w); err == nil || !strings.Contains(err.Msg, "element 10 is in the Page") {
@@ -362,6 +363,112 @@ func TestActionsRefusePageElements(t *testing.T) {
 		if step == "click" || step == "point" {
 			t.Errorf("the refused click ran %q", step)
 		}
+	}
+}
+
+// lostOrigins is a live-Element store whose Page Elements lost their
+// origins: ElementOrigin answers uia.ErrPageElement for them, as
+// *uia.Client does for a nil handle with no origin stored.
+type lostOrigins struct{ *pageTrees }
+
+func (l lostOrigins) ElementOrigin(hwnd uint64, index int) (any, error) {
+	o, err := l.pageTrees.ElementOrigin(hwnd, index)
+	if err == nil && o != nil {
+		return nil, fmt.Errorf("%w: element %d of window %d", uia.ErrPageElement, index, hwnd)
+	}
+	return o, err
+}
+
+// rereadOrigins is a live-Element store read again between a command's
+// route and its act: index pageAfter is a UIA Element for the first n
+// lookups and a Page Element afterwards.
+type rereadOrigins struct {
+	*pageTrees
+	mu        sync.Mutex
+	n         int
+	pageAfter int
+}
+
+func (r *rereadOrigins) ElementOrigin(hwnd uint64, index int) (any, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if index == r.pageAfter && r.n > 0 {
+		r.n--
+		return nil, nil
+	}
+	return r.pageTrees.ElementOrigin(hwnd, index)
+}
+
+// TestUnroutedPageElementsAreRefusedBeforeActivating: a Page Element the
+// commands cannot route (its origin is gone) is refused before a Headed
+// route activates the Window, with nothing sent; one the Window State
+// turned into a Page Element after the route was picked is refused after
+// the activation, also with nothing sent, never clicked.
+func TestUnroutedPageElementsAreRefusedBeforeActivating(t *testing.T) {
+	raw := pageFixture(t, "login-form")
+	s, trees := pageServices(t, &fakePages{raw: raw}, -1)
+	if _, cmdErr := runCommand(t, CommandsWith(s), "get-window-state", windowRef{Window: "301"}); cmdErr != nil {
+		t.Fatal(cmdErr.Error())
+	}
+	want := "element 10 is in the Page of window 301, and winuse could not route this Action to the Page; nothing was sent"
+	scrollArgs, _ := json.Marshal(protocol.ScrollArgs{Window: "301", ElementIndex: idx(10), Direction: "down", Headed: true})
+	setArgs, _ := json.Marshal(protocol.SetValueArgs{Window: "301", ElementIndex: idx(10), Value: "x", Headed: true})
+	for _, tc := range []struct {
+		cmd  string
+		args json.RawMessage
+	}{
+		{"click", clickArgs("301", 10, 2, "left")},
+		{"scroll", scrollArgs},
+		{"set-value", setArgs},
+	} {
+		spy := &actionSpy{point: uia.Point{X: 1, Y: 2}}
+		cs := spy.services()
+		cs.Windows = s.Windows
+		cs.Actions = struct {
+			*actionSpy
+			PageSplicer
+		}{spy, lostOrigins{trees}}
+		_, cmdErr := runCommand(t, CommandsWith(cs), tc.cmd, tc.args)
+		if cmdErr == nil || cmdErr.Msg != want || !strings.Contains(cmdErr.Hint, "winuse get-window-state 301 again") {
+			t.Errorf("%s on a Page Element with no origin: %+v", tc.cmd, cmdErr)
+		}
+		for _, step := range spy.recorded() {
+			if step == "activate" || step == "click" || step == "point" {
+				t.Errorf("%s: the refused Action ran %q", tc.cmd, step)
+			}
+		}
+	}
+
+	// Read again meanwhile: the route saw a UIA Element, the act a Page
+	// Element.
+	spy := &actionSpy{point: uia.Point{X: 1, Y: 2}}
+	cs := spy.services()
+	cs.Windows = s.Windows
+	cs.Actions = struct {
+		*actionSpy
+		PageSplicer
+	}{spy, &rereadOrigins{pageTrees: trees, n: 1, pageAfter: 10}}
+	_, cmdErr := runCommand(t, CommandsWith(cs), "click", clickArgs("301", 10, 2, "left"))
+	if cmdErr == nil || cmdErr.Msg != want {
+		t.Fatalf("click on an Element that became a Page Element: %+v", cmdErr)
+	}
+	for _, step := range spy.recorded() {
+		if step == "click" || step == "point" {
+			t.Errorf("the refused click ran %q", step)
+		}
+	}
+}
+
+// TestUIAPageElementErrorIsTheRefusal: a UIA call given a Page Element
+// (uia.ErrPageElement) fails with the same refusal, never a bare error.
+func TestUIAPageElementErrorIsTheRefusal(t *testing.T) {
+	w := browserWindow()
+	got := elementError(fmt.Errorf("%w: element 4 of window 301", uia.ErrPageElement), w, 4)
+	if want := pageElementError(w, 4); got.Msg != want.Msg || got.Hint != want.Hint || got.Hint == "" {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+	if again := nothingSent(got); again.Msg != got.Msg {
+		t.Errorf("nothing was sent twice: %q", again.Msg)
 	}
 }
 

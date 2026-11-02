@@ -1,8 +1,31 @@
 package protocol
 
-// The page-only Actions' arguments (browser merge ticket 06): navigate,
-// back, forward, reload, upload, dialog, wait and eval act on the active
-// Tab of a browser Window with a Browser Connection.
+// The page-only Actions (browser merge ticket 06): navigate, back,
+// forward, reload, upload, dialog, wait and eval act on the active Tab of a
+// browser Window with a Browser Connection. Their names, usage lines and
+// arguments live here, where the CLI and the helper both read them.
+
+// PageCommands are the page-only Actions' command names, also their Batch
+// step kinds.
+var PageCommands = []string{"navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval"}
+
+// PageUsage is a page-only Action's usage line: what the CLI prints on a
+// usage error, and the helper's hint for bad arguments.
+func PageUsage(cmd string) string {
+	switch cmd {
+	case "navigate":
+		return "usage: winuse navigate <window> <url> [--wait load|domcontentloaded|none]"
+	case "upload":
+		return "usage: winuse upload <window> [<element index | name: | id:>] <file>...   (without an element: the file chooser a click opened)"
+	case "dialog":
+		return "usage: winuse dialog <window> accept|dismiss [text]   (text answers a prompt)"
+	case "wait":
+		return "usage: winuse wait <window> selector <css> | text <text> | url <url or pattern with *> | load [domcontentloaded] | download   [--timeout <seconds>]"
+	case "eval":
+		return "usage: winuse eval <window> <expression>"
+	}
+	return "usage: winuse " + cmd + " <window> [--wait load|domcontentloaded|none]" // back, forward, reload
+}
 
 // NavigateArgs are the arguments of navigate (with URL), back, forward and
 // reload (without): Wait is the load state to wait for, load (the

@@ -100,12 +100,13 @@ Page Element Actions go over CDP, frame Element Actions over UIA. Both are Headl
 - **type-text and press-key** on a Window whose focused Element is in the Page: `Input.insertText` and `Input.dispatchKeyEvent`, with modifiers. Headless, and no `--post` needed. This resolves the address-bar case for pages: `navigate` replaces typing in the omnibox.
 - **scroll:** the Element form uses `mouseWheel` at the Element, or `DOM.scrollIntoViewIfNeeded` for into-view. The `@x,y` form on a page point also goes through `mouseWheel`, Headless.
 - **hover, drag, select, check:** trusted CDP input (agent-browser's sequences). For page Elements these are Headless, unlike native hover and drag.
-- **upload:** `Page.setInterceptFileChooserDialog`, then `DOM.setFileInputFiles`. A click that would open a native file chooser on an intercepted page never shows one.
+- **upload:** `Page.setInterceptFileChooserDialog`, then `DOM.setFileInputFiles`. A click that would open a native file chooser on an intercepted page never shows one. Interception is on only around winuse's Actions (ticket 06), plus 2 s after each on a browser winuse launched or cloned, so a chooser opened later than that shows the native dialog.
 - **navigate, back, forward, reload:** `Page.navigate` and history.
 - **dialog:** subscribe to `Page.javascriptDialogOpening`. While a dialog is open, every other page Action fails fast and names `winuse dialog <window> accept|dismiss [text]`. Alerts are not auto-accepted.
-- **downloads:** `Browser.setDownloadBehavior` into a folder winuse reports, on launched and cloned browsers.
+- **downloads:** `Browser.setDownloadBehavior` into a folder winuse reports (`Downloads\winuse`, named by `winuse browser status`), on launched and cloned browsers.
 - **wait:** for a selector, text, URL or load state, with one default timeout under the request budget.
-- **eval:** runs a JS expression in the page and prints the result (use-browser's `js`). This is a page Action, so it appears in the Window State history for the user, but it shows no cursor.
+- **eval:** runs a JS expression in the page and prints the result (use-browser's `js`). It is a page Action with no cursor. Amended 2026-11-02 by the user's decision: winuse keeps no Window State history, so eval is listed nowhere after it runs.
+- **Right click:** stays Headless, and Chrome's own context menu is kept from opening when the page has no menu of its own (ticket 06's context menu guard). Kept by decision on 2026-11-02.
 - **Agent Cursor:** a page rectangle is converted to physical screen pixels from the UIA document Element's bounds and the page's `devicePixelRatio`. The probe measured this within 1 px at every display scale and page zoom.
 - **Esc stop:** page Actions run in the passive Esc scope.
 
@@ -119,8 +120,7 @@ Page Element Actions go over CDP, frame Element Actions over UIA. Both are Headl
 ### Retiring use-browser (ticket 08)
 
 - The winuse skill teaches browsers. use-browser's skill and binary are no longer installed by anything.
-- `install.ps1` prints a one-line note when it finds use-browser installed: how to remove it, and that winuse replaces it.
-- A deprecation notice for the use-browser repo README is drafted in this folder. The user publishes it; agents do not push to that repo.
+- use-browser is mentioned nowhere users or agents read (the user's scope change in ticket 08): no `install.ps1` note and no deprecation notice.
 - License: use-browser has no license file. The user adds one, or states in winuse's `third_party/` that the ported code is the same author's and is relicensed under winuse's MIT license.
 
 ## Testing decisions
