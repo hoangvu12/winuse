@@ -133,3 +133,19 @@ All windows were covered: WindowFromPoint at each window's centre returned anoth
 | WinUI 3 ListView, SelectionMode=Extended | AddToSelection it1, then it3 (hr 0 each) | SelectedItems it1,it3; IsSelected 1 and 1 |
 
 AddToSelection works Headless on all three stacks, with no activation.
+
+## 7. Shell surfaces (desktop-parity 09 and 18), partial on purpose
+
+Foreground and cursor were unchanged throughout [M].
+
+- **Shell_TrayWnd UIA tree** [M]: 24 descendants in 23 ms. The taskbar is at {0,1368 2560x72}.
+  - Start: StartButton (ToggleButton). Search: SearchButton (ToggleButton).
+  - TaskbarFrame (Taskbar.TaskbarFrameAutomationPeer).
+  - Tray buttons, all with AutomationId "SystemTrayIcon": "Show Hidden Icons" (SystemTray.NormalButton), the input indicator, Network (AccentButton), Volume (OmniButtonCenter), Power (AccentButton), "Clock 06:14 11/3/2026" (OmniButton), and "Show Desktop" (ShowDesktopButton).
+  - Panes: TrayNotifyWnd, and MSTaskSwWClass "Running applications" with 10 app buttons (names withheld).
+  - There is no separate "notification center" button: the Clock OmniButton is that entry point.
+- **Tray overflow** [M]: `TopLevelWindowForOverflowXamlIsland` "System tray overflow window." exists, hidden, at {1984,1257 351x111}. UIA gives **0 descendants while it is hidden**. There is no NotifyIconOverflowWindow (the Windows 10 class) on this build.
+- **Invoking the chevron and the Clock: not run.** These are the user's own shell windows, and opening a flyout will most likely take the foreground. It needs the user's direct OK.
+- **Own toast: blocked by a user setting.** A toast raised from Windows PowerShell's AUMID with a system "dismiss" action returned from Show() with no error, but no toast window appeared within 6 s. HKCU\...\PushNotifications ToastEnabled = 0 (toasts are off on this laptop). The setting was not changed. Unmeasured.
+
+The batch (probes 1-7) is done. No probe processes, browsers or profiles are left running, port 9229 is closed, and the repo is unchanged.
