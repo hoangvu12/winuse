@@ -74,6 +74,13 @@ func waitForTyping(t *testing.T, fix *fixtureProc, bg <-chan actionResult, min i
 
 func TestEscStopsTheLongBatch(t *testing.T) {
 	optIn(t)
+	// Only a key the hook sees without LLKHF_INJECTED can stop winuse, and
+	// user-mode code cannot make one: SendInput, keybd_event and posted
+	// messages are all flagged injected (or never reach the hook). So the
+	// test needs a person at the keyboard, and says so up front.
+	if os.Getenv("WINUSE_E2E_HUMAN") != "1" {
+		t.Skip("needs a person to press the physical Esc key: set WINUSE_E2E_HUMAN=1 and stay at the keyboard (injected keys cannot trip the hook, by design)")
+	}
 	fix, window := startFixtureWithState(t)
 
 	// The long Batch: click the text field, type for well over ten

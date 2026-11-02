@@ -259,8 +259,11 @@ only.
 
 The ticket-12 tests (`esc_test.go`) cover the Esc stop.
 **`TestEscStopsTheLongBatch` is interactive — a human must be at the
-keyboard** (with `-v`, the run prints `PRESS THE PHYSICAL ESC KEY NOW`):
-only a physical press can trip the low-level hook, by design, so the
+keyboard** (with `-v`, the run prints `PRESS THE PHYSICAL ESC KEY NOW`).
+It skips unless `WINUSE_E2E_HUMAN=1` is set as well, so an unattended run
+does not fail on it: only a physical press can trip the low-level hook, by
+design (user-mode code cannot make a key the hook sees as not injected:
+SendInput and keybd_event set `LLKHF_INJECTED`), so the
 test starts a long Batch against the fixture (click, a ~30 s type-text,
 then a button click and more typing — steps that must never run once the
 user stops it), waits for the typing to start, prompts, and then asserts
