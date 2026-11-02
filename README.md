@@ -88,7 +88,8 @@ connect in four ways.
   the browser you already use, with your logins. You load the extension
   once from the browser's extensions page in Developer mode.
 - `winuse browser launch` starts the browser with a separate profile for
-  winuse.
+  winuse. A browser winuse launches or clones keeps rendering while other
+  windows cover it.
 - `winuse browser clone` copies your profile, logins included, and
   starts the copy.
 - `winuse browser connect` uses your running browser after you turn on

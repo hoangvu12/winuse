@@ -135,7 +135,8 @@ const usageTail = `);
                                persists); auto removes the pin, no argument
                                prints it
   browser launch [browser]    start the browser with winuse's own profile and
-                               connect (a normal browser window opens)
+                               connect (a normal browser window opens; it
+                               keeps rendering while covered)
   browser clone [browser] [--profile <folder>] [--fresh] [--close-source]
                                copy your real profile (your logins) to
                                winuse's clone, keep it synced, launch it and

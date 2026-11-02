@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -102,15 +103,46 @@ func (m *Manager) Use(ctx context.Context, name string) (string, error) {
 
 // launchArgs are the flags of a browser winuse launches: a loopback debug
 // port (Chromium binds 127.0.0.1 for it), a non-default user-data-dir
-// (required since Chromium 136) and no first-run pages
-// (ub/browsers.go:514-519).
+// (required since Chromium 136), no first-run pages
+// (ub/browsers.go:514-519), and no native occlusion tracking.
+//
+// Chromium marks a covered window occluded
+// (ui/aura/native_window_occlusion_tracker_win.cc) and stops rendering it;
+// a cold, fully covered Chrome kept a 36-node UIA tree for 14 s, and
+// settled in about 0.1 s with CalculateNativeWinOcclusion off. The Page
+// goes through CDP, but the frame (tab strip, address bar, dialogs) and the
+// UIA fallback still need the tree.
 func launchArgs(port int, userDataDir string) []string {
-	return []string{
+	return disableFeatures([]string{
 		"--remote-debugging-port=" + strconv.Itoa(port),
 		"--user-data-dir=" + userDataDir,
 		"--no-first-run",
 		"--no-default-browser-check",
+	}, "CalculateNativeWinOcclusion")
+}
+
+// disableFeatures adds features to the --disable-features switch in args,
+// or appends one. One switch, not two: Chromium's command line keeps one
+// value per switch, so a repeated --disable-features can drop the first
+// one's features.
+func disableFeatures(args []string, features ...string) []string {
+	const prefix = "--disable-features="
+	for i, a := range args {
+		if !strings.HasPrefix(a, prefix) {
+			continue
+		}
+		have := strings.Split(strings.TrimPrefix(a, prefix), ",")
+		for _, f := range features {
+			if !slices.Contains(have, f) {
+				have = append(have, f)
+			}
+		}
+		have = slices.DeleteFunc(have, func(s string) bool { return s == "" })
+		out := slices.Clone(args)
+		out[i] = prefix + strings.Join(have, ",")
+		return out
 	}
+	return append(args, prefix+strings.Join(features, ","))
 }
 
 // Launch answers `winuse browser launch [browser]`: start the browser with

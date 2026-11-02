@@ -10,8 +10,18 @@ Chromium marks covered windows occluded through its native occlusion tracker (`u
 
 **Blocked by:** none
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Flag added in the browser launch arguments
-- [ ] Offline test of the argument list
-- [ ] Opt-in e2e: launch covered, read the Window State, the frame and the Page are present
+- [x] Flag added in the browser launch arguments
+- [x] Offline test of the argument list
+- [x] Opt-in e2e: launch covered, read the Window State, the frame and the Page are present
+
+## Comments
+
+### 2026-11-02: landed
+
+- `internal/browser/commands.go`: `launchArgs` now ends with `--disable-features=CalculateNativeWinOcclusion`, so `browser launch` and `browser clone` (`cloneArgs` builds on `launchArgs`) both get it. The comment gives the reason (the 14 s against 0.1 s measurement; the frame and the UIA fallback still need the tree). New pure `disableFeatures(args, features...)` adds features to an existing `--disable-features=` switch, skipping duplicates and empty entries, or appends one switch. It never adds a second switch, and it does not change its input. No launch passes `--disable-features` today, so the merge only matters for the next flag that does.
+- Tests (`internal/browser/commands_test.go`): the launch test's exact argument list includes the flag. The clone test checks for it. `TestLaunchArgsTurnOffNativeOcclusion` checks that launch and clone (with session restore) carry exactly one `--disable-features` and that it is this one. `TestDisableFeaturesMergesIntoAnExistingSwitch` covers append, merge, a feature that is already listed, an empty switch, and an unchanged input.
+- Opt-in e2e `test/e2e/browser_occlusion_test.go`, `TestLaunchedBrowserCoveredKeepsItsTree`. For Chrome, then Edge, it runs `winuse browser launch` and covers the first Window with the fixture as soon as it exists. Then it runs `winuse navigate` to `browser-pages.html` and polls `get-window-state` until both the address bar edit (the frame) and the Page's "e2e count" button show through the Browser Connection. It allows 5 s for that, and every read is checked to leave the cover in the foreground. It skips a browser whose launch profile is already running, because a warm browser is not a cold one. It is described in `test/e2e/README.md`. **It is written and passes `go vet -tags e2e ./test/e2e`, but it has not been run.** Nothing in this ticket was measured live.
+- Docs: the CLI usage line for `browser launch` and SKILL.md's browser routes say a launched or cloned browser keeps rendering while covered. README's `browser launch` bullet says the same. CONTEXT.md and docs/codex-parity.md have no row or term this contradicts, so they are unchanged. Nothing is said about the user's own browser.
+- Not done: `--disable-backgrounding-occluded-windows`. The ticket asks to measure first, and this session could not launch a browser, so it was not added. Before anyone adds it, someone needs to measure it live: on a fully covered launched browser, does `Page.captureScreenshot` (and the input route) behave differently with and without the flag? Note that `.scratch/browser-merge/probe-results.md` already found page reads and input Headless when covered or minimized without it. Screenshots were not part of that probe.
