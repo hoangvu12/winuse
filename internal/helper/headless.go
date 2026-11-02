@@ -539,8 +539,14 @@ func clickRefusal(err error, w win.WindowInfo, index int) *Error {
 }
 
 // refusedBeforeCall reports whether an element-side failure is a refusal
-// raised before any pattern call.
+// raised before any pattern call. A select by name that matched no item,
+// or several, sent nothing unless it expanded the list for the search
+// (it then says the list was opened and closed).
 func refusedBeforeCall(err error) bool {
+	var sel *uia.SelectItemError
+	if errors.As(err, &sel) {
+		return !sel.Opened
+	}
 	var unavail *uia.UnavailableActionError
 	switch {
 	case errors.Is(err, uia.ErrStale), errors.Is(err, uia.ErrNoState), errors.Is(err, uia.ErrDisabled),

@@ -103,7 +103,8 @@ commands:
   set-value <window> <element index | name: | id: | @x,y> <value>
                                set an Element's value directly (a settable
                                edit, a numeric range, on|off for a check
-                               box or other toggle, or an option's label or
+                               box or other toggle, an item's name for a
+                               combo box or list, or an option's label or
                                value for a Page's list); @x,y sets the Element
                                under a point of the latest screenshot
   perform-secondary-action <window> <element index | name: | id: | @x,y> <action>

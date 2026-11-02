@@ -29,6 +29,9 @@ const (
 	esPassword    = 0x0020
 	esAutoHScroll = 0x0080
 
+	wsVScroll       = 0x00200000
+	cbsDropDownList = 0x0003
+
 	bsPushButton    = 0x0000
 	bsDefPushButton = 0x0001
 
@@ -36,6 +39,7 @@ const (
 	classButton uint16 = 0x0080
 	classEdit   uint16 = 0x0081
 	classStatic uint16 = 0x0082
+	classCombo  uint16 = 0x0085
 
 	idOK     = 1
 	idCancel = 2
@@ -43,6 +47,11 @@ const (
 
 	enSetFocus = 0x0100
 	enChange   = 0x0300
+
+	cbnSelChange = 1
+	cbnDropDown  = 7
+	cbAddString  = 0x0143
+	cbGetCurSel  = 0x0147
 
 	mbOKCancel = 0x0001
 
@@ -98,12 +107,15 @@ func dialogTemplate(style uint32, cx, cy int16, title, font string, pointSize ui
 }
 
 // classicItems are the Classic Dialog's controls, in tab order: the
-// name Edit takes the focus when the dialog opens.
+// name Edit takes the focus when the dialog opens. The combo's height
+// includes its drop-down list.
 var classicItems = []dlgItem{
 	{classStatic, idStatic, 0, 7, 9, 44, 8, "Name:"},
 	{classEdit, ClassicEditID, wsBorder | wsTabStop | esAutoHScroll, 55, 7, 158, 14, ""},
 	{classStatic, idStatic, 0, 7, 29, 44, 8, "Password:"},
 	{classEdit, ClassicPasswordID, wsBorder | wsTabStop | esAutoHScroll | esPassword, 55, 27, 158, 14, ""},
+	{classStatic, idStatic, 0, 7, 50, 44, 8, "Color:"},
+	{classCombo, ClassicComboID, wsTabStop | wsVScroll | cbsDropDownList, 55, 48, 158, 70, ""},
 	{classButton, idOK, wsTabStop | bsDefPushButton, 109, 79, 50, 14, "OK"},
 	{classButton, idCancel, wsTabStop | bsPushButton, 163, 79, 50, 14, "Cancel"},
 }
@@ -151,6 +163,8 @@ func (a *app) openClassic() {
 	a.state.ClassicText = ""
 	a.state.ClassicPassword = ""
 	a.state.ClassicFocus = ""
+	a.state.ClassicColor = ""
+	a.state.ClassicComboDrops = 0
 	tmpl := classicTemplate()
 	h, _, _ := procCreateDialogIndirectParamW.Call(a.instance, uintptr(unsafe.Pointer(&tmpl[0])), a.mainHwnd, a.classicProc, 0)
 	runtime.KeepAlive(tmpl)
@@ -181,12 +195,28 @@ func (a *app) openClassic() {
 func (a *app) dlgClassic(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 	switch msg {
 	case wmInitDialog:
+		if combo, _, _ := procGetDlgItem.Call(hwnd, ClassicComboID); combo != 0 {
+			for _, c := range ClassicColors {
+				p := utf16Ptr(c)
+				procSendMessageW.Call(combo, cbAddString, 0, uintptr(unsafe.Pointer(p)))
+				runtime.KeepAlive(p)
+			}
+		}
 		return 1 // the dialog manager focuses the first tab stop, the name Edit
 	case wmCommand:
 		id, code := uint16(wp), uint16(wp>>16)
 		switch {
 		case id == idOK || id == idCancel:
 			a.closeClassic(hwnd, commandResult(uintptr(id)))
+			return 1
+		case id == ClassicComboID && code == cbnSelChange:
+			ctl, _, _ := procGetDlgItem.Call(hwnd, ClassicComboID)
+			a.state.ClassicColor = classicColor(int32(sendMessage(ctl, cbGetCurSel, 0, 0)))
+			a.changed()
+			return 1
+		case id == ClassicComboID && code == cbnDropDown:
+			a.state.ClassicComboDrops++
+			a.changed()
 			return 1
 		case code == enChange && classicFocusName(id) != "":
 			ctl, _, _ := procGetDlgItem.Call(hwnd, uintptr(id))
@@ -204,6 +234,21 @@ func (a *app) dlgClassic(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		}
 	}
 	return 0
+}
+
+// classicColor names the combo item at index sel for the state file's
+// classicColor ("" for CB_ERR or an index out of range).
+func classicColor(sel int32) string {
+	if sel < 0 || int(sel) >= len(ClassicColors) {
+		return ""
+	}
+	return ClassicColors[sel]
+}
+
+// sendMessage sends a message to a window of the fixture's own thread.
+func sendMessage(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
+	r, _, _ := procSendMessageW.Call(hwnd, uintptr(msg), wp, lp)
+	return r
 }
 
 // closeClassic destroys the Classic Dialog and records how it closed.

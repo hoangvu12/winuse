@@ -237,8 +237,9 @@ routes below, taking the user's foreground is your decision.
 
 Pick the Headless way whenever one does the job.
 
-- Fill a `settable` field, or set a check box to `on` or `off`, with
-  `set-value` rather than a click and `type-text` or a click that flips it.
+- Fill a `settable` field, set a check box to `on` or `off`, or pick a
+  combo box or list item by name with `set-value`, rather than a click and
+  `type-text`, a click that flips it, or clicks that open a list.
 - Confirm or cancel a dialog with a Headless click on its button by `name:`.
 - Open menus, trees and combo boxes with a Headless click or
   `perform-secondary-action <ref> Expand`.
@@ -257,6 +258,16 @@ without a value takes `on` or `off` (also `true`, `false`, `checked`,
 `unchecked`): winuse toggles only when the state differs and reads the
 target state back, so the box ends where you asked whatever it showed
 before.
+
+On a combo box or a list, `set-value` picks the item you name, Headless:
+winuse finds the item by its exact name, else by the same name in any case
+and spacing, selects it and reads the selection back. A closed combo stays
+closed when it shows its items anyway; winuse opens it only when it shows
+none until opened, and closes it again afterwards. An editable combo takes
+the text as its value instead. A name that matches several items, or none,
+is refused with the names, and nothing was sent unless winuse had to open
+the combo to search it; the error then says it was opened and closed. Name
+the item exactly as the list spells it.
 
 - `type-text` types literal Unicode text, any script and emoji included,
   into the focused Element.
@@ -654,7 +665,7 @@ list-apps | get-window <window> | launch-app <name|exe path> [--timeout <s>]
 get-window-state <window> [--screenshot] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right]
-set-value <window> <ref> <value|on|off>
+set-value <window> <ref> <value|on|off|item name>
 perform-secondary-action <window> <ref> <action>   # Raise, Scroll Up/Down/Left/Right, Expand, Collapse, Toggle, Select
 type-text <window> [--post] <text>
 press-key <window> <key> [--post] [--force]

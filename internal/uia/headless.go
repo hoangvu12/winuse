@@ -110,10 +110,12 @@ func (c *Client) HeadlessClick(ctx context.Context, hwnd uint64, index int) (str
 
 // SetValueHeadless writes value like SetValue but without focusing the
 // Element first (UIA SetFocus moves the desktop foreground), then reads a
-// Value-pattern write back (setToggle verifies a toggle write itself).
+// Value-pattern write back (setToggle verifies a toggle write itself, and
+// selectItem the item it picks in a combo or list).
 func (c *Client) SetValueHeadless(ctx context.Context, hwnd uint64, index int, value string) error {
 	return c.onElement(ctx, hwnd, index, func(th *thread, el comPtr) error {
-		if err := th.setValue(el, value, false); err != nil {
+		selected, err := th.writeValue(el, value, false)
+		if err != nil || selected {
 			return err
 		}
 		return verifyValue(el, value)
