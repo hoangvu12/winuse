@@ -98,3 +98,25 @@ Results:
 - [M] Invoke on the now-inactive TAB-A: **no InvokePattern** (GetCurrentPatternAs returned null). The tab did not change; foreground unchanged. Use Select for tab switching.
 - [M] **`--load-extension`: no.** The test used an unpacked MV3 dummy that overrides the new tab page (nt.html, title EXT-NEWTAB). Launched on chrome://newtab/, the title stayed "New Tab - Google Chrome". Adding `--disable-features=DisableLoadExtensionCommandLineSwitch` changed nothing. Branded Chrome 156 ignores the switch. (Edge on the laptop is 144.0.3719.82; not tested.)
 - Foreground and cursor were unchanged in all steps.
+
+## 5. Chords on classic Apps through attached key state (headless-max 07)
+
+Method:
+1. AttachThreadInput(probe thread, target UI thread).
+2. SetKeyboardState with VK_CONTROL+VK_LCONTROL (or VK_SHIFT+VK_LSHIFT, VK_MENU+VK_LMENU) at 0x80.
+3. PostMessage WM_KEYDOWN to the thread's focus HWND (GetGUIThreadInfo), or to the top-level when there is none.
+4. Hold 150 ms, post WM_KEYUP, restore the saved state, detach.
+
+The chord is refused if the target thread owns the foreground (never the case here).
+
+**The user's async key state, GetAsyncKeyState(Ctrl/Shift/Alt), was 0 before, during and after every chord** [M]. Foreground and cursor were unchanged in every step [M].
+
+- **Win32 TranslateAccelerator loop** (the probe's window; accelerator table Ctrl+S=301, Ctrl+Shift+S=302) [M]: Ctrl+S reached the loop as WM_KEYDOWN 0x53, TranslateAccelerator handled it, and WM_COMMAND 301 fired. Ctrl+Shift+S gave WM_COMMAND 302. Both worked with no activation messages.
+- **WinForms** (.NET 8, MenuStrip items with ShortcutKeys Ctrl+O and Ctrl+Shift+O) [M]: posted to the form HWND (no focused control). Both fired (o=1, os=1). The form's Activated count stayed 0. No activation needed.
+- **WPF** (.NET 8, Window.InputBindings KeyBinding Ctrl+S and Ctrl+Shift+S) [M]:
+  - Without activation, **neither fired** (s=0, ss=0; Keyboard.FocusedElement empty).
+  - **With the PR #400 activation pair** sent to the HwndWrapper top-level (NCACTIVATE 1, ACTIVATE WA_ACTIVE, SETFOCUS; afterwards KILLFOCUS, ACTIVATE 0, NCACTIVATE 0), **both fired** (s=1, ss=1). Keyboard.FocusedElement became the Window during the pair. The WPF Activated event fired once, but the system foreground was unchanged.
+- **Alt+F on the Win32 window** (WM_SYSKEYDOWN 'F' with lParam bit 29, attached VK_MENU) [M]:
+  - Without activation, the window got WM_SYSKEYDOWN, WM_SYSCHAR 'f' and WM_SYSCOMMAND SC_KEYMENU 'f', but **no menu opened** (no `#32768`, no WM_ENTERMENULOOP). A directly posted WM_SYSCOMMAND(SC_KEYMENU, 'f') did nothing either.
+  - **With the activation pair, the File menu opened** (WM_ENTERMENULOOP, `#32768` 291x111; MN_GETHMENU items Save 301, Save As 302, Open 303). Posting the mnemonic 'S' to the `#32768` chose Save (WM_COMMAND 301, the menu closed). Foreground unchanged throughout.
+- MFC: skipped; no MFC app was easy to build or find.

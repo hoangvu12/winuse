@@ -23,7 +23,7 @@ Rules:
 
 **Blocked by:** none (06 is the preferred route where an Element carries the shortcut)
 
-**Status:** ready-for-agent (Chromium and Electron chords are in ticket 20; classic Apps after the laptop probe)
+**Status:** ready-for-agent (measured on Win32, WinForms and WPF; see Comments)
 
 - [ ] Probe on Notepad (Win11), WordPad, Paint, an MFC app, a WinForms app and a WPF app: Ctrl+S, Ctrl+A, Ctrl+Z, Shift+Tab, Alt+F; foreground and user key state before and after
 - [ ] If adopted: attach, state, post, restore on a disposable thread; restore on every exit path
@@ -48,3 +48,25 @@ Rules:
 ### 2026-11-03: triage decision (user)
 
 Kept as an opt-in `--post` route for classic Win32 Apps. The Chromium and Electron chords are measured and built in ticket 20. The probe on real classic Apps (a Win32 accelerator loop, WinForms, WPF and MFC test windows the probe builds itself): the laptop probe chat (358cd6b7) runs it; the user is never at the laptop during probes. Adopt per App type only where it is measured.
+
+### 2026-11-03: classic Apps measured (`../headless-gaps/probes-round4.md` section 5)
+
+| Target | Ctrl or Ctrl+Shift chord | Needs the activation pair |
+|---|---|---|
+| Win32 TranslateAccelerator | fired (WM_COMMAND) | no |
+| WinForms ShortcutKeys | fired | no |
+| WPF KeyBinding | fired only with the pair | **yes** |
+| Win32 Alt+F (menu) | the menu opened only with the pair; the mnemonic then chose the item | **yes** |
+
+- The user's async key state stayed 0, and the foreground and cursor were unchanged throughout.
+- The activation pair is the same as ticket 20's (WM_NCACTIVATE, WM_ACTIVATE, WM_SETFOCUS, then the reverse).
+
+Build:
+
+- Attach plus SetKeyboardState, then post the keys to GetGUIThreadInfo's focus (or the top-level), then restore and detach. Run this on a disposable thread with a timeout.
+- Send the activation pair around the chord for WPF (`HwndWrapper[` classes) and for Alt chords. Skip it for plain Win32 and WinForms, where it is not needed.
+- Never on a minimized Window when the pair is sent.
+- Alt chords are adopted: menus open, and ticket 09's mnemonic choice picks items.
+- Stays opt-in `--post` (no read-back; ADR 0013 rule 2).
+- MFC is unmeasured. Treat it as Win32 (TranslateAccelerator) until shown otherwise.
+- The laptop probe for this ticket is done.

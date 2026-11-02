@@ -39,7 +39,7 @@ Close every gap that has a route, and say plainly where none exists.
 | 04 | Occlusion flag for launched browsers | S | done |
 | 05 | Headless tab switch on launched browsers | S | ready-for-agent |
 | 06 | Accelerator lookup route for press-key | S | ready-for-agent (low priority) |
-| 07 | Chords through attached key state (opt-in) | M | ready-for-agent (classic Apps after the laptop probe) |
+| 07 | Chords through attached key state (opt-in) | M | ready-for-agent |
 | 08 | invoke-menu for classic menu bars | M | ready-for-agent |
 | 09 | ContextMenu Secondary Action | M | ready-for-agent |
 | 10 | select-text | S | done |
