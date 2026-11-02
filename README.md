@@ -19,15 +19,19 @@ irm https://raw.githubusercontent.com/hoangvu12/winuse/main/install.ps1 | iex
 ```
 
 It puts `winuse.exe` in `%LOCALAPPDATA%\winuse`, adds that folder to your
-PATH, and installs the skill for every agent it finds. The skill step uses
-`npx skills` and needs Node.js. Set `WINUSE_NO_SKILL=1` to skip it.
+PATH, and installs the skill. It writes the skill that ships inside
+`winuse.exe` to `~\.agents\skills\winuse` with `winuse skill install`, so
+the skill always matches the binary. With Node.js it also runs `npx skills`
+first, which links the skill into every agent it finds. Set
+`WINUSE_NO_SKILL=1` to skip the skill.
 
 Then ask your agent something like "open Calculator and work out 7 + 2
 using winuse".
 
 To build from source instead, use Go 1.27 or newer:
 `$env:CGO_ENABLED=0; go build -o winuse.exe ./cmd/winuse`, then
-`npx skills add hoangvu12/winuse`.
+`npx skills add hoangvu12/winuse`, or `.\winuse.exe skill install <dir>` to
+write the skill into an agent's skills folder.
 
 ## How it works
 
@@ -118,6 +122,8 @@ any other window.
 | `browser status`, `browser ext install`, `browser launch`, `browser clone`, `browser connect` | Connects to a browser and reports how |
 
 [SKILL.md](skills/winuse/SKILL.md) is the full guide your agent loads.
+`winuse skill` prints the copy built into your binary, so it always
+matches the version you run.
 
 ## More
 
