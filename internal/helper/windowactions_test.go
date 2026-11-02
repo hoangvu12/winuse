@@ -27,6 +27,10 @@ type windowSpy struct {
 	minimized, maximized, restoresMax, open bool
 	rect                                    win.Rect // the visible frame, as move and resize set it
 
+	foreground   uint64            // the foreground Window
+	selfActivate uint64            // the Window the App activates when it is restored; 0: none
+	pids         map[uint64]uint32 // each Window's process
+
 	settleAfter int    // probes before a call's effect shows
 	noEffect    bool   // the app ignores the call
 	callErr     error  // the Win32 call itself fails
@@ -43,8 +47,11 @@ type windowSpy struct {
 }
 
 func newWindowSpy() *windowSpy {
+	// Window 101 and 102 belong to one App; 500, the user's foreground
+	// Window, and 600 to others.
 	s := &windowSpy{actionSpy: &actionSpy{}, open: true,
-		rect: win.Rect{Left: 100, Top: 100, Right: 900, Bottom: 700}, settleAfter: 2}
+		rect: win.Rect{Left: 100, Top: 100, Right: 900, Bottom: 700}, settleAfter: 2,
+		foreground: 500, pids: map[uint64]uint32{101: 7, 102: 7, 500: 9, 600: 11}}
 	s.cursor = &cursorSpy{share: s.step}
 	s.overlay = &overlaySpy{share: s.step}
 	s.esc = &scopeEsc{}
@@ -57,8 +64,15 @@ func newWindowSpy() *windowSpy {
 	svc.RestoresMaximized = func(uint64) bool { return s.restoresMax }
 	svc.WindowOpen = func(uint64) bool { s.settle(); return s.open }
 	svc.WindowFrame = func(uint64) (win.Rect, error) { s.settle(); return s.rect, nil }
+	svc.Foreground = func() uint64 { s.settle(); return s.foreground }
+	svc.WindowPID = func(hwnd uint64) uint32 { return s.pids[hwnd] }
 	svc.RestoreWindow = func(uint64) error {
-		return s.call("restore", func() { s.minimized, s.maximized = false, false })
+		return s.call("restore", func() {
+			s.minimized, s.maximized = false, false
+			if s.selfActivate != 0 {
+				s.foreground = s.selfActivate
+			}
+		})
 	}
 	svc.MinimizeWindow = func(uint64) error {
 		return s.call("minimize", func() { s.minimized = true })
@@ -164,6 +178,51 @@ func TestRestoreWindowNotesNormalSizeForAMaximizedWindow(t *testing.T) {
 		t.Errorf("output = %q, want ok with the normal-size note", out)
 	}
 	spy.assertNoForeground(t)
+}
+
+func TestRestoreWindowReportsSelfActivation(t *testing.T) {
+	const note = "ok (the App brought itself to the foreground)\n"
+	cases := []struct {
+		name         string
+		before       uint64 // the foreground before the restore
+		selfActivate uint64 // the Window the App activates; 0: none
+		want         string
+	}{
+		{"the restored Window took the foreground", 500, 101, note},
+		{"another Window of its App took it", 500, 102, note},
+		{"the foreground stayed", 500, 0, "ok\n"},
+		{"another App took it", 500, 600, "ok\n"},
+		{"the App had it already", 102, 101, "ok\n"},
+		{"there was no foreground before", 0, 101, note},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			spy := newWindowSpy()
+			spy.minimized = true
+			spy.foreground, spy.selfActivate = tc.before, tc.selfActivate
+			out, cmdErr := runCommand(t, CommandsWith(spy.svc), "restore-window", protocol.WindowActionArgs{Window: "101"})
+			if cmdErr != nil {
+				t.Fatalf("restore-window: %v", cmdErr.Error())
+			}
+			if out != tc.want {
+				t.Errorf("output = %q, want %q", out, tc.want)
+			}
+			// winuse never takes the foreground back.
+			spy.assertNoForeground(t)
+		})
+	}
+}
+
+func TestRestoreWindowJoinsTheNotes(t *testing.T) {
+	spy := newWindowSpy()
+	spy.minimized, spy.restoresMax, spy.selfActivate = true, true, 101
+	out, cmdErr := runCommand(t, CommandsWith(spy.svc), "restore-window", protocol.WindowActionArgs{Window: "101"})
+	if cmdErr != nil {
+		t.Fatalf("restore-window: %v", cmdErr.Error())
+	}
+	if !strings.HasPrefix(out, "ok (restored at normal size: ") || !strings.HasSuffix(out, "; the App brought itself to the foreground)\n") {
+		t.Errorf("output = %q, want both notes in one ok line", out)
+	}
 }
 
 func TestRestoreWindowAlreadyRestoredSendsNothing(t *testing.T) {

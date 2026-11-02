@@ -116,7 +116,8 @@ const usageTail = `);
                                <element> hovers a Page Element headless
   activate-window <window>    bring a Window to the foreground
   restore-window <window>     restore a minimized or maximized Window to its
-                               normal size without activating it
+                               normal size without activating it (the output
+                               says when the App brings itself to the front)
   minimize-window <window>    minimize a Window without activating another
   move-window <window> <x> <y>
                                move the Window's visible frame top-left to a
