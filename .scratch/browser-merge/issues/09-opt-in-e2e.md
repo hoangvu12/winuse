@@ -134,3 +134,9 @@ Live risks, not run here:
 - `browser status` now sends `Browser.setDownloadBehavior` on launched and cloned browsers.
 - The 200 ms grace after the Page budget assumes the Page read returns promptly once its context ends; a read that does not still falls back with "took longer than".
 - The approval note was tested against the held-handshake fake only, not Chrome 144's real prompt.
+
+### 2026-11-03: the launched Window, and the helper's idle period
+
+- The setup picks the launched Window with `launchedBrowserWindow` (the one Window winuse lists, steady for 500 ms) and picks it again on each `navigate` retry. Before, it reused the first ID from `findWindowOf`. Details: `.scratch/headless-max/issues/04-occlusion-flag-launched-browsers.md`, 2026-11-03.
+- Since 2026-11-03 the helper's idle period counts from the end of the last request (`.scratch/headless-parity/issues/07-posted-keys.md`, 2026-11-03). The 10 minute idle of these runs was never short enough to hit it.
+- Live, 2026-11-03: `TestBrowserPages/chrome` 8 of 8.

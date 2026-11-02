@@ -77,7 +77,9 @@ environment, not the test's).
    readiness or effects with `(*fixtureProc).waitState(t, timeout, pred)`.
 3. Drive `winuse` with `runWinuse(t, args, extraEnv...)` — a real CLI
    invocation. Pass `WINUSE_HELPER_IDLE=`+`e2eIdle` so no helper process
-   lingers after the suite.
+   lingers after the suite. The idle period counts from the end of the
+   last request, so a read longer than `e2eIdle` (a cold Chromium) keeps
+   the helper, and its cached Window State, for the next command.
 4. Assert on stdout/stderr/exit code and on the fixture's state file.
 
 Current tests: the ticket-01 helper/list-windows contract tests
@@ -608,8 +610,10 @@ checks that a browser winuse launches keeps building its UI Automation
 tree while it is covered: `winuse browser launch` passes
 `--disable-features=CalculateNativeWinOcclusion`. For Chrome, then Edge
 (a browser that is not installed is skipped), it launches the browser in
-winuse's own launch profile, covers the new Window with the fixture at
-once, opens `testdata/browser-pages.html` with `winuse navigate`, and
+winuse's own launch profile, covers the new Window with the fixture as
+soon as it is steady (the one Window winuse lists, unchanged for half a
+second; both browser tests pick the launched Window this way and again
+on each retry), opens `testdata/browser-pages.html` with `winuse navigate`, and
 then reads the Window State until it shows the address bar (the frame)
 and the Page's "e2e count" button, through the Browser Connection. Both
 must show within 5 s, and the fixture must keep the foreground. It skips
