@@ -24,3 +24,7 @@ These are not aimed at a Window. CONTEXT.md says every Action is aimed at exactl
 ### 2026-11-03: triage decision (user)
 
 Do it like agent-desktop: get, set and clear for text, image and files, with the hung-owner guard. No clipboard-history exclusion formats and no "ask the user first" rule in the skill (both were winuse extras; the user declined them). The CONTEXT.md term **Desktop command** is accepted (not an Action, no Agent Cursor, not a Batch step, serialized on the action gate); this ticket adds it.
+
+### 2026-11-03: round 3 probes (`../headless-gaps/probes-round3.md`)
+
+Note only (the user's decision stands: no history exclusion on `clipboard-set`): the registered `ExcludeClipboardContentFromMonitorProcessing` format was measured to keep data out of Win+V history. Headless-max 20 uses it for its temporary Ctrl+V data.

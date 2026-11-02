@@ -33,3 +33,9 @@ Plan:
 - Minimized tree counts, minimized Invoke/Toggle/SetValue/Select, and the SW_SHOWNOACTIVATE restore were not reached. The batch aborted earlier, when a fixture dialog took the foreground.
 - Lesson for the rerun: on this PC the foreground lock does not protect once the last-input process has exited. Restores and App-opened dialogs can take the foreground.
 - Recommendation: keep `needs-triage`. Probe still pending; run it with the user away. Details: `../../headless-gaps/probes-safe-batch.md`.
+
+### 2026-11-03: round 3 probes (`../headless-gaps/probes-round3.md`)
+
+- **Classic Win32: measured working** on the PC. A minimized window stayed iconic with the foreground unchanged. UIA read all 120 Elements, and Invoke (WM_COMMAND), Value.SetValue (read back), EM_REPLACESEL and SelectionItem.Select (LB_GETCURSEL=7) all worked.
+- **Chromium: no.** The activation messages restore it and take the foreground (see ticket 20).
+- WPF and XAML are still to test.

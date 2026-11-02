@@ -33,3 +33,9 @@ Rules if it is adopted:
 - Likely cause [I]: the user's last input went to a process that had since exited (the game), so the foreground lock no longer protected the client.
 - The guard here (disable the owner around the call) may not help: the dialog is shown after the call returns. Also test refusing nothing but reporting it ("the App brought a dialog to the foreground"), as ticket 02 does for restore.
 - Status stays `needs-triage`; the self-activation question is now answered "yes, it happens", which is what this ticket needed before adoption.
+
+### 2026-11-03: round 3 probes (`../headless-gaps/probes-round3.md`)
+
+- LockSetForegroundWindow(LOCK) from a process without foreground rights returns access denied, so it cannot be a guard.
+- The lapse could not be reproduced on the laptop. It needs the last-input receiver to exit, as the League game did on the PC.
+- **Proposed new scope: detect and report.** Watch EVENT_SYSTEM_FOREGROUND during and just after a Headless Action, and report `the App took the foreground`. Optionally give the foreground back only when the thief is the target App. The EnableWindow guard is kept only as an unmeasured option for XAML and Chromium Invoke.

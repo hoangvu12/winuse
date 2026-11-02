@@ -21,3 +21,10 @@ Measured (`../headless-gaps/headless-100.md` G1): posted WM_LBUTTONDOWN/UP/DBLCL
 - [ ] Offline tests: message sequence per button and count, allow-list, flag conflicts
 - [ ] Opt-in e2e: fixture edit box double and right click, covered
 - [ ] CONTEXT.md, SKILL.md
+
+## Comments
+
+### 2026-11-03: round 3 probes (`../headless-gaps/probes-round3.md`)
+
+- **Posted wheel: measured working** on a classic LISTBOX: WM_MOUSEWHEEL(-120) moved the top index from 0 to 3, and WM_VSCROLL(SB_LINEDOWN) from 3 to 4. Foreground unchanged. Add `scroll @x,y --post` for classic controls to this ticket.
+- Pointer work must be per-monitor DPI aware: a DPI-unaware laptop probe landed its input in a user window.

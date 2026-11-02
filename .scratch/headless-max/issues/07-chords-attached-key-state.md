@@ -39,3 +39,8 @@ Rules:
 - The fixture tracks Ctrl from WM_KEYDOWN messages, so the forged state alone did not trigger its Ctrl+A. Apps like this also need posted VK_CONTROL down/up around the key.
 - Not measured: real accelerators (msinfo32 Ctrl+F/Ctrl+O, WPF). The batch aborted when another step took the foreground.
 - Recommendation: keep `needs-triage`. Rerun the msinfo32 and WPF legs with the user away. Details: `../../headless-gaps/probes-safe-batch.md`.
+
+### 2026-11-03: round 3 probes (`../headless-gaps/probes-round3.md`)
+
+- **Chromium and Electron: measured working.** Ctrl+A, Shift+Tab and Ctrl+V through AttachThreadInput + SetKeyboardState on Chrome's UI thread, with the PR #400 activation (Chrome, Edge, Electron). The foreground was unchanged, and the step was refused if that thread owned the foreground. That route is ticket 20.
+- Classic Win32, WPF and MFC Apps are still to test.

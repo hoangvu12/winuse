@@ -26,3 +26,15 @@ Rules:
 - [ ] Offline tests: argument and environment building, owner check, no-port fallback
 - [ ] Opt-in e2e: VS Code or another installed Electron App, and a WebView2 App, covered
 - [ ] ADR 0012 amendment, SKILL.md
+
+## Comments
+
+### 2026-11-03: round 3 probes (`../headless-gaps/probes-round3.md`)
+
+New scope, at the research chat's request: **attach to a running Electron App**, opt-in and with the user's consent.
+
+- Recipe (measured on the laptop, Electron 45.2.1): `process._debugProcess(pid)`, then `/json/list` on 127.0.0.1:9229, then main-process `Runtime.evaluate` of `webContents.getAllWebContents()[i].debugger.attach('1.3')`, then Input commands, then `detach()`, then `require('inspector').close()`, then confirm the port is gone. All input was trusted, there was no window activation, and Defender reported nothing.
+- It needs the nodeCliInspect fuse on. Discord 1.0.9266 has it off; refuse with a clear reason.
+- It runs code inside the user's App. Ask first, never by default. Any same-user process can reopen the port.
+- This revises "a running App needs a restart" above: a restart is needed only when the fuse is off. WebView2 stays launch-time only.
+- Needs: a Node runtime or an equivalent `_debugProcess` signal (it sends SIGUSR1 to the process on Windows). Find out how to send it without bundling Node (ADR 0002 and 0003).

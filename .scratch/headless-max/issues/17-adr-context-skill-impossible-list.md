@@ -24,3 +24,10 @@ Write the ADR before the tickets that reverse earlier decisions land; update CON
 - [ ] CONTEXT.md terms
 - [ ] SKILL.md impossible list and routing rules
 - [ ] codex-parity rows reworded; parity guard test passes
+
+## Comments
+
+### 2026-11-03: round 3 probes (`../headless-gaps/probes-round3.md`)
+
+- Add to the policy: **UIA SetFocus is never used in a Headless or Posted path.** It takes the foreground for any App, even without foreground rights (measured).
+- Impossible list: take "keys into native Chromium without CDP" off (ticket 20), and "attaching CDP to an Electron app that is already running" too, when its fuse is on (ticket 15, opt-in). Minimized Chromium stays on the list.
