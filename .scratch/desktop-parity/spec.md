@@ -32,24 +32,24 @@ Add agent-desktop's missing features as winuse extensions, and keep winuse's Cod
 | 02 | Report Windows that an Action opened | P1 | S-M | needs-triage |
 | 03 | Desktop waits | P1 | M | ready-for-agent |
 | 04 | `find` and a region read | P1 | M-L | needs-triage |
-| 05 | Blocked dangerous combos with `--force` | P1 | S | ready-for-agent |
+| 05 | Blocked dangerous combos with `--force` | P1 | S | done |
 | 06 | Modifiers on point clicks and wheel | P1 | S | needs-triage |
 | 07 | Opt-in `--json` output with codes and delivery | P1 | L | ready-for-agent |
 | 08 | Display list and full-screen capture | P2 | S | needs-triage |
 | 09 | Shell surfaces | P2 | M | needs-triage |
 | 10 | close-app | P2 | S-M | needs-triage |
 | 11 | maximize-window | P2 | S | needs-triage |
-| 12 | Select an option by name in UIA combos and lists | P2 | S-M | ready-for-agent |
+| 12 | Select an option by name in UIA combos and lists | P2 | S-M | done |
 | 13 | Hover and drag by UIA Element | P2 | S | ready-for-agent |
-| 14 | Caller-set timeouts | P2 | S | ready-for-agent |
-| 15 | `winuse skill` prints the embedded skill | P2 | S | ready-for-agent |
-| 16 | `status` | P2 | S | ready-for-agent |
+| 14 | Caller-set timeouts | P2 | S | done |
+| 15 | `winuse skill` prints the embedded skill | P2 | S | done |
+| 16 | `status` | P2 | S | done |
 | 17 | Live re-resolution of `name:`/`id:` | P2 | M | ready-for-agent |
 | 18 | Notifications | P3 | M | needs-triage |
 | 19 | Session traces with redaction | P3 | M-L | ready-for-agent |
 | 20 | Batch improvements | P3 | S-M | needs-triage |
 | 21 | Agent Cursor polish | P3 | S | ready-for-agent |
-| 22 | list-windows details and filter | P2 | S | ready-for-agent |
+| 22 | list-windows details and filter | P2 | S | done |
 | 23 | type-text into an Element, and pacing | P2 | S-M | ready-for-agent |
 | 24 | Batch across several Windows | P3 | M | needs-triage |
 
