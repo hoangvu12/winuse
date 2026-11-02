@@ -54,7 +54,8 @@ commands:
                                whose path is printed; a Chromium or Electron
                                Window without a Browser Connection whose web
                                content reads thin is read again for up to 5 s
-                               while it builds
+                               while it builds (once per Window; later reads
+                               of a Window that stayed thin retry once)
   record-tree <window> <file> record a Window's real tree to a fixture file
   zoom <window> <x>,<y>,<w>,<h>
                                save a full-resolution crop of a region of the

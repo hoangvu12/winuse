@@ -81,7 +81,7 @@ func readFixtureTree(t *testing.T, app string, results []*readResult, sleepErr e
 	t.Helper()
 	r := &fakeReader{t: t, results: results}
 	s := &fakeSleep{err: sleepErr}
-	tree, err := readTree(context.Background(), app, time.Minute, DefaultChromiumSettle, r.read, s.sleep)
+	tree, err := readTree(context.Background(), app, time.Minute, DefaultChromiumSettle, thinMark{}, r.read, s.sleep)
 	if err != nil {
 		t.Fatalf("readTree: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestReadTreeChromiumByExeNameWithoutClass(t *testing.T) {
 func TestReadTreeFirstReadErrorPropagates(t *testing.T) {
 	r := &fakeReader{t: t, errs: []error{ErrWindowGone}}
 	s := &fakeSleep{}
-	_, err := readTree(context.Background(), "chrome.exe", time.Minute, DefaultChromiumSettle, r.read, s.sleep)
+	_, err := readTree(context.Background(), "chrome.exe", time.Minute, DefaultChromiumSettle, thinMark{}, r.read, s.sleep)
 	if !errors.Is(err, ErrWindowGone) {
 		t.Fatalf("readTree error = %v, want ErrWindowGone", err)
 	}
@@ -289,7 +289,7 @@ func TestReadTreeSecondReadErrorPropagates(t *testing.T) {
 	sparse := loadReadFixture(t, "testdata/electron-sparse.json", canvasRootClass)
 	r := &fakeReader{t: t, results: []*readResult{sparse}, errs: []error{nil, ErrWindowGone}}
 	s := &fakeSleep{}
-	_, err := readTree(context.Background(), "canvasapp.exe", time.Minute, DefaultChromiumSettle, r.read, s.sleep)
+	_, err := readTree(context.Background(), "canvasapp.exe", time.Minute, DefaultChromiumSettle, thinMark{}, r.read, s.sleep)
 	if !errors.Is(err, ErrWindowGone) {
 		t.Fatalf("readTree error = %v, want the retry's ErrWindowGone", err)
 	}
@@ -299,7 +299,7 @@ func TestReadTreeNoTimeForRetryReturnsFirstRead(t *testing.T) {
 	sparse := loadReadFixture(t, "testdata/electron-sparse.json", canvasRootClass)
 	r := &fakeReader{t: t, results: []*readResult{sparse}}
 	s := &fakeSleep{err: context.DeadlineExceeded}
-	tree, err := readTree(context.Background(), "canvasapp.exe", time.Minute, DefaultChromiumSettle, r.read, s.sleep)
+	tree, err := readTree(context.Background(), "canvasapp.exe", time.Minute, DefaultChromiumSettle, thinMark{}, r.read, s.sleep)
 	if err != nil {
 		t.Fatalf("an interrupted retry must return the first read, got error %v", err)
 	}
@@ -326,7 +326,7 @@ func TestReadTreeWalkBudgetRespectsRequestDeadline(t *testing.T) {
 	defer cancel()
 	r := &fakeReader{t: t, results: []*readResult{sparse, sparse}}
 	s := &fakeSleep{}
-	_, err := readTree(ctx, "canvasapp.exe", time.Minute, DefaultChromiumSettle, r.read, s.sleep)
+	_, err := readTree(ctx, "canvasapp.exe", time.Minute, DefaultChromiumSettle, thinMark{}, r.read, s.sleep)
 	if err != nil {
 		t.Fatalf("readTree: %v", err)
 	}
@@ -346,7 +346,7 @@ func TestReadTreeRetryDelayBoundedBySleep(t *testing.T) {
 	sparse := loadReadFixture(t, "testdata/electron-sparse.json", canvasRootClass)
 	r := &fakeReader{t: t, results: []*readResult{sparse, sparse}}
 	s := &fakeSleep{}
-	if _, err := readTree(context.Background(), "canvasapp.exe", time.Minute, DefaultChromiumSettle, r.read, s.sleep); err != nil {
+	if _, err := readTree(context.Background(), "canvasapp.exe", time.Minute, DefaultChromiumSettle, thinMark{}, r.read, s.sleep); err != nil {
 		t.Fatalf("readTree: %v", err)
 	}
 	if len(s.delays) != 1 || s.delays[0] != a11yRetryDelay {
@@ -538,7 +538,7 @@ func TestReadTreeWarmChromiumIsNotSettled(t *testing.T) {
 func TestReadTreeSettlePollErrorPropagates(t *testing.T) {
 	r := &fakeReader{t: t, results: chromeReads(0), errs: []error{nil, ErrWindowGone}}
 	s := &fakeSleep{}
-	_, err := readTree(context.Background(), "chrome.exe", time.Minute, DefaultChromiumSettle, r.read, s.sleep)
+	_, err := readTree(context.Background(), "chrome.exe", time.Minute, DefaultChromiumSettle, thinMark{}, r.read, s.sleep)
 	if !errors.Is(err, ErrWindowGone) {
 		t.Fatalf("readTree error = %v, want the poll's ErrWindowGone", err)
 	}
@@ -549,7 +549,7 @@ func TestReadTreeSettleInterruptedSleepReturnsLastRead(t *testing.T) {
 	// the thin note since it is thin.
 	r := &fakeReader{t: t, results: chromeReads(0)}
 	s := &fakeSleep{err: context.DeadlineExceeded}
-	tree, err := readTree(context.Background(), "chrome.exe", time.Minute, DefaultChromiumSettle, r.read, s.sleep)
+	tree, err := readTree(context.Background(), "chrome.exe", time.Minute, DefaultChromiumSettle, thinMark{}, r.read, s.sleep)
 	if err != nil {
 		t.Fatalf("readTree: %v", err)
 	}
@@ -569,7 +569,7 @@ func TestReadTreeSettleBoundedByRequestDeadline(t *testing.T) {
 	sizes := make([]int, 40)
 	r := &fakeReader{t: t, results: chromeReads(sizes...)}
 	s := &fakeSleep{}
-	if _, err := readTree(ctx, "chrome.exe", time.Minute, DefaultChromiumSettle, r.read, s.sleep); err != nil {
+	if _, err := readTree(ctx, "chrome.exe", time.Minute, DefaultChromiumSettle, thinMark{}, r.read, s.sleep); err != nil {
 		t.Fatalf("readTree: %v", err)
 	}
 	var slept time.Duration
@@ -596,7 +596,7 @@ func TestReadTreeWiderSettleWaitsLonger(t *testing.T) {
 	polls := int(wide / chromiumSettleEvery)
 	r := &fakeReader{t: t, results: chromeReads(make([]int, polls+1)...)}
 	s := &fakeSleep{}
-	if _, err := readTree(context.Background(), "chrome.exe", time.Minute, wide, r.read, s.sleep); err != nil {
+	if _, err := readTree(context.Background(), "chrome.exe", time.Minute, wide, thinMark{}, r.read, s.sleep); err != nil {
 		t.Fatalf("readTree: %v", err)
 	}
 	if r.calls != polls+1 {
@@ -604,6 +604,140 @@ func TestReadTreeWiderSettleWaitsLonger(t *testing.T) {
 	}
 	if settlePolls(context.Background(), 0) != 0 {
 		t.Error("a zero settle must not poll")
+	}
+}
+
+// readMarked runs readTree over queued results with the given mark, for
+// the thin-Window memory tests.
+func readMarked(t *testing.T, mark thinMark, results []*readResult) (string, *fakeReader, *fakeSleep) {
+	t.Helper()
+	r := &fakeReader{t: t, results: results}
+	s := &fakeSleep{}
+	tree, err := readTree(context.Background(), "chrome.exe", time.Minute, DefaultChromiumSettle, mark, r.read, s.sleep)
+	if err != nil {
+		t.Fatalf("readTree: %v", err)
+	}
+	return wstate.Render(tree), r, s
+}
+
+// neverSettles is the reads of a Window that stays thin for a whole settle.
+func neverSettles() []*readResult {
+	return chromeReads(make([]int, int(DefaultChromiumSettle/chromiumSettleEvery)+1)...)
+}
+
+func TestReadTreeThinWindowSettlesOnceThenRetries(t *testing.T) {
+	// A Chrome popup or an empty page: the first read pays the settle and
+	// marks the Window; the second gets one short retry, not the loop, and
+	// still carries the thin-page note.
+	mark := newThinWindows().window(7)
+
+	_, reader, _ := readMarked(t, mark, neverSettles())
+	if reader.calls != len(neverSettles()) {
+		t.Fatalf("first read: reads = %d, want the whole settle (%d)", reader.calls, len(neverSettles()))
+	}
+	if !mark.marked() {
+		t.Fatal("a Window that stayed thin through the settle must be marked")
+	}
+
+	rendered, reader, sleeper := readMarked(t, mark, chromeReads(0, 0))
+	if reader.calls != 2 {
+		t.Errorf("second read: reads = %d, want 2 (one retry)", reader.calls)
+	}
+	if len(sleeper.delays) != 1 || sleeper.delays[0] != a11yRetryDelay {
+		t.Errorf("second read: sleeps = %v, want one %s", sleeper.delays, a11yRetryDelay)
+	}
+	if got := strings.Count(rendered, "Note: "); got != 1 || !strings.Contains(rendered, "Note: "+thinPageNote) {
+		t.Errorf("the retried thin tree must carry the thin-page note once:\n%s", rendered)
+	}
+	if !mark.marked() {
+		t.Error("a Window still thin after the retry stays marked")
+	}
+}
+
+func TestReadTreeMarkClearsAfterNonThinRead(t *testing.T) {
+	mark := newThinWindows().window(7)
+	mark.remember()
+
+	// The retry finds the page built: the mark clears and no note.
+	rendered, _, _ := readMarked(t, mark, chromeReads(0, 10))
+	if mark.marked() {
+		t.Error("a retry that finds the Window built must clear the mark")
+	}
+	if strings.Contains(rendered, "Note: ") {
+		t.Errorf("a built tree carries no note:\n%s", rendered)
+	}
+
+	// Thin again later: it settles again (the whole loop).
+	_, reader, _ := readMarked(t, mark, neverSettles())
+	if reader.calls != len(neverSettles()) {
+		t.Errorf("reads = %d; an unmarked Window that goes thin again must settle again", reader.calls)
+	}
+
+	// A first read that is already built clears the mark too.
+	mark.remember()
+	_, reader, _ = readMarked(t, mark, chromeReads(10))
+	if reader.calls != 1 || mark.marked() {
+		t.Errorf("reads = %d, marked %v; a built first read is read once and clears the mark", reader.calls, mark.marked())
+	}
+}
+
+func TestReadTreeSettleThatBuildsLeavesNoMark(t *testing.T) {
+	mark := newThinWindows().window(7)
+	readMarked(t, mark, chromeReads(0, 6, 6))
+	if mark.marked() {
+		t.Error("a settle that built the page must not mark the Window")
+	}
+}
+
+func TestReadTreePagedReadKeepsTheMark(t *testing.T) {
+	// A paged read says nothing about the UIA tree's size: the mark stays.
+	mark := newThinWindows().window(7)
+	mark.remember()
+	paged := chromeRead(0)
+	paged.paged = true
+	readMarked(t, mark, []*readResult{paged})
+	if !mark.marked() {
+		t.Error("a paged read must leave the mark alone")
+	}
+}
+
+func TestReadTreeMarkedRetryInterruptedStillNotes(t *testing.T) {
+	mark := newThinWindows().window(7)
+	mark.remember()
+	r := &fakeReader{t: t, results: chromeReads(0)}
+	s := &fakeSleep{err: context.DeadlineExceeded}
+	tree, err := readTree(context.Background(), "chrome.exe", time.Minute, DefaultChromiumSettle, mark, r.read, s.sleep)
+	if err != nil {
+		t.Fatalf("readTree: %v", err)
+	}
+	if r.calls != 1 || !strings.Contains(wstate.Render(tree), "Note: "+thinPageNote) {
+		t.Errorf("reads = %d; the thin first read must stand with the thin note:\n%s", r.calls, wstate.Render(tree))
+	}
+}
+
+func TestThinWindowsIsBoundedAndPerWindow(t *testing.T) {
+	set := newThinWindows()
+	for h := uint64(1); h <= maxThinWindows+10; h++ {
+		set.window(h).remember()
+	}
+	if n := len(set.m); n > maxThinWindows {
+		t.Errorf("the memory holds %d Windows, want at most %d", n, maxThinWindows)
+	}
+	if !set.window(maxThinWindows + 10).marked() {
+		t.Error("the latest mark must be kept")
+	}
+	set.window(maxThinWindows + 10).forget()
+	if set.window(maxThinWindows + 10).marked() {
+		t.Error("forget must clear the Window's mark")
+	}
+	var zero thinMark
+	zero.remember()
+	if zero.marked() {
+		t.Error("the zero mark remembers nothing")
+	}
+	var none *thinWindows
+	if none.window(1).marked() {
+		t.Error("a nil memory gives a zero mark")
 	}
 }
 

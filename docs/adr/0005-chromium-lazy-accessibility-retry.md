@@ -101,19 +101,33 @@ short for that, so for Chromium the one retry becomes a settle loop.
   request a screenshot". It replaces the walk's nearly-empty note, so the
   agent gets one note. A tree that grew but was still growing at the end
   is returned without a note.
+- **Once per Window.** The Client remembers (by HWND) a Window whose
+  settle ended thin, including one that grew a little and stopped under
+  the threshold. Later thin reads of that Window get the one 500 ms retry
+  instead of the loop, and still carry the thin-page note when they stay
+  thin. A read of it that is not thin (built, or partial) clears the
+  mark, so a Window that builds and later goes thin again settles again.
+  A paged read leaves the mark alone. The memory holds at most 256
+  Windows; when full, an arbitrary mark is dropped, which costs that
+  Window one more settle. Closed Windows are not pruned one by one, and a
+  reused HWND inherits a stale mark, which costs it one retry instead of a
+  settle until a read finds it built.
 - **Never activates or uncovers the Window** to make it build.
 - **The non-Chromium path is unchanged**: a nearly empty read gets one
   retry after 500 ms and the sparse-after-retry note.
 
 Consequences:
 
-- A Chromium Window without a Browser Connection that legitimately shows
-  an almost empty page (`about:blank`, a page with one line of text)
-  costs the full 5 s on every read and gets the thin note, whose "may"
-  covers that case. A canvas-only Electron App costs 5 s instead of
-  500 ms and gets the thin note in place of the sparse-after-retry note.
+- A Chromium Window without a Browser Connection that never builds a
+  Document, or legitimately shows an almost empty page (Chrome's own
+  popups, menus and bubbles, `about:blank`, an empty new tab, a
+  canvas-only Electron App), costs the full 5 s on its first read, and
+  then 500 ms per read, as before this amendment. It gets the thin note,
+  whose "may" covers that case, in place of the sparse-after-retry note.
   Without a covered-Window signal in the walk, size is the only cue.
-- `readTree` takes the settle budget as a parameter. `CaptureFrame`
+- `readTree` takes the Window's mark (`thinMark`, from the Client's
+  `thinWindows`; the zero mark remembers nothing) and the settle budget
+  as parameters. `CaptureFrame`
   passes `DefaultChromiumSettle`; the caller's `--timeout` from
   desktop-parity ticket 14 can pass a wider one there, and the request
   deadline still bounds it.

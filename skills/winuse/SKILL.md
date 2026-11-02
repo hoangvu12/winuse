@@ -115,7 +115,9 @@ Chromium builds its accessibility tree lazily. When a browser Window without
 a Browser Connection, an Electron app or a WebView2 app reads thin, the read
 waits up to 5 s for the tree to build, so such a read can be slow. If the
 tree is still thin after that, a note says Chromium may not build it while
-the Window is fully covered. Connect the browser (`winuse browser status`
+the Window is fully covered. winuse waits the full time only once per
+Window: later reads of a Window that stayed thin take about half a second
+and repeat the note, until a read finds the page built. Connect the browser (`winuse browser status`
 says how) or ask the user to uncover the Window. For an Electron or WebView2
 app, take a screenshot instead. winuse never uncovers or activates the
 Window itself.

@@ -3,6 +3,7 @@ package uia
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hoangvu12/winuse/internal/wstate"
@@ -23,7 +24,9 @@ import (
 //     stop growing, within a settle budget (ticket 18 of
 //     .scratch/headless-max: a cold Chromium can take 10-25 s, and a fully
 //     covered one may not build its web tree at all). A tree still thin at
-//     the end carries the thin-page note;
+//     the end carries the thin-page note, and the Window is remembered: its
+//     later thin reads get the one short retry below instead of the whole
+//     budget, until a read finds it built;
 //   - any other nearly empty first read (the walk's sparse note) is
 //     retried once after a short delay, so the tree the app has meanwhile
 //     built is read;
@@ -111,14 +114,23 @@ type readResult struct {
 // Chromium/Electron settle and the lazy-accessibility retry. app is the
 // App's exe file name (header App line); budget is the per-read walk
 // budget; settle is the Chromium settle budget (DefaultChromiumSettle, or
-// a caller's wider one). sleep is injectable for tests.
-func readTree(ctx context.Context, app string, budget, settle time.Duration, read treeRead, sleep func(context.Context, time.Duration) error) (*wstate.Tree, error) {
+// a caller's wider one). mark remembers that this Window already stayed
+// thin through a settle, so its later thin reads get the one retry, not
+// the whole budget again; a zero mark remembers nothing. sleep is
+// injectable for tests.
+func readTree(ctx context.Context, app string, budget, settle time.Duration, mark thinMark, read treeRead, sleep func(context.Context, time.Duration) error) (*wstate.Tree, error) {
 	first, err := read(walkConfig(ctx, budget))
 	if err != nil {
 		return nil, err
 	}
 	if worthSettle(first, app) {
-		return settleTree(ctx, first, budget, settle, read, sleep)
+		if mark.marked() {
+			return retryThin(ctx, first, budget, mark, read, sleep)
+		}
+		return settleTree(ctx, first, budget, settle, mark, read, sleep)
+	}
+	if !first.paged {
+		mark.forget()
 	}
 	if !treeIsSparse(first.tree) {
 		return first.tree, nil
@@ -147,7 +159,9 @@ func readTree(ctx context.Context, app string, budget, settle time.Duration, rea
 // big for the walk, so not thin). A tree still thin when the polls run out
 // gets the thin-page note; one that grew but had not stopped growing is
 // returned as it is. A poll that fails fails the read, as the retry does.
-func settleTree(ctx context.Context, first *readResult, budget, settle time.Duration, read treeRead, sleep func(context.Context, time.Duration) error) (*wstate.Tree, error) {
+// A Window that ends thin is marked, so the next read of it does not pay
+// the budget again; one that built is unmarked.
+func settleTree(ctx context.Context, first *readResult, budget, settle time.Duration, mark thinMark, read treeRead, sleep func(context.Context, time.Duration) error) (*wstate.Tree, error) {
 	last, size, grew := first, documentSize(first.tree), false
 	for polls := settlePolls(ctx, settle); polls > 0; polls-- {
 		if serr := sleep(ctx, chromiumSettleEvery); serr != nil {
@@ -158,11 +172,16 @@ func settleTree(ctx context.Context, first *readResult, budget, settle time.Dura
 			return nil, err
 		}
 		last = next
-		if next.paged || !treeIsComplete(next.tree) {
+		if next.paged {
+			return next.tree, nil
+		}
+		if !treeIsComplete(next.tree) {
+			mark.forget()
 			return next.tree, nil
 		}
 		n := documentSize(next.tree)
 		if grew && n <= size {
+			markBuilt(mark, next.tree)
 			return next.tree, nil
 		}
 		if n > size {
@@ -172,8 +191,112 @@ func settleTree(ctx context.Context, first *readResult, budget, settle time.Dura
 	}
 	if isThin(last.tree) {
 		noteThin(last.tree)
+		mark.remember()
+	} else {
+		mark.forget()
 	}
 	return last.tree, nil
+}
+
+// retryThin reads a Window that already stayed thin through a settle once
+// more after the short retry delay, as ADR 0005's one retry: a Chrome
+// popup, an empty page or a canvas-only Electron App pays 500 ms per read,
+// not the whole settle budget. A tree still thin carries the thin-page
+// note; one that built clears the mark, so a later thin spell settles
+// again.
+func retryThin(ctx context.Context, first *readResult, budget time.Duration, mark thinMark, read treeRead, sleep func(context.Context, time.Duration) error) (*wstate.Tree, error) {
+	if serr := sleep(ctx, a11yRetryDelay); serr != nil {
+		noteThin(first.tree)
+		return first.tree, nil
+	}
+	second, err := read(walkConfig(ctx, budget))
+	if err != nil {
+		return nil, err
+	}
+	if second.paged {
+		return second.tree, nil
+	}
+	if treeIsComplete(second.tree) && isThin(second.tree) {
+		noteThin(second.tree)
+		return second.tree, nil
+	}
+	mark.forget()
+	return second.tree, nil
+}
+
+// markBuilt updates the mark after a settled read: a tree that settled
+// thin (it grew a little and stopped, still under thinDocumentNodes) is
+// noted and marked like one that never grew; a built one is unmarked.
+func markBuilt(mark thinMark, t *wstate.Tree) {
+	if isThin(t) {
+		noteThin(t)
+		mark.remember()
+		return
+	}
+	mark.forget()
+}
+
+// maxThinWindows bounds the thin-Window memory. HWNDs of closed Windows
+// are never pruned one by one; when the memory is full an arbitrary mark
+// is dropped, which costs that Window one more settle at worst.
+const maxThinWindows = 256
+
+// thinWindows remembers the Windows whose settle ran out while they were
+// still thin (keyed by HWND). It is the Client's; reads of different
+// Windows may run concurrently, so it is locked.
+type thinWindows struct {
+	mu sync.Mutex
+	m  map[uint64]struct{}
+}
+
+func newThinWindows() *thinWindows {
+	return &thinWindows{m: map[uint64]struct{}{}}
+}
+
+// window is the mark of one Window. A nil memory gives a zero mark.
+func (t *thinWindows) window(hwnd uint64) thinMark {
+	return thinMark{set: t, hwnd: hwnd}
+}
+
+// thinMark is one Window's entry in the thin-Window memory. The zero
+// value (no memory) is never marked and ignores remember and forget.
+type thinMark struct {
+	set  *thinWindows
+	hwnd uint64
+}
+
+func (m thinMark) marked() bool {
+	if m.set == nil {
+		return false
+	}
+	m.set.mu.Lock()
+	defer m.set.mu.Unlock()
+	_, ok := m.set.m[m.hwnd]
+	return ok
+}
+
+func (m thinMark) remember() {
+	if m.set == nil {
+		return
+	}
+	m.set.mu.Lock()
+	defer m.set.mu.Unlock()
+	if _, ok := m.set.m[m.hwnd]; !ok && len(m.set.m) >= maxThinWindows {
+		for h := range m.set.m {
+			delete(m.set.m, h)
+			break
+		}
+	}
+	m.set.m[m.hwnd] = struct{}{}
+}
+
+func (m thinMark) forget() {
+	if m.set == nil {
+		return
+	}
+	m.set.mu.Lock()
+	defer m.set.mu.Unlock()
+	delete(m.set.m, m.hwnd)
 }
 
 // settlePolls is how many polls fit in the settle budget, which the

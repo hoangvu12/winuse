@@ -192,12 +192,13 @@ type Client struct {
 	closed  bool
 	factory func() (*worker, error) // startWorker; faked in tests
 	store   *store
+	thin    *thinWindows // Windows whose settle ran out thin (retry.go); nil remembers nothing
 }
 
 // New creates a client. The worker thread starts lazily on first use, so a
 // helper that only ever lists windows never initialises COM.
 func New() *Client {
-	return &Client{factory: startWorker, store: newStore(addRef, release)}
+	return &Client{factory: startWorker, store: newStore(addRef, release), thin: newThinWindows()}
 }
 
 // Close releases the worker and the stored live Elements. Best effort: a
@@ -357,7 +358,8 @@ func (c *Client) Run(ctx context.Context, job func(w *worker, r *run)) error {
 // UI Automation contact (see retry.go): a Chromium Window whose web content
 // reads thin, and is not read over a Browser Connection, is read again
 // until it settles, within DefaultChromiumSettle, and one that stays thin
-// carries a note saying so; any other nearly empty first read is retried
+// carries a note saying so (a Window that already stayed thin once gets one
+// short retry instead, until a read finds it built); any other nearly empty first read is retried
 // once after a short delay, and a tree that stays nearly empty carries a
 // note pointing the agent at a screenshot.
 //
@@ -408,7 +410,7 @@ func (c *Client) CaptureFrame(ctx context.Context, hwnd uint64, title, app strin
 		at = res.cut
 		return &readResult{tree: res.tree, rootClass: res.rootClass, paged: res.cut >= 0}, nil
 	}
-	tree, err = readTree(ctx, app, budget, DefaultChromiumSettle, read, sleepCtx)
+	tree, err = readTree(ctx, app, budget, DefaultChromiumSettle, c.thin.window(hwnd), read, sleepCtx)
 	if err != nil {
 		return nil, -1, err
 	}
