@@ -966,8 +966,6 @@ func pageLines(state, role, name string) []string {
 	return out
 }
 
-// waitBrowserWindowTitled waits for a browser Window whose title starts
-// with the page title (the browser adds " - Google Chrome" and the like).
 // windowSteady is how long a launched browser's Window must stay the only
 // one before a test acts on it.
 const windowSteady = 500 * time.Millisecond
@@ -1005,6 +1003,8 @@ func launchedBrowserWindow(t *testing.T, pid uint32, timeout time.Duration) uint
 	return 0
 }
 
+// waitBrowserWindowTitled waits for a browser Window whose title starts
+// with the page title (the browser adds " - Google Chrome" and the like).
 func waitBrowserWindowTitled(t *testing.T, pid uint32, title string, timeout time.Duration) uint64 {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
