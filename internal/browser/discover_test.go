@@ -108,7 +108,7 @@ func TestDiscoverTwoDebuggableBrowsersIsAnErrorNamingBoth(t *testing.T) {
 	if strings.Join(p.Others, ",") != "chrome,edge" {
 		t.Errorf("Others = %v, want chrome and edge", p.Others)
 	}
-	if want := "Chrome and Edge both accept a debugging connection and no browser is pinned, so winuse will not guess."; p.Sentence() != want {
+	if want := "Chrome and Edge both accept a debugging connection and no browser is pinned, so winuse will not guess"; p.Sentence() != want {
 		t.Errorf("sentence = %q", p.Sentence())
 	}
 	if p.Next() != "run winuse browser use chrome to pin one (the pin persists)" {

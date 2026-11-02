@@ -223,8 +223,14 @@ func (f *fakeMachine) dialCount() int {
 	return f.dials
 }
 
+// writeFile writes a file of the fake machine. A relative path means a
+// directory came out empty (an unknown browser's user-data-dir) and would
+// land in the source tree, so it fails the test.
 func writeFile(t *testing.T, path, body string) {
 	t.Helper()
+	if !filepath.IsAbs(path) {
+		t.Fatalf("writeFile(%q): not under the test's temp dir", path)
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}

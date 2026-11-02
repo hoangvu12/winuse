@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hoangvu12/winuse/internal/browser"
 	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/win"
@@ -41,19 +42,46 @@ import (
 // download event it may have caused.
 const clickSettle = 25 * time.Millisecond
 
+// chooserHold is how long file chooser interception outlasts a Page Action
+// in a browser winuse launched or cloned: a page may open its chooser a
+// moment after the click (after a fetch), later than clickSettle.
+const chooserHold = 2 * time.Second
+
 // holdChoosers turns file chooser interception on for the Tab of o for the
 // length of one Action (runPage, runPageInput, a click with its settle) and
-// returns the release to defer. Through the extension the Tab is the
-// user's own, so interception must not outlast winuse's Action: a file
-// input the user clicks would open nothing. A failed release is logged,
-// not reported: the Action's outcome stands.
-func holdChoosers(ctx context.Context, o *page.Origin) func() {
+// returns the release to defer. Through the extension or the inspect
+// toggle the Tab is in the user's own browser, so interception must not
+// outlast winuse's Action: a file input the user clicks would open nothing
+// (ticket 06). A browser winuse launched or cloned is winuse's own, and
+// keeps it chooserHold longer, so a late chooser is held back too. A
+// failed release is logged, not reported: the Action's outcome stands.
+func (s Services) holdChoosers(ctx context.Context, w win.WindowInfo, o *page.Origin) func() {
 	watch := page.WatchOf(o.Client, o.TopSession())
-	release := watch.Intercept(ctx)
-	return func() {
+	return releaseChoosers(watch.Intercept(ctx), o.TopSession(), s.chooserLinger(ctx, w, o))
+}
+
+// chooserLinger is how long interception outlasts an Action on o's Tab:
+// chooserHold in a browser winuse launched or cloned, none otherwise.
+func (s Services) chooserLinger(ctx context.Context, w win.WindowInfo, o *page.Origin) time.Duration {
+	if conn := s.originConn(ctx, w, o); conn != nil && (conn.Mode == browser.ModeLaunch || conn.Mode == browser.ModeClone) {
+		return chooserHold
+	}
+	return 0
+}
+
+// releaseChoosers is holdChoosers' release: at once, or linger later.
+func releaseChoosers(release func() error, session string, linger time.Duration) func() {
+	off := func() {
 		if err := release(); err != nil {
-			log.Printf("turning file chooser interception off in %s: %v", o.TopSession(), err)
+			log.Printf("turning file chooser interception off in %s: %v", session, err)
 		}
+	}
+	return func() {
+		if linger > 0 {
+			time.AfterFunc(linger, off)
+			return
+		}
+		off()
 	}
 }
 

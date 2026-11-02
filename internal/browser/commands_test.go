@@ -262,7 +262,7 @@ func TestAPinToAnUninstalledBrowserSaysSo(t *testing.T) {
 	defer m.Close()
 	_, err := m.Status(context.Background(), "")
 	p := problemOf(t, err, NotInstalled)
-	if !p.Pinned || p.Sentence() != "The pinned browser, Vivaldi, is not installed (installed: chrome)." {
+	if !p.Pinned || p.Sentence() != "the pinned browser, Vivaldi, is not installed (installed: chrome)" {
 		t.Errorf("problem = %q", p.Sentence())
 	}
 }
@@ -355,7 +355,7 @@ func TestCloneNamesTheProfilesThere(t *testing.T) {
 	defer m.Close()
 	_, err := m.Clone(context.Background(), CloneOptions{Browser: "chrome", Profile: "Profile 9"})
 	p := problemOf(t, err, NoSuchProfile)
-	if p.Sentence() != `Chrome has no profile folder "Profile 9"; it has Default, Profile 1.` {
+	if p.Sentence() != `Chrome has no profile folder "Profile 9"; it has Default, Profile 1` {
 		t.Errorf("sentence = %q", p.Sentence())
 	}
 	if len(f.startCalls()) != 0 {

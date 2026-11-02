@@ -17,8 +17,9 @@ import (
 )
 
 // ErrPageElement reports a UIA Action given an Element Index of the Page:
-// there is no UIA Element behind it.
-var ErrPageElement = errors.New("this Element is in the Page, and Actions on Page Elements are not available yet")
+// there is no UIA Element behind it. The helper routes Page Elements over
+// the Browser Connection instead.
+var ErrPageElement = errors.New("this Element is in the Page and has no UI Automation Element; winuse acts on it through the Browser Connection")
 
 // ErrSuperseded reports a splice whose Window State is no longer the
 // stored one: a newer read of the Window replaced it in between.

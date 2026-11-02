@@ -56,9 +56,6 @@ const (
 	tabStepWait = 300 * time.Millisecond
 	// tabTitleWidth caps a title in tab list, in characters.
 	tabTitleWidth = 80
-	// tabScopeProbe bounds the Batch's look at a Window's Browser
-	// Connection when it picks its Esc scope.
-	tabScopeProbe = 2 * time.Second
 )
 
 // tabCommands are the tab commands' handlers, by wire name.
@@ -102,41 +99,22 @@ func parseTabArgs(cmd string, args json.RawMessage, needTab bool) (protocol.TabA
 // tabWindow is a resolved browser Window with its Browser Connection and
 // its Tabs.
 type tabWindow struct {
-	w    win.WindowInfo
-	name string // the browser's short name
-	conn *browser.Connection
-	g    page.Geometry // the Window as the Tab lookup saw it
+	browserConn
 	tabs page.WindowTabs
 }
-
-func (tw tabWindow) id() string { return strconv.FormatUint(tw.w.ID, 10) }
 
 // tabWindow resolves the Window, its browser and Browser Connection, and
 // lists its Tabs. Nothing is sent to the browser but reads.
 func (s Services) tabWindow(ctx context.Context, ref string) (tabWindow, *Error) {
-	w, rerr := resolveWindow(s, ref)
+	bc, rerr := s.browserWindow(ctx, ref, "Tabs", "the tab commands")
 	if rerr != nil {
 		return tabWindow{}, rerr
 	}
-	lp, ok := s.Pages.(*livePages)
-	if !ok {
-		return tabWindow{}, Fail("this winuse helper has no Browser Connections", "run winuse browser status")
-	}
-	name := lp.Browser(w)
-	if name == "" {
-		return tabWindow{}, Fail(fmt.Sprintf("window %d is not a browser Window, so it has no Tabs", w.ID),
-			"the tab commands act on Chrome, Edge, Brave, Chromium, Vivaldi and Opera Windows; run winuse list-windows")
-	}
-	conn, err := lp.connection(ctx, w, name)
+	tabs, err := page.ListWindowTabs(ctx, bc.conn, bc.g)
 	if err != nil {
-		return tabWindow{}, windowConnError(err, w, name)
+		return tabWindow{}, tabListError(err, bc.w, bc.name)
 	}
-	g := lp.geometry(w)
-	tabs, err := page.ListWindowTabs(ctx, conn, g)
-	if err != nil {
-		return tabWindow{}, tabListError(err, w, name)
-	}
-	return tabWindow{w: w, name: name, conn: conn, g: g, tabs: tabs}, nil
+	return tabWindow{browserConn: bc, tabs: tabs}, nil
 }
 
 // tabListError maps a failure to find or list a Window's Tabs.
@@ -577,16 +555,12 @@ func (s Services) tabStepHeadless(kind string, w *win.WindowInfo) bool {
 	if w == nil {
 		return false
 	}
-	lp, ok := s.Pages.(*livePages)
-	if !ok {
+	lp := s.live()
+	if lp == nil {
 		return false
 	}
-	name := lp.Browser(*w)
-	if name == "" {
-		return false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), tabScopeProbe)
+	ctx, cancel := context.WithTimeout(context.Background(), pageProbeBudget)
 	defer cancel()
-	conn, err := lp.connection(ctx, *w, name)
-	return err == nil && conn.Mode == browser.ModeExtension
+	name, conn, err := lp.open(ctx, *w)
+	return name != "" && err == nil && conn.Mode == browser.ModeExtension
 }

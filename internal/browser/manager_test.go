@@ -111,7 +111,7 @@ func TestManagerHoldsOneApprovalPromptAtATime(t *testing.T) {
 	wg.Wait()
 	for i, err := range errs {
 		p := problemOf(t, err, AwaitingApproval)
-		if i == 0 && p.Sentence() != "Chrome is waiting for remote-debugging approval; approve it in Chrome and retry." {
+		if i == 0 && p.Sentence() != `Chrome is waiting for the user to approve remote debugging in its "Allow remote debugging?" prompt` {
 			t.Errorf("sentence = %q", p.Sentence())
 		}
 	}

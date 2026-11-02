@@ -452,6 +452,9 @@ const nothingSentNote = "; nothing was sent"
 // nothingSent marks a refusal as raised before anything reached the app.
 func nothingSent(e *Error) *Error {
 	out := *e
+	if strings.HasSuffix(out.Msg, nothingSentNote) {
+		return &out // already said
+	}
 	out.Msg += nothingSentNote
 	return &out
 }

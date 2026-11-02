@@ -660,7 +660,7 @@ func TestWaitDownloadOnTheExtension(t *testing.T) {
 	r := newTabRig(t, conn, nil, nil, nil)
 	r.svc.Pages.(*livePages).reader.Settle = time.Millisecond
 	_, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "download"})
-	if e == nil || e.Msg != "downloads through the winuse extension go to the browser's own download folder, and winuse cannot track them: Browser.setDownloadBehavior needs a launched or cloned browser; the winuse extension cannot do it.; nothing was sent" ||
+	if e == nil || e.Msg != "downloads through the winuse extension go to the browser's own download folder, and winuse cannot track them: Browser.setDownloadBehavior needs a launched or cloned browser; the winuse extension cannot do it; nothing was sent" ||
 		e.Hint != "run winuse browser launch chrome or winuse browser clone chrome, which take browser-level commands" {
 		t.Errorf("extension: %+v", e)
 	}

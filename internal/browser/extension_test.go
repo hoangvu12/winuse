@@ -146,7 +146,7 @@ func TestDiscoverPrefersTheExtensionConnectedToThePinnedBrowser(t *testing.T) {
 	// A refused browser-level method is a Problem with the next command.
 	_, err = c.Client.Call(context.Background(), "Browser.setDownloadBehavior", map[string]any{"behavior": "allow"})
 	p, ok := AsProblem(err, "chrome")
-	if !ok || p.Kind != ExtCannot || p.Sentence() != "Browser.setDownloadBehavior needs a launched or cloned browser; the winuse extension cannot do it." || p.Next() != "run winuse browser launch chrome or winuse browser clone chrome, which take browser-level commands" {
+	if !ok || p.Kind != ExtCannot || p.Sentence() != "Browser.setDownloadBehavior needs a launched or cloned browser; the winuse extension cannot do it" || p.Next() != "run winuse browser launch chrome or winuse browser clone chrome, which take browser-level commands" {
 		t.Errorf("refusal = %v, %+v", err, p)
 	}
 	for _, cmd := range ext.Commands() {
@@ -415,8 +415,9 @@ then run: winuse browser ext status chrome (exit 0 once it is connected)
 	}
 }
 
-// installed sets up the extension for chrome as ext install would, and
-// marks it loaded (and on) in a profile's preferences.
+// installedFor sets up the extension for a browser ("all" for every
+// installed one) as ext install would, and marks it loaded (and on) in
+// each one's Default profile preferences.
 func (f *extFake) installedFor(name string, loaded, enabled bool) {
 	f.t.Helper()
 	if _, err := NewManager(f.sys).ExtInstall(context.Background(), name); err != nil {
@@ -429,8 +430,17 @@ func (f *extFake) installedFor(name string, loaded, enabled bool) {
 	if !enabled {
 		reasons = "[1]"
 	}
-	writeFile(f.t, filepath.Join(f.sys.Env.UserDataDirs()[name], "Default", "Secure Preferences"),
-		`{"extensions":{"settings":{"`+bridge.ExtensionID+`":{"disable_reasons":`+reasons+`}}}}`)
+	names := []string{name}
+	if name == "all" {
+		names = nil
+		for _, b := range f.sys.detect() {
+			names = append(names, b.Name)
+		}
+	}
+	for _, n := range names {
+		writeFile(f.t, filepath.Join(f.sys.Env.UserDataDirs()[n], "Default", "Secure Preferences"),
+			`{"extensions":{"settings":{"`+bridge.ExtensionID+`":{"disable_reasons":`+reasons+`}}}}`)
+	}
 }
 
 func TestExtStatusStates(t *testing.T) {

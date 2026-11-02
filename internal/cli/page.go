@@ -20,36 +20,6 @@ import (
 	"github.com/hoangvu12/winuse/internal/protocol"
 )
 
-// The usage lines.
-const (
-	navigateUsage = "usage: winuse navigate <window> <url> [--wait load|domcontentloaded|none]"
-	uploadUsage   = "usage: winuse upload <window> [<element index | name: | id:>] <file>...   (without an element: the file chooser a click opened)"
-	dialogUsage   = "usage: winuse dialog <window> accept|dismiss [text]   (text answers a prompt)"
-	waitUsage     = "usage: winuse wait <window> selector <css> | text <text> | url <url or pattern with *> | load [domcontentloaded] | download   [--timeout <seconds>]"
-	evalUsage     = "usage: winuse eval <window> <expression>"
-)
-
-func historyUsage(cmd string) string {
-	return "usage: winuse " + cmd + " <window> [--wait load|domcontentloaded|none]"
-}
-
-// pageUsage is a page command's usage line.
-func pageUsage(cmd string) string {
-	switch cmd {
-	case "navigate":
-		return navigateUsage
-	case "upload":
-		return uploadUsage
-	case "dialog":
-		return dialogUsage
-	case "wait":
-		return waitUsage
-	case "eval":
-		return evalUsage
-	}
-	return historyUsage(cmd)
-}
-
 // takeWait takes a --wait <state> or --wait=<state> option out of tokens.
 func takeWait(tokens []string) (rest []string, wait string, err error) {
 	for i := 0; i < len(tokens); i++ {
@@ -77,8 +47,8 @@ func takeWait(tokens []string) (rest []string, wait string, err error) {
 	return rest, wait, nil
 }
 
-// parseNavArgs parses navigate, back, forward and reload, without the
-// Window when window is false (a Batch step).
+// parseNavArgs parses navigate, back, forward and reload after the Window
+// (a Batch step has none).
 func parseNavArgs(cmd string, tokens []string) (protocol.NavigateArgs, error) {
 	rest, wait, err := takeWait(tokens)
 	if err != nil {
@@ -248,12 +218,12 @@ func withWindowField(args any, window string) any {
 // wait|eval <window> ...`.
 func pageCmd(cmd string, args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintf(os.Stderr, "winuse: %s takes a window reference first\n%s\n", cmd, pageUsage(cmd))
+		fmt.Fprintf(os.Stderr, "winuse: %s takes a window reference first\n%s\n", cmd, protocol.PageUsage(cmd))
 		return 2
 	}
 	a, err := parsePageArgs(cmd, args[1:])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, pageUsage(cmd))
+		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, protocol.PageUsage(cmd))
 		return 2
 	}
 	if err := runWithArgs(cmd, withWindowField(a, args[0])); err != nil {

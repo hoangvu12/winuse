@@ -519,6 +519,9 @@ func (s *System) hostProblem(name string) *Problem {
 // Opera keeps its one profile in the user-data-dir itself.
 func (s *System) extInProfiles(name string) (loaded, enabled []string) {
 	root := s.Env.UserDataDirs()[name]
+	if root == "" {
+		return nil, nil // an unknown name; "" would read the working directory
+	}
 	dirs, _ := filepath.Glob(filepath.Join(root, "*"))
 	dirs = append([]string{root}, dirs...)
 	for _, d := range dirs {

@@ -38,7 +38,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -62,6 +61,10 @@ const pageBudget = 4 * time.Second
 // pageMargin is kept between the Page read and the request deadline, to
 // merge and render in time.
 const pageMargin = time.Second
+
+// pageGrace is how long the Window State waits, once pageBudget is spent,
+// for the Page read to return its own reason. It fits inside pageMargin.
+const pageGrace = 200 * time.Millisecond
 
 // PageReader reads the Page of a browser Window. The live one goes through
 // the helper's Browser Connections (livePages); tests fake it with
@@ -136,11 +139,18 @@ func readWindowTree(s Services, ctx context.Context, w win.WindowInfo) (*wstate.
 	select {
 	case r = <-done:
 	case <-pctx.Done():
-		r.err = pctx.Err()
-		if at >= 0 {
-			// The walk cut the document, so the Page read ended well and its
-			// result is on its way.
-			r = <-done
+		// The Page read stops with pctx and may say why, such as an approval
+		// prompt the browser still holds (the dial waits up to
+		// browser.ApprovalWait, longer than pageBudget): give it a moment.
+		select {
+		case r = <-done:
+		case <-time.After(pageGrace):
+			r.err = pctx.Err()
+			if at >= 0 {
+				// The walk cut the document, so the Page read ended well and
+				// its result is on its way.
+				r = <-done
+			}
 		}
 	}
 	switch {
@@ -282,12 +292,15 @@ func checkPageOrigin(ctx context.Context, w win.WindowInfo, index int, o *page.O
 	if errors.Is(err, page.ErrStale) {
 		return elementError(fmt.Errorf("%w: %v", uia.ErrStale, err), w, index)
 	}
-	return Fail(err.Error(), "")
+	return Fail(err.Error(), "run winuse get-window-state "+strconv.FormatUint(w.ID, 10)+" again; run winuse browser status if it keeps failing")
 }
 
-// refusePageElement fails an Action given a Page Element's Index until
-// ticket 05 routes Page Actions over CDP. A UIA Element, and an index
-// that does not resolve (the Action's own step reports that), pass.
+// refusePageElement fails a Page Element Index that reached a UI
+// Automation route: one whose origin is missing (onPage refuses it before
+// any activation), or one the Window State turned into a Page Element
+// after the command picked its route (a get-window-state that ran
+// meanwhile). A UIA Element, and an index that does not resolve (the
+// Action's own step reports that), pass.
 func refusePageElement(s Services, w win.WindowInfo, index int) *Error {
 	splicer, ok := s.Actions.(PageSplicer)
 	if !ok {
@@ -300,11 +313,12 @@ func refusePageElement(s Services, w win.WindowInfo, index int) *Error {
 	return nil
 }
 
-// pageElementError is the plain refusal for an Action on a Page Element.
+// pageElementError refuses a Page Element on a route without Page
+// Elements, before anything is sent.
 func pageElementError(w win.WindowInfo, index int) *Error {
 	id := strconv.FormatUint(w.ID, 10)
-	return Fail(fmt.Sprintf("element %d is in the Page of window %d, and winuse cannot act on Page Elements yet", index, w.ID),
-		"click it at its spot in a screenshot instead: run winuse get-window-state "+id+" --screenshot, then winuse click "+id+" @x,y")
+	return nothingSent(Fail(fmt.Sprintf("element %d is in the Page of window %d, and winuse could not route this Action to the Page", index, w.ID),
+		"every Element Action but perform-secondary-action takes Page Elements; run winuse get-window-state "+id+" again and retry with a fresh Element Index"))
 }
 
 // livePages is the helper's PageReader over its Browser Connections.
@@ -336,6 +350,17 @@ func (p *livePages) connection(ctx context.Context, w win.WindowInfo, name strin
 	return conn, nil
 }
 
+// open names the browser of Window w and returns its Browser Connection;
+// name is "" (and nothing is looked up) for a Window that is no browser.
+func (p *livePages) open(ctx context.Context, w win.WindowInfo) (name string, conn *browser.Connection, err error) {
+	name = p.Browser(w)
+	if name == "" {
+		return "", nil, nil
+	}
+	conn, err = p.connection(ctx, w, name)
+	return name, conn, err
+}
+
 // windowConnProblem is the Problem behind a failed connection lookup that
 // is about the Window's own process: no endpoint belongs to it, or more
 // than one does. Any other failure keeps the "no Browser Connection"
@@ -363,7 +388,7 @@ func windowConnError(err error, w win.WindowInfo, name string) *Error {
 		}
 		return Fail(msg, p.Next())
 	}
-	return Fail(strings.TrimSuffix(p.Sentence(), "."), p.Next())
+	return Fail(p.Sentence(), p.Next())
 }
 
 // newLivePages builds the live PageReader, or nil when the browser
@@ -399,8 +424,14 @@ func (p *livePages) Browser(w win.WindowInfo) string {
 func (p *livePages) ReadPage(ctx context.Context, w win.WindowInfo, name string) (*page.Raw, error) {
 	conn, err := p.connection(ctx, w, name)
 	if prob, ok := windowConnProblem(err); ok {
-		s := prob.Sentence()
-		return nil, &page.Unavailable{Reason: strings.ToLower(s[:1]) + strings.TrimSuffix(s[1:], ".") + "; " + prob.Next()}
+		return nil, &page.Unavailable{Reason: prob.Sentence() + "; " + prob.Next()}
+	}
+	var prob *browser.Problem
+	if errors.As(err, &prob) && prob.Kind == browser.AwaitingApproval {
+		// The browser holds the handshake for its approval prompt; the dial
+		// goes on in the background, so a read after the user approves joins
+		// it.
+		return nil, &page.Unavailable{Reason: prob.Sentence() + "; " + prob.Next()}
 	}
 	if err != nil {
 		return nil, &page.Unavailable{Reason: fmt.Sprintf("no Browser Connection is open to %s; run winuse browser status %s", browser.DisplayName(name), name)}
