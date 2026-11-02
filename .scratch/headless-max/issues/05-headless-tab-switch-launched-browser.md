@@ -10,7 +10,7 @@ Candidates, probe first:
 
 **Blocked by:** none (may use 03)
 
-**Status:** ready-for-agent (laptop probe first)
+**Status:** ready-for-agent (route 1 measured; see Comments)
 
 - [ ] Probe: route 1 on a covered launched Chrome, foreground before and after; route 2's flag behaviour on the installed Chrome
 - [ ] Implement the measured route; keep the Headed route as `--headed`
@@ -23,3 +23,17 @@ Candidates, probe first:
 ### 2026-11-03: triage decision (user)
 
 Build it once the probe picks the route. The probe of route 1 (SelectionItem.Select or Invoke on the tab-strip TabItem of a covered launched Chrome, foreground before and after) and route 2's `--load-extension` behaviour: the laptop probe chat (358cd6b7) runs it; the user is never at the laptop during probes. The ADR 0012 and browser-merge spec changes are accepted.
+
+### 2026-11-03: route 1 measured (`../headless-gaps/probes-round4.md` section 4)
+
+- **Route 1 works:** UIA SelectionItem.Select on the tab strip's TabItem switched the tab of a covered launched Chrome 156. The title and IsSelected followed, and the foreground and cursor were unchanged.
+- TabItems have **no Invoke pattern**, so use Select only.
+- **Route 2 is dead:** branded Chrome 156 ignores `--load-extension`, even with `DisableLoadExtensionCommandLineSwitch` disabled.
+
+Build route 1:
+
+- Find the Tab's TabItem in the frame's UIA tab strip by matching its title. Chrome appends notes such as " - Memory usage - 17.3 MB", so match on the prefix and refuse when several match.
+- Select it, then read back through CDP (the Page target's active state) or IsSelected.
+- The Headed Ctrl+Tab route stays as `--headed`.
+- Update ADR 0012 and the browser-merge spec "Tabs" section: a tab switch on a launched browser is Headless.
+- The laptop probe for this ticket is done.

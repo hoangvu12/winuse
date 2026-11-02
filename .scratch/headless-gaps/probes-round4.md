@@ -85,3 +85,16 @@ The messages were sent in client coordinates to the top-level `Chrome_WidgetWin_
 - Right click on a second button with **no** preventDefault (activated): the same three trusted events. No native menu popup appeared within about 300 ms in Chrome or Electron (no new visible top-level of the pid). WM_CANCELMODE afterwards had nothing to close.
   - [I] Electron has no default menu. Chrome's page menu apparently did not open for a message-generated right click. Not investigated further.
 - Sent mouse messages work without the activation, while keys need it (round 3). So clicks, double clicks and right clicks can skip the focus/blur pair the page sees from the activation.
+
+## 4. Tab switch on a launched Chrome (headless-max 05)
+
+Setup:
+- Chrome 156.0.8078.76 (branded stable), temp profile, two tabs: TAB-A (active) and TAB-B. Launched with SW_SHOWNOACTIVATE.
+- Covered: WindowFromPoint at Chrome's centre returned another window. The probe's cover sat directly above Chrome, and the user's Zeron window was above both there.
+
+Results:
+- [M] The UIA tab strip had two TabItems (ct 50019): "TAB-A - Memory usage - 17.3 MB" (IsSelected 1) and "TAB-B" (IsSelected 0).
+- [M] **SelectionItem.Select on TAB-B: hr 0.** The window title changed to "TAB-B - Google Chrome" and TAB-B's IsSelected became 1. **Foreground and cursor unchanged.**
+- [M] Invoke on the now-inactive TAB-A: **no InvokePattern** (GetCurrentPatternAs returned null). The tab did not change; foreground unchanged. Use Select for tab switching.
+- [M] **`--load-extension`: no.** The test used an unpacked MV3 dummy that overrides the new tab page (nt.html, title EXT-NEWTAB). Launched on chrome://newtab/, the title stayed "New Tab - Google Chrome". Adding `--disable-features=DisableLoadExtensionCommandLineSwitch` changed nothing. Branded Chrome 156 ignores the switch. (Edge on the laptop is 144.0.3719.82; not tested.)
+- Foreground and cursor were unchanged in all steps.
