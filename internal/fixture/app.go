@@ -45,6 +45,9 @@ type app struct {
 	dialogTree *TreeMap
 
 	status string // current status text (the status element's suffix)
+
+	opts      Options // the self-activation modes (Main)
+	minimized bool    // the main window is minimized (WM_SIZE)
 }
 
 var theApp *app
@@ -56,12 +59,26 @@ type Origin struct {
 	Set  bool
 }
 
+// Options are the fixture's self-activation modes (headless-max ticket 02).
+type Options struct {
+	// ActivateOnRestore makes the main window call SetForegroundWindow on
+	// itself whenever it is restored from minimized: an App that brings
+	// itself to the front on restore.
+	ActivateOnRestore bool
+	// AllowForeground, when not 0, is a process ID the fixture lets set the
+	// foreground window (AllowSetForegroundWindow) each time it is
+	// activated. Windows lets a background process take the foreground
+	// only with such a grant from the foreground process, or in input
+	// states a test cannot arrange.
+	AllowForeground uint32
+}
+
 // Main runs the fixture app: creates the windows, pumps messages until the
 // app closes, and keeps the state file current. It must be called once from
 // the process entry point on a locked thread. origin places the main window
 // (e.g. on a secondary monitor, for the display acceptance runs); the
-// dialog keeps its offset from it.
-func Main(statePath string, origin Origin) int {
+// dialog keeps its offset from it. opts turns on the self-activation modes.
+func Main(statePath string, origin Origin, opts Options) int {
 	runtime.LockOSThread()
 	if err := windows.CoInitializeEx(0, windows.COINIT_APARTMENTTHREADED); err == nil {
 		defer windows.CoUninitialize()
@@ -71,7 +88,7 @@ func Main(statePath string, origin Origin) int {
 		os.Stderr.WriteString("winusefixture: dpi awareness: " + err.Error() + "\n")
 	}
 
-	a := &app{state: initial(), statePath: statePath, focusMain: ElemTextField, status: "ready"}
+	a := &app{state: initial(), statePath: statePath, focusMain: ElemTextField, status: "ready", opts: opts}
 	theApp = a
 	if err := a.createWindows(origin); err != nil {
 		os.Stderr.WriteString("winusefixture: " + err.Error() + "\n")
@@ -268,6 +285,22 @@ func (a *app) wndMain(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 	case wmOpenMessageBox:
 		a.openMessageBox()
 		return 0
+	case wmSize:
+		// Self-activation mode: a restore from minimized brings the
+		// window to the foreground, as some real Apps do.
+		switch wp {
+		case sizeMinimized:
+			a.minimized = true
+		case sizeRestored:
+			if a.minimized && a.opts.ActivateOnRestore {
+				procSetForegroundWindow.Call(hwnd)
+			}
+			a.minimized = false
+		}
+	case wmActivateApp:
+		if wp != 0 && a.opts.AllowForeground != 0 {
+			procAllowSetForegroundWindow.Call(uintptr(a.opts.AllowForeground))
+		}
 	}
 	r, _, _ := procDefWindowProcW.Call(hwnd, uintptr(msg), wp, lp)
 	return r

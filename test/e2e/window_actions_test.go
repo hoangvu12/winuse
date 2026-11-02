@@ -16,6 +16,7 @@ package e2e
 
 import (
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -60,10 +61,17 @@ func TestWindowActionsKeepTheForeground(t *testing.T) {
 	optIn(t)
 	fix, window := startFixtureWithState(t)
 	id := mustWindowID(t, window)
+	// The fixture is the foreground once before it is covered: an App that
+	// has not been in front since it started takes the foreground on its
+	// first restore (TestRestoreWindowReportsSelfActivation).
+	stdout, stderr, exit := runActivateWindow(t, window)
+	assertActionOK(t, "activate-window (the fixture)", stdout, stderr, exit)
+	waitForeground(t, id, 5*time.Second)
+	waitOverlayGone(t, 5*time.Second)
 	cover := coverWindow(t, window)
 
 	// minimize-window, then a placement refused while minimized.
-	stdout, stderr, exit := runWindowAction(t, "minimize-window", window)
+	stdout, stderr, exit = runWindowAction(t, "minimize-window", window)
 	assertActionOK(t, "minimize-window", stdout, stderr, exit)
 	if !win.IsMinimized(id) {
 		t.Error("minimize-window: the Window is not minimized")
@@ -77,8 +85,9 @@ func TestWindowActionsKeepTheForeground(t *testing.T) {
 	}
 
 	// restore-window: back at its normal size, without the foreground. The
-	// fixture does not activate itself, so the output is a plain ok, with
-	// no self-activation note (headless-max ticket 02).
+	// fixture has been in front before, so it does not take the foreground
+	// back and the output is a plain ok, with no self-activation note
+	// (headless-max ticket 02).
 	stdout, stderr, exit = runWindowAction(t, "restore-window", window)
 	assertActionOK(t, "restore-window", stdout, stderr, exit)
 	if win.IsMinimized(id) {
@@ -138,51 +147,58 @@ func TestWindowActionsKeepTheForeground(t *testing.T) {
 	assertForeground(t, "close-window", cover)
 }
 
-// TestRestoreWindowReportsSelfActivation (headless-max ticket 02):
-// charmap, a #32770 dialog App, activates itself when it is restored, even
-// by the non-activating SW_SHOWNOACTIVATE (6 of 6 runs in
-// .scratch/headless-gaps/headless-100.md section 0). restore-window must
-// say so, and its note must match the foreground the test reads back.
-// winuse does not take the foreground back. The test starts its own
-// charmap and ends it afterwards.
+// TestRestoreWindowReportsSelfActivation (headless-max ticket 02): an App
+// that brings itself to the foreground when it is restored. The target is
+// the fixture in its -activate-on-restore mode: it calls
+// SetForegroundWindow on itself when it is restored from minimized, as
+// some real Apps do. Windows lets a background process do that only with
+// the foreground process's grant (or in input states the test cannot
+// arrange), so the cover, the user's stand-in, grants it
+// (-allow-foreground <pid>, AllowSetForegroundWindow); winuse's restore
+// grants nothing. Covered, minimized and restored by the non-activating
+// restore-window, the fixture takes the foreground, and restore-window
+// must say so; winuse does not take the foreground back.
+//
+// charmap, which the research measured (6 of 6 in
+// .scratch/headless-gaps/headless-100.md section 0), takes the foreground
+// on restore only when it has not been the foreground since it started,
+// and whether a process the test starts takes the foreground at launch
+// depends on the desktop's input state, so it is not a reliable target
+// (ticket 02's 2026-11-03 comment).
 func TestRestoreWindowReportsSelfActivation(t *testing.T) {
 	optIn(t)
-	cmd := exec.Command("charmap.exe")
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	cmd := exec.Command(fixtureBinary(t), "-state", statePath, "-activate-on-restore")
 	if err := cmd.Start(); err != nil {
-		t.Skipf("starting charmap.exe: %v", err)
+		t.Fatalf("starting the fixture app: %v", err)
 	}
 	proc := cmd.Process
 	t.Cleanup(func() {
 		_ = proc.Kill()
 		_, _ = proc.Wait()
 	})
-	pid := uint32(proc.Pid)
-	id := findWindowOf(t, pid, "#32770", "", 30*time.Second)
+	id := waitStateFile(t, statePath, 15*time.Second, func(s *fixture.State) bool { return s.WindowID != 0 }).WindowID
 	window := strconv.FormatUint(id, 10)
-	cover := coverWindow(t, window)
+	cover := coverWindow(t, window, "-allow-foreground", strconv.Itoa(proc.Pid))
 
 	stdout, stderr, exit := runWindowAction(t, "minimize-window", window)
-	assertActionOK(t, "minimize-window (charmap)", stdout, stderr, exit)
-	assertForeground(t, "minimize-window (charmap)", cover)
+	assertActionOK(t, "minimize-window", stdout, stderr, exit)
+	assertForeground(t, "minimize-window", cover)
 
 	stdout, stderr, exit = runWindowAction(t, "restore-window", window)
 	if exit != 0 {
-		t.Fatalf("restore-window (charmap): exit %d, stderr:\n%s", exit, stderr)
+		t.Fatalf("restore-window: exit %d, stderr:\n%s", exit, stderr)
 	}
 	if win.IsMinimized(id) {
-		t.Error("restore-window: charmap is still minimized")
+		t.Error("restore-window: the Window is still minimized")
 	}
-	fg := win.ForegroundWindow()
-	if fg != id && win.WindowPID(fg) != pid {
-		// The note must not appear when the foreground stayed.
-		assertActionOK(t, "restore-window (charmap, no self-activation)", stdout, stderr, exit)
-		assertForeground(t, "restore-window (charmap)", cover)
-		t.Skipf("charmap did not bring itself to the foreground this run (the foreground is %s); the note is untested", describeWindow(t, fg))
+	if fg := win.ForegroundWindow(); fg != id {
+		t.Fatalf("the fixture did not bring itself to the foreground (the foreground is %s; restore-window printed %q)", describeWindow(t, fg), stdout)
 	}
 	if want := "ok (the App brought itself to the foreground)\n"; stdout != want {
-		t.Errorf("restore-window (charmap): stdout = %q, want %q (charmap took the foreground)", stdout, want)
+		t.Errorf("restore-window: stdout = %q, want %q (the fixture took the foreground)", stdout, want)
 	}
 	if stderr != "" {
-		t.Errorf("restore-window (charmap): unexpected stderr: %q", stderr)
+		t.Errorf("restore-window: unexpected stderr: %q", stderr)
 	}
 }

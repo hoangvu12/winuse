@@ -70,6 +70,16 @@ from `WINUSE_FIXTURE_STATE` when `-state` is unset — for tests where
 `winuse launch-app` starts it (launched Apps inherit the helper's
 environment, not the test's).
 
+Two flags make it an App that brings itself to the foreground (headless-max
+ticket 02): `-activate-on-restore` makes the main window call
+SetForegroundWindow on itself whenever it is restored from minimized, and
+`-allow-foreground <pid>` makes an instance grant that process the right to
+set the foreground window (AllowSetForegroundWindow) each time the instance
+is activated. Windows refuses a background process's SetForegroundWindow
+unless the foreground process grants it, or in input states a test cannot
+arrange, so a covering instance with the grant stands in for the user's
+foreground App.
+
 ## Writing a test in this package
 
 1. Call `optIn(t)` first — every test must be gated.
@@ -347,16 +357,20 @@ still the foreground window afterwards. The shared helpers are in
   `restore-window`, `move-window` (read back through GetWindowRect within
   8 px, and through the fixture's own canvas rectangle), `resize-window`
   and `close-window`, which must end the fixture process within 5 s.
-  The fixture does not activate itself, so `restore-window` prints a
-  plain `ok`.
+  The fixture is activated once before it is covered, so `restore-window`
+  prints a plain `ok`. An App that has not been the foreground since it
+  started can take the foreground when it is first restored (ticket 02's
+  2026-11-03 comment); without that activation the fixture sometimes did.
 - `TestRestoreWindowReportsSelfActivation` (`window_actions_test.go`,
-  headless-max ticket 02) **starts and ends its own charmap**, a `#32770`
-  dialog App that activates itself when it is restored. Covered, then
-  minimized and restored, it must take the foreground and
-  `restore-window` must print
-  `ok (the App brought itself to the foreground)`. When charmap stays in
-  the background on a run, the output must be a plain `ok` and the test
-  skips with that reason.
+  headless-max ticket 02): the fixture with `-activate-on-restore`,
+  covered by an instance that grants it the foreground
+  (`-allow-foreground`), is minimized and restored. It must take the
+  foreground, and `restore-window` must print
+  `ok (the App brought itself to the foreground)`. It used to start
+  charmap, which the research measured doing this, but charmap only does
+  it when it has not been the foreground since it started, and whether a
+  process the test starts takes the foreground at launch depends on the
+  desktop's input state, so it skipped on most runs.
 - `TestElementScrollByStepsAndIntoView` (`element_scroll_test.go`): the
   list scrolls by steps (2, then the default 3, which stops at the end),
   fails at the end with "the Element did not scroll; it may already be at
@@ -625,10 +639,26 @@ the foreground, and the Window State must show either the page's
 "winuse e2e button" or the thin-page note ("the page's accessibility
 tree is still thin"), not both; the note must come after about 5 s of
 settling. The log says which one happened. It closes Electron, the
-fixture and the helper, and puts the foreground back.
+fixture and the helper, and puts the foreground back. Measured on the
+development PC with Electron 45.2.1 (ticket 18, 2026-11-03): a fully
+covered cold Electron never built its web tree, even after 60 s, so the
+test logs the thin note after about 5.3 s; with a 120 px strip left
+uncovered, the first read showed the page in under 0.9 s.
+
+Get the binary from an official Electron release, outside the repository
+(the folder below is an example; any place works):
+
+1. Open https://github.com/electron/electron/releases and pick a recent
+   stable release (not a pre-release), e.g. `v45.2.1`.
+2. Download `electron-vX.Y.Z-win32-x64.zip` and the release's
+   `SHASUMS256.txt`, and check the zip's SHA-256 against it
+   (`certutil -hashfile electron-vX.Y.Z-win32-x64.zip SHA256`).
+3. Unzip it into its own folder, e.g.
+   `C:\electron-dist\electron-vX.Y.Z-win32-x64\`. `electron.exe` is at
+   the top of that folder.
 
 ```
 set WINUSE_E2E=1
-set WINUSE_E2E_ELECTRON=C:\path\to\electron\electron.exe
+set WINUSE_E2E_ELECTRON=C:\electron-dist\electron-vX.Y.Z-win32-x64\electron.exe
 go test -tags e2e -v -timeout 5m -run TestCoveredElectronReadCold ./test/e2e
 ```
