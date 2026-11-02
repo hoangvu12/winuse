@@ -217,6 +217,18 @@ func (m *Manager) open(want string) []*Connection {
 	return out
 }
 
+// Held lists the Browser Connections the manager holds open, one phrase
+// each ("chrome process 1234, your running browser through the winuse
+// extension"), by browser and pid. It probes, discovers and dials
+// nothing (winuse status, desktop parity ticket 16).
+func (m *Manager) Held() []string {
+	var out []string
+	for _, c := range m.open("") {
+		out = append(out, fmt.Sprintf("%s process %d, %s", c.Browser, c.PID, c.Mode.Describe()))
+	}
+	return out
+}
+
 // dial returns the connection for a verified endpoint: the held one when
 // it is still open on that endpoint, else the result of the one dial in
 // flight for that browser process, starting it when there is none. The

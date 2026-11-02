@@ -439,3 +439,31 @@ func TestLiveSystemRefusesInTests(t *testing.T) {
 		t.Errorf("state dir = %q", sys.StateDir)
 	}
 }
+
+// TestHeldListsOpenConnectionsWithoutDialing pins winuse status's
+// Browser Connections line: nothing held lists nothing (and starts or
+// dials nothing), a held connection is one phrase.
+func TestHeldListsOpenConnectionsWithoutDialing(t *testing.T) {
+	f := newFake(t)
+	f.install("edge")
+	f.process("edge", 200)
+	s := cdptest.NewServer()
+	defer s.Close()
+	startsServer(f, s, 200)
+	m := NewManager(f.sys)
+	defer m.Close()
+
+	if held := m.Held(); len(held) != 0 {
+		t.Fatalf("Held() before any connection = %q, want none", held)
+	}
+	if starts := f.startCalls(); len(starts) != 0 {
+		t.Fatalf("Held started a browser: %+v", starts)
+	}
+	if _, err := m.Launch(context.Background(), "edge"); err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	want := []string{"edge process 200, winuse's own profile"}
+	if held := m.Held(); !slices.Equal(held, want) {
+		t.Errorf("Held() = %q, want %q", held, want)
+	}
+}

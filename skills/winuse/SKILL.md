@@ -597,6 +597,12 @@ ordinary Escape sent to the app; only the physical key stops winuse.
   habit.
 - A launcher screen, splash screen or unexpected permission prompt is a
   reason to stop, observe and rethink, never to click through.
+- When failures make no sense, run `winuse status`. It prints the winuse
+  and helper versions, whether the helper is running and for how long,
+  whether the desktop is locked, the integrity level, DPI awareness, the
+  Browser Connections and the Windows build. It only reads and never
+  starts the helper, so it is safe at any time; include its output when
+  you report a problem to the user.
 
 ## Safety
 
@@ -654,6 +660,7 @@ browser clone [browser] [--profile <folder>] [--fresh] [--close-source]
 browser ext install [browser|all] | browser ext status [browser]
 record-tree <window> <file>         # development only, records a tree fixture for winuse's own tests
 skill | skill install <dir>         # print this file from the binary, or write it to <dir>\winuse\SKILL.md
+status                              # read-only: versions, helper uptime, lock, integrity, DPI, browsers, Windows build
 version
 ```
 

@@ -179,6 +179,18 @@ type Services struct {
 	// fake it with recorded reads.
 	Pages PageReader
 
+	// The status probes (desktop parity ticket 16, status.go), all
+	// read-only. Started is when the helper started and Now the clock its
+	// uptime is read on; OwnIntegrity, DPIAwareness and WindowsBuild read
+	// the helper process and the machine. Nil and zero values fall back to
+	// the real ones (Started: when CommandsWith ran, at helper start);
+	// Locked (above) is the desktop probe. Tests fake them.
+	Started      time.Time
+	Now          func() time.Time
+	OwnIntegrity func() (uint32, error) // the helper's integrity level RID
+	DPIAwareness func() string          // the helper's DPI awareness, named
+	WindowsBuild func() string          // the Windows build, named
+
 	// actionGate serializes every command that activates a Window, injects
 	// input or shows the overlay (finding 11): two concurrent CLI calls
 	// must never interleave control of the desktop. It is a capacity-1
@@ -200,7 +212,7 @@ type Services struct {
 // command controls the desktop at a time, exactly what codex-parity's
 // "one request at a time" promises. Observation-only commands —
 // list-windows, get-window, list-apps, the plain tree read, record-tree,
-// launch-app — stay concurrent; get-window-state's --screenshot branch
+// launch-app, status — stay concurrent; get-window-state's --screenshot branch
 // and zoom join the serialized set inside their handlers.
 func CommandsWith(s Services) map[string]Command {
 	s = defaultServices(s)
@@ -238,6 +250,7 @@ func CommandsWith(s Services) map[string]Command {
 		"hover":                    hover(s),
 		"list-apps":                listApps(store),
 		"launch-app":               launchApp(store, s.Esc),
+		StatusCommand:              statusCommand(s),
 	}
 	// The Batch dispatches its steps to the other commands, and brackets
 	// itself as one armed Esc scope and one overlay bracket around them
@@ -283,7 +296,8 @@ func CommandsWith(s Services) map[string]Command {
 func observationOnlyCommand(name string) bool {
 	switch name {
 	case "list-windows", "get-window", "list-apps", "get-window-state", "record-tree", "launch-app",
-		"tab-list": // reads a browser Window's Tabs only (tabs.go)
+		"tab-list",    // reads a browser Window's Tabs only (tabs.go)
+		StatusCommand: // read-only probes (status.go): never waits behind an Action
 		return true
 	}
 	return strings.HasPrefix(name, "browser-")
@@ -483,6 +497,21 @@ func defaultServices(s Services) Services {
 	}
 	if s.Pages == nil {
 		s.Pages = newLivePages(s.Browser, s.Maximized)
+	}
+	if s.Now == nil {
+		s.Now = time.Now
+	}
+	if s.Started.IsZero() {
+		s.Started = s.Now()
+	}
+	if s.OwnIntegrity == nil {
+		s.OwnIntegrity = func() (uint32, error) { return win.IntegrityLevel(0) }
+	}
+	if s.DPIAwareness == nil {
+		s.DPIAwareness = win.DPIAwareness
+	}
+	if s.WindowsBuild == nil {
+		s.WindowsBuild = win.WindowsBuild
 	}
 	if s.actionGate == nil {
 		s.actionGate = make(chan struct{}, 1)

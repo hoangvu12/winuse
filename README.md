@@ -125,6 +125,7 @@ at all, and winuse says so.
 | `dialog`, `upload` | Answers a JavaScript dialog, or gives files to a file input |
 | `tab list`, `tab new`, `tab switch`, `tab close` | Manages a browser window's tabs |
 | `browser status`, `browser ext install`, `browser launch`, `browser clone`, `browser connect` | Connects to a browser and reports how |
+| `status` | Prints the versions, whether the helper runs, the lock state, integrity level, DPI awareness, browser connections and Windows build, without starting anything |
 
 [SKILL.md](skills/winuse/SKILL.md) is the full guide your agent loads.
 `winuse skill` prints the copy built into your binary, so it always
