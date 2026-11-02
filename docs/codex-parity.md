@@ -159,13 +159,16 @@ Headed write focuses the Element first — Codex's `set_value` order.
 
 A UIA combo box or list (Selection or ItemContainer pattern) whose Value
 is missing or read-only picks the item the value names, a winuse
-extension that mirrors agent-desktop's `select`: Expand when collapsed,
-a bounded descendant search matching the exact name, then
-ItemContainer's lookup for a virtualized list's unbuilt items, then the
-name ignoring case and spacing; Realize, SelectionItem.Select, Collapse,
-then the selection read back. Several matches or none are refused with
-the names; a combo opened for the search is closed again and the error
-says so. An editable combo keeps the Value write.
+extension that mirrors agent-desktop's `select`: a bounded descendant
+search matching the exact name, then ItemContainer's lookup for a
+virtualized list's unbuilt items, then the name ignoring case and
+spacing; Realize, SelectionItem.Select, then the selection read back. A
+collapsed combo is searched collapsed first, because its drop-down is a
+topmost popup over the user's work; it is expanded, searched again and
+collapsed afterwards only when the collapsed search finds no item at all.
+Several matches or none are refused with the names, with nothing sent
+unless the combo had to be opened; the error then says it was opened and
+closed. An editable combo keeps the Value write.
 
 ### drag
 

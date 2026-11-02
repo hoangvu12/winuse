@@ -49,6 +49,7 @@ const (
 	enChange   = 0x0300
 
 	cbnSelChange = 1
+	cbnDropDown  = 7
 	cbAddString  = 0x0143
 	cbGetCurSel  = 0x0147
 
@@ -163,6 +164,7 @@ func (a *app) openClassic() {
 	a.state.ClassicPassword = ""
 	a.state.ClassicFocus = ""
 	a.state.ClassicColor = ""
+	a.state.ClassicComboDrops = 0
 	tmpl := classicTemplate()
 	h, _, _ := procCreateDialogIndirectParamW.Call(a.instance, uintptr(unsafe.Pointer(&tmpl[0])), a.mainHwnd, a.classicProc, 0)
 	runtime.KeepAlive(tmpl)
@@ -210,6 +212,10 @@ func (a *app) dlgClassic(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		case id == ClassicComboID && code == cbnSelChange:
 			ctl, _, _ := procGetDlgItem.Call(hwnd, ClassicComboID)
 			a.state.ClassicColor = classicColor(int32(sendMessage(ctl, cbGetCurSel, 0, 0)))
+			a.changed()
+			return 1
+		case id == ClassicComboID && code == cbnDropDown:
+			a.state.ClassicComboDrops++
 			a.changed()
 			return 1
 		case code == enChange && classicFocusName(id) != "":

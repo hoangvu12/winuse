@@ -2,7 +2,8 @@ package uia
 
 // Select by name's offline tests (desktop-parity 12): selectByName over a
 // fake combo or list, which records the live operations it is driven
-// through. The Expand, Select, Collapse, FindItemByProperty and Realize
+// through. A combo whose items show while collapsed is never expanded;
+// one that builds them on Expand is expanded and collapsed again. The Expand, Select, Collapse, FindItemByProperty and Realize
 // calls themselves run on real Windows only; the opt-in e2e suite covers
 // them on the fixture's list and the Classic Dialog's combo.
 
@@ -15,18 +16,23 @@ import (
 
 // fakeList is a combo or list for selectByName: its items, its
 // ExpandCollapse state (-1: none) and what its live calls return.
+// buildsOnExpand hides the items (and the ItemContainer ones) while the
+// combo is collapsed, as WPF and WinUI do; otherwise they show either way,
+// as with the Win32 combo's proxy.
 type fakeList struct {
-	names       []string
-	state       int32
-	hidden      map[string]int // ItemContainer: names past the bounded search, and how many carry each
-	expandErr   error
-	collapseErr error
-	itemsErr    error
-	pickErr     error
-	staysOpen   bool // a Select does not close the drop-down
-	ignores     bool // the Select is delivered but the selection does not move
-	selectedNow string
-	calls       []string
+	names          []string
+	state          int32
+	buildsOnExpand bool
+	hidden         map[string]int // ItemContainer: names past the bounded search, and how many carry each
+	expandErr      error
+	collapseErr    error
+	itemsErr       error
+	openItemsErr   error // the search fails once expanded
+	pickErr        error
+	staysOpen      bool // a Select does not close the drop-down
+	ignores        bool // the Select is delivered but the selection does not move
+	selectedNow    string
+	calls          []string
 }
 
 func (f *fakeList) steps() selectSteps {
@@ -50,10 +56,19 @@ func (f *fakeList) steps() selectSteps {
 		},
 		items: func() ([]string, error) {
 			f.calls = append(f.calls, "items")
+			if f.state == expandExpanded && f.openItemsErr != nil {
+				return nil, f.openItemsErr
+			}
+			if f.buildsOnExpand && f.state == expandCollapsed {
+				return nil, nil
+			}
 			return f.names, f.itemsErr
 		},
 		findHidden: func(label string) (int, string, error) {
 			f.calls = append(f.calls, "find")
+			if f.buildsOnExpand && f.state == expandCollapsed {
+				return 0, "", nil
+			}
 			n := f.hidden[label]
 			if n == 1 {
 				return 1, label, nil
@@ -100,14 +115,19 @@ func TestSelectByName(t *testing.T) {
 		wantCalls string
 	}{
 		{
-			name: "a collapsed combo opens, picks, and reads back", label: "Green",
+			name: "a collapsed combo whose items show collapsed is never expanded", label: "Green",
 			list:      fakeList{names: colors, state: expandCollapsed},
-			wantCalls: "expand items pick 1 read Green",
+			wantCalls: "items pick 1 read Green",
 		},
 		{
-			name: "a combo that stays open after the pick is collapsed", label: "Green",
-			list:      fakeList{names: colors, state: expandCollapsed, staysOpen: true},
-			wantCalls: "expand items pick 1 collapse read Green",
+			name: "a collapsed combo with no items collapsed is expanded, picked and collapsed", label: "Green",
+			list:      fakeList{names: colors, state: expandCollapsed, buildsOnExpand: true, staysOpen: true},
+			wantCalls: "items find expand items pick 1 collapse read Green",
+		},
+		{
+			name: "a combo that closes on the pick is not collapsed again", label: "Green",
+			list:      fakeList{names: colors, state: expandCollapsed, buildsOnExpand: true},
+			wantCalls: "items find expand items pick 1 read Green",
 		},
 		{
 			name: "an open combo is not expanded or collapsed", label: "Blue",
@@ -135,6 +155,11 @@ func TestSelectByName(t *testing.T) {
 			wantCalls: "items find pick -1 read Item 900",
 		},
 		{
+			name: "ItemContainer's match on a collapsed combo needs no Expand", label: "Item 900",
+			list:      fakeList{state: expandCollapsed, hidden: map[string]int{"Item 900": 1}},
+			wantCalls: "items find pick -1 read Item 900",
+		},
+		{
 			name: "ItemContainer's exact match wins over a case-insensitive one", label: "item 2",
 			list:      fakeList{names: []string{"Item 1", "Item 2"}, state: -1, hidden: map[string]int{"item 2": 1}},
 			wantCalls: "items find pick -1 read item 2",
@@ -146,10 +171,16 @@ func TestSelectByName(t *testing.T) {
 			wantCalls: "items",
 		},
 		{
-			name: "two case-insensitive matches are ambiguous, and the combo closes again", label: "BLUE",
+			name: "an ambiguous name in a combo whose items show collapsed is refused unopened", label: "BLUE",
 			list:      fakeList{names: []string{"Blue", "blue"}, state: expandCollapsed},
+			wantErr:   `2 items match "BLUE": "Blue", "blue"`,
+			wantCalls: "items find",
+		},
+		{
+			name: "an ambiguous name in a combo that builds on Expand opens and closes it", label: "BLUE",
+			list:      fakeList{names: []string{"Blue", "blue"}, state: expandCollapsed, buildsOnExpand: true},
 			wantErr:   `the list was opened and closed; 2 items match "BLUE": "Blue", "blue"`,
-			wantCalls: "expand items find collapse",
+			wantCalls: "items find expand items find collapse",
 		},
 		{
 			name: "several hidden items carry the name", label: "Item 900",
@@ -164,16 +195,22 @@ func TestSelectByName(t *testing.T) {
 			wantCalls: "items find",
 		},
 		{
-			name: "no match in a combo opens and closes it", label: "Purple",
+			name: "no match in a combo whose items show collapsed is refused unopened", label: "Purple",
 			list:      fakeList{names: colors, state: expandCollapsed},
+			wantErr:   `no item named "Purple"; its items are "Red", "Green", "Blue"`,
+			wantCalls: "items find",
+		},
+		{
+			name: "no match in a combo that builds on Expand opens and closes it", label: "Purple",
+			list:      fakeList{names: colors, state: expandCollapsed, buildsOnExpand: true},
 			wantErr:   `the list was opened and closed; no item named "Purple"; its items are "Red", "Green", "Blue"`,
-			wantCalls: "expand items find collapse",
+			wantCalls: "items find expand items find collapse",
 		},
 		{
 			name: "a combo that will not close again says so", label: "Purple",
-			list:      fakeList{names: colors, state: expandCollapsed, collapseErr: errors.New("no")},
+			list:      fakeList{names: colors, state: expandCollapsed, buildsOnExpand: true, collapseErr: errors.New("no")},
 			wantErr:   `the list was opened and could not be closed again; no item named "Purple"; its items are "Red", "Green", "Blue"`,
-			wantCalls: "expand items find collapse",
+			wantCalls: "items find expand items find collapse",
 		},
 		{
 			name: "an empty list", label: "Red",
@@ -182,22 +219,40 @@ func TestSelectByName(t *testing.T) {
 			wantCalls: "items find",
 		},
 		{
-			name: "a failed Expand stops before the search", label: "Red",
-			list:      fakeList{names: colors, state: expandCollapsed, expandErr: ErrDisabled},
+			name: "a combo empty even when expanded", label: "Red",
+			list:      fakeList{state: expandCollapsed},
+			wantErr:   `the list was opened and closed; no item named "Red", and the list shows no items`,
+			wantCalls: "items find expand items find collapse",
+		},
+		{
+			name: "a failed collapsed search sends nothing and never expands", label: "Red",
+			list:      fakeList{names: colors, state: expandCollapsed, itemsErr: fmt.Errorf("%w: gone", ErrStale)},
+			wantErr:   ErrStale.Error() + ": gone",
+			wantCalls: "items",
+		},
+		{
+			name: "a failed Expand stops before the second search", label: "Red",
+			list:      fakeList{names: colors, state: expandCollapsed, buildsOnExpand: true, expandErr: ErrDisabled},
 			wantErr:   "the Element is disabled",
-			wantCalls: "expand",
+			wantCalls: "items find expand",
 		},
 		{
 			name: "a failed search after the Expand closes the combo again", label: "Red",
-			list:      fakeList{names: colors, state: expandCollapsed, itemsErr: fmt.Errorf("%w: gone", ErrStale)},
+			list:      fakeList{names: colors, state: expandCollapsed, buildsOnExpand: true, openItemsErr: fmt.Errorf("%w: gone", ErrStale)},
 			wantErr:   "the list was opened and closed; " + ErrStale.Error() + ": gone",
-			wantCalls: "expand items collapse",
+			wantCalls: "items find expand items collapse",
 		},
 		{
 			name: "a failed Select may have taken effect", label: "Red",
-			list:      fakeList{names: colors, state: expandCollapsed, staysOpen: true, pickErr: write},
+			list:      fakeList{names: colors, state: expandCollapsed, pickErr: write},
 			wantErr:   write.Error(),
-			wantCalls: "expand items pick 0 collapse",
+			wantCalls: "items pick 0",
+		},
+		{
+			name: "a failed Select after an Expand closes the combo again", label: "Red",
+			list:      fakeList{names: colors, state: expandCollapsed, buildsOnExpand: true, staysOpen: true, pickErr: write},
+			wantErr:   write.Error(),
+			wantCalls: "items find expand items pick 0 collapse",
 		},
 		{
 			name: "a Select the list ignores fails the read-back", label: "Red",
@@ -232,12 +287,16 @@ func TestSelectItemErrorClassifies(t *testing.T) {
 	}
 
 	err = selectByName("red", (&fakeList{names: []string{"Red", "RED"}, state: expandCollapsed}).steps())
+	if !errors.Is(err, ErrAmbiguousItem) || !errors.As(err, &sel) || sel.Opened {
+		t.Errorf("ambiguous with the items shown collapsed = %#v, want ErrAmbiguousItem, not opened", err)
+	}
+	err = selectByName("red", (&fakeList{names: []string{"Red", "RED"}, state: expandCollapsed, buildsOnExpand: true}).steps())
 	if !errors.Is(err, ErrAmbiguousItem) || !errors.As(err, &sel) || !sel.Opened {
-		t.Errorf("ambiguous = %#v, want ErrAmbiguousItem, opened", err)
+		t.Errorf("ambiguous after an Expand = %#v, want ErrAmbiguousItem, opened", err)
 	}
 
 	// The search's own failure stays recognizable through the wrapper.
-	err = selectByName("Red", (&fakeList{state: expandCollapsed, itemsErr: fmt.Errorf("%w: gone", ErrStale)}).steps())
+	err = selectByName("Red", (&fakeList{state: expandCollapsed, buildsOnExpand: true, openItemsErr: fmt.Errorf("%w: gone", ErrStale)}).steps())
 	if !errors.Is(err, ErrStale) || !errors.As(err, &sel) || !sel.Opened {
 		t.Errorf("stale search = %#v, want ErrStale, opened", err)
 	}

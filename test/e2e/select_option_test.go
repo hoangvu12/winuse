@@ -5,7 +5,9 @@
 // fixture's drawn Item List (its own UIA provider: Selection, items with
 // SelectionItem, three below the fold) and the Classic Dialog's Win32
 // drop-down combo (the system proxy: ExpandCollapse, Selection, a
-// read-only Value; fixture.ClassicColors). User-run only (see the
+// read-only Value, its items exposed while collapsed;
+// fixture.ClassicColors). The Expand path, for a combo that builds its
+// items only when opened (WPF, WinUI), has no fixture target. User-run only (see the
 // package comment and test/e2e/README.md); an agent must never start
 // them.
 
@@ -61,8 +63,10 @@ func TestSetValueSelectsAComboItemByName(t *testing.T) {
 		return runWinuse(t, []string{"set-value", dialog, combo, value}, "WINUSE_HELPER_IDLE="+e2eIdle)
 	}
 
-	// The collapsed combo is expanded, the item selected, the combo
-	// collapsed again; the covering Window keeps the foreground.
+	// The Win32 combo's proxy shows its items while it is collapsed, so the
+	// item is selected without opening the drop-down (a topmost popup that
+	// would show over the user's work); the covering Window keeps the
+	// foreground.
 	stdout, stderr, exit := setCombo("Green")
 	assertActionOK(t, "set-value combo Green", stdout, stderr, exit)
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.ClassicColor == "Green" })
@@ -77,14 +81,18 @@ func TestSetValueSelectsAComboItemByName(t *testing.T) {
 	stdout, stderr, exit = setCombo("BLUE")
 	assertActionFailed(t, "set-value combo BLUE", stdout, stderr, exit, `2 items match "BLUE": "Blue", "blue"`)
 
-	// No such item: the combo was opened for the search and closed again.
+	// No such item: the items were known collapsed, so the combo was not
+	// opened and nothing was sent.
 	stdout, stderr, exit = setCombo("Purple")
 	assertActionFailed(t, "set-value combo Purple", stdout, stderr, exit,
-		`the list was opened and closed; no item named "Purple"`)
+		`no item named "Purple"; its items are "Red", "Green", "Blue", "blue"; nothing was sent`)
 
 	st := fix.waitState(t, time.Second, func(s *fixture.State) bool { return true })
 	if st.ClassicColor != "blue" {
 		t.Errorf("classicColor = %q after the refusals, want blue", st.ClassicColor)
+	}
+	if st.ClassicComboDrops != 0 {
+		t.Errorf("the combo's drop-down opened %d times; a combo whose items show collapsed is never expanded", st.ClassicComboDrops)
 	}
 	assertForeground(t, "the refused set-values", cover)
 }

@@ -206,7 +206,7 @@ func TestStateJSONFieldNames(t *testing.T) {
 		"lastMenu", "lastKey", "selectedItem", "listFirstVisible", "detailsExpanded",
 		"toolbarVisible", "openMenu", "canvasClicks", "canvasDoubleClicks",
 		"canvasRightClicks", "canvasDrags", "canvasScrolls", "canvasRect", "focusRequests", "generation",
-		"classicOpen", "classicWindowId", "classicResult", "classicText", "classicPassword", "classicFocus", "classicColor",
+		"classicOpen", "classicWindowId", "classicResult", "classicText", "classicPassword", "classicFocus", "classicColor", "classicComboDrops",
 		"messageBoxOpen", "messageBoxResult",
 	} {
 		if _, ok := m[key]; !ok {

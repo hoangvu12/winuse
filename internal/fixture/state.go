@@ -34,7 +34,9 @@ type State struct {
 	// on every change (EN_CHANGE). ClassicFocus names the Edit that last
 	// took the focus ("name" or "password", from EN_SETFOCUS).
 	// ClassicColor is the combo's selected item (one of ClassicColors,
-	// from CBN_SELCHANGE; "" until one is picked).
+	// from CBN_SELCHANGE; "" until one is picked). ClassicComboDrops counts
+	// the times its drop-down list opened (CBN_DROPDOWN) since the dialog
+	// opened: a pick by name that never shows the drop-down leaves it 0.
 	ClassicOpen     bool   `json:"classicOpen"`
 	ClassicWindowID uint64 `json:"classicWindowId"`
 	ClassicResult   string `json:"classicResult"`
@@ -42,6 +44,8 @@ type State struct {
 	ClassicPassword string `json:"classicPassword"`
 	ClassicFocus    string `json:"classicFocus"`
 	ClassicColor    string `json:"classicColor"`
+
+	ClassicComboDrops int `json:"classicComboDrops"`
 
 	// The MessageBox (see MessageBoxTitle): MessageBoxOpen while it is up,
 	// MessageBoxResult the button that closed it last ("ok" or "cancel",

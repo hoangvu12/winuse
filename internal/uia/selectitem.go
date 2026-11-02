@@ -6,11 +6,13 @@ package uia
 // by its label. agent-desktop's select does the same bounded descendant
 // search (desktop-parity research, section 1).
 //
-// The route: Expand when the Element reads collapsed (ExpandCollapse);
-// list its items in a bounded search of its control-view descendants;
-// match the label exactly, then through ItemContainer.FindItemByProperty
-// (which reaches the items a virtualized list has not built), then
-// ignoring case and spacing; realize a virtualized item
+// The route: list the items in a bounded search of the Element's
+// control-view descendants; match the label exactly, then through
+// ItemContainer.FindItemByProperty (which reaches the items a virtualized
+// list has not built), then ignoring case and spacing. Only when the
+// collapsed Element exposes no item at all is it expanded
+// (ExpandCollapse) and searched again, since an open drop-down shows on
+// the user's screen. Then realize a virtualized item
 // (VirtualizedItem.Realize), select it (SelectionItem.Select), collapse
 // what was expanded, and read the selection back. Several matches at one
 // rule, or none, refuse; an Expand made for the search is collapsed again
@@ -173,18 +175,18 @@ type selectSteps struct {
 }
 
 // selectByName picks the item named label (set-value on a combo or list).
-// Matching runs exact first, then ItemContainer's exact lookup, then
-// ignoring case and spacing; several matches at one rule are an error,
-// never a guess. A refusal after an Expand collapses the list again and
-// says so (SelectItemError.Opened); one before it sent nothing.
+// The collapsed Element is searched first: many providers (the Win32
+// combo's proxy, WinForms) expose a combo's items while it is closed, and
+// an Expand would show its drop-down — a topmost popup — over the user's
+// work. Only when that search finds no item at all, and the Element reads
+// collapsed, is it expanded and searched again (WPF and WinUI build their
+// items on Expand), then collapsed afterwards. Matching runs exact first,
+// then ItemContainer's exact lookup, then ignoring case and spacing;
+// several matches at one rule are an error, never a guess. A refusal
+// after an Expand collapses the list again and says so
+// (SelectItemError.Opened); one without it sent nothing.
 func selectByName(label string, s selectSteps) error {
 	opened := false
-	if s.expandState() == expandCollapsed {
-		if err := s.expand(); err != nil {
-			return err
-		}
-		opened = true
-	}
 	closeAgain := func() bool {
 		return !opened || s.collapse() == nil
 	}
@@ -194,40 +196,23 @@ func selectByName(label string, s selectSteps) error {
 		return e
 	}
 
-	names, err := s.items()
-	if err != nil {
+	found, err := searchItems(label, s)
+	if err == nil && !found.candidates && s.expandState() == expandCollapsed {
+		// Nothing exposed while collapsed: open the list and look again.
+		if err := s.expand(); err != nil {
+			return err
+		}
+		opened = true
+		found, err = searchItems(label, s)
+	}
+	switch {
+	case err != nil:
 		return refuse(&SelectItemError{Err: err})
-	}
-	pick, name := -2, ""
-	if hits := matchItems(names, label, false); len(hits) == 1 {
-		pick, name = hits[0], names[hits[0]]
-	} else if len(hits) > 1 {
-		return refuse(&SelectItemError{Matches: pickNames(names, hits)})
-	}
-	if pick == -2 {
-		n, hidden, err := s.findHidden(label)
-		switch {
-		case err != nil:
-			return refuse(&SelectItemError{Err: err})
-		case n == 1:
-			pick, name = -1, hidden
-		case n > 1:
-			return refuse(&SelectItemError{Matches: []string{label, label}})
-		}
-	}
-	if pick == -2 {
-		hits := matchItems(names, label, true)
-		switch len(hits) {
-		case 0:
-			return refuse(&SelectItemError{Items: names})
-		case 1:
-			pick, name = hits[0], names[hits[0]]
-		default:
-			return refuse(&SelectItemError{Matches: pickNames(names, hits)})
-		}
+	case found.refusal != nil:
+		return refuse(found.refusal)
 	}
 
-	if err := s.pick(pick); err != nil {
+	if err := s.pick(found.pick); err != nil {
 		var write *WriteError
 		if errors.As(err, &write) {
 			closeAgain()
@@ -240,14 +225,62 @@ func selectByName(label string, s selectSteps) error {
 			s.collapse() // the item is selected; a list left open is cosmetic
 		}
 	}
-	if ok, observed := s.selected(name); !ok {
-		msg := fmt.Sprintf("set-value selected %q but the list does not show it selected afterwards", name)
+	if ok, observed := s.selected(found.name); !ok {
+		msg := fmt.Sprintf("set-value selected %q but the list does not show it selected afterwards", found.name)
 		if observed != "" {
-			msg = fmt.Sprintf("set-value selected %q but the list shows %s selected afterwards", name, observed)
+			msg = fmt.Sprintf("set-value selected %q but the list shows %s selected afterwards", found.name, observed)
 		}
 		return &VerifyError{Action: "set-value", Msg: msg}
 	}
 	return nil
+}
+
+// itemSearch is one search's outcome: the item to pick (pick and name;
+// pick -1 is findHidden's item), or the refusal when no item, or several,
+// match. candidates says the search found any item at all, matching or
+// not.
+type itemSearch struct {
+	pick       int
+	name       string
+	refusal    *SelectItemError
+	candidates bool
+}
+
+// searchItems runs the bounded search and the three matching rules once.
+func searchItems(label string, s selectSteps) (itemSearch, error) {
+	names, err := s.items()
+	if err != nil {
+		return itemSearch{}, err
+	}
+	out := itemSearch{candidates: len(names) > 0}
+	if hits := matchItems(names, label, false); len(hits) == 1 {
+		out.pick, out.name = hits[0], names[hits[0]]
+		return out, nil
+	} else if len(hits) > 1 {
+		out.refusal = &SelectItemError{Matches: pickNames(names, hits)}
+		return out, nil
+	}
+	n, hidden, err := s.findHidden(label)
+	switch {
+	case err != nil:
+		return itemSearch{}, err
+	case n == 1:
+		out.pick, out.name, out.candidates = -1, hidden, true
+		return out, nil
+	case n > 1:
+		out.refusal, out.candidates = &SelectItemError{Matches: []string{label, label}}, true
+		return out, nil
+	}
+	hits := matchItems(names, label, true)
+	switch len(hits) {
+	case 0:
+		out.refusal = &SelectItemError{Items: names}
+	case 1:
+		out.pick, out.name = hits[0], names[hits[0]]
+	default:
+		out.refusal = &SelectItemError{Matches: pickNames(names, hits)}
+	}
+	return out, nil
 }
 
 // pickNames returns the names at hits.
@@ -315,6 +348,9 @@ func (th *thread) selectItem(el comPtr, label string) error {
 			return nil
 		},
 		items: func() ([]string, error) {
+			// A second search (after an Expand) replaces the first one's items.
+			releaseAll(found)
+			found = nil
 			var err error
 			found, err = th.selectableDescendants(el)
 			if err != nil {
@@ -327,6 +363,8 @@ func (th *thread) selectItem(el comPtr, label string) error {
 			return names, nil
 		},
 		findHidden: func(label string) (int, string, error) {
+			release(hidden)
+			hidden = nil
 			first, err := findItemByName(el, nil, label)
 			if err != nil || first == nil {
 				return 0, "", err

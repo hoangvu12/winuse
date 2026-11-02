@@ -255,12 +255,14 @@ target state back, so the box ends where you asked whatever it showed
 before.
 
 On a combo box or a list, `set-value` picks the item you name, Headless:
-winuse opens a closed combo, finds the item by its exact name, else by
-the same name in any case and spacing, selects it, closes the combo again
-and reads the selection back. An editable combo takes the text as its
-value instead. A name that matches several items, or none, is refused with
-the names; a closed combo was opened and closed for the search, and the
-error says so. Name the item exactly as the list spells it.
+winuse finds the item by its exact name, else by the same name in any case
+and spacing, selects it and reads the selection back. A closed combo stays
+closed when it shows its items anyway; winuse opens it only when it shows
+none until opened, and closes it again afterwards. An editable combo takes
+the text as its value instead. A name that matches several items, or none,
+is refused with the names, and nothing was sent unless winuse had to open
+the combo to search it; the error then says it was opened and closed. Name
+the item exactly as the list spells it.
 
 - `type-text` types literal Unicode text, any script and emoji included,
   into the focused Element.
