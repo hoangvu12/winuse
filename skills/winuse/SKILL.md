@@ -157,8 +157,8 @@ untouched, and the Window can stay behind their work. These are Headless by
 default:
 
 - With an Element Index, `name:` or `id:`: `click` with the left button and
-  a single click, `set-value`, `perform-secondary-action` except Raise, and
-  `scroll`.
+  a single click, `set-value`, `perform-secondary-action` except Raise,
+  `scroll`, and `select-text`, which has no Headed form.
 - Every Window Action: `restore-window`, `minimize-window`, `move-window`,
   `resize-window` and `close-window`.
 - `press-key` Return or Escape on a classic dialog, and `type-text` into a
@@ -258,6 +258,29 @@ foreground. Before a Headed type, check the focused-Element line. If focus
 is elsewhere, click the field with `--headed` or at its `@x,y` point, read
 the Window State to confirm focus, then type. Documents and canvases work the
 same way, with the click inside the work surface.
+
+### Select text
+
+```
+winuse select-text <window> <ref> <start> <length>   # length characters from start, counting from 0
+winuse select-text <window> <ref> all
+```
+
+`select-text` selects text in a field without keys or the mouse. It is
+always Headless, takes an Element Index, `name:` or `id:` (not `@x,y`), and
+reads the selection back. Offsets count UTF-16 units: most characters count
+one, an emoji two. A length of 0 puts the caret at the start.
+
+- In a classic edit box, such as Notepad's or a Win32 dialog's, a
+  `type-text` afterwards replaces the selection Headless. So `select-text`
+  then `type-text` replaces a word without the foreground.
+- In a Page field, winuse focuses the field too, so `type-text` replaces the
+  selection there as well.
+- Elsewhere winuse selects through the field's UI Automation Text pattern
+  and leaves keyboard focus alone. Check the focused-Element line before you
+  type.
+- A span past the end of the text, or an Element with no text to select, is
+  refused with nothing sent.
 
 ### Posted Keys
 
@@ -568,6 +591,7 @@ set-value <window> <ref> <value|on|off>
 perform-secondary-action <window> <ref> <action>   # Raise, Scroll Up/Down/Left/Right, Expand, Collapse, Toggle, Select
 type-text <window> [--post] <text>
 press-key <window> <key> [--post]
+select-text <window> <ref> <start> <length> | select-text <window> <ref> all
 scroll <window> <ref> <up|down|left|right> [steps] | scroll <window> <ref> into-view
 scroll <window> @x,y <dx> <dy>
 drag <window> @x,y @x,y             # left button, point to point

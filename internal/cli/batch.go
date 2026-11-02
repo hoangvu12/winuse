@@ -136,6 +136,12 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 			return protocol.Step{}, err
 		}
 		args = protocol.SecondaryActionArgs{ElementIndex: index, Ref: ref, Action: strings.Join(rest[1:], " ")}
+	case "select-text":
+		sa, err := parseSelectTextTokens(rest)
+		if err != nil {
+			return protocol.Step{}, fmt.Errorf("a batch select-text Action: %v", err)
+		}
+		args = sa
 	case "activate-window":
 		if len(rest) != 0 {
 			return protocol.Step{}, errors.New("a batch activate-window Action takes no arguments")

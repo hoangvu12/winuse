@@ -274,6 +274,15 @@ func (p *pageRun) pageActions(t *testing.T) {
 	p.actOK(t, "press-key", p.window, "Control_L+a")
 	p.actOK(t, "type-text", p.window, "typed text")
 	p.expectEval(t, "document.getElementById('text').value", "typed text")
+
+	// select-text (headless-max ticket 10): a span, read back by the
+	// field's own selection, and the typing that replaces it; then all.
+	p.actOK(t, "select-text", p.window, text, "6", "4")
+	p.expectEval(t, "(e => e.selectionStart + ',' + e.selectionEnd)(document.getElementById('text'))", "6,10")
+	p.actOK(t, "type-text", p.window, "words")
+	p.expectEval(t, "document.getElementById('text').value", "typed words")
+	p.actOK(t, "select-text", p.window, text, "all")
+	p.expectEval(t, "(e => e.selectionStart + ',' + e.selectionEnd)(document.getElementById('text'))", "0,11")
 	p.actOK(t, "press-key", p.window, "Control_L+Shift_L+k")
 	if keys := p.eval(t, "window.e2eKeys.join(',')"); !strings.Contains(keys, "Control+Shift+KeyK") {
 		t.Errorf("the Page saw the keys %q, want Control+Shift+KeyK among them", keys)

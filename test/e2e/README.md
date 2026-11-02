@@ -370,6 +370,20 @@ still the foreground window afterwards. The shared helpers are in
   an empty temp file, types into it while covered, and reads the editor's
   text back with WM_GETTEXT. If Notepad restores sessions, its next start
   may show that temp file's tab with the test text: close it.
+- `TestHeadlessSelectTextInClassicEdit` (`select_text_test.go`): types
+  `hello world` into the covered Classic Dialog's Edit, `select-text`
+  6 5 on it by `id:1001`, then `type-text winuse` replaces the selection
+  (`hello winuse`); `select-text all` and a replacement of the whole
+  text follow, and a span past the end is refused with "nothing was
+  sent". The foreground and the pointer stay put.
+- `TestHeadlessSelectTextInNotepad` **needs the Windows 11 Notepad** and
+  skips like the type-text Notepad test: `select-text` on the `Text
+  editor` Element, then `type-text` replaces the selection, read back with
+  WM_GETTEXT; then `all`.
+- The Page input is covered in `TestBrowserPages`'s page Actions:
+  `select-text` 6 4 on the text field, read back through its own
+  `selectionStart` and `selectionEnd`, then `type-text` replaces it, then
+  `all`. The UI Automation Text pattern route has no e2e target yet.
 - `TestPostedKeysIntoClassicEdit` (`posted_keys_test.go`):
   `type-text --post` and `press-key BackSpace --post` reach the Classic
   Dialog's Edit, the output starts with `ok (posted;`, and

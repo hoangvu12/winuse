@@ -2,6 +2,23 @@ package win
 
 import "testing"
 
+// TestRichEdit pins select-text's RichEdit read (its lenient `all`
+// read-back): the RichEdit classes in any case, not Edit, not other
+// classes.
+func TestRichEdit(t *testing.T) {
+	for class, want := range map[string]bool{
+		"RichEdit20W": true, "RICHEDIT50W": true, "RichEditD2DPT": true, "richedit20a": true,
+		"Edit": false, "RichEditFoo": false, "Button": false,
+	} {
+		if got := (Control{HWND: 7, Class: class}).RichEdit(); got != want {
+			t.Errorf("%s: RichEdit = %v, want %v", class, got, want)
+		}
+	}
+	if (Control{Class: "RichEdit20W"}).RichEdit() {
+		t.Error("no control (HWND 0) is no RichEdit")
+	}
+}
+
 // TestControlClassification pins the pure style reads the keyboard
 // routing decides on (ADR 0011, Decision 4): which focused controls are
 // classic edit controls, which of them take typed text, which want Return,
