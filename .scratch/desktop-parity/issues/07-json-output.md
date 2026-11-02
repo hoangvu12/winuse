@@ -24,3 +24,9 @@ agent-desktop's envelope and codes: `ad:docs/json-output.mdx:7-128`, `ad:docs/er
 - [ ] `--json` printer in the CLI
 - [ ] Offline tests: envelope per outcome, every phrase mapped
 - [ ] SKILL.md short section; codex-parity note
+
+## Comments
+
+### 2026-11-03: triage decision (user)
+
+Kept: `--json` is opt-in; the ADR 0004 text stays the default and the Window State stays text inside `out`.

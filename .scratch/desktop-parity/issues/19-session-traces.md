@@ -16,3 +16,9 @@
 - [ ] Redaction rules with tests
 - [ ] `trace show`
 - [ ] SKILL.md and README mention
+
+## Comments
+
+### 2026-11-03: triage decision (user)
+
+Kept as written.

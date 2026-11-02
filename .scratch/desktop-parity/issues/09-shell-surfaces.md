@@ -9,10 +9,16 @@
 
 **Blocked by:** none
 
-**Status:** needs-triage (needs a short ADR: reverses the enum exclusion; Windows-key refusal stays)
+**Status:** ready-for-agent (write the short ADR that reverses the enum exclusion; probe the Invoke routes first, with the user away)
 
 - [ ] Shell Windows in the listing behind `--shell`
 - [ ] Probe: Invoke on taskbar, tray and notification buttons, foreground before and after
 - [ ] Offline tests of the listing
 - [ ] Opt-in e2e: read the taskbar, open the tray overflow
 - [ ] ADR, SKILL.md
+
+## Comments
+
+### 2026-11-03: triage decision (user)
+
+Do it like agent-desktop (Start, taskbar, tray, tray overflow, Action Center), Headless first: read and Invoke through UIA where the probe shows it works. agent-desktop's shell-accelerator route (Win+A and so on) is the fallback and runs only with `--headed`; the general Windows-key refusal stays for press-key.

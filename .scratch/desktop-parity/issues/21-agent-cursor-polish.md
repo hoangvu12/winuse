@@ -14,3 +14,9 @@
 - [ ] Environment options
 - [ ] Offline tests of option parsing
 - [ ] Opt-in e2e: visual check by the user
+
+## Comments
+
+### 2026-11-03: triage decision (user)
+
+Kept as written.

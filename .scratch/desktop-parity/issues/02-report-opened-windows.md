@@ -13,10 +13,16 @@ This is agent-desktop's `data.surfaces` (`ad:docs/surfaces.mdx:53-66`). Today a 
 
 **Blocked by:** none
 
-**Status:** needs-triage (codex-parity "process model" row says "no state echo", `docs/codex-parity.md:186-194`; reword, status stays intentionally different)
+**Status:** ready-for-agent (reword the codex-parity "process model" row, `docs/codex-parity.md:186-194`; its status stays intentionally different)
 
 - [ ] Window snapshot diff behind a Services fake
 - [ ] Notes on the listed Actions and on Batch
 - [ ] Offline tests: new dialog, menu, closed target, nothing new
 - [ ] Opt-in e2e: fixture button that opens a message box, covered
 - [ ] SKILL.md: read the new Window next
+
+## Comments
+
+### 2026-11-03: triage decision (user)
+
+Do it like agent-desktop's `data.surfaces`: after the listed Actions, report menus, dialogs and alerts that opened. The codex-parity rewording is accepted.

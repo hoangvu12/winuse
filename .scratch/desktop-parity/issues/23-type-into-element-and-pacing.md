@@ -72,3 +72,7 @@ The de-duplication pass moved the Text-pattern `--into` leg to
 as that ticket, aimed at a named Element, so it waits for the same triage
 decision. This ticket now covers only `--interval-ms`, which has no conflict
 and stays ready-for-agent.
+
+### 2026-11-03: triage decision (user)
+
+Kept: `--interval-ms` is what is left.

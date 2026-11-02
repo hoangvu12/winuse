@@ -17,3 +17,9 @@ Today `name:`/`id:` resolve against the cached state only (`internal/helper/refs
 - [ ] Offline tests: cache hit, stale then found, ambiguous, absent
 - [ ] Opt-in e2e: restart the helper, act by `name:`
 - [ ] SKILL.md references section
+
+## Comments
+
+### 2026-11-03: triage decision (user)
+
+Kept as written. Together with 04's added numbering it is winuse's answer to agent-desktop's re-identified refs.
