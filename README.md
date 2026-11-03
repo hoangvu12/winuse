@@ -111,7 +111,7 @@ at all, and winuse says so.
 | Command | What it does |
 |---|---|
 | `list-windows`, `list-apps` | Lists open windows, and running and recently used apps. `list-windows --details` adds each window's position, size, process id and focused, minimized, maximized or admin state; `--app <name>` lists one app's windows |
-| `launch-app <name> [--timeout <s>]` | Starts an app and prints its window |
+| `launch-app <name> [--minimized] [--arg <a>]... [--cwd <dir>] [--env K=V]... [--timeout <s>]` | Starts an app without taking the foreground and prints its window |
 | `get-window-state <window> [--screenshot] [--timeout <s>]` | Prints a window's element tree, with an optional screenshot; `--timeout` gives a slow app's tree more time |
 | `click`, `set-value`, `perform-secondary-action` | Clicks, fills in, picks a list item, expands or toggles an element |
 | `type-text`, `press-key` | Types text or presses keys such as `Control_L+a` |

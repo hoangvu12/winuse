@@ -156,9 +156,15 @@ type Services struct {
 	Maximized         func(hwnd uint64) bool                       // IsZoomed
 	RestoresMaximized func(hwnd uint64) bool                       // WPF_RESTORETOMAXIMIZED: the minimized Window was maximized
 	WindowOpen        func(hwnd uint64) bool                       // the Window still exists and is visible
-	Foreground        func() uint64                                // GetForegroundWindow: restore-window's self-activation check
+	Foreground        func() uint64                                // GetForegroundWindow: restore-window's and launch-app's self-activation check
 	WindowPID         func(hwnd uint64) uint32                     // the Window's process: another Window of the same App
 	Sleep             func(d time.Duration)                        // the verification polls' pause; nil: time.Sleep
+
+	// StartApp starts a resolved App for launch-app with a non-activating
+	// show state (headless-max ticket 01). Nil falls back to apps.StartApp;
+	// tests fake it so offline tests never start a process. launch-app's
+	// Window polls use Windows, Foreground and Sleep above.
+	StartApp func(spec apps.Spec, opts win.LaunchOptions) (pid uint32, err error)
 
 	// The in-control indicator (ticket 13): raised over the target Window
 	// for the duration of every Action, click-through, never focused, and
@@ -250,7 +256,7 @@ func CommandsWith(s Services) map[string]Command {
 		"drag":                     drag(s),
 		"hover":                    hover(s),
 		"list-apps":                listApps(store),
-		"launch-app":               launchApp(store, s.Esc),
+		"launch-app":               launchApp(s, store),
 		StatusCommand:              statusCommand(s),
 	}
 	// The Batch dispatches its steps to the other commands, and brackets
@@ -492,6 +498,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.Sleep == nil {
 		s.Sleep = time.Sleep
+	}
+	if s.StartApp == nil {
+		s.StartApp = apps.StartApp
 	}
 	if s.Browser == nil {
 		s.Browser = browser.NewManager(browser.Live())

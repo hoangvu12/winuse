@@ -68,7 +68,8 @@ The runner builds the fixture as a GUI-subsystem binary
 and kills it when the test ends. The fixture also accepts its state path
 from `WINUSE_FIXTURE_STATE` when `-state` is unset — for tests where
 `winuse launch-app` starts it (launched Apps inherit the helper's
-environment, not the test's).
+environment, not the test's). `launch-app --arg` and `--env` can pass
+either directly (headless-max ticket 01).
 
 Two flags make it an App that brings itself to the foreground (headless-max
 ticket 02): `-activate-on-restore` makes the main window call
@@ -376,6 +377,20 @@ still the foreground window afterwards. The shared helpers are in
   it when it has not been the foreground since it started, and whether a
   process the test starts takes the foreground at launch depends on the
   desktop's input state, so it skipped on most runs.
+- `TestLaunchAppKeepsTheForeground`, `TestLaunchAppMinimized` and
+  `TestLaunchAppNotepadReportsTheForeground` (`launch_noactivate_test.go`,
+  headless-max ticket 01): a cover fixture is made the foreground with
+  `activate-window`, whose input gives the helper the foreground right, so
+  only the launch's non-activating show state keeps the cover in front.
+  `launch-app` starts the fixture by path, with its state file through
+  `--arg`, its origin through `--env WINUSE_FIXTURE_ORIGIN` and a `--cwd`;
+  the cover must stay the foreground (also a second later), the output is
+  the Window line alone, and the fixture opens at the origin. With
+  `--minimized` the Window opens minimized. Windows 11 Notepad, launched by
+  its AUMID, may take the foreground (packaged activation has no option
+  against it); the test demands only that the `Note: the App took the
+  foreground` line matches what happened, and logs which it was. It skips
+  when Notepad is already running, and ends the Notepad it launched.
 - `TestElementScrollByStepsAndIntoView` (`element_scroll_test.go`): the
   list scrolls by steps (2, then the default 3, which stops at the end),
   fails at the end with "the Element did not scroll; it may already be at

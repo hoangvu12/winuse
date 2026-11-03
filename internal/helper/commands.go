@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -145,7 +147,16 @@ func launchPoll(ctx context.Context) time.Duration {
 // while winuse waits for the App's Window stops the wait with the same
 // exit-130 stop as an Action — WaitForWindow's poll loop is the
 // checkpoint, and the App that already started keeps running.
-func launchApp(store *apps.StoreSource, esc EscWatch) Command {
+//
+// The App starts with a non-activating show state (headless-max ticket 01,
+// apps.StartApp), minimized with --minimized. An App can still take the
+// foreground itself: a packaged App's activation always does, and a child
+// of a helper that holds the foreground right (after a Headed Action's
+// input) may. When the opened Window's App holds the foreground and did not
+// before, a note line follows the Window line. winuse never takes the
+// foreground back.
+func launchApp(s Services, store *apps.StoreSource) Command {
+	esc := s.Esc
 	if esc == nil {
 		esc = noopEscWatch{}
 	}
@@ -154,15 +165,18 @@ func launchApp(store *apps.StoreSource, esc EscWatch) Command {
 		if len(args) == 0 || json.Unmarshal(args, &a) != nil || strings.TrimSpace(a.App) == "" {
 			return "", Fail("app is required", "pass an App name from winuse list-apps or an executable path")
 		}
+		opts, oerr := launchOptions(a)
+		if oerr != nil {
+			return "", oerr
+		}
 		esc.Arm()
 		defer esc.Disarm()
 		// The Window snapshot taken for resolution doubles as the
 		// before-start snapshot for recognizing the opened Window.
-		all, err := win.Collect()
+		before, err := s.Windows()
 		if err != nil {
 			return "", Fail("enumerating windows: "+err.Error(), "")
 		}
-		before := win.VisibleWindows(all)
 
 		sources := apps.Sources{Running: apps.RunningFromWindows(before)}
 		if !apps.LooksLikeIdentifier(a.App) {
@@ -186,32 +200,74 @@ func launchApp(store *apps.StoreSource, esc EscWatch) Command {
 			// opened Window can be recognized.
 			spec.TargetExe = apps.LnkTargetFile(spec.ID)
 		}
+		if spec.Kind != apps.IDExe && apps.ExeOnlyOptions(opts) {
+			return "", exeOnlyRefusal(a.App, spec)
+		}
 
-		fgBefore := win.ForegroundWindow()
+		fgBefore := s.Foreground()
 		// The checkpoint before the App starts: a stop during the name
 		// resolution (the catalog sources can take a second or two) must
 		// not start anything.
 		if esc.Stopped() {
 			return "", escStopError()
 		}
-		pid, err := apps.StartApp(spec)
+		pid, err := s.StartApp(spec, opts)
 		if err != nil {
 			return "", Fail(fmt.Sprintf("failed to launch app %s: %v", a.App, err), "")
 		}
 		window, err := apps.WaitForWindow(ctx, spec, pid, before, fgBefore, launchPoll(ctx),
-			func() ([]win.WindowInfo, error) {
-				all, err := win.Collect()
-				if err != nil {
-					return nil, err
-				}
-				return win.VisibleWindows(all), nil
-			},
-			win.ForegroundWindow, time.Sleep, esc.Stopped)
+			s.Windows, s.Foreground, s.Sleep, esc.Stopped)
 		if err != nil {
 			return "", launchError(err)
 		}
-		return win.FormatWindows([]win.WindowInfo{window}), nil
+		out := win.FormatWindows([]win.WindowInfo{window})
+		if s.selfActivated(window.ID, fgBefore) {
+			out += launchForegroundNote
+		}
+		return out, nil
 	}
+}
+
+// launchForegroundNote is the line launch-app adds after the Window line
+// when the App took the foreground.
+const launchForegroundNote = "Note: the App took the foreground; winuse does not take it back.\n"
+
+// launchOptions checks launch-app's options and turns them into the
+// launcher's: every --env entry is KEY=VALUE, and --cwd is an existing
+// folder named by an absolute path (the CLI resolves a relative one). A
+// refusal starts nothing.
+func launchOptions(a protocol.LaunchArgs) (win.LaunchOptions, *Error) {
+	const usage = "usage: winuse launch-app <name|exe path> [--minimized] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <seconds>]"
+	for _, e := range a.Env {
+		if _, _, err := win.ParseEnvEntry(e); err != nil {
+			return win.LaunchOptions{}, Fail(err.Error()+"; nothing was started", usage)
+		}
+	}
+	if a.Cwd != "" {
+		if !filepath.IsAbs(a.Cwd) {
+			return win.LaunchOptions{}, Fail(fmt.Sprintf("--cwd %q is not an absolute path; nothing was started", a.Cwd), usage)
+		}
+		if fi, err := os.Stat(a.Cwd); err != nil || !fi.IsDir() {
+			return win.LaunchOptions{}, Fail(fmt.Sprintf("--cwd %q is not a folder; nothing was started", a.Cwd), "pass an existing folder")
+		}
+	}
+	return win.LaunchOptions{Args: a.Args, Dir: a.Cwd, Env: a.Env, Minimized: a.Minimized}, nil
+}
+
+// exeOnlyRefusal refuses --arg, --cwd and --env for an App that resolved to
+// a shortcut or a packaged App: the shell starts those with their own
+// command line, so the options would be dropped. A shortcut's target
+// executable is named in the hint.
+func exeOnlyRefusal(app string, spec apps.Spec) *Error {
+	kind := "a packaged App"
+	hint := "launch the App's executable by its path to pass --arg, --cwd or --env"
+	if spec.Kind == apps.IDShortcut {
+		kind = "a shortcut (" + spec.ID + ")"
+		if spec.TargetExe != "" {
+			hint = fmt.Sprintf("launch its executable instead: winuse launch-app %q with the same options", spec.TargetExe)
+		}
+	}
+	return Fail(fmt.Sprintf("--arg, --cwd and --env need an executable, and %s starts %s; nothing was started", app, kind), hint)
 }
 
 // launchError maps launch-app's wait failures to the user-facing line:

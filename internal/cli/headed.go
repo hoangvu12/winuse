@@ -36,6 +36,8 @@ func extractHeaded(args []string) (rest []string, headed bool) {
 		cmdArgs, h = stripHeadedBefore(args[1:], 2) // <window> <element> <value...>
 	case "batch":
 		cmdArgs, h = stripHeadedBatch(args[1:])
+	case "launch-app":
+		cmdArgs, h = stripHeadedLaunch(args[1:])
 	default:
 		cmdArgs, h = stripHeadedBefore(args[1:], -1)
 	}
@@ -59,6 +61,27 @@ func stripHeadedBefore(args []string, n int) (rest []string, headed bool) {
 		}
 		rest = append(rest, tok)
 		seen++
+	}
+	return rest, headed
+}
+
+// stripHeadedLaunch removes --headed tokens from a launch-app command line
+// except where one is the value of --arg, --cwd or --env: the App gets
+// that token verbatim.
+func stripHeadedLaunch(args []string) (rest []string, headed bool) {
+	rest = make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		tok := args[i]
+		if launchValueFlag(tok) && i+1 < len(args) {
+			rest = append(rest, tok, args[i+1])
+			i++
+			continue
+		}
+		if tok == headedFlag {
+			headed = true
+			continue
+		}
+		rest = append(rest, tok)
 	}
 	return rest, headed
 }

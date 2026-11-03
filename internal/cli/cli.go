@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/apps"
 	"github.com/hoangvu12/winuse/internal/protocol"
@@ -55,10 +56,16 @@ commands:
   get-window <window>         print one Window's line (Window ID, App and title),
                                resolved by Window ID or an unambiguous App name
   list-apps                   list running and recently used Apps, with their Windows
-  launch-app <name|exe path> [--timeout <seconds>]
+  launch-app <name|exe path> [--minimized] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <seconds>]
                                start an App by name or executable path, report
                                its Window; waits 15 s, --timeout up to 120 for
-                               a slow App
+                               a slow App. The App starts without taking the
+                               foreground (--minimized: minimized); one that
+                               takes it anyway, as a packaged App does, gets
+                               a "Note: the App took the foreground" line.
+                               --arg (one per argument, quoted for you),
+                               --cwd and --env (over the helper's
+                               environment) need an executable
   get-window-state <window> [--screenshot] [--timeout <seconds>]
                                print a Window's State: its Element tree as text,
                                and with --screenshot a screenshot saved to a file
@@ -505,31 +512,103 @@ func listAppsCmd(args []string) int {
 }
 
 // launchAppCmd starts an App by name or executable path and prints the
-// Window it opened (one list-windows-style line). Paths are resolved
-// against the CLI's working directory — the helper cannot see it.
+// Window it opened (one list-windows-style line, then a note line when the
+// App took the foreground). Paths — the App's and --cwd — are resolved
+// against the CLI's working directory: the helper cannot see it.
 // --timeout widens the 15 s launch budget (up to 120 s) for a slow App.
 func launchAppCmd(args []string) int {
-	const usage = "usage: winuse launch-app <name|exe path> [--timeout <seconds>]"
-	args, timeout, err := takeTimeout("launch-app", args)
+	const usage = "usage: winuse launch-app <name|exe path> [--minimized] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <seconds>]"
+	a, timeout, err := parseLaunchArgs(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, usage)
 		return 2
 	}
-	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, usage)
-		return 2
-	}
-	app := args[0]
-	if apps.LooksLikePath(app) {
-		if abs, err := filepath.Abs(app); err == nil {
-			app = abs
-		}
-	}
-	if err := runWithTimeout("launch-app", protocol.LaunchArgs{App: app}, timeout); err != nil {
+	if err := runWithTimeout("launch-app", a, timeout); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}
 	return 0
+}
+
+// launchValueFlag reports whether a launch-app flag takes the next token
+// as its value, whatever that token looks like.
+func launchValueFlag(tok string) bool {
+	return tok == "--arg" || tok == "--cwd" || tok == "--env"
+}
+
+// parseLaunchArgs parses launch-app's command line in order: the App, and
+// the flags anywhere around it. --arg and --env repeat and keep their
+// order; the token after --arg, --cwd or --env is its value even when it
+// starts with "-" (a flag of the App's own), and --flag=value works too.
+// The App's path and --cwd become absolute here.
+func parseLaunchArgs(args []string) (protocol.LaunchArgs, time.Duration, error) {
+	var a protocol.LaunchArgs
+	var timeout time.Duration
+	var positional []string
+	cwdSet := false
+	for i := 0; i < len(args); i++ {
+		tok := args[i]
+		if isTimeoutFlag(tok) {
+			d, n, err := takeTimeoutAt("launch-app", args, i)
+			if err != nil {
+				return protocol.LaunchArgs{}, 0, err
+			}
+			timeout = d
+			i += n - 1
+			continue
+		}
+		if tok == "--minimized" {
+			a.Minimized = true
+			continue
+		}
+		name, value, inline := strings.Cut(tok, "=")
+		if !launchValueFlag(name) {
+			if strings.HasPrefix(tok, "--") {
+				return protocol.LaunchArgs{}, 0, fmt.Errorf("unknown flag %s", tok)
+			}
+			positional = append(positional, tok)
+			continue
+		}
+		if !inline {
+			if i+1 >= len(args) {
+				return protocol.LaunchArgs{}, 0, fmt.Errorf("%s needs a value", name)
+			}
+			i++
+			value = args[i]
+		}
+		switch name {
+		case "--arg":
+			a.Args = append(a.Args, value)
+		case "--env":
+			if _, _, err := win.ParseEnvEntry(value); err != nil {
+				return protocol.LaunchArgs{}, 0, err
+			}
+			a.Env = append(a.Env, value)
+		case "--cwd":
+			if cwdSet {
+				return protocol.LaunchArgs{}, 0, errors.New("--cwd given twice")
+			}
+			if strings.TrimSpace(value) == "" {
+				return protocol.LaunchArgs{}, 0, errors.New("--cwd needs a folder")
+			}
+			cwdSet = true
+			abs, err := filepath.Abs(value)
+			if err != nil {
+				return protocol.LaunchArgs{}, 0, fmt.Errorf("--cwd %q: %v", value, err)
+			}
+			a.Cwd = abs
+		}
+	}
+	if len(positional) != 1 {
+		return protocol.LaunchArgs{}, 0, errors.New("launch-app takes exactly one App")
+	}
+	a.App = positional[0]
+	if apps.LooksLikePath(a.App) {
+		if abs, err := filepath.Abs(a.App); err == nil {
+			a.App = abs
+		}
+	}
+	return a, timeout, nil
 }
 
 // inputDesktopExitError classifies an unavailable input desktop for the

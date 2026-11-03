@@ -40,6 +40,10 @@ type System struct {
 	// Start starts a browser process detached from the helper (it must
 	// outlive the helper's idle exit) and returns its pid.
 	Start func(path string, args []string) (pid int, err error)
+	// Foreground is the foreground Window and the process that owns it:
+	// browser launch compares it before and after the start. Nil skips the
+	// check.
+	Foreground func() (window uint64, pid uint32)
 	// CloseApp asks every process with this image name to close, the
 	// clean way (taskkill without /F).
 	CloseApp func(exe string) error
