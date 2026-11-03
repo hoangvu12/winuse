@@ -6,6 +6,7 @@ package helper
 //	wait <window> text <text>             the text shows in the Window's UI Automation tree
 //	wait <window> <element> <state>       enabled, disabled, gone, value <v>, checked, unchecked, expanded, collapsed
 //	wait <milliseconds>                   a plain pause
+//	wait notification [--app] [--text]    a toast banner shows a matching notification (notifications.go, ticket 18)
 //
 // A browser Window keeps the Page's route for text (pageWait), decided by
 // get-window-state's own rule: the Window names a browser (PageReader.
@@ -78,7 +79,7 @@ type ElementHolder interface {
 // fails with the same resolution error.
 func (s Services) desktopWait(a protocol.WaitArgs) bool {
 	switch strings.ToLower(strings.TrimSpace(a.For)) {
-	case protocol.WaitWindow, protocol.WaitElement, protocol.WaitMS:
+	case protocol.WaitWindow, protocol.WaitElement, protocol.WaitMS, protocol.WaitNotification:
 		return true
 	case page.WaitText:
 		w, rerr := resolveWindow(s, a.Window)
@@ -132,6 +133,8 @@ func (s Services) runDesktopWait(ctx context.Context, a protocol.WaitArgs) (stri
 	switch kind {
 	case protocol.WaitWindow:
 		return s.waitWindow(wctx, a, want, esc.Stopped)
+	case protocol.WaitNotification:
+		return s.waitNotification(wctx, a, want, esc.Stopped) // notifications.go, desktop-parity ticket 18
 	case page.WaitText:
 		return s.waitTreeText(wctx, a, want, esc.Stopped)
 	}

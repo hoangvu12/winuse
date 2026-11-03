@@ -531,6 +531,19 @@ while open, named by Window ID. The taskbar reads Headless; a click,
 set-value or Secondary Action on any shell Element (an App's taskbar
 button activates its App, the others open flyouts) needs `--headed`, and
 the refusal of an App's button names `activate-window`. Escape closes the
-open tray overflow Headless. Like agent-desktop's shell surfaces,
-without its Windows-key accelerators.
+open tray overflow Headless. Like agent-desktop's shell surfaces;
+its Windows-key accelerators come as `--headed open-shell
+start|notifications|quick-settings|overflow` (desktop-parity 18), like
+its command that opens a system surface, refused with nothing sent without `--headed`
+(press-key still never sends the Windows key).
 Codex lists no shell surface. **extension**.
+`list-notifications`, `notification-action <n> <button>`,
+`notification-dismiss <n>` and `wait notification [--app] [--text]`
+(desktop-parity 18) read the showing toast banners through UI Automation
+and press a toast's button Headless, with agent-desktop's identity guard
+(the notification read again, refused with nothing sent when its App,
+title or text changed); the `ok` says when the press moved the
+foreground. agent-desktop reads the Notification Center, which does not
+open from UI Automation, so older notifications are read there after
+`--headed open-shell notifications`. Codex has no notification tool.
+**extension**.

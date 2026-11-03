@@ -163,6 +163,12 @@ func TestTraceOutput(t *testing.T) {
 			[]string{`"refs":["C:\\Temp\\winuse\\winuse-clipboard-1.png"]`, `"out":"C:\\Temp`}, nil},
 		{"a Window State keeps its line count and screenshot", true, "get-window-state", map[string]any{"window": "101", "screenshot": true}, tree,
 			[]string{`"out_lines":5`, `"refs":["C:\\Users\\me\\AppData\\Local\\Temp\\winuse\\shot 1.png"]`}, []string{"Password", `"out":`}},
+		{"notifications", false, "list-notifications", nil, "1\tSignal\tMum\tthe secret\n",
+			[]string{`"redacted":true`}, []string{"the secret", "Mum"}},
+		{"a notification wait", false, "wait", protocol.WaitArgs{For: protocol.WaitNotification}, "1\tSignal\tMum\tthe secret\n",
+			[]string{`"redacted":true`}, []string{"the secret"}},
+		{"a window wait keeps its line", false, "wait", protocol.WaitArgs{For: protocol.WaitWindow, Value: "Notepad"}, "101\tNotepad\tUntitled\n",
+			[]string{"Untitled"}, nil},
 		{"long output is cut at the cap", false, "list-apps", nil, long,
 			[]string{`"truncated":true`, `"out_len":4100`}, []string{"tail", "é"}},
 	}

@@ -989,6 +989,42 @@ set WINUSE_E2E_SHELL=1
 go test -tags e2e -v -run "TestShell" ./test/e2e
 ```
 
+## Notifications and open-shell (desktop-parity 18)
+
+`test/e2e/notifications_test.go`. `TestListNotificationsOnlyReads` runs
+with the usual opt-in: `list-notifications` and a 1 s `wait
+notification` for a text no toast has, the foreground unchanged.
+
+The toast tests raise their own toasts (`internal/fixture/toast.go`,
+WinRT from Go) from Windows PowerShell's App User Model ID, as the probe
+did (an ID registered only under `HKCU\Software\Classes\AppUserModelId`
+cannot raise toasts: HRESULT 0x80070490), each in the group
+`winuse-e2e`. Cleanup removes that group alone from the Notification
+Center, so the user's own PowerShell notifications stay, and the levels of
+the PowerShell per-App settings key Windows adds, when they were not there
+before. They
+show toasts on the user's screen and skip unless `WINUSE_E2E_TOASTS=1`
+is set as well, and skip when the user's notifications are off (Settings
+> System > Notifications; writing ToastEnabled alone does not turn them
+on). `TestNotificationsPressAndDismissARaisedToast` waits for a toast,
+presses its Beta button with `notification-action` (the test process
+hears the activation) and dismisses a second one;
+`TestNotificationIdentityGuardRefusesAGoneToast` hides a listed toast and
+expects `notification-action` to refuse with nothing sent.
+
+`TestOpenShellRefusesWithoutHeaded` and
+`TestOpenShellOpensTheNotificationPanel` (Win+N, read, a `--headed`
+Escape) change the user's screen: they skip unless `WINUSE_E2E_SHELL=1`.
+On the laptop the second fails: the injected Win+N opened nothing (see
+the ticket), and open-shell says so.
+
+```
+set WINUSE_E2E=1
+set WINUSE_E2E_TOASTS=1
+set WINUSE_E2E_SHELL=1
+go test -tags e2e -v -run "TestNotification|TestListNotifications|TestOpenShell" ./test/e2e
+```
+
 ## Several agents (multi-agent)
 
 These tests run two or three agents, named by `WINUSE_AGENT`, through

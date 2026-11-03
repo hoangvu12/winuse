@@ -23,6 +23,7 @@ func PageUsage(cmd string) string {
 		return "usage: winuse wait <window> selector <css> | text <text> | url <url or pattern with *> | load [domcontentloaded] | download   [--timeout <seconds>]\n" +
 			"       winuse wait <window> <element index | name: | id:> enabled | disabled | gone | value <value> | checked | unchecked | expanded | collapsed   [--timeout <seconds>]\n" +
 			"       winuse wait window <app or title> [--gone] [--timeout <seconds>]\n" +
+			"       winuse wait notification [--app <name>] [--text <text>] [--timeout <seconds>]\n" +
 			"       winuse wait <milliseconds>"
 	case "eval":
 		return "usage: winuse eval <window> <expression>"
@@ -68,7 +69,10 @@ type DialogArgs struct {
 // is set and ignored). element waits for the Element (ElementIndex or Ref)
 // of the Window's latest Window State to reach State, with Value for
 // State value. ms pauses MS milliseconds. text on a Window that is no
-// browser Window waits in its UI Automation tree.
+// browser Window waits in its UI Automation tree. notification
+// (desktop-parity ticket 18) waits for a toast banner to show a
+// notification whose sender holds App and whose title or text holds
+// Value, and names no Window.
 type WaitArgs struct {
 	Window    string `json:"window"`
 	For       string `json:"for"`
@@ -80,6 +84,7 @@ type WaitArgs struct {
 	Ref          string `json:"ref,omitempty"`           // element: name:<text> or id:<AutomationId>
 	State        string `json:"state,omitempty"`         // element: one of WaitStates
 	MS           int    `json:"ms,omitempty"`            // ms: the pause, up to MaxWaitTimeout
+	App          string `json:"app,omitempty"`           // notification: the sender's name (any part); Value is the title or text
 }
 
 // The desktop wait kinds (desktop-parity ticket 03), beside page.go's
@@ -88,6 +93,9 @@ const (
 	WaitWindow  = "window"
 	WaitElement = "element"
 	WaitMS      = "ms"
+	// WaitNotification (desktop-parity ticket 18) waits for a toast banner
+	// whose notification matches App and Value, and names no Window.
+	WaitNotification = "notification"
 )
 
 // WaitStates are the states an element wait waits for; value takes the

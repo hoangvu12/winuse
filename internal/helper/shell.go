@@ -183,7 +183,12 @@ func (s Services) shellElementRefusal(ctx context.Context, w win.WindowInfo, ind
 	}
 	why := "the shell's Elements open flyouts or activate Apps, which takes the user's foreground"
 	hint := retry
-	if flyout, ok := shellFlyoutButtons[el.AutomationId]; ok && w.Shell == win.ShellTaskbar {
+	if w.Shell == win.ShellNotification {
+		// A toast's own buttons have the checked route (notifications.go,
+		// desktop-parity 18): the notification is read again first.
+		why = "a notification's buttons are pressed through winuse's notification commands, which check the notification first"
+		hint = "run winuse list-notifications, then winuse notification-action <n> <button> or winuse notification-dismiss <n>; or " + retry
+	} else if flyout, ok := shellFlyoutButtons[el.AutomationId]; ok && w.Shell == win.ShellTaskbar {
 		why = flyout
 		if el.AutomationId == "StartButton" {
 			hint += ", or winuse --headed press-key " + id + " Control_L+Escape"

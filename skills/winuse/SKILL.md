@@ -165,11 +165,17 @@ battery, Show Desktop) and one button per running App.
   `winuse activate-window <window>`; the refusal names the Window. With
   `--headed` these change the user's screen, so tell the user first; the
   note after `ok` says where the foreground went.
-- `winuse --headed press-key <taskbar> Control_L+Escape` opens Start.
-  `winuse --headed click <taskbar> <chevron>` opens the hidden icons, names
-  the overflow's Window ID, and the overflow keeps the foreground.
-  `winuse press-key <overflow> Escape` closes it Headless; the foreground
-  then stays on the taskbar.
+- `winuse --headed open-shell start|notifications|quick-settings|overflow`
+  opens one and prints its line, to read next; Start and the overflow keep
+  the foreground. Some setups ignore the injected Win+N or Win+A: then it
+  fails with "did not show", and you ask the user to open the panel.
+  `winuse press-key <overflow> Escape` closes the overflow Headless; the
+  foreground then stays on the taskbar.
+- Toasts: `winuse list-notifications [--app <a>] [--text <t>]` numbers
+  the showing banners, `notification-action <n> <button>` and
+  `notification-dismiss <n>` press them Headless (refused when it
+  changed), `wait notification [--app] [--text]` waits for one. A banner
+  lasts about 5 s: act at once. Older ones: `open-shell notifications`.
 
 ## Read the Window State
 
@@ -398,8 +404,8 @@ fits) from the start. Without it they are refused with nothing sent.
 - A right-click menu in a desktop App, such as a WPF App's
   (`click --button right --post` posts it to a classic control, best
   effort, like Posted Keys).
-- The shell: Start, the hidden icons, and the clock's calendar and
-  notification panel, which does not open from UI Automation at all (see
+- The shell: opening Start, the hidden icons or the notification panel
+  (`--headed open-shell`), and any click on it but a toast's buttons (see
   "The taskbar and the shell").
 - Games, canvases and Apps that read raw input: they expose no Elements
   and ignore posted keys, so use `--headed` with `@x,y` points.
@@ -1024,6 +1030,10 @@ browser attach <window> | browser detach <window>   # a running Electron App; as
 clipboard-get [--format text|image|files] [--out <path>]
 clipboard-set <text> | --image <png> | --file <path>... | clipboard-clear
 list-displays | screenshot --display <n>   # --screen <n> is the same
+list-notifications [--app <a>] [--text <t>]   # the showing toast banners, numbered
+notification-action <n> <button> | notification-dismiss <n>   # Headless; refused if the toast changed
+wait notification [--app <a>] [--text <t>] [--timeout <s>]
+open-shell start|notifications|quick-settings|overflow   # needs --headed: changes the user's screen
 record-tree <window> <file>         # development only, records a tree fixture for winuse's own tests
 skill | skill install <dir>         # print this file from the binary, or write it to <dir>\winuse\SKILL.md
 status                              # read-only: versions, helper uptime, lock, integrity, DPI, browsers, agents, Windows build
