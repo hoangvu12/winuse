@@ -261,6 +261,7 @@ included, without the foreground, and prints
 `Screenshot: <path> (WxH px, scale S, display N at X,Y WxH)`. It is for
 looking only: it has no `@x,y` points and no `zoom`. To act at a point,
 take the Window's own screenshot with `get-window-state --screenshot`.
+`--screen <n>` is the same as `--display <n>`.
 
 ## Name an Element
 
@@ -1024,7 +1025,7 @@ browser ext install [browser|all] | browser ext status [browser]
 browser attach <window> | browser detach <window>   # a running Electron App; ask the user first
 clipboard-get [--format text|image|files] [--out <path>]
 clipboard-set <text> | --image <png> | --file <path>... | clipboard-clear
-list-displays | screenshot --display <n>
+list-displays | screenshot --display <n>   # --screen <n> is the same
 record-tree <window> <file>         # development only, records a tree fixture for winuse's own tests
 skill | skill install <dir>         # print this file from the binary, or write it to <dir>\winuse\SKILL.md
 status                              # read-only: versions, helper uptime, lock, integrity, DPI, browsers, agents, Windows build

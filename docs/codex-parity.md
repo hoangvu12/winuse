@@ -459,7 +459,8 @@ foreground and refuse a clipboard owner that does not respond. Codex has
 no clipboard tool. `list-displays` lists the displays (rectangle in
 physical pixels, effective scale, primary) and `screenshot --display <n>`
 captures one without the foreground, like agent-desktop's
-`list-displays` and `screenshot --screen`; the display screenshot binds
+`list-displays` and `screenshot --screen` (which winuse also accepts as
+an alias of `--display`); the display screenshot binds
 no `@x,y` points, which stay per Window. Codex captures Windows only.
 `maximize-window` (desktop-parity 11) maximizes a Window for real, like
 agent-desktop's `maximize`; Windows has no non-activating maximize, so it

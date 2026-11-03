@@ -320,7 +320,9 @@ const usageTail = `);
   screenshot --display <n>    save a screenshot of display n from list-displays
                                and print its path, like get-window-state
                                --screenshot's line; it has no @x,y points or
-                               zoom, which belong to a Window's screenshot
+                               zoom, which belong to a Window's screenshot;
+                               --screen <n> is the same (agent-desktop's
+                               spelling)
   skill                       print the agent skill (SKILL.md) this binary
                                was built with; read it again after an upgrade
   skill install <dir>         write that SKILL.md to <dir>\winuse\SKILL.md, for
