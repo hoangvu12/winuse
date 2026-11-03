@@ -232,6 +232,27 @@ func (s *store) element(agent string, hwnd uint64, index int) (comPtr, bool) {
 	return el, true
 }
 
+// elements returns every live element of the Agent's latest Window State
+// of hwnd, each AddRef'd for the caller (nil entries stay nil), with the
+// Window State Elements they back: the point hit-test's input (point.go,
+// headless-max ticket 11). The caller releases each non-nil element.
+func (s *store) elements(agent string, hwnd uint64) ([]comPtr, []wstate.Element, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.lookupState(agent, hwnd)
+	if st == nil {
+		return nil, nil, false
+	}
+	out := make([]comPtr, len(st.elems))
+	for i, el := range st.elems {
+		if el != nil {
+			s.addRef(el)
+			out[i] = el
+		}
+	}
+	return out, st.elements, true
+}
+
 // state returns the Elements of the Agent's latest stored Window State of
 // hwnd: the space name:/id: references resolve against (ticket 11). Pure
 // metadata: no COM, no worker; the live Element behind a resolved Index

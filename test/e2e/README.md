@@ -379,7 +379,20 @@ and the fixture not raised above the cover). Then a Batch
 `click id:button-click then press-key Control_L+a then click
 id:checkbox-notify` stops with "batch stopped at Action 2 (press-key)"
 and nothing was sent: the first click took effect, no key reached the
-fixture, and the checkbox step never ran.
+fixture, and the checkbox step never ran. Its click at a point aims at the
+canvas, which offers no click route, so headless-max ticket 11 refuses it
+too.
+
+`TestPointFormsActHeadlessOnTheCoveredWindow` (`point_headless_test.go`,
+headless-max ticket 11): on the covered fixture, after a screenshot, a
+left click at the Click Me button's centre and at the Alpha list item's,
+`set-value on` at the checkbox's and a scroll of one notch down and up at
+the list each act on the fixture's own Element under the point (the
+fixture records the button, the selection, the checkbox and the list's
+first visible item: 3 after one notch, three steps, then 0). Each `ok`
+names the Element and the point, the cover stays the foreground window,
+the pointer does not move and no banner shows. A click at the canvas is
+refused with the `--headed` retry and reaches no canvas click.
 
 Run only these tests:
 

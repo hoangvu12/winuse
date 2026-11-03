@@ -84,7 +84,7 @@ is not, which is why ADR 0011 made Posted Keys opt-in.
 | invoke-menu on classic menu bars | 1 | 08 | done |
 | ContextMenu Secondary Action | 1 | 09 | planned |
 | select-text | 1 | 10 | done |
-| Point forms resolve to an Element in the target Window | 1 | 11 | planned |
+| Point forms resolve to an Element in the target Window | 1 | 11 | done |
 | Posted Clicks and `scroll @x,y --post` | 2 | 12 | planned |
 | Caret-aware typing into Text-pattern fields | 1 | 13 | planned |
 | Headless Actions on minimized Windows | 1 | 14 | done |

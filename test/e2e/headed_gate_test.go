@@ -61,7 +61,9 @@ func TestHeadedOnlyActionsAreRefusedWithoutTheFlag(t *testing.T) {
 	root := strconv.Itoa(indexes[fixture.ElemWindow])
 
 	// The points pointer_test.go aims at: the canvas, the hover band under
-	// the menu bar, and a drag across the canvas.
+	// the menu bar, and a drag across the canvas. A left click at a point
+	// resolves to the Element there since headless-max ticket 11; on the
+	// canvas, which offers no click route, it is still refused.
 	point := func(cx, cy int32) string {
 		x, y := shotCoordsOfClient(t, fix, window, info.scale, cx, cy)
 		return fmt.Sprintf("@%d,%d", x, y)
