@@ -2,9 +2,9 @@ package helper
 
 // The Windows an Action opened (desktop-parity 02, agent-desktop's
 // `data.surfaces`). After click, perform-secondary-action Expand or
-// Select, press-key, set-value and a Batch, winuse compares the target
-// App's Windows before and after a short settle, and adds one line per
-// change after the Action's `ok`:
+// Select, press-key, set-value, invoke-menu and a Batch, winuse
+// compares the target App's Windows before and after a short settle,
+// and adds one line per change after the Action's `ok`:
 //
 //	Note: a new Window opened: <Window ID> <App> "<title>"
 //	Note: window <Window ID> closed
@@ -56,7 +56,7 @@ const notePrefix = "Note: "
 // Action whose opened and closed Windows are reported.
 func reportsOpened(name string, args json.RawMessage) bool {
 	switch name {
-	case "click", "press-key", "set-value", "batch":
+	case "click", "press-key", "set-value", "invoke-menu", "batch":
 		return true
 	case "perform-secondary-action":
 		var a protocol.SecondaryActionArgs

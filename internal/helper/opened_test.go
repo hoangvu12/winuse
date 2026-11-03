@@ -178,6 +178,7 @@ func TestOpenedOnlyAfterTheListedActions(t *testing.T) {
 		{"press-key", nil, true},
 		{"set-value", nil, true},
 		{"batch", nil, true},
+		{"invoke-menu", nil, true},
 		{"perform-secondary-action", json.RawMessage(`{"action":"Select"}`), true},
 		{"perform-secondary-action", json.RawMessage(`{"action":"Collapse"}`), false},
 		{"scroll", nil, false},
