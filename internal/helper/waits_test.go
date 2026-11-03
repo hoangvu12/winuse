@@ -574,6 +574,22 @@ func TestDesktopWaitIsABatchStep(t *testing.T) {
 	}
 }
 
+// A pause is a Batch step too, and keeps its Window ID guard there.
+func TestPauseIsABatchStep(t *testing.T) {
+	d := newWaitDesk()
+	step, _ := json.Marshal(protocol.WaitArgs{For: "ms", MS: 1250})
+	out, e := runCommand(t, CommandsWith(d.services()), "batch", protocol.BatchArgs{Window: "101", Steps: []protocol.Step{{Kind: "wait", Args: step}}})
+	if e != nil || out != "Action 1 (wait): "+okOutput || d.slept() != 1250*time.Millisecond {
+		t.Fatalf("batch pause = %q, %v after %s", out, e, d.slept())
+	}
+	d = newWaitDesk()
+	step, _ = json.Marshal(protocol.WaitArgs{For: "ms", MS: 203})
+	_, e = runCommand(t, CommandsWith(d.services()), "batch", protocol.BatchArgs{Window: "101", Steps: []protocol.Step{{Kind: "wait", Args: step}}})
+	if e == nil || !strings.Contains(e.Out, "203 is the Window ID") || len(d.sleeps) != 0 {
+		t.Errorf("a Window ID's pause in a Batch = %v after %v", e, d.sleeps)
+	}
+}
+
 // TestAWaitEndsAtItsDeadlineWhenAPollBlocks: a poll that never answers (a
 // Window list read stuck on a window, a UIA read stuck in a provider) does
 // not hold the wait past its timeout.
