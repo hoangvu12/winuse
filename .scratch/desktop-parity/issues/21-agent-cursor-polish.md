@@ -24,3 +24,7 @@ Kept as written.
 ### 2026-11-03: folded into multi-agent 04
 
 The multi-agent plan rewrites the Agent Cursor as one cursor per agent, placed like cua's. This ticket's caret and label/colour options are now part of `../../multi-agent/issues/04-cursor-per-agent.md`, so the cursor code is changed once.
+
+### 2026-11-03: landed with multi-agent 04 and 11
+
+The colour option landed as `WINUSE_CURSOR_COLOR`, and the label as the Agent's `WINUSE_AGENT` name (multi-agent 04). The caret is `../../multi-agent/issues/11-insertion-caret.md`.

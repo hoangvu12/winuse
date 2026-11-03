@@ -29,6 +29,10 @@ import (
 // EnvVar names the override: the Agent's name, which is also its label.
 const EnvVar = "WINUSE_AGENT"
 
+// ColorEnvVar names the Agent Cursor's colour option (multi-agent ticket
+// 04): "#RRGGBB". The helper parses it; an unreadable value is ignored.
+const ColorEnvVar = "WINUSE_CURSOR_COLOR"
+
 // DefaultID is the helper's name for requests that carry no identity: one
 // shared Agent, today's behaviour.
 const DefaultID = "default"
@@ -42,6 +46,7 @@ const maxName = 64
 type Identity struct {
 	ID    string
 	Label string
+	Color string // the WINUSE_CURSOR_COLOR the Agent asked for, unparsed; "" picks one
 }
 
 // Proc is one process as the walk sees it.
@@ -126,6 +131,15 @@ func FromProcess(p Proc, start int64) Identity {
 // Resolve is the calling Agent: WINUSE_AGENT when set, else the walk from
 // this process, else no identity.
 func Resolve() Identity {
+	id := resolveIdentity()
+	if id.ID != "" {
+		id.Color = strings.TrimSpace(os.Getenv(ColorEnvVar))
+	}
+	return id
+}
+
+// resolveIdentity is Resolve without the colour.
+func resolveIdentity() Identity {
 	if id, ok := FromEnv(os.Getenv(EnvVar)); ok {
 		return id
 	}

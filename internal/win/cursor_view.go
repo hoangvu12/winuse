@@ -4,8 +4,9 @@ package win
 // layered windows on the UI thread — the dart with its label pill, the
 // click ripple, and the target's highlight — each the size of what it
 // shows and updated with UpdateLayeredWindow from a 32bpp top-down
-// premultiplied DIB section. They are WS_EX_LAYERED|TRANSPARENT|TOPMOST|
-// NOACTIVATE|TOOLWINDOW popups, shown with SW_SHOWNOACTIVATE and
+// premultiplied DIB section. They are WS_EX_LAYERED|TRANSPARENT|
+// NOACTIVATE|TOOLWINDOW popups, not topmost but placed just above the
+// Window the Action targets (cursor_zorder.go), shown with SW_SHOWNOACTIVATE and
 // answering WM_NCHITTEST with HTTRANSPARENT: never activated, never in
 // the way of a click. WDA_EXCLUDEFROMCAPTURE keeps them out of other
 // software's captures where supported, best effort like the banner;
@@ -43,6 +44,7 @@ package win
 import (
 	"errors"
 	"fmt"
+	"image/color"
 	"math"
 	"sync"
 	"syscall"
@@ -157,7 +159,7 @@ type layeredWin struct {
 // newLayeredWin creates one hidden cursor window of class cls.
 func newLayeredWin(hMod uintptr, cls *uint16) (*layeredWin, error) {
 	hwnd, _, err := procCreateWindowExW.Call(
-		uintptr(wsExLayered|wsExTransparent|wsExTopmost|wsExToolWindow|wsExNoActivate),
+		uintptr(wsExLayered|wsExTransparent|wsExToolWindow|wsExNoActivate),
 		uintptr(unsafe.Pointer(cls)), 0, uintptr(wsPopup),
 		0, 0, 1, 1, 0, 0, hMod, 0)
 	if hwnd == 0 {
@@ -244,12 +246,6 @@ func (l *layeredWin) hide() bool {
 	return true
 }
 
-// raise re-asserts the window at the top of the topmost band (other
-// topmost windows, the taskbar included, may have been raised since).
-func (l *layeredWin) raise() {
-	procSetWindowPos.Call(l.hwnd, hwndTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate)
-}
-
 // destroy destroys the window and frees its GDI objects.
 func (l *layeredWin) destroy() {
 	procDestroyWindow.Call(l.hwnd)
@@ -265,6 +261,8 @@ func (l *layeredWin) destroy() {
 // cursorWin is the Win32 cursorView.
 type cursorWin struct {
 	arrow, ripple, outline *layeredWin
+
+	accent color.RGBA // the dart's fill, the ripple and the outline: this Agent's colour
 
 	look      cursorLook
 	lookOK    bool
@@ -284,9 +282,9 @@ type cursorWin struct {
 	hidden    bool          // something was hidden since the last composed
 }
 
-// newCursorWin registers the class and creates the three hidden windows.
-// Runs on the UI thread.
-func newCursorWin() (*cursorWin, error) {
+// newCursorWin registers the class and creates the three hidden windows,
+// drawn in accent. Runs on the UI thread.
+func newCursorWin(accent color.RGBA) (*cursorWin, error) {
 	hMod, _, _ := procGetModuleHandleW.Call(0)
 	cls, _ := windows.UTF16PtrFromString(AgentCursorClassName)
 	wc := wndclassExW{
@@ -299,7 +297,7 @@ func newCursorWin() (*cursorWin, error) {
 		!errors.Is(err, windows.ERROR_CLASS_ALREADY_EXISTS) {
 		return nil, fmt.Errorf("registering the Agent Cursor window class: %w", err)
 	}
-	w := &cursorWin{fonts: map[int32]uintptr{}}
+	w := &cursorWin{accent: accent, fonts: map[int32]uintptr{}}
 	var made []*layeredWin
 	for _, slot := range []**layeredWin{&w.outline, &w.ripple, &w.arrow} {
 		l, err := newLayeredWin(hMod, cls)
@@ -453,7 +451,7 @@ func (w *cursorWin) renderArrow(look cursorLook) bool {
 	}
 	w.card = append(w.card[:0], s.pix...)
 	s.clear()
-	s.drawDart(w.layout.Tip, look.Scale, cursorAccent, cursorRimColor)
+	s.drawDart(w.layout.Tip, look.Scale, w.accent, cursorRimColor)
 	w.glyph = append(w.glyph[:0], s.pix...)
 	return true
 }
@@ -531,7 +529,7 @@ func (w *cursorWin) showRipple(at fpoint, phase, scale float64) {
 	x, y := cx-n/2, cy-n/2
 	s := &w.ripple.pix
 	s.clear()
-	s.drawRipple(fpoint{X: at.X - float64(x), Y: at.Y - float64(y)}, phase, scale, cursorAccent)
+	s.drawRipple(fpoint{X: at.X - float64(x), Y: at.Y - float64(y)}, phase, scale, w.accent)
 	w.ripple.present(x, y, 1)
 }
 
@@ -561,11 +559,11 @@ func (w *cursorWin) showOutline(target Rect, opacity, pop, scale float64) {
 		} else {
 			s := &w.outline.pix
 			s.clear()
-			s.drawOutline(local(), scale, pop, cursorAccent)
+			s.drawOutline(local(), scale, pop, w.accent)
 			w.outPop = pop
 		}
 	} else if w.outPos.Width() > 0 && pop != w.outPop {
-		w.outline.pix.popOutline(local(), scale, w.outPop, pop, cursorAccent)
+		w.outline.pix.popOutline(local(), scale, w.outPop, pop, w.accent)
 		w.outPop = pop
 	}
 	if w.outPos.Width() <= 0 {
@@ -595,10 +593,10 @@ func (w *cursorWin) composed() {
 	}
 }
 
-func (w *cursorWin) raise() {
-	w.outline.raise()
-	w.ripple.raise()
-	w.arrow.raise() // the arrow last: on top of its own ripple and outline
+// raise puts the windows just above anchor (cursor_zorder.go), the arrow
+// on top of its own ripple and outline.
+func (w *cursorWin) raise(anchor uint64) {
+	placeAbove(uintptr(anchor), w.outline, w.ripple, w.arrow)
 }
 
 func (w *cursorWin) schedule(d time.Duration) {

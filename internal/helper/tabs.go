@@ -430,7 +430,7 @@ func (s Services) tabHeadless(ctx context.Context, tw tabWindow, tab *page.Tab, 
 	}
 	out, e, delivered := act(ctx)
 	if shown && delivered {
-		s.cursorClick(rect)
+		s.cursorClick(ctx, tw.w, rect)
 	}
 	if esc.Stopped() {
 		return "", escStopError()
@@ -457,7 +457,7 @@ func (s Services) tabCursor(ctx context.Context, tw tabWindow, tab *page.Tab, ve
 			}
 		}
 	}
-	return s.cursorTravelRect(tw.w, target, label)
+	return s.cursorTravelRect(ctx, tw.w, target, label)
 }
 
 // elementBounder reads an Element's live bounds: *uia.Client (a

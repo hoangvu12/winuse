@@ -1047,6 +1047,7 @@ type fakeViewState struct {
 	armed      bool
 	period     time.Duration
 	destroyed  bool
+	anchors    []uint64 // every raise's anchor, in order
 }
 
 func (v *fakeCursorView) with(f func(s *fakeViewState)) {
@@ -1076,7 +1077,9 @@ func (v *fakeCursorView) showOutline(_ Rect, _, pop, _ float64) {
 }
 func (v *fakeCursorView) hideOutline() { v.with(func(s *fakeViewState) { s.outline = false }) }
 func (v *fakeCursorView) composed()    { v.with(func(s *fakeViewState) { s.composes++ }) }
-func (v *fakeCursorView) raise()       {}
+func (v *fakeCursorView) raise(anchor uint64) {
+	v.with(func(s *fakeViewState) { s.anchors = append(s.anchors, anchor) })
+}
 func (v *fakeCursorView) schedule(d time.Duration) {
 	v.with(func(s *fakeViewState) { s.armed, s.period = true, d })
 }
@@ -1169,11 +1172,11 @@ func TestTravelReturnsWhenTheTravelCompletes(t *testing.T) {
 	}
 	// The same label again travels with the cursor; a new one waits.
 	other := Rect{Left: 100, Top: 600, Right: 200, Bottom: 640}
-	c.postWait(func() { c.ui.travel(origin, other, `click "Save"`, make(chan struct{})) }, time.Second)
+	c.postWait(func() { c.ui.travel(0, origin, other, `click "Save"`, make(chan struct{})) }, time.Second)
 	if st := view.state(); st.labelOp != 1 {
 		t.Errorf("the same label travels shown: labelOp %v", st.labelOp)
 	}
-	c.postWait(func() { c.ui.travel(origin, target, `click "Open"`, make(chan struct{})) }, time.Second)
+	c.postWait(func() { c.ui.travel(0, origin, target, `click "Open"`, make(chan struct{})) }, time.Second)
 	if st := view.state(); st.labelOp != 0 || st.look.Label != `click "Open"` {
 		t.Errorf("a new label is held back: labelOp %v, label %q", st.labelOp, st.look.Label)
 	}
@@ -1223,11 +1226,11 @@ func TestTravelSupersededReleasesTheEarlierWait(t *testing.T) {
 	defer c.Close()
 	first := make(chan struct{})
 	c.post(func() {
-		c.ui.travel(Rect{Right: 1000, Bottom: 800}, Rect{Left: 10, Top: 10, Right: 20, Bottom: 20}, "a", first)
+		c.ui.travel(0, Rect{Right: 1000, Bottom: 800}, Rect{Left: 10, Top: 10, Right: 20, Bottom: 20}, "a", first)
 	})
 	second := make(chan struct{})
 	c.post(func() {
-		c.ui.travel(Rect{Right: 1000, Bottom: 800}, Rect{Left: 900, Top: 700, Right: 920, Bottom: 720}, "b", second)
+		c.ui.travel(0, Rect{Right: 1000, Bottom: 800}, Rect{Left: 900, Top: 700, Right: 920, Bottom: 720}, "b", second)
 	})
 	select {
 	case <-first:

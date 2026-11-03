@@ -361,7 +361,7 @@ func (s Services) runHeadless(ctx context.Context, ref string, actor HeadlessAct
 	var verify *uia.VerifyError
 	if shown && (err == nil || errors.As(err, &verify)) {
 		// Delivered (a failed read-back was still delivered): the ripple.
-		s.cursorClick(rect)
+		s.cursorClick(ctx, w, rect)
 	}
 	if esc.Stopped() {
 		return "", escStopError()
@@ -425,7 +425,7 @@ func (s Services) refusals(w win.WindowInfo, adminHint string, minimizedOK bool)
 // about to happen, and returns where it went for the click effect. An
 // empty target falls back to the Window's own bounds. Best effort, like
 // cursorTravel.
-func (s Services) cursorTravelRect(w win.WindowInfo, target win.Rect, label string) (win.Rect, bool) {
+func (s Services) cursorTravelRect(ctx context.Context, w win.WindowInfo, target win.Rect, label string) (win.Rect, bool) {
 	if s.Cursor == nil {
 		return win.Rect{}, false
 	}
@@ -435,7 +435,7 @@ func (s Services) cursorTravelRect(w win.WindowInfo, target win.Rect, label stri
 	if target.Width() <= 0 || target.Height() <= 0 {
 		return win.Rect{}, false
 	}
-	cursorBestEffort("travelling", func() { s.Cursor.Travel(w.Bounds, target, label) })
+	cursorBestEffort("travelling", func() { s.cursorFor(ctx, w).Travel(w.Bounds, target, label) })
 	return target, true
 }
 
@@ -457,16 +457,16 @@ func (s Services) cursorTravel(ctx context.Context, actor HeadlessActor, w win.W
 	if rect.Width() <= 0 || rect.Height() <= 0 {
 		return win.Rect{}, false
 	}
-	cursorBestEffort("travelling", func() { s.Cursor.Travel(w.Bounds, rect, cursorLabel(verb, name)) })
+	cursorBestEffort("travelling", func() { s.cursorFor(ctx, w).Travel(w.Bounds, rect, cursorLabel(verb, name)) })
 	return rect, true
 }
 
 // cursorClick plays the Agent Cursor's click effect over the Element.
-func (s Services) cursorClick(rect win.Rect) {
+func (s Services) cursorClick(ctx context.Context, w win.WindowInfo, rect win.Rect) {
 	if s.Cursor == nil {
 		return
 	}
-	cursorBestEffort("clicking", func() { s.Cursor.Click(rect) })
+	cursorBestEffort("clicking", func() { s.cursorFor(ctx, w).Click(rect) })
 }
 
 // cursorBestEffort runs one cursor call so that it can never fail the

@@ -155,7 +155,7 @@ func (s Services) runKeyHeadless(ctx context.Context, w win.WindowInfo, run keyR
 	}
 	defer armPassive(esc)()
 
-	rect, shown := s.cursorTravelRect(w, run.target, run.label)
+	rect, shown := s.cursorTravelRect(ctx, w, run.target, run.label)
 	if esc.Stopped() {
 		return "", escStopBeforeActError()
 	}
@@ -164,7 +164,7 @@ func (s Services) runKeyHeadless(ctx context.Context, w win.WindowInfo, run keyR
 	if shown && !errors.As(err, &notSent) {
 		// Delivered, or may have been: the ripple. A route that sent
 		// nothing shows none.
-		s.cursorClick(rect)
+		s.cursorClick(ctx, w, rect)
 	}
 	if esc.Stopped() {
 		return "", escStopError()
