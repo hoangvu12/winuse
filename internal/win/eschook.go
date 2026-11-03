@@ -42,6 +42,16 @@ package win
 // waiting scope never holds the running scope's latch, so a request that
 // arrives after the press starts clean: Esc stops what is in flight, it is
 // not a lock.
+//
+// Yield to the user (multi-agent ticket 08): while armed, that is while a
+// Headed Action uses the real keyboard and pointer, any other real
+// (non-injected) key press or mouse button or wheel stops it too, like
+// Esc: the user reached for their keyboard or mouse, and winuse yields.
+// The input passes through untouched (it is the user's), and the latch
+// records that it was a yield, not Esc (Yielded), so the agent is told
+// the user took over. A WH_MOUSE_LL hook on the same thread sees the
+// mouse; moves are not counted (unmeasured whether SetCursorPos reads as
+// injected there). Waiting requests are not stopped by a yield.
 
 import (
 	"errors"
@@ -63,7 +73,21 @@ const (
 	vkEscape = 0x1B
 
 	llkhfInjected = 0x10
+
+	whMouseLL     = 14
+	llmhfInjected = 0x01
+	wmXButtonDown = 0x020B
 )
+
+// msllHookStruct is the Win32 MSLLHOOKSTRUCT: the point, the mouse data,
+// the flags, the time and the extra info.
+type msllHookStruct struct {
+	X, Y      int32
+	MouseData uint32
+	Flags     uint32
+	Time      uint32
+	ExtraInfo uintptr
+}
 
 var (
 	procSetWindowsHookExW   = user32.NewProc("SetWindowsHookExW")
@@ -106,6 +130,10 @@ type escLatch struct {
 	// gen counts the presses recorded in any scope or wait: the stop
 	// generation waiting requests compare.
 	gen atomic.Uint64
+	// yielded marks the latched stop as the user's other input during an
+	// armed scope (a key or a mouse button), not Esc; it clears with the
+	// latch.
+	yielded atomic.Bool
 }
 
 // beginWait enters a waiting scope and returns the stop generation now.
@@ -158,6 +186,7 @@ func (l *escLatch) leave(count, other *atomic.Int32) {
 		if count.CompareAndSwap(cur, cur-1) {
 			if cur == 1 && other.Load() == 0 {
 				l.pressed.Store(false)
+				l.yielded.Store(false)
 			}
 			return
 		}
@@ -175,7 +204,13 @@ func (l *escLatch) stopped() bool { return l.pressed.Load() }
 // key-up then passes too: swallowUp stays false). Everything else — other
 // keys, injected events, a press while nothing is armed — passes through.
 func (l *escLatch) onKey(msg uint32, vk, flags uint32) bool {
-	if vk != vkEscape || flags&llkhfInjected != 0 {
+	if flags&llkhfInjected != 0 {
+		return false
+	}
+	if vk != vkEscape {
+		if msg == wmKeyDown || msg == wmSysKeyDown {
+			l.yield()
+		}
 		return false
 	}
 	switch msg {
@@ -202,6 +237,28 @@ func (l *escLatch) onKey(msg uint32, vk, flags uint32) bool {
 		return l.swallowUp.Swap(false)
 	}
 	return false
+}
+
+// yield latches the stop for the user's own input during an armed scope
+// (see the file comment). Outside armed scopes it does nothing: between
+// commands and in Headless scopes the user's input is theirs.
+func (l *escLatch) yield() {
+	if l.armed.Load() > 0 && !l.pressed.Load() {
+		l.yielded.Store(true)
+		l.pressed.Store(true)
+	}
+}
+
+// onMouse decides one mouse event: a real button press or wheel turn
+// during an armed scope yields. Mouse events always pass through.
+func (l *escLatch) onMouse(msg, flags uint32) {
+	if flags&llmhfInjected != 0 {
+		return
+	}
+	switch msg {
+	case wmLButtonDown, wmRButtonDown, wmMButtonDown, wmXButtonDown, wmMouseWheel, wmMouseHWheel:
+		l.yield()
+	}
 }
 
 // escHookResult is one keyboard event's verdict.
@@ -240,6 +297,8 @@ type EscWatcher struct {
 	own      *uiThread          // non-nil: it owns a fallback UI thread
 	hook     uintptr            // the hook handle; owned by the UI thread
 	callback uintptr            // the NewCallback shim (one per watcher)
+	mouse    uintptr            // the WH_MOUSE_LL hook (yield to the user); 0 when it did not install
+	mouseCB  uintptr            // its NewCallback shim
 	hookErr  error              // install's recorded failure
 }
 
@@ -297,6 +356,18 @@ func (w *EscWatcher) install() {
 		return
 	}
 	w.hook = h
+	// The mouse half of yielding to the user: best effort, a Headed
+	// Action just does not yield to the mouse without it.
+	w.mouseCB = syscall.NewCallback(func(nCode, wParam uintptr, lParam unsafe.Pointer) uintptr {
+		if int32(nCode) >= 0 {
+			w.latch.onMouse(uint32(wParam), (*msllHookStruct)(lParam).Flags)
+		}
+		r, _, _ := procCallNextHookEx.Call(0, nCode, wParam, uintptr(lParam))
+		return r
+	})
+	if m, _, _ := procSetWindowsHookExW.Call(whMouseLL, w.mouseCB, hMod, 0); m != 0 {
+		w.mouse = m
+	}
 }
 
 // installed reports install's outcome to the constructor.
@@ -336,6 +407,10 @@ func (w *EscWatcher) unhook() {
 	if w.hook != 0 {
 		procUnhookWindowsHookEx.Call(w.hook)
 		w.hook = 0
+	}
+	if w.mouse != 0 {
+		procUnhookWindowsHookEx.Call(w.mouse)
+		w.mouse = 0
 	}
 }
 
@@ -385,6 +460,16 @@ func (w *EscWatcher) Stopped() bool {
 		return false
 	}
 	return w.latch.stopped()
+}
+
+// Yielded reports whether the latched stop was the user's own key or
+// mouse input during a Headed Action rather than Esc. A nil watcher never
+// yielded.
+func (w *EscWatcher) Yielded() bool {
+	if w == nil {
+		return false
+	}
+	return w.latch.yielded.Load()
 }
 
 // BeginWait enters a waiting scope for a request about to wait for its

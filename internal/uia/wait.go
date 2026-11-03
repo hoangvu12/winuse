@@ -50,7 +50,7 @@ var errNoCOMThread = errors.New("the UIA worker has no COM thread")
 func (c *Client) PeekTree(ctx context.Context, hwnd uint64, title, app string, budget time.Duration) (*wstate.Tree, error) {
 	var res *captureResult
 	var jobErr error
-	err := c.Run(ctx, func(w *worker, _ *run) {
+	err := c.RunFor(ctx, hwnd, func(w *worker, _ *run) {
 		if w.thread == nil {
 			jobErr = errNoCOMThread
 			return
@@ -102,7 +102,7 @@ type Held interface {
 func (c *Client) HoldElement(ctx context.Context, hwnd uint64, index int) (Held, error) {
 	var el comPtr
 	var jobErr error
-	err := c.Run(ctx, func(_ *worker, _ *run) {
+	err := c.RunFor(ctx, hwnd, func(_ *worker, _ *run) {
 		el, jobErr = c.lookup(ctx, hwnd, index)
 	})
 	if err != nil {
@@ -111,7 +111,7 @@ func (c *Client) HoldElement(ctx context.Context, hwnd uint64, index int) (Held,
 	if jobErr != nil {
 		return nil, jobErr
 	}
-	return &heldElement{c: c, el: el}, nil
+	return &heldElement{c: c, hwnd: hwnd, el: el}, nil
 }
 
 // errHoldEnded is a State read after Release: a wait's poll still running
@@ -124,7 +124,8 @@ var errHoldEnded = errors.New("the wait that held the Element has ended")
 // read's job, and the last of Release and the reads in flight releases it,
 // on a worker.
 type heldElement struct {
-	c *Client
+	c    *Client
+	hwnd uint64 // the Window whose App's worker reads the Element
 
 	mu       sync.Mutex
 	el       comPtr // nil once released
@@ -135,7 +136,7 @@ type heldElement struct {
 func (h *heldElement) State(ctx context.Context) (ElementState, error) {
 	var st ElementState
 	var jobErr error
-	err := h.c.Run(ctx, func(w *worker, _ *run) {
+	err := h.c.RunFor(ctx, h.hwnd, func(w *worker, _ *run) {
 		el := h.use()
 		if el == nil {
 			jobErr = errHoldEnded
@@ -182,8 +183,10 @@ func (h *heldElement) done(el comPtr) {
 
 // Release releases the Element on the UIA worker, off the caller's
 // goroutine: a worker busy with another request's read must not hold up
-// the wait's answer. With a read in flight, that read releases it when it
-// ends. A worker that winds down first leaks the reference.
+// the wait's answer, and the worker of the calls that name no Window
+// does it, so a hung App's wedged worker cannot hold it. With a read in
+// flight, that read releases it when it ends. A worker that winds down
+// first leaks the reference.
 func (h *heldElement) Release() {
 	h.mu.Lock()
 	el := h.el

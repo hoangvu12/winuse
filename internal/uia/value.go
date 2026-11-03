@@ -475,7 +475,7 @@ func propString(el comPtr, prop uint32) string {
 // Toggle with the value on or off (parseToggleValue).
 func (c *Client) SetValue(ctx context.Context, hwnd uint64, index int, value string) error {
 	var jobErr error
-	err := c.Run(ctx, func(w *worker, _ *run) {
+	err := c.RunFor(ctx, hwnd, func(w *worker, _ *run) {
 		el, lerr := c.lookup(ctx, hwnd, index)
 		if lerr != nil {
 			jobErr = lerr
@@ -501,7 +501,7 @@ func (c *Client) SetValue(ctx context.Context, hwnd uint64, index int, value str
 // Element under it and writes exactly like the Element Index form.
 func (c *Client) SetValueAtPoint(ctx context.Context, x, y int32, value string) error {
 	var jobErr error
-	err := c.Run(ctx, func(w *worker, _ *run) {
+	err := c.RunFor(ctx, win.RootWindowAt(x, y), func(w *worker, _ *run) {
 		if w.thread == nil {
 			return // fake workers carry no COM thread; tests exercise the miss paths
 		}
@@ -525,7 +525,7 @@ func (c *Client) SetValueAtPoint(ctx context.Context, x, y int32, value string) 
 // be canonical (CanonicalSecondaryAction).
 func (c *Client) PerformSecondaryActionAtPoint(ctx context.Context, x, y int32, action string) error {
 	var jobErr error
-	err := c.Run(ctx, func(w *worker, _ *run) {
+	err := c.RunFor(ctx, win.RootWindowAt(x, y), func(w *worker, _ *run) {
 		if w.thread == nil {
 			return // fake workers carry no COM thread; tests exercise the miss paths
 		}
@@ -551,7 +551,7 @@ func (c *Client) PerformSecondaryActionAtPoint(ctx context.Context, x, y int32, 
 // (CanonicalSecondaryAction).
 func (c *Client) PerformSecondaryAction(ctx context.Context, hwnd uint64, index int, action string) error {
 	var jobErr error
-	err := c.Run(ctx, func(w *worker, _ *run) {
+	err := c.RunFor(ctx, hwnd, func(w *worker, _ *run) {
 		el, lerr := c.lookup(ctx, hwnd, index)
 		if lerr != nil {
 			jobErr = lerr

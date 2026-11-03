@@ -18,6 +18,8 @@
 // (AllowSetForegroundWindow), as the user's foreground App would have
 // to for a background App to take it. -ignore-close makes the main window
 // ignore WM_CLOSE, as an App asking to save keeps its Window open.
+// -hang-on-click <ms> makes it a hung App: its UI thread stops answering
+// for that long after Click Me is invoked.
 //
 // It is a plain GUI app: it takes over the desktop when run. It is never
 // run by agents; only the user starts it (directly, or through the opt-in
@@ -30,6 +32,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/fixture"
 )
@@ -40,9 +43,10 @@ func main() {
 	activateOnRestore := flag.Bool("activate-on-restore", false, "bring the main window to the foreground whenever it is restored from minimized")
 	allowForeground := flag.Uint("allow-foreground", 0, "process ID allowed to set the foreground window whenever this fixture is activated")
 	ignoreClose := flag.Bool("ignore-close", false, "keep the main window open on WM_CLOSE, as an App asking to save does")
+	hangOnClick := flag.Uint("hang-on-click", 0, "milliseconds the UI thread stops answering after Click Me is invoked, as a hung App")
 	flag.Parse()
 	if *state == "" {
-		fmt.Fprintln(os.Stderr, "usage: winusefixture -state <path> [-origin x,y] [-activate-on-restore] [-allow-foreground pid] [-ignore-close] (or set WINUSE_FIXTURE_STATE)")
+		fmt.Fprintln(os.Stderr, "usage: winusefixture -state <path> [-origin x,y] [-activate-on-restore] [-allow-foreground pid] [-ignore-close] [-hang-on-click ms] (or set WINUSE_FIXTURE_STATE)")
 		os.Exit(2)
 	}
 	origin, err := parseOrigin(*originArg)
@@ -50,7 +54,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, "winusefixture:", err)
 		os.Exit(2)
 	}
-	os.Exit(fixture.Main(*state, origin, fixture.Options{ActivateOnRestore: *activateOnRestore, AllowForeground: uint32(*allowForeground), IgnoreClose: *ignoreClose}))
+	os.Exit(fixture.Main(*state, origin, fixture.Options{ActivateOnRestore: *activateOnRestore, AllowForeground: uint32(*allowForeground), IgnoreClose: *ignoreClose,
+		HangOnClick: time.Duration(*hangOnClick) * time.Millisecond}))
 }
 
 // parseOrigin parses "x,y" (signed: monitors left of or above the primary

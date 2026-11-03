@@ -199,6 +199,22 @@ type Services struct {
 	Drag   func(target uint64, fx, fy, tx, ty int32, drop time.Duration, stopped func() bool) error // left-button drag, from point to point
 	Hover  func(target uint64, x, y int32) error                                                    // move the pointer and leave it there
 
+	// Polite real input (multi-agent ticket 08, polite.go): the user's
+	// input quiet time, a WM_NULL round trip, the cursor's read and
+	// put-back, and the release of held keys and buttons. Nil values fall
+	// back to the real ones, which read nothing and send nothing inside a
+	// test binary; tests fake them.
+	InputIdle   func() time.Duration
+	SyncWindow  func(hwnd uint64) error
+	CursorPos   func() (x, y int32, ok bool)
+	PutCursor   func(x, y int32) error
+	ReleaseHeld func() (int, error)
+	// AllWindows lists every visible top-level Window, popup menus
+	// included (win.Collect, set by Main): polite.go's check for what an
+	// Action left open. Nil: unchecked, as in the offline tests.
+	AllWindows func() ([]win.WindowInfo, error)
+	polite     *politeState
+
 	// The Window Actions (ADR 0011, windowactions.go). Nil values fall
 	// back to the real non-activating Win32 calls; tests fake them so
 	// offline tests never place or close a real Window. Minimized (above)
@@ -313,6 +329,11 @@ type Services struct {
 	WindowThread func(hwnd uint64) uint32
 	LaneWait     time.Duration
 
+	// WindowHung tells that a Window's UI thread is not responding
+	// (multi-agent ticket 07, hung.go): an Action on it is refused with
+	// nothing sent. Nil checks nothing.
+	WindowHung func(hwnd uint64) bool
+
 	// The Window identity check (multi-agent ticket 09, identity.go):
 	// WindowIdentity reads what a Window ID names now (its process, that
 	// process's start time, its class); windowIDs records what each one
@@ -418,7 +439,9 @@ func CommandsWith(s Services) map[string]Command {
 		case !observationOnlyCommand(name):
 			// The Window identity check runs once the command holds the
 			// gate, before anything else looks at the Window (identity.go).
-			cmd = s.laned(name, s.checkWindow(s.closeLeftMenu(name, s.reportAfter(name, cmd))))
+			// A hung App is refused next (hung.go), before anything is sent;
+			// then the menu the Agent left open closes (contextmenu.go).
+			cmd = s.laned(name, s.checkWindow(s.refuseHung(s.closeLeftMenu(name, s.reportAfter(name, cmd)))))
 		default:
 			cmd = s.recordReads(name, cmd) // identity.go: what a read Window ID names
 		}
@@ -747,6 +770,24 @@ func defaultServices(s Services) Services {
 	if s.WindowPID == nil {
 		s.WindowPID = win.WindowPID
 	}
+	if s.InputIdle == nil {
+		s.InputIdle = win.InputIdle
+	}
+	if s.SyncWindow == nil {
+		s.SyncWindow = win.SyncWindow
+	}
+	if s.CursorPos == nil {
+		s.CursorPos = win.CursorPos
+	}
+	if s.PutCursor == nil {
+		s.PutCursor = win.PutCursor
+	}
+	if s.ReleaseHeld == nil {
+		s.ReleaseHeld = win.ReleaseHeld
+	}
+	if s.polite == nil {
+		s.polite = &politeState{}
+	}
 	if s.Sleep == nil {
 		s.Sleep = time.Sleep
 	}
@@ -813,6 +854,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.WindowThread == nil {
 		s.WindowThread = win.WindowThreadID
+	}
+	if s.WindowHung == nil {
+		s.WindowHung = win.WindowHung
 	}
 	return s
 }

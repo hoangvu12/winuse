@@ -4,6 +4,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"time"
 	"unicode/utf16"
 	"unsafe"
 
@@ -77,6 +78,12 @@ type Options struct {
 	// asks to save keeps its Window: close-app --force must end it
 	// (desktop-parity ticket 10).
 	IgnoreClose bool
+	// HangOnClick, when not 0, makes the main window's UI thread stop
+	// answering for that long after Click Me is invoked: a hung App
+	// (multi-agent ticket 07). The click is recorded first, and the hang
+	// starts from a posted message, so the Invoke that asked for it
+	// returns.
+	HangOnClick time.Duration
 }
 
 // Main runs the fixture app: creates the windows, pumps messages until the
@@ -308,6 +315,9 @@ func (a *app) wndMain(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return 0
 	case wmOpenMessageBox:
 		a.openMessageBox()
+		return 0
+	case wmHang:
+		time.Sleep(a.opts.HangOnClick) // the UI thread stops answering
 		return 0
 	case wmSize:
 		// Self-activation mode: a restore from minimized brings the
@@ -587,6 +597,9 @@ func (a *app) click(elem Elem, canvas Point) {
 	default:
 		// Click Me, the twins, the solos, the toolbar buttons.
 		a.invokeButton(elem)
+		if elem == ElemButtonClick && a.opts.HangOnClick > 0 {
+			procPostMessageW.Call(a.mainHwnd, wmHang, 0, 0)
+		}
 	}
 }
 

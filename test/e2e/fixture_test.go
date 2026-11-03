@@ -62,12 +62,13 @@ type fixtureProc struct {
 
 // startFixture launches the fixture app with its state file in t's temp
 // dir and registers cleanup that kills it. The app takes over a piece of
-// the desktop: this function must only be called from opt-in tests.
-func startFixture(t *testing.T) *fixtureProc {
+// the desktop: this function must only be called from opt-in tests. flags
+// go to the fixture after -state.
+func startFixture(t *testing.T, flags ...string) *fixtureProc {
 	t.Helper()
 	parkPointer(t)
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	cmd := exec.Command(fixtureBinary(t), "-state", statePath)
+	cmd := exec.Command(fixtureBinary(t), append([]string{"-state", statePath}, flags...)...)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("starting the fixture app: %v", err)
 	}
