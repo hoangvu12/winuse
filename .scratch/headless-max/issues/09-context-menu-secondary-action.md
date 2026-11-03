@@ -184,5 +184,6 @@ Live e2e on the laptop (the orchestrator approved; run after the full run releas
 - Two fail on output wording that predates this branch, not on the dialog:
   - `TestPostedChordFiresAClassicAccelerator` expects `ok\n`, but the posted output is `ok (posted; ...)`, from 93a415e.
   - `TestShortcutRunsAClassicMenuCommand` expects `ok\n`, but the shortcut route prints `ok (invoked "Edit > Select All" through its shortcut)`, from 5c7d1cf.
-  - In both, the action itself worked. They are left for an e2e-fixes pass.
+  - In both, the action itself worked.
+  - Main's e2e-live-fixes (merged here afterwards) prints both as `ok` plus a Note line, which `assertActionOK` accepts. They were not rerun live after the merge.
 
