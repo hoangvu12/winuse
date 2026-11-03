@@ -42,7 +42,7 @@ Window" delivery below.
 
 | Parameter | Codex | winuse `list-windows` | Status |
 |---|---|---|---|
-| `—` (no parameters) | returns `Window[] {app, id, title?}` of targetable windows | with no flags, prints `<Window ID>	<App>	<title>` per Window; the opt-in `--details` column and `--app` filter are winuse extensions (see below) | matched |
+| `—` (no parameters) | returns `Window[] {app, id, title?}` of targetable windows | with no flags, prints `<Window ID>	<App>	<title>` per Window; the opt-in `--details` column, `--app` filter and `--shell` surfaces are winuse extensions (see below) | matched |
 
 Behaviour notes (see cross-cutting rows for the differences that live
 here): the window filter is Codex's (visible, not cloaked, not a tool
@@ -472,3 +472,11 @@ State only as its line count. Typed text, values, clipboard content and
 eval are redacted unless `--trace-unredacted`. The file rolls over at
 32 MiB, and `trace show` summarizes it, like agent-desktop's session
 traces without the HTML export. Codex keeps no trace. **extension**.
+`list-windows --shell` (desktop-parity 09, ADR 0015) adds the shell
+surfaces: the taskbar, and the tray overflow, Start and the Action Center
+while open, named by Window ID. The taskbar reads Headless, and a click on
+an App's taskbar button activates that App through UI Automation; Start,
+Search and the notification area's buttons open their flyouts only with
+`--headed`, and Escape closes the open tray overflow Headless. Like
+agent-desktop's shell surfaces, without its Windows-key accelerators.
+Codex lists no shell surface. **extension**.
