@@ -546,7 +546,9 @@ func TestDesktopWaitsSkipTheActionGate(t *testing.T) {
 		return nil
 	}
 	cmds := CommandsWith(svc)
-	raw, _ := json.Marshal(protocol.ClickArgs{Window: "101", ElementIndex: intp(1)})
+	// A Headed click (headless-max ticket 21) holds the gate through the v1
+	// fakes' injected click.
+	raw, _ := json.Marshal(protocol.ClickArgs{Window: "101", ElementIndex: intp(1), Headed: true})
 	go cmds["click"](context.Background(), raw)
 	<-inClick
 	defer close(release)

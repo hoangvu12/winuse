@@ -22,28 +22,34 @@ import (
 	"github.com/hoangvu12/winuse/internal/fixture"
 )
 
-// runScroll invokes `winuse scroll <window> @x,y <dx> <dy>` with the
-// suite's short helper idle timeout.
+// The point forms of scroll (outside a browser Page), drag and hover have
+// no Headless route: without --headed they are refused with nothing sent
+// before the screenshot mapping is read (headless-max ticket 21;
+// headed_gate_test.go pins that). Every caller here targets the fixture,
+// so these helpers pass the global --headed.
+
+// runScroll invokes `winuse --headed scroll <window> @x,y <dx> <dy>` with
+// the suite's short helper idle timeout.
 func runScroll(t *testing.T, window string, x, y, dx, dy int, extraEnv ...string) (string, string, int) {
 	t.Helper()
 	point := fmt.Sprintf("@%d,%d", x, y)
-	return runWinuse(t, []string{"scroll", window, point, strconv.Itoa(dx), strconv.Itoa(dy)},
+	return runWinuse(t, []string{"--headed", "scroll", window, point, strconv.Itoa(dx), strconv.Itoa(dy)},
 		append(extraEnv, "WINUSE_HELPER_IDLE="+e2eIdle)...)
 }
 
-// runDrag invokes `winuse drag <window> @fx,fy @tx,ty`.
+// runDrag invokes `winuse --headed drag <window> @fx,fy @tx,ty`.
 func runDrag(t *testing.T, window string, fx, fy, tx, ty int, extraEnv ...string) (string, string, int) {
 	t.Helper()
 	from := fmt.Sprintf("@%d,%d", fx, fy)
 	to := fmt.Sprintf("@%d,%d", tx, ty)
-	return runWinuse(t, []string{"drag", window, from, to}, append(extraEnv, "WINUSE_HELPER_IDLE="+e2eIdle)...)
+	return runWinuse(t, []string{"--headed", "drag", window, from, to}, append(extraEnv, "WINUSE_HELPER_IDLE="+e2eIdle)...)
 }
 
-// runHover invokes `winuse hover <window> @x,y`.
+// runHover invokes `winuse --headed hover <window> @x,y`.
 func runHover(t *testing.T, window string, x, y int, extraEnv ...string) (string, string, int) {
 	t.Helper()
 	point := fmt.Sprintf("@%d,%d", x, y)
-	return runWinuse(t, []string{"hover", window, point}, append(extraEnv, "WINUSE_HELPER_IDLE="+e2eIdle)...)
+	return runWinuse(t, []string{"--headed", "hover", window, point}, append(extraEnv, "WINUSE_HELPER_IDLE="+e2eIdle)...)
 }
 
 // shotCoordsOfClient converts a client-space point of the fixture window

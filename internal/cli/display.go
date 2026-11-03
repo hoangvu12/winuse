@@ -46,30 +46,36 @@ func screenshotCmd(args []string) int {
 }
 
 // parseScreenshotArgs parses --display <n> or --display=<n>, a display
-// index from 0.
+// index from 0. --screen is the same option under agent-desktop's
+// spelling; giving both is giving it twice.
 func parseScreenshotArgs(args []string) (protocol.ScreenshotArgs, error) {
 	var a protocol.ScreenshotArgs
+	var given string // the spelling that set a.Display
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if arg != "--display" && !strings.HasPrefix(arg, "--display=") {
+		flag, value, ok := strings.Cut(arg, "=")
+		if flag != "--display" && flag != "--screen" {
 			return protocol.ScreenshotArgs{}, fmt.Errorf("screenshot: unexpected argument %q (a Window's screenshot is winuse get-window-state <window> --screenshot)", arg)
 		}
 		if a.Display != nil {
-			return protocol.ScreenshotArgs{}, errors.New("--display is given twice")
+			if flag != given {
+				return protocol.ScreenshotArgs{}, fmt.Errorf("%s and %s are the same option; give one", given, flag)
+			}
+			return protocol.ScreenshotArgs{}, fmt.Errorf("%s is given twice", flag)
 		}
-		value, ok := strings.CutPrefix(arg, "--display=")
 		if !ok {
 			if i+1 >= len(args) {
-				return protocol.ScreenshotArgs{}, errors.New("--display takes a display number")
+				return protocol.ScreenshotArgs{}, fmt.Errorf("%s takes a display number", flag)
 			}
 			i++
 			value = args[i]
 		}
 		n, err := strconv.Atoi(value)
 		if err != nil || n < 0 {
-			return protocol.ScreenshotArgs{}, fmt.Errorf("--display takes a display number from 0, got %q", value)
+			return protocol.ScreenshotArgs{}, fmt.Errorf("%s takes a display number from 0, got %q", flag, value)
 		}
 		a.Display = &n
+		given = flag
 	}
 	if a.Display == nil {
 		return protocol.ScreenshotArgs{}, errors.New("screenshot takes --display <n>; a Window's screenshot is winuse get-window-state <window> --screenshot")

@@ -14,9 +14,10 @@
 // that GetGUIThreadInfo reports for the Window's thread, and the dialog's
 // default button. When either reads differently from what the offline
 // tests assume (a background thread with no focus, a MessageBox with no
-// DM_GETDEFID answer), the Action routes Headed and takes the foreground,
-// and the test fails on the foreground check. Each test logs the route
-// probe first, so the failure shows what winuse read.
+// DM_GETDEFID answer), the Action has no Headless route and, sent without
+// --headed, is refused with nothing sent (headless-max ticket 21), so the
+// test fails on the exit and the refusal names the reason. Each test logs
+// the route probe first, so the failure shows what winuse read.
 
 package e2e
 
@@ -247,9 +248,24 @@ func TestHeadlessTypeTextIntoNotepad(t *testing.T) {
 	logKeyTarget(t, id)
 
 	// Covered, Windows 11 Notepad reports no focused control, so plain
-	// type-text has no Headless route (headless-max ticket 19). --into
-	// names the editor's Element, whose own window is the RichEditD2DPT:
-	// the one line of the Window State named "Text editor".
+	// type-text has no Headless route (headless-max ticket 19). Without
+	// --headed it is refused with nothing sent, and the foreground stays
+	// with the cover (ticket 21; it used to go Headed on its own and print
+	// "ok (typed Headed: ...)").
+	const refused = "not typed without --headed"
+	stdout, stderr, exit := runTypeText(t, []string{window, refused})
+	assertHeadedRefusal(t, "plain type-text into the covered Notepad", stdout, stderr, exit,
+		"winuse --headed type-text "+window+" <text>")
+	if !strings.Contains(stderr, "--into") {
+		t.Errorf("the refusal must point at type-text --into: %q", stderr)
+	}
+	assertForeground(t, "plain type-text into the covered Notepad", cover)
+	if got := controlText(t, focus.HWND); strings.Contains(got, refused) {
+		t.Errorf("the refused text reached Notepad's editor: %q", got)
+	}
+
+	// --into names the editor's Element, whose own window is the
+	// RichEditD2DPT: the one line of the Window State named "Text editor".
 	state := readState(t, window)
 	m := regexp.MustCompile(`(?m)^\t+(\d+) [^\n]*Text editor`).FindAllStringSubmatch(state, -1)
 	if len(m) != 1 {

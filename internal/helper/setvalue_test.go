@@ -8,7 +8,9 @@ package helper
 // Element does not offer listing the ones it does), and the pipeline
 // ordering: the checks refuse before any activation, and no input is
 // sent once anything refuses. Everything Win32 and element-side is
-// faked; no desktop is touched.
+// faked; no desktop is touched. The actor spy is no HeadlessActor, so the
+// pipeline tests send `headed` (refused without it, headless-max ticket
+// 21).
 
 import (
 	"context"
@@ -105,7 +107,7 @@ func secondaryArgs(window string, index int, action string) json.RawMessage {
 
 func TestSetValuePrintsOK(t *testing.T) {
 	spy := newActorSpy()
-	out, cmdErr := runCommand(t, CommandsWith(spy.svc), "set-value", setValueArgs("101", 2, "hello world"))
+	out, cmdErr := runCommand(t, CommandsWith(spy.svc), "set-value", headedArgs(setValueArgs("101", 2, "hello world")))
 	if cmdErr != nil {
 		t.Fatalf("set-value: %v", cmdErr.Error())
 	}
@@ -126,13 +128,13 @@ func TestSetValuePrintsOK(t *testing.T) {
 func TestSetValueRefusesLikeClick(t *testing.T) {
 	locked := newActorSpy()
 	locked.locked = true
-	_, cmdErr := runCommand(t, CommandsWith(locked.svc), "set-value", setValueArgs("101", 1, "x"))
+	_, cmdErr := runCommand(t, CommandsWith(locked.svc), "set-value", headedArgs(setValueArgs("101", 1, "x")))
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "desktop is locked") {
 		t.Fatalf("locked: %v", cmdErr)
 	}
 	admin := newActorSpy()
 	admin.refuse = &win.AdminWindowError{WindowID: 101, App: "Notepad.exe"}
-	_, cmdErr = runCommand(t, CommandsWith(admin.svc), "set-value", setValueArgs("101", 1, "x"))
+	_, cmdErr = runCommand(t, CommandsWith(admin.svc), "set-value", headedArgs(setValueArgs("101", 1, "x")))
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "administrator") {
 		t.Fatalf("admin: %v", cmdErr)
 	}
@@ -262,7 +264,7 @@ func TestSetValueFailuresAndHints(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			spy := newActorSpy()
 			spy.setValueErr = tc.err
-			_, cmdErr := runCommand(t, CommandsWith(spy.svc), "set-value", setValueArgs("101", 2, "x"))
+			_, cmdErr := runCommand(t, CommandsWith(spy.svc), "set-value", headedArgs(setValueArgs("101", 2, "x")))
 			if cmdErr == nil || cmdErr.Msg != tc.wantMsg {
 				t.Fatalf("message = %v, want %q", cmdErr, tc.wantMsg)
 			}
@@ -290,7 +292,7 @@ func TestSetValueWindowResolutionFailure(t *testing.T) {
 func TestPerformSecondaryActionPrintsOKAndCanonicalizes(t *testing.T) {
 	// Case-insensitive action names reach the element side canonicalized.
 	spy := newActorSpy()
-	out, cmdErr := runCommand(t, CommandsWith(spy.svc), "perform-secondary-action", secondaryArgs("101", 3, "scroll  DOWN"))
+	out, cmdErr := runCommand(t, CommandsWith(spy.svc), "perform-secondary-action", headedArgs(secondaryArgs("101", 3, "scroll  DOWN")))
 	if cmdErr != nil {
 		t.Fatalf("perform-secondary-action: %v", cmdErr.Error())
 	}
@@ -389,7 +391,7 @@ func TestPerformSecondaryActionFailuresAndHints(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			spy := newActorSpy()
 			spy.secondaryErr = tc.err
-			_, cmdErr := runCommand(t, CommandsWith(spy.svc), "perform-secondary-action", secondaryArgs("101", 6, "Expand"))
+			_, cmdErr := runCommand(t, CommandsWith(spy.svc), "perform-secondary-action", headedArgs(secondaryArgs("101", 6, "Expand")))
 			if cmdErr == nil || cmdErr.Msg != tc.wantMsg {
 				t.Fatalf("message = %v, want %q", cmdErr, tc.wantMsg)
 			}

@@ -87,8 +87,9 @@ func TestHeadedActionReportsNothing(t *testing.T) {
 	spy, d := fgSpy(0)
 	activate := spy.svc.Activate
 	spy.svc.Activate = func(hwnd uint64) error { d.fg = hwnd; return activate(hwnd) }
-	// A double click is Headed: winuse activates the Window itself.
-	out, e := runCommand(t, CommandsWith(spy.svc), "click", clickArgs("101", 2, 2, "left"))
+	// A double click is Headed, with --headed (headless-max ticket 21):
+	// winuse activates the Window itself.
+	out, e := runCommand(t, CommandsWith(spy.svc), "click", headedArgs(clickArgs("101", 2, 2, "left")))
 	if e != nil || out != "ok\n" || d.fg != 101 {
 		t.Errorf("headed click: %q, %+v (foreground %d)", out, e, d.fg)
 	}
@@ -99,7 +100,7 @@ func TestHeadedActionReportsNothing(t *testing.T) {
 	spy.svc.Activate = func(hwnd uint64) error { d.fg = hwnd; return activate(hwnd) }
 	out, e = runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{Window: "101", Steps: []protocol.Step{
 		stepOf("click", protocol.ClickArgs{ElementIndex: idx(2)}),
-		stepOf("click", protocol.ClickArgs{ElementIndex: idx(2), ClickCount: 2}),
+		stepOf("click", protocol.ClickArgs{ElementIndex: idx(2), ClickCount: 2, Headed: true}),
 	}})
 	if e != nil || strings.Contains(out, "foreground") {
 		t.Errorf("mixed batch: %q, %+v", out, e)

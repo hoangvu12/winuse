@@ -6,7 +6,10 @@ package helper
 // step named, malformed steps refused before any input is sent, the
 // Batch's Window injected into every step (overriding any window the
 // step carries), and the batchable-Action allowlist. Everything Win32
-// and element-side is faked; no desktop is touched.
+// and element-side is faked; no desktop is touched. The spy is no
+// HeadlessActor, so the Batches that run its steps send `headed` (a step
+// with only the Headed route is refused without it, headless-max ticket
+// 21).
 
 import (
 	"context"
@@ -117,6 +120,7 @@ func TestBatchRunsStepsInOrderAndPrintsOK(t *testing.T) {
 
 	out, cmdErr := runCommand(t, cmds, "batch", protocol.BatchArgs{
 		Window: "101",
+		Headed: true,
 		Steps: []protocol.Step{
 			stepOf("click", protocol.ClickArgs{Ref: "name:Click Me"}),
 			stepOf("type-text", protocol.TypeTextArgs{Text: "hello world"}),
@@ -167,6 +171,7 @@ func TestBatchStopsAtFirstFailureNamingTheStep(t *testing.T) {
 
 	_, cmdErr := runCommand(t, cmds, "batch", protocol.BatchArgs{
 		Window: "101",
+		Headed: true,
 		Steps: []protocol.Step{
 			stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(1)}),
 			stepOf("type-text", protocol.TypeTextArgs{Text: "hello"}),
@@ -301,6 +306,7 @@ func TestBatchInjectsTheBatchesWindowIntoEveryStep(t *testing.T) {
 	}
 	_, cmdErr := runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{
 		Window: "101",
+		Headed: true,
 		Steps:  []protocol.Step{stepWithWindow},
 	})
 	if cmdErr != nil {

@@ -111,7 +111,7 @@ windowless executable fails with `launched app did not expose a targetable
 window` after the 15 s timeout. `parsing_test.go` (no build tag) unit-tests
 the listing-output parsing offline. The ticket-05 Action tests
 (`click_test.go`): clicking the button, checkbox, canvas (double and
-right) and the Save As button changes the fixture's state; the dialog
+right, with `--headed`) and the Save As button changes the fixture's state; the dialog
 appears as its own Window and its Cancel button clicks too; a
 below-the-fold list item is scrolled into view before it is clicked; a
 stale Element Index and a helper restart (no cached Window State) fail
@@ -119,16 +119,20 @@ with the read-the-state-again instruction; clicking the main window while
 its modal dialog is open fails naming the dialog, without sending input;
 `activate-window` works standalone and refuses the dialog-blocked main
 window. Element Indexes are derived from the fixture's Element contract,
-not restated. The ticket-06 keyboard tests (`type_text_test.go`): typing
+not restated. The ticket-06 keyboard tests (`type_text_test.go`), all with `--headed`
+because the fixture draws its own text fields (no classic edit control,
+so typing and keys there have no Headless route): typing
 Unicode (non-Latin scripts and a surrogate-pair emoji) into the text
 field, unquoted multi-word text, a multi-batch long text, the ticket's
 acceptance flow (type, `Control_L+a`, type the replacement — and
 Backspace deleting the selection), typing into the dialog's file-name
-edit, press-key by name (including numpad keys, which must arrive as
+edit (`TestTypeTextIntoDialogEdit`: plain `type-text` is refused first
+with "nothing was sent", the `winuse --headed type-text <dialog> <text>`
+retry and no text in the dialog, then `--headed` types it), press-key by name (including numpad keys, which must arrive as
 numpad virtual keys, and extended arrow keys), a chord, and the refusals
 (unknown key with a hint, the forbidden Windows-key family, the empty
-key) proven to send no input by the fixture's state generation staying
-put.
+key, all refused before any route is chosen, so without `--headed`)
+proven to send no input by the fixture's state generation staying put.
 The ticket-07 tests (`set_value_test.go`): `set-value` sets
 the fixture's text field (the value shows in a fresh Window State) and the
 Save As dialog's file-name edit, joins unquoted multi-argument values, and
@@ -136,10 +140,14 @@ fails on a non-settable Element with Codex's message plus the type-text
 hint; `perform-secondary-action` toggles the checkbox (the Window State
 flips to `on`), expands and collapses the File menu (the dropdown's items
 appear in the tree), selects a list item and scrolls the list down one
-page, performs Raise on the window root, and fails with the expected-name
+page, performs Raise on the window root (with `--headed`: Raise takes the
+foreground by definition), and fails with the expected-name
 list for an unknown action and with the offered list for an action the
 Element does not offer. A stale Element Index fails pointing at a fresh
-Window State read.
+Window State read. `set-value` and `perform-secondary-action` at an
+`@x,y` point (`TestSetValueByPoint`, `TestPerformSecondaryActionByPoint`)
+pass `--headed`: the point form finds its Element only with the Window in
+the foreground.
 
 The ticket-14 test (`chromium_test.go`) covers the Chromium path: it starts
 Edge (and Chrome, when installed) with an **isolated profile in a temp
@@ -159,7 +167,7 @@ The ticket-08 tests (`screenshot_test.go`) cover screenshots, zoom and
 coordinate clicks: `get-window-state --screenshot` saves a JPEG whose path
 is printed, with the long edge capped at 1568 px and the scale recorded;
 the tree is unaffected and no screenshot is taken without the flag; a
-`@x,y` click on the fixture canvas lands within one pixel of the aimed
+`--headed` `@x,y` click on the fixture canvas lands within one pixel of the aimed
 screen point (the expected point is derived from the fixture's reported
 canvas rectangle and the printed scale, independently of winuse's
 mapping), and the click's red mark on the canvas is visible in a fresh
@@ -170,7 +178,10 @@ modal-dialog-blocked Window fails naming the dialog while the dialog
 itself screenshots fine; a helper restart loses the coordinate mapping
 (the `@x,y` click tells the agent to take a fresh screenshot instead of
 guessing); out-of-screenshot coordinates and zoom without any screenshot
-are refused with the size and the recovery instruction. The coordinate
+are refused with the size and the recovery instruction. Every `@x,y`
+click here goes through `runClickPoint`, which passes `--headed`: without
+it a click at a point is refused before the mapping is read
+(`headed_gate_test.go`). The coordinate
 mapping itself (scale, footprint-centre rounding, window-anchored
 survival of moves, any monitor including negative coordinates) is
 offline-tested in `internal/shot` — the e2e tests pin only the live
@@ -195,14 +206,15 @@ screenshot through the GDI methods with the fallback logged and no WGC
 capture; `WINUSE_WGC_BUDGET=1ms` (`TestWGCTimeoutFallsBackToGDI`)
 starves the frame poll and must still produce a valid screenshot.
 `TestCoordinateClickExactViaWGC` pins ticket 09's coordinate criterion:
-a `@x,y` click aimed through a WGC-captured screenshot lands within one
+a `--headed` `@x,y` click aimed through a WGC-captured screenshot lands within one
 pixel, and `TestWGCZoomStillFullResolution` pins zoom through the WGC
 path (a full-resolution PNG crop containing the canvas mark). The pure
 parts (IIDs, struct packing, frame-size cross-check, BGRA readback,
 knobs) are offline-tested in `internal/wgc`.
 
 The ticket-13 tests (`overlay_test.go`) cover the in-control overlay:
-while a long type-text Action runs against the fixture, the overlay
+while a long `--headed` type-text Action runs against the fixture (the
+banner is the Headed pipeline's), the overlay
 window appears in the desktop's window list raised exactly over the
 fixture Window, carrying the layered/click-through/topmost/tool-window/
 no-activate styles; the fixture stays the foreground window (the overlay
@@ -217,8 +229,9 @@ observation commands never raise the indicator. The overlay's brackets
 and layout are offline-tested (`internal/helper`, `internal/win`); these
 e2e tests pin the live window.
 
-The ticket-10 tests (`pointer_test.go`) cover the pointer Actions:
-`scroll` at a point scrolls the fixture list down and back up (the
+The ticket-10 tests (`pointer_test.go`) cover the pointer Actions, all
+with `--headed` (the point forms of scroll, drag and hover on the fixture
+have no Headless route; the helpers pass the flag): `scroll` at a point scrolls the fixture list down and back up (the
 fixture scrolls one item per wheel notch, so 360 units = 3 items), and
 scrolls the canvas with both axes at once — the canvas records every
 wheel event in canvas coordinates, which pins the point *and* both
@@ -286,8 +299,9 @@ Escape key plus the stop-and-ask hint; the typing aborted as a proper
 prefix of the long text; the fixture's `lastKey` is not `Escape` (the
 hook swallowed the key — the app must not act on the stop key); and the
 in-control overlay is gone. `TestInjectedEscDoesNotStopTheBatch` is
-self-contained: while a Batch types, a concurrent `press-key Escape`
-injects the key — it must reach the app (the fixture records the
+self-contained: while a Batch types, a concurrent `--headed press-key
+Escape` injects the key (Escape on the fixture's main window, not a
+classic dialog, has no Headless route) — it must reach the app (the fixture records the
 key-down) without stopping the Batch, which still prints `ok`. The
 hook's decision table (injected filtering, swallow pairing, the armed
 scope), the abort checkpoints and the exit-130 mapping are
@@ -337,6 +351,35 @@ to focus it before typing (`TestBatchTypesThenClicksAndSucceeds`, both
 Esc tests — the field offers no Headless click route) and the
 scroll-into-view click (`TestClickScrollsOffscreenElementIntoView`; a
 Headless Select does not scroll).
+
+Since headless-max ticket 21 (ADR 0013 rule 3), winuse never goes Headed
+on its own: an Action whose only route is Headed is refused without
+`--headed`, with exit 1, nothing on stdout, "nothing was sent" and the
+exact `winuse --headed <command>` retry in the hint. So every test that
+relied on the automatic Headed route passes `--headed` too: the `@x,y`
+forms (click, scroll, drag, hover, set-value, perform-secondary-action),
+double and right clicks on the canvas, Raise, and `type-text` and
+`press-key` into the fixture's main window and its Save As dialog, which
+draw their own text fields. Typing into the Classic Dialog's Edit,
+Return and Escape on the Classic Dialog and the MessageBox, keys and text
+into a browser Page through its Browser Connection, and `--post` and
+`--into` stay Headless and take no flag.
+
+`TestHeadedOnlyActionsAreRefusedWithoutTheFlag` (`headed_gate_test.go`)
+pins the refusal on the covered fixture, after a `get-window-state
+--screenshot` so the point forms have a mapping: a double click and a
+right click on the canvas Element, a click, a hover and a drag at `@x,y`
+points, `press-key Control_L+a`, `type-text` into the main window and
+`perform-secondary-action Raise` on the window Element are each refused
+with exit 1, empty stdout, "nothing was sent" and the exact
+`winuse --headed ...` retry, with the cover still the foreground window,
+the pointer unmoved, no banner, and the fixture's state generation
+unchanged (no canvas click, drag or scroll, no toolbar, no text, no key,
+and the fixture not raised above the cover). Then a Batch
+`click id:button-click then press-key Control_L+a then click
+id:checkbox-notify` stops with "batch stopped at Action 2 (press-key)"
+and nothing was sent: the first click took effect, no key reached the
+fixture, and the checkbox step never ran.
 
 Run only these tests:
 
@@ -446,6 +489,13 @@ still the foreground window afterwards. The shared helpers are in
   `get-window <id>` finds that Window, and a Headless Escape on it prints
   `Note: window <id> closed`. The foreground stays put. Every other test
   accepts such note lines after `ok` and logs them (`assertActionOK`).
+- `TestFindAndRegionReadOnTheFixture` (`find_test.go`, desktop-parity
+  04): after a full read, `find --role "list item" --name charlie` prints
+  Charlie with an index after the read's last, and a click on it selects
+  Charlie; a click on Alpha's index from the full read still works.
+  `--count` prints 8, a `slider` role miss lists the roles present,
+  `--root <list> --depth 1` prints the list and its 8 items, and
+  `--skeleton` ends with its note. The cover keeps the foreground.
 - `TestHeadlessClickReportsSelfActivation` (`self_activation_test.go`,
   headless-max 03): the same click on the covered fixture must end with
   `Note: the App took the foreground` exactly when the fixture holds the
@@ -459,9 +509,13 @@ still the foreground window afterwards. The shared helpers are in
   (RichEditD2DPT editor) and skips otherwise. It also skips while Notepad
   is running, because it ends the Notepad process it types into. It opens
   an empty temp file, covers it, and types with `type-text --into` aimed
-  at the `Text editor` Element from `get-window-state` (covered, Notepad
-  reports no focused control, so plain `type-text` would go Headed;
-  headless-max ticket 19). It reads the editor's text back with
+  at the `Text editor` Element from `get-window-state`. Covered, Notepad
+  reports no focused control, so plain `type-text` has no Headless route
+  (headless-max ticket 19): the test sends it first and wants it refused
+  with "nothing was sent", the `winuse --headed type-text <window> <text>`
+  retry and the `--into` alternative, the cover still in front and the
+  text not in the editor (ticket 21; it used to go Headed on its own and
+  print `ok (typed Headed: ...)`). It reads the editor's text back with
   WM_GETTEXT and wants the foreground unchanged and no banner. If
   Notepad restores sessions, its next start may show that temp file's
   tab with the test text: close it.
@@ -513,8 +567,10 @@ still the foreground window afterwards. The shared helpers are in
 What to look at when one fails. The keyboard routes are decided from the
 live Window: the focused control that GetGUIThreadInfo reports for its
 thread, and the dialog's default button. If the probe reads something
-other than the offline tests assume, the Action routes Headed and takes
-the foreground, and the test fails on the foreground check. The tests
+other than the offline tests assume, the Action has no Headless route
+and, sent without `--headed`, is refused with "nothing was sent" (it no
+longer goes Headed on its own, headless-max ticket 21), so the test fails
+on the exit and the refusal says why. The tests
 that use these routes log a `key route probe` line first, with the focus
 class, its style and the default button. The risks the tickets left to
 measure live are:
@@ -531,7 +587,7 @@ Run only these tests:
 
 ```
 set WINUSE_E2E=1
-go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted|OpenedAndClosed|SelfActivation" ./test/e2e
+go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted|OpenedAndClosed|SelfActivation|FindAndRegionRead" ./test/e2e
 ```
 
 ## The clipboard test
@@ -603,7 +659,7 @@ foreground. Per browser, it records:
 3. **Screen coordinates.** On `testdata/browser-probe.html`, the error
    between the UIA document top-left plus CSS rect x `devicePixelRatio`
    and UIA's own bounds for the same Element, at page zoom 100%, 125% and
-   150%. The zoom keys are Headed `press-key Control_L+equal` on the
+   150%. The zoom keys are `--headed press-key Control_L+equal` on the
    probe's own browser Window, so that Window comes to the front for a few
    seconds; the zoom is reset to 100% afterwards.
 4. **Covered and minimized windows.** `Accessibility.getFullAXTree`,

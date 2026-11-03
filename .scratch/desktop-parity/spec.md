@@ -46,7 +46,7 @@ Details are in each ticket's Comments.
 | 01 | Clipboard commands | P1 | S | done |
 | 02 | Report Windows that an Action opened | P1 | S-M | done (live e2e run still to do) |
 | 03 | Desktop waits | P1 | M | done |
-| 04 | `find` and a region read | P1 | M-L | ready-for-agent |
+| 04 | `find` and a region read | P1 | M-L | done (live e2e run still to do) |
 | 05 | Blocked dangerous combos with `--force` | P1 | S | done |
 | 06 | Modifiers on point clicks and wheel | P1 | S | ready-for-agent |
 | 07 | Opt-in `--json` output with codes and delivery | P1 | L | ready-for-agent |
@@ -61,7 +61,7 @@ Details are in each ticket's Comments.
 | 16 | `status` | P2 | S | done |
 | 17 | Live re-resolution of `name:`/`id:` | P2 | M | ready-for-agent |
 | 18 | Notifications | P3 | M | ready-for-agent |
-| 19 | Session traces with redaction | P3 | M-L | ready-for-agent |
+| 19 | Session traces with redaction | P3 | M-L | done |
 | 20 | Batch improvements | P3 | S-M | ready-for-agent |
 | 21 | Agent Cursor polish | P3 | S | wontfix (folded into multi-agent 04) |
 | 22 | list-windows details and filter | P2 | S | done |

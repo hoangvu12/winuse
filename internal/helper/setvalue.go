@@ -68,10 +68,11 @@ type ElementActor interface {
 // reference | @x,y> <value>`. On an Element Index or reference it is
 // Headless (ADR 0010): the value is written through the Element's value
 // pattern without focusing it (UIA SetFocus moves the desktop foreground,
-// agent-desktop A3-4) and a Value write is read back. Headed (@x,y or
-// `headed`): the shared Action pipeline, then the Element's value is
-// written through its value pattern (focused first, Codex's set_value
-// order). A name:/id: reference (ticket 11) resolves
+// agent-desktop A3-4) and a Value write is read back. Headed (`headed`):
+// the shared Action pipeline, then the Element's value is written through
+// its value pattern (focused first, Codex's set_value order). The @x,y
+// form has no other route: without `headed` it is refused with nothing
+// sent and the --headed retry (headless-max ticket 21). A name:/id: reference (ticket 11) resolves
 // against the Window's latest Window State to the Element Index to set;
 // an @x,y reference (finding 8) resolves through the Window's latest
 // screenshot to the screen point, and the Element the UIA worker finds
@@ -114,6 +115,12 @@ func setValue(s Services) Command {
 			// The @x,y form: the point is mapped from the latest
 			// screenshot, and the Element under it is set.
 			x, y := target.point.X, target.point.Y
+			if !a.Headed {
+				return "", s.headedOnly(a.Window,
+					fmt.Sprintf("set-value at %s has no background route: winuse finds the Element under a point only after bringing the Window to the foreground", pointToken(x, y)),
+					func(id string) string { return "set-value " + id + " " + pointToken(x, y) + " <value>" },
+					"to set it without the foreground, name the Element by its Element Index, name: or id: from winuse get-window-state")
+			}
 			return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
 				pt, serr := shotPoint(ctx, s, w, x, y, "set-value")
 				if serr != nil {
@@ -124,6 +131,12 @@ func setValue(s Services) Command {
 				}
 				return okOutput, nil
 			})
+		}
+		if !a.Headed {
+			// Unreachable on a real helper (its UIA client is a
+			// HeadlessActor): an element side that cannot write headless.
+			return "", s.headedOnly(a.Window, "set-value has no background route on this helper",
+				func(id string) string { return "set-value " + id + " " + target.token() + " <value>" }, "")
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
 			index, rerr := target.resolve(ctx, s, w)
@@ -144,8 +157,10 @@ func setValue(s Services) Command {
 // before the pipeline runs, then the Element's own Secondary Actions are
 // probed live and the requested one is performed through its pattern —
 // Headless (ADR 0010) on an Element Index or reference, with Toggle,
-// Select, Expand and Collapse read back; Headed for Raise (it moves the
-// foreground by definition), @x,y and `headed`. A
+// Select, Expand and Collapse read back; Headed with `headed`. Raise (it
+// moves the foreground by definition) and @x,y have no other route:
+// without `headed` they are refused with nothing sent and the --headed
+// retry (headless-max ticket 21). A
 // name:/id: reference (ticket 11) resolves against the Window's latest
 // Window State to the Element Index to act on; an @x,y reference
 // (finding 8) acts on the Element the UIA worker finds under the mapped
@@ -195,6 +210,14 @@ func performSecondaryAction(s Services) Command {
 			// screenshot, and the Secondary Action runs on the Element
 			// under it.
 			x, y := target.point.X, target.point.Y
+			if !a.Headed {
+				return "", s.headedOnly(a.Window,
+					fmt.Sprintf("perform-secondary-action at %s has no background route: winuse finds the Element under a point only after bringing the Window to the foreground", pointToken(x, y)),
+					func(id string) string {
+						return "perform-secondary-action " + id + " " + pointToken(x, y) + " " + secondaryToken(action)
+					},
+					"to act without the foreground, name the Element by its Element Index, name: or id: from winuse get-window-state")
+			}
 			return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
 				pt, serr := shotPoint(ctx, s, w, x, y, "perform-secondary-action")
 				if serr != nil {
@@ -205,6 +228,21 @@ func performSecondaryAction(s Services) Command {
 				}
 				return okOutput, nil
 			})
+		}
+		if !a.Headed {
+			why := "perform-secondary-action " + action + " has no background route on this helper"
+			alt := ""
+			if action == "Raise" {
+				// Raise brings the Element's Window forward: it is the
+				// foreground by definition (ADR 0013, "What stays
+				// impossible").
+				why = "perform-secondary-action Raise has no background route: raising brings the Window to the foreground"
+				alt = "to bring the whole Window forward, run winuse activate-window"
+			}
+			return "", s.headedOnly(a.Window, why,
+				func(id string) string {
+					return "perform-secondary-action " + id + " " + target.token() + " " + secondaryToken(action)
+				}, alt)
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
 			index, rerr := target.resolve(ctx, s, w)

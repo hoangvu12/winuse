@@ -218,6 +218,33 @@ cold Chromium page, pass `--timeout <seconds>` (up to 60): the read gets
 that long, and the wait for a thin Chromium tree to build gets the extra
 time too.
 
+### Dense Windows
+
+A big Window (Outlook, Excel, an IDE, a long page) can fill the tree with
+thousands of lines, or cut it at its caps with a note. Narrow the read
+instead:
+
+```
+winuse find <window> --role button --name save     # search the whole live tree, past the caps
+winuse find <window> --text "invoice" --first      # also --state disabled|enabled|selected|expanded|collapsed|settable|on|off|interactive
+winuse find <window> --role "list item" --count    # just how many
+winuse get-window-state <window> --skeleton        # three levels, with "(+N children)" where it stops
+winuse get-window-state <window> --root 42 --depth 2 --interactive
+```
+
+`--role` takes the role as the tree prints it, and `--name` and `--text` a
+part of the name (or the value and description), ignoring case. A role
+that matches nothing lists the roles the Window shows. Start a dense
+Window with `--skeleton`, then read the part you need with `--root`.
+
+`find` and `--root` add the Elements they print after the Window State's
+own Element Indexes: if the tree ended at 240, `find` prints 241, 242 and
+so on. Act on those indexes like any other, and the earlier ones keep
+working too. The next full `get-window-state` renumbers from 0 and drops
+the added ones. A `--skeleton` is a full read: it renumbers too. In a
+browser Window with a Browser Connection, `find` reads the Window State
+afresh and says so, so use its indexes, not older ones.
+
 ### Displays
 
 ```
@@ -234,6 +261,7 @@ included, without the foreground, and prints
 `Screenshot: <path> (WxH px, scale S, display N at X,Y WxH)`. It is for
 looking only: it has no `@x,y` points and no `zoom`. To act at a point,
 take the Window's own screenshot with `get-window-state --screenshot`.
+`--screen <n>` is the same as `--display <n>`.
 
 ## Name an Element
 
@@ -276,13 +304,19 @@ default:
 - Every Action on a browser's Page through a Browser Connection, as
   described in "Browser Windows".
 
-Every other Action is a Headed Action. winuse brings the Window to the
-foreground, uses the real pointer and keyboard, and frames the Window with a
-banner telling the user that winuse is in control and Esc stops it. Headed
-applies to every `@x,y` form, `--count 2|3`, `--button right|middle`,
-`drag`, `hover`, `activate-window`, `maximize-window`, Raise, and
-`press-key` and `type-text` anywhere else. A Headed Action activates its Window itself, so use
-`activate-window` only when focus drifted and you must restore it first.
+Every other Action is a Headed Action, and it runs only when you pass
+`--headed`. winuse then brings the Window to the foreground, uses the real
+pointer and keyboard, and frames the Window with a banner telling the user
+that winuse is in control and Esc stops it. Headed covers every `@x,y` form
+outside a Page, `--count 2|3`, `--button right|middle`, `drag`, `hover`,
+`maximize-window`, Raise, and `press-key` and `type-text` anywhere the
+routes below do not reach. Sent without `--headed`, these are refused: the
+line says why there is no background route and ends in `nothing was sent`,
+and the hint gives the exact `--headed` command, with `--post` or `--into`
+where they fit. `activate-window` is the one Action that takes the
+foreground without the flag, because that is what it asks for. A Headed
+Action activates its Window itself, so use `activate-window` only when
+focus drifted and you must restore it first.
 
 The user sees each Headless Action through the Agent Cursor, a second cursor
 that glides to the Element with a short label such as `click "Save"` and
@@ -299,22 +333,23 @@ Collapse leaves the state unchanged, winuse tries the Element's Invoke once
 by itself. An Invoke or a default action has no read-back, so check the next
 Window State.
 
-`--headed` forces the Headed way for any Action that has a Headless form, as
-in `winuse --headed click 101 3`. On a Batch it makes every step Headed.
-Window Actions have no Headed form, except `maximize-window`, which has
-only one and needs `--headed`. It goes before the command or anywhere
+`--headed` asks for the Headed way, as in `winuse --headed click 101 3`. It
+runs the Actions above that have no other route, and forces the Headed way
+for an Action that has a Headless form. On a Batch it makes every step
+Headed. Window Actions have no Headed form, except `maximize-window`, which
+has only one and needs `--headed`. It goes before the command or anywhere
 after it, except inside `type-text`'s text, `set-value`'s value and
 `clipboard-set`'s text, where a `--headed` token is literal text. Put the
-flag before the command there. Use
-`--headed` in three cases.
+flag before the command there. Use `--headed` in these cases.
 
-- A Headless Action failed with a hint to retry with `--headed`.
+- A command was refused with `nothing was sent` and a `--headed` retry in
+  its hint, and the step needs the real pointer or keyboard.
 - The next Window State shows a Headless Action had no effect. Custom-drawn
   controls and some web widgets respond only to a real click.
 - You need keyboard focus in a field. A Headless click never moves focus.
 
-winuse never retries an Action in the other mode. Outside the keyboard
-routes below, taking the user's foreground is your decision.
+winuse never switches modes by itself: taking the user's foreground is
+always your decision, made with `--headed`.
 
 ### Keep the user's foreground
 
@@ -338,7 +373,8 @@ Pick the Headless way whenever one does the job.
 ### What winuse cannot do headless
 
 winuse has no background route for these, so plan for the foreground
-from the start.
+from the start. Each one needs `--headed` (or `--post`, where it fits);
+without it the command is refused with nothing sent.
 
 - Hover and drag in a desktop App. Only a Page with a Browser Connection
   takes them Headless.
@@ -350,15 +386,15 @@ from the start.
   scrolling, keys, `invoke-menu` and screenshots need `restore-window`
   first.
 - A right-click menu in a desktop App, such as a WPF App's.
-  `click --button right` is Headed.
+  `click --button right` needs `--headed`.
 - The taskbar, with its hidden icons and the clock's calendar and
   notification panel. winuse lists no taskbar Window, the hidden-icons
   overflow takes the foreground when it opens, and the panel opens only
   for a real click. Reach the setting through its App, such as Settings,
   or ask the user.
 - Games, canvases and Apps that read raw input. They expose no Elements
-  and ignore posted keys, so work Headed from a screenshot with `@x,y`
-  points.
+  and ignore posted keys, so work with `--headed` from a screenshot with
+  `@x,y` points.
 - An administrator Window, in any mode. See "Refusals and recovery".
 
 Pick the fallback by what the step needs. `--post` fits a single key or
@@ -406,28 +442,31 @@ winuse picks the route from the live Window before it sends anything.
   dialog is Headless. Return presses the focused push button or the default
   button, Escape the Cancel button, the way the dialog manager does. Message
   boxes and most apps' Open and Save As dialogs are classic dialogs. Return
-  stays Headed when the dialog has no default button or the focus is in a
-  multi-line box that takes Return as a new line.
+  has no Headless route when the dialog has no default button or the focus
+  is in a multi-line box that takes Return as a new line.
 - `type-text` into a focused classic edit box, such as Notepad or a text box
   in a Win32 dialog, is Headless when the text has no newline, tab or other
   control character. It replaces the selection or inserts at the caret, like
   typing, and winuse checks the length afterwards.
 - In a browser Window with a Browser Connection, both go to the Page
   Headless while a Page Element has the focus.
-- Everywhere else both are Headed: they take the foreground and type into
-  whatever has keyboard focus. That includes WinUI, WPF, Electron and
-  browser Windows without a Browser Connection.
+- Everywhere else both need `--headed`, which takes the foreground and
+  types into whatever has keyboard focus. That includes WinUI, WPF,
+  Electron and browser Windows without a Browser Connection. Without the
+  flag they are refused with nothing sent, and the hint names the
+  `--headed` command, `--into` for text and `--post` for text or a key
+  without modifiers.
 
-Both routes print `ok`, so tell them apart by the Window. Expect a classic
-dialog or edit box to stay in the background and anything else to take the
-foreground. Before a Headed type, check the focused-Element line. If focus
-is elsewhere, click the field with `--headed` or at its `@x,y` point, read
-the Window State to confirm focus, then type. Documents and canvases work the
-same way, with the click inside the work surface.
+A Headless route prints `ok`; a refusal means nothing was typed, so pick
+the next step from its hint. Before a Headed type, check the
+focused-Element line. If focus is elsewhere, click the field with
+`--headed` or at its `@x,y` point, read the Window State to confirm focus,
+then type. Documents and canvases work the same way, with the click inside
+the work surface.
 
 Some Windows report no focused control while they are in the background. A
-covered Windows 11 Notepad is one. Plain `type-text` then goes Headed, and
-its `ok` says why and points at `--into`.
+covered Windows 11 Notepad is one. Plain `type-text` there is refused, and
+the refusal says why and points at `--into`.
 
 ### Type into a named field
 
@@ -532,7 +571,7 @@ redirect. When the Window State shows a menu bar, try `invoke-menu` first.
 ```
 winuse scroll <window> <ref> <up|down|left|right> [steps]   # steps 1 to 50, default 3
 winuse scroll <window> <ref> into-view
-winuse scroll <window> @x,y <dx> <dy>    # Headed wheel; 120 per notch, positive dy down, positive dx right
+winuse --headed scroll <window> @x,y <dx> <dy>   # the real wheel; 120 per notch, positive dy down, positive dx right
 ```
 
 The Element forms are Headless and take an Element Index, `name:` or `id:`.
@@ -646,8 +685,8 @@ uses the real pointer.
 Without a Browser Connection, the Window State ends with a line such as
 `Note: the Page is read through UI Automation because no Browser Connection
 is open to Chrome; run winuse browser status chrome.` The tree still works
-the UI Automation way, but typing is Headed and the Page commands below
-fail. Run the command the note names. Other notes name a Tab that did not
+the UI Automation way, but typing needs `--headed` and the Page commands
+below fail. Run the command the note names. Other notes name a Tab that did not
 match the Window, or a JavaScript dialog to answer first.
 
 ### Get a Browser Connection
@@ -798,11 +837,13 @@ for a long one, put `--timeout <seconds>` (up to 300) right after the
 Window, before the first Action. A `--timeout` later on the line belongs to
 a `wait` step, and the Batch's budget bounds that wait.
 
-A Batch of only Headless and posted steps runs Headless, with no banner. One
-Headed step, such as `type-text` outside a classic edit box, gives the whole
-Batch the banner and the Headed Esc stop, while its other steps still run
-Headless. That is why the example needs `--headed`; without it, the click
-would not move focus to the field.
+Without `--headed`, a Batch runs Headless, with no banner, and a step with
+no Headless route, such as `type-text` outside a classic edit box, is
+refused at its turn with nothing sent for that step. The Batch stops there,
+and the steps before it took effect. `--headed` makes every step Headed
+under one banner and the Headed Esc stop. That is why the example needs it:
+without it, the click would not move focus to the field and the typing
+would be refused.
 
 The Page commands and `tab new`, `tab close` and `tab switch` are Batch
 steps too. A Batch prints only `ok` and the note lines below, so run `eval`
@@ -817,9 +858,11 @@ anything reached the app.
 
 - `nothing was sent` means winuse did not touch the app. Fix the cause the
   line names and retry; a retry is safe.
-- `cannot be clicked headless`, together with `nothing was sent`, means the
-  Element has no click route a Headless click can use. The hint prints the
-  exact `--headed` command to retry with.
+- `cannot be clicked headless` or `has no background route`, together with
+  `nothing was sent`, means the Action needs the real pointer or keyboard.
+  The hint prints the exact `--headed` command to retry with, and `--post`
+  or `--into` when they fit. Weigh the foreground first: tell the user
+  before a Headed Action if they are working in another Window.
 - `the Action was delivered; do not repeat it` means the pattern call went
   through but the Element reads differently afterwards, such as a toggle
   still `off` or a value that did not stick. Read the Window State and decide
@@ -937,6 +980,17 @@ ordinary Escape sent to the app; only the physical key stops winuse.
   only reads and never
   starts the helper, so it is safe at any time; include its output when
   you report a problem to the user.
+- To record what you did, put `--trace <file>` before the command, or set
+  `WINUSE_TRACE=<file>` for the session. Each command appends one JSON
+  line: the time, the command, the Agent, the Window, the arguments, the
+  routes taken (Headless, Posted, Headed, CDP), the outcome, up to 4 KiB of
+  output, screenshot paths and the duration. A Window State is kept only
+  as its line count. Typed text, set-value values, clipboard content and
+  eval expressions and results are redacted to their length. Pass
+  `--trace-unredacted` only when the user asks for it for local
+  debugging. Past 32 MiB the file is renamed `<name>.1` and a new one is
+  started. `winuse trace show <file>` prints a readable summary. Put the
+  trace in a folder the user chose or a temp folder.
 
 ## Safety
 
@@ -967,7 +1021,8 @@ list-windows [--details] [--app <name>]
 list-apps | get-window <window>
 launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <s>]
 close-app <app> [--force]           # --force ends what is still running: the only command that ends a process
-get-window-state <window> [--screenshot] [--timeout <s>]
+get-window-state <window> [--screenshot] [--skeleton | --root <element> [--depth N] [--interactive]] [--timeout <s>]
+find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --count] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right]
 set-value <window> <ref> <value|on|off|item name>
@@ -977,12 +1032,12 @@ press-key <window> <key> [--post] [--force]
 select-text <window> <ref> <start> <length> | select-text <window> <ref> all
 invoke-menu <window> "<menu> > <item>"   # a classic menu bar command, Headless
 scroll <window> <ref> <up|down|left|right> [steps] | scroll <window> <ref> into-view
-scroll <window> @x,y <dx> <dy>
-drag <window> @x,y @x,y             # left button, point to point
+scroll <window> @x,y <dx> <dy>      # Headless on a Page, else only with --headed
+drag <window> @x,y @x,y             # --headed: left button, point to point
 drag <window> <element> <element|@x,y>   # a Page Element, Headless
-hover <window> @x,y                 # moves the pointer and leaves it there, to reveal tooltips
+hover <window> @x,y                 # --headed: moves the pointer and leaves it there, to reveal tooltips
 hover <window> <element>            # a Page Element, Headless
-activate-window <window>
+activate-window <window>            # takes the foreground, no flag needed
 restore-window <window> | minimize-window <window> | close-window <window>
 move-window <window> <x> <y> | resize-window <window> <width> <height>
 maximize-window <window>            # needs --headed: takes the foreground
@@ -1001,10 +1056,11 @@ browser ext install [browser|all] | browser ext status [browser]
 browser attach <window> | browser detach <window>   # a running Electron App; ask the user first
 clipboard-get [--format text|image|files] [--out <path>]
 clipboard-set <text> | --image <png> | --file <path>... | clipboard-clear
-list-displays | screenshot --display <n>
+list-displays | screenshot --display <n>   # --screen <n> is the same
 record-tree <window> <file>         # development only, records a tree fixture for winuse's own tests
 skill | skill install <dir>         # print this file from the binary, or write it to <dir>\winuse\SKILL.md
 status                              # read-only: versions, helper uptime, lock, integrity, DPI, browsers, agents, Windows build
+trace show <file>                   # summary of a --trace <file> / WINUSE_TRACE session trace
 version
 ```
 

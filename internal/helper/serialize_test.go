@@ -6,7 +6,8 @@ package helper
 // overlay now runs under one helper-wide action gate — one command
 // controls the desktop at a time — while observation-only commands (the
 // plain tree read, get-window) stay concurrent. Everything is faked; no
-// desktop is touched.
+// desktop is touched. The clicks are Headed (the spy is no HeadlessActor),
+// so they send `headed` (refused without it, headless-max ticket 21).
 
 import (
 	"context"
@@ -42,7 +43,7 @@ func TestActionsAreSerializedHelperWide(t *testing.T) {
 
 	index := 1
 	run := func() *Error {
-		raw, err := json.Marshal(protocol.ClickArgs{Window: "101", ElementIndex: &index})
+		raw, err := json.Marshal(protocol.ClickArgs{Window: "101", ElementIndex: &index, Headed: true})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -100,7 +101,7 @@ func TestObservationCommandsStayConcurrent(t *testing.T) {
 	cmds := CommandsWith(svc)
 
 	index := 1
-	raw, err := json.Marshal(protocol.ClickArgs{Window: "101", ElementIndex: &index})
+	raw, err := json.Marshal(protocol.ClickArgs{Window: "101", ElementIndex: &index, Headed: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +151,7 @@ func TestSerializedCommandFailsFastWhenQueuedPastItsBudget(t *testing.T) {
 	cmds := CommandsWith(svc)
 
 	index := 1
-	raw, err := json.Marshal(protocol.ClickArgs{Window: "101", ElementIndex: &index})
+	raw, err := json.Marshal(protocol.ClickArgs{Window: "101", ElementIndex: &index, Headed: true})
 	if err != nil {
 		t.Fatal(err)
 	}

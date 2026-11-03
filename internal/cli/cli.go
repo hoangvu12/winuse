@@ -29,6 +29,16 @@ global options:
                                or after the command; inside type-text's text,
                                set-value's value or clipboard-set's text it is
                                literal text
+  --trace <file>              before the command (or WINUSE_TRACE=<file>):
+                               append one JSON line per command to the file:
+                               time, command, Agent, Window, arguments, routes
+                               (Headless, Posted, Headed, CDP), outcome,
+                               output (4 KiB; a Window State only by its line
+                               count), screenshot paths and duration. Typed
+                               text, values, clipboard content and eval are
+                               redacted; past 32 MiB the file is renamed
+                               <name>.1 and a new one started
+  --trace-unredacted          keep the redacted values, for local debugging only
 
 headless (the default; your foreground, pointer and keyboard stay untouched):
   click (left, single), set-value, perform-secondary-action (except Raise)
@@ -40,15 +50,21 @@ headless (the default; your foreground, pointer and keyboard stay untouched):
   get-window-state --screenshot and zoom (--headed activates the Window
   first); and the Window Actions restore-, minimize-, move-, resize- and
   close-window, which have no headed form (maximize-window is headed
-  only). Every other Action is headed.
-  tab new, tab close and tab switch are headless (on a launched or cloned
-  browser, tab switch selects the Tab in the Window's tab strip; --headed
-  switches with real keys in the foreground instead). In a
+  only). tab new, tab close and tab switch are headless (on a launched or
+  cloned browser, tab switch selects the Tab in the Window's tab strip;
+  --headed switches with real keys in the foreground instead). In a
   browser Window with a Browser Connection, every Action on its Page is
   headless, and so are navigate, back, forward, reload, upload, dialog,
   wait and eval, which have no headed form. The clipboard commands,
   list-displays and screenshot --display are headless Desktop commands:
   they name no Window and have no headed form.
+
+headed only with --headed: every other Action (@x,y forms, double, right
+  and middle clicks, drag, hover, Raise, maximize-window, press-key and
+  type-text with no headless route) is refused with "nothing was sent"
+  and the exact
+  --headed retry. activate-window always takes the foreground: that is
+  what it is for.
 
 commands:
   list-windows [--details] [--app <name>]
@@ -82,7 +98,7 @@ commands:
                                command that ends a process. Windows' own
                                processes (explorer, dwm, csrss, ...) and
                                administrator Apps are refused, nothing sent
-  get-window-state <window> [--screenshot] [--timeout <seconds>]
+  get-window-state <window> [--screenshot] [--skeleton | --root <element> [--depth N] [--interactive]] [--timeout <seconds>]
                                print a Window's State: its Element tree as text,
                                and with --screenshot a screenshot saved to a file
                                whose path is printed; a Chromium or Electron
@@ -92,7 +108,19 @@ commands:
                                of a Window that stayed thin retry once). The
                                read has 10 s; --timeout up to 60 gives a slow
                                Electron, Office or cold Chromium tree more,
-                               and the extra time goes to that 5 s wait too
+                               and the extra time goes to that 5 s wait too.
+                               --skeleton reads three levels with each deeper
+                               part's child count; --root <element> reads one
+                               Element's subtree (--depth N levels,
+                               --interactive Elements only) and adds its
+                               Elements after the Window State's indexes
+  find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --count]
+                               search the Window's whole live tree, past the
+                               Window State's caps: print the matching
+                               Elements, added after its Element Indexes
+                               (the earlier ones still work); --count prints
+                               how many; a role that matches nothing lists
+                               the roles present
   record-tree <window> <file> record a Window's real tree to a fixture file
   zoom <window> <x>,<y>,<w>,<h>
                                save a full-resolution crop of a region of the
@@ -307,7 +335,9 @@ const usageTail = `);
   screenshot --display <n>    save a screenshot of display n from list-displays
                                and print its path, like get-window-state
                                --screenshot's line; it has no @x,y points or
-                               zoom, which belong to a Window's screenshot
+                               zoom, which belong to a Window's screenshot;
+                               --screen <n> is the same (agent-desktop's
+                               spelling)
   skill                       print the agent skill (SKILL.md) this binary
                                was built with; read it again after an upgrade
   skill install <dir>         write that SKILL.md to <dir>\winuse\SKILL.md, for
@@ -319,6 +349,9 @@ const usageTail = `);
                                holds and the Windows build. Read-only: it
                                never starts the helper (it says "not
                                running") and never connects a browser
+  trace show <file>           print a trace file readably: per command its
+                               time, Agent, Window, routes, outcome and
+                               duration, then its arguments, error and files
   version                     print the winuse version
 
 a <window> is a Window ID, or an App name when that App has exactly one Window;
@@ -368,7 +401,15 @@ func secondaryActionsPhrase() string {
 // before the command or anywhere after it outside literal text, and
 // forwarded to the Actions that have a Headless form, and to
 // get-window-state and zoom, whose captures are headless (ADR 0011).
-func Main(args []string) int {
+func Main(args []string) (code int) {
+	// The session trace (trace.go, desktop-parity ticket 19): one line per
+	// command, written when it exits.
+	args, trace, ok := startTrace(args, os.Getenv)
+	if !ok {
+		return 2
+	}
+	activeTrace = trace
+	defer func() { trace.finish(code) }()
 	args, headed := extractHeaded(args)
 	if len(args) == 0 {
 		fmt.Fprint(os.Stderr, Usage)
@@ -382,6 +423,8 @@ func Main(args []string) int {
 		return listWindowsCmd(args[1:])
 	case "get-window":
 		return getWindowCmd(args[1:])
+	case "find":
+		return findCmd(args[1:]) // find.go, desktop-parity 04
 	case "get-window-state":
 		return getWindowStateCmd(args[1:], headed)
 	case "record-tree":
@@ -413,9 +456,9 @@ func Main(args []string) int {
 	case "invoke-menu":
 		return invokeMenuCmd(args[1:])
 	case "drag":
-		return dragCmd(args[1:])
+		return dragCmd(args[1:], headed)
 	case "hover":
-		return hoverCmd(args[1:])
+		return hoverCmd(args[1:], headed)
 	case "activate-window":
 		return activateWindowCmd(args[1:])
 	case "restore-window", "minimize-window", "close-window":
@@ -446,6 +489,8 @@ func Main(args []string) int {
 		return skillCmd(args[1:])
 	case "status":
 		return statusCmd(args[1:])
+	case "trace":
+		return traceCmd(args[1:]) // trace.go, desktop-parity ticket 19
 	default:
 		fmt.Fprintf(os.Stderr, "winuse: unknown command %q\n\n%s", args[0], Usage)
 		return 2
@@ -529,6 +574,12 @@ type windowArgs struct {
 	Window     string `json:"window"`
 	Screenshot bool   `json:"screenshot"`       // get-window-state --screenshot
 	Headed     bool   `json:"headed,omitempty"` // the global --headed flag: the screenshot activates first (ADR 0011)
+
+	// The partial reads (desktop-parity 04, find.go).
+	Root        string `json:"root,omitempty"`
+	Depth       int    `json:"depth,omitempty"`
+	Interactive bool   `json:"interactive,omitempty"`
+	Skeleton    bool   `json:"skeleton,omitempty"`
 }
 
 // recordArgs is record-tree's CLI→helper argument shape.
@@ -538,7 +589,7 @@ type recordArgs struct {
 }
 
 // windowStateUsage is get-window-state's usage line.
-const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--timeout <seconds>]"
+const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element> [--depth N] [--interactive]] [--timeout <seconds>]"
 
 // getWindowStateCmd prints the Window State: Codex's depth-first,
 // indented, numbered Element tree — with --screenshot, the screenshot line
@@ -743,7 +794,9 @@ func runRequest(cmd string, args any, edit func(*protocol.Request)) error {
 	if edit != nil {
 		edit(req)
 	}
+	req.Trace = tracing()
 	resp, err := client.Call(context.Background(), req)
+	activeTrace.observe(req, resp, err) // trace.go
 	if err != nil {
 		return err
 	}

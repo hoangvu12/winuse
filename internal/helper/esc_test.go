@@ -5,7 +5,9 @@ package helper
 // stopped command reports exit 130 with the message that says the user
 // stopped winuse. The watcher is faked (a latch the tests press at chosen
 // moments); the real hook and its swallowing live in internal/win and are
-// exercised only by the user-run e2e suite.
+// exercised only by the user-run e2e suite. The stops inside the Headed
+// pipeline are sent with `headed` (it is refused without it, headless-max
+// ticket 21).
 
 import (
 	"context"
@@ -102,7 +104,7 @@ func newEscSpy(pressOn string) *escSpy {
 
 func TestEscDuringActivationStopsBeforeAnyInput(t *testing.T) {
 	spy := newEscSpy("activate")
-	_, cmdErr := runCommand(t, CommandsWith(spy.svc), "click", clickArgs("101", 2, 1, "left"))
+	_, cmdErr := runCommand(t, CommandsWith(spy.svc), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 	if cmdErr == nil {
 		t.Fatal("a press during the activation must stop the click")
 	}
@@ -126,7 +128,7 @@ func TestEscDuringTheActStepStopsDespiteInputLanding(t *testing.T) {
 	// succeeded) still stops the command: the user's signal outranks the
 	// step's own outcome, and the agent must re-observe before acting.
 	spy := newEscSpy("click")
-	_, cmdErr := runCommand(t, CommandsWith(spy.svc), "click", clickArgs("101", 2, 1, "left"))
+	_, cmdErr := runCommand(t, CommandsWith(spy.svc), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 	if cmdErr == nil || cmdErr.Exit != protocol.ExitEsc {
 		t.Fatalf("a press during the click must stop it: %v", cmdErr)
 	}
@@ -143,12 +145,12 @@ func TestEscStopDoesNotLeakIntoTheNextCommand(t *testing.T) {
 	// stopped one starts clean (there is no turn concept — Codex's
 	// per-turn latch is winuse's per-command latch).
 	spy := newEscSpy("activate")
-	_, cmdErr := runCommand(t, CommandsWith(spy.svc), "click", clickArgs("101", 2, 1, "left"))
+	_, cmdErr := runCommand(t, CommandsWith(spy.svc), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 	if cmdErr == nil || cmdErr.Exit != protocol.ExitEsc {
 		t.Fatalf("the first click must stop: %v", cmdErr)
 	}
 	spy.pressOn = "" // no press this time
-	out, cmdErr := runCommand(t, CommandsWith(spy.svc), "click", clickArgs("101", 2, 1, "left"))
+	out, cmdErr := runCommand(t, CommandsWith(spy.svc), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 	if cmdErr != nil {
 		t.Fatalf("the next command must run clean: %v", cmdErr.Error())
 	}
@@ -171,7 +173,7 @@ func TestTypeTextAbortBecomesTheEscStop(t *testing.T) {
 		}
 		return win.ErrEscStopped
 	}
-	_, cmdErr := runCommand(t, CommandsWith(svc), "type-text", protocol.TypeTextArgs{Window: "101", Text: "hello"})
+	_, cmdErr := runCommand(t, CommandsWith(svc), "type-text", protocol.TypeTextArgs{Window: "101", Text: "hello", Headed: true})
 	if cmdErr == nil || cmdErr.Exit != protocol.ExitEsc {
 		t.Fatalf("an aborted typing must report the stop: %v", cmdErr)
 	}
@@ -188,7 +190,7 @@ func TestNoEscWatchStillRunsCommands(t *testing.T) {
 	if svc.Esc == nil {
 		svc.Esc = noopEscWatch{} // CommandsWith would; tests that build Services directly mirror it
 	}
-	out, cmdErr := runCommand(t, CommandsWith(svc), "click", clickArgs("101", 2, 1, "left"))
+	out, cmdErr := runCommand(t, CommandsWith(svc), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 	if cmdErr != nil {
 		t.Fatalf("click: %v", cmdErr.Error())
 	}
@@ -220,6 +222,7 @@ func TestEscStopsTheBatchInTheFailedStep(t *testing.T) {
 	}
 	_, cmdErr := runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{
 		Window: "101",
+		Headed: true,
 		Steps: []protocol.Step{
 			stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(1)}),
 			stepOf("type-text", protocol.TypeTextArgs{Text: "must not appear"}),
@@ -322,6 +325,7 @@ func TestBatchExitCodeForwardingStillPasses(t *testing.T) {
 	}
 	_, cmdErr := runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{
 		Window: "101",
+		Headed: true,
 		Steps: []protocol.Step{
 			stepOf("type-text", protocol.TypeTextArgs{Text: "hello"}),
 			stepOf("press-key", protocol.PressKeyArgs{Key: "Return"}), // must not run

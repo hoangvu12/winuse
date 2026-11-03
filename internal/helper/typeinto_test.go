@@ -230,31 +230,44 @@ func TestBatchTypeTextIntoKeepsTheHeadlessScope(t *testing.T) {
 	}
 }
 
-func TestTypeTextSaysWhyItWentHeaded(t *testing.T) {
-	// No focused control: ok, why, and the --into hint.
+// TestTypeTextSaysWhyItHasNoBackgroundRoute: plain type-text with no
+// Headless route is refused with nothing sent, the reason the probe read,
+// the --into hint and the --headed retry; it never goes Headed on its own
+// (headless-max tickets 19 and 21).
+func TestTypeTextSaysWhyItHasNoBackgroundRoute(t *testing.T) {
+	// No focused control: refused, why, and the --into hint.
 	spy := newKeyRouteSpy(win.KeyTarget{})
 	out, cmdErr := runCommand(t, CommandsWith(spy.svc), "type-text", typeTextArgs("101", "hi"))
-	if cmdErr != nil {
-		t.Fatalf("type-text: %v", cmdErr.Error())
+	wantHeadedRefusal(t, "type-text with no focused control", out, cmdErr)
+	if !strings.Contains(cmdErr.Msg, "window 101 reports no focused control") {
+		t.Errorf("message = %q, want it to say the Window reports no focused control", cmdErr.Msg)
 	}
-	for _, want := range []string{"ok (typed Headed: window 101 reports no focused control", "winuse type-text 101 --into <element> <text>"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("output = %q, want %q", out, want)
-		}
+	if !strings.Contains(cmdErr.Hint, "winuse type-text 101 --into <element> <text>") {
+		t.Errorf("hint = %q, want the --into form", cmdErr.Hint)
+	}
+	if got := spy.recorded(); len(got) != 0 {
+		t.Errorf("a refused type-text ran %v", got)
 	}
 
-	// No focused control, but the Window is already the foreground: it was
-	// not brought forward, so plain ok.
+	// No focused control, and the Window is already the foreground: still
+	// refused, nothing sent.
 	spy = newKeyRouteSpy(win.KeyTarget{})
 	spy.svc.Foreground = func() uint64 { return 101 }
-	if out, _ := runCommand(t, CommandsWith(spy.svc), "type-text", typeTextArgs("101", "hi")); out != okOutput {
-		t.Errorf("already the foreground: output = %q, want ok", out)
+	out, cmdErr = runCommand(t, CommandsWith(spy.svc), "type-text", typeTextArgs("101", "hi"))
+	wantHeadedRefusal(t, "type-text in the foreground Window", out, cmdErr)
+	if got := spy.recorded(); len(got) != 0 {
+		t.Errorf("a refused type-text ran %v", got)
 	}
 
-	// A focused control that is no edit: plain ok, nothing to explain.
+	// A focused control that is no edit: refused, naming its class.
 	spy = newKeyRouteSpy(win.KeyTarget{Focus: okButton})
-	if out, _ := runCommand(t, CommandsWith(spy.svc), "type-text", typeTextArgs("101", "hi")); out != okOutput {
-		t.Errorf("a button's focus: output = %q, want ok", out)
+	out, cmdErr = runCommand(t, CommandsWith(spy.svc), "type-text", typeTextArgs("101", "hi"))
+	wantHeadedRefusal(t, "type-text into a button's focus", out, cmdErr)
+	if !strings.Contains(cmdErr.Msg, "(class Button) is not a classic edit control") {
+		t.Errorf("message = %q, want it to name the focused control's class", cmdErr.Msg)
+	}
+	if got := spy.recorded(); len(got) != 0 {
+		t.Errorf("a refused type-text ran %v", got)
 	}
 
 	// --headed skips the probe and says nothing.

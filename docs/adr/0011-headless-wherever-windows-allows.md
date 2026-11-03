@@ -10,7 +10,12 @@ out-of-scope "Headless typing".
 Amended by ADR 0013: Decision 5's chord refusal is reversed for chords
 through attached key state (headless-max ticket 07), and `--post` gains
 Posted Clicks (ticket 12). ADR 0013 also names the general rule behind
-Decision 5: a route without a readback is opt-in.
+Decision 5: a route without a readback is opt-in. ADR 0013 rule 3
+amends Decision 4 and Decision 3's "Scroll at `@x,y` stays Headed"
+(headless-max ticket 21): where no Headless route exists, `press-key`,
+`type-text` and a scroll at `@x,y` are refused with "nothing was sent"
+and the `--headed` retry unless the agent passed `--headed`. They no
+longer go Headed on their own.
 
 Amended on 2026-11-03 (desktop-parity ticket 11): Decision 2 gains
 `maximize-window`, the one Headed Window Action. See the amendment at
@@ -53,7 +58,8 @@ The user asked for everything to be as headless as possible.
    focused classic edit control are Headless. Anywhere else they stay
    Headed, as before. The route is decided from the Window before
    anything is sent. "winuse never switches mode on its own" now means:
-   never after something was sent.
+   never after something was sent. (Amended by ADR 0013 rule 3: anywhere
+   else they are refused unless the agent passed `--headed`.)
 5. Posted Keys (`--post`) are a third kind, neither Headless nor
    Headed. They post keyboard messages to a background Window's focused
    control. They are opt-in per command, because Windows does not
@@ -117,7 +123,10 @@ still decided before anything is sent.
   `set-value --headed` is: there is no UIA Element to click.
 - Plain `type-text` keeps its Headed fallback. When it goes Headed
   because the Window reports no focused control, its `ok` says so and
-  points at `--into`.
+  points at `--into`. (Amended by ADR 0013 rule 3, headless-max ticket
+  21: without `--headed` there is no fallback. The text is refused with
+  nothing sent, and the refusal says the Window reports no focused
+  control and points at `--into` and `--post`.)
 
 Remembering a Window's last focused edit control from an earlier read
 was rejected: a stale handle could type into the wrong tab.

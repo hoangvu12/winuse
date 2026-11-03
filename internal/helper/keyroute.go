@@ -141,6 +141,7 @@ func (e *notSentError) Unwrap() error { return e.err }
 // target, the act, and the ripple on a delivered Action. No activation,
 // no banner, no SendInput. The Esc checkpoints match runHeadless's.
 func (s Services) runKeyHeadless(ctx context.Context, w win.WindowInfo, run keyRun) (string, *Error) {
+	noteRoute(ctx, w, keyRunRoute(run.posted)) // trace.go
 	if rerr := s.headlessRefusals(w, adminMessageHint); rerr != nil {
 		return "", rerr
 	}

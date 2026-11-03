@@ -274,7 +274,9 @@ func TestClipboardCommandsWaitForTheActionGate(t *testing.T) {
 	}
 	cmds := CommandsWith(svc)
 	index := 1
-	raw, _ := json.Marshal(protocol.ClickArgs{Window: "101", ElementIndex: &index})
+	// A Headed click (headless-max ticket 21) holds the desktop through the
+	// v1 fakes' injected click.
+	raw, _ := json.Marshal(protocol.ClickArgs{Window: "101", ElementIndex: &index, Headed: true})
 	go cmds["click"](context.Background(), raw)
 	<-inClick
 

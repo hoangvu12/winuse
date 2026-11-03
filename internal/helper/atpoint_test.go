@@ -4,7 +4,9 @@ package helper
 // perform-secondary-action (finding 8): the point is mapped through the
 // Window's latest screenshot exactly like the coordinate click, and the
 // element side acts on the Element under the mapped point. Everything
-// Win32 and element-side is faked; no desktop is touched.
+// Win32 and element-side is faked; no desktop is touched. The @x,y form is
+// Headed, so the tests send `headed` (without it the form is refused,
+// headless-max ticket 21).
 
 import (
 	"image"
@@ -53,7 +55,7 @@ func TestSetValueAtPointMapsThroughTheScreenshot(t *testing.T) {
 	s.recordScreenshot(t, cmds)
 
 	out, cmdErr := runCommand(t, cmds, "set-value", protocol.SetValueArgs{
-		Window: "101", Point: &protocol.Point{X: 400, Y: 235}, Value: "typed at a point",
+		Window: "101", Point: &protocol.Point{X: 400, Y: 235}, Value: "typed at a point", Headed: true,
 	})
 	if cmdErr != nil {
 		t.Fatalf("set-value @x,y: %v", cmdErr.Error())
@@ -82,7 +84,7 @@ func TestPerformSecondaryActionAtPointMapsAndCanonicalizes(t *testing.T) {
 	s.recordScreenshot(t, cmds)
 
 	out, cmdErr := runCommand(t, cmds, "perform-secondary-action", protocol.SecondaryActionArgs{
-		Window: "101", Point: &protocol.Point{X: 400, Y: 235}, Action: "toggle",
+		Window: "101", Point: &protocol.Point{X: 400, Y: 235}, Action: "toggle", Headed: true,
 	})
 	if cmdErr != nil {
 		t.Fatalf("perform-secondary-action @x,y: %v", cmdErr.Error())
@@ -103,7 +105,7 @@ func TestElementAtPointFailuresShareTheMapping(t *testing.T) {
 	s := newAtPointSpy(t)
 	cmds := CommandsWith(s.svc)
 	_, cmdErr := runCommand(t, cmds, "set-value", protocol.SetValueArgs{
-		Window: "101", Point: &protocol.Point{X: 10, Y: 10}, Value: "x",
+		Window: "101", Point: &protocol.Point{X: 10, Y: 10}, Value: "x", Headed: true,
 	})
 	if cmdErr == nil || cmdErr.Msg != "no screenshot is available for window 101" {
 		t.Fatalf("message = %v, want the shared no-screenshot failure", cmdErr)
@@ -115,7 +117,7 @@ func TestElementAtPointFailuresShareTheMapping(t *testing.T) {
 	// Outside the screenshot: the shared outside failure.
 	s.recordScreenshot(t, cmds)
 	_, cmdErr = runCommand(t, cmds, "perform-secondary-action", protocol.SecondaryActionArgs{
-		Window: "101", Point: &protocol.Point{X: 5000, Y: 10}, Action: "Toggle",
+		Window: "101", Point: &protocol.Point{X: 5000, Y: 10}, Action: "Toggle", Headed: true,
 	})
 	if cmdErr == nil || cmdErr.Msg != "point @5000,10 is outside the latest screenshot of window 101 (800x470 px)" {
 		t.Fatalf("message = %v, want the outside-the-screenshot failure", cmdErr)
@@ -125,7 +127,7 @@ func TestElementAtPointFailuresShareTheMapping(t *testing.T) {
 	// refusal points at type-text, without an Element Index to name).
 	s.setValueErr = uia.ErrNotSettable
 	_, cmdErr = runCommand(t, cmds, "set-value", protocol.SetValueArgs{
-		Window: "101", Point: &protocol.Point{X: 400, Y: 235}, Value: "x",
+		Window: "101", Point: &protocol.Point{X: 400, Y: 235}, Value: "x", Headed: true,
 	})
 	if cmdErr == nil || cmdErr.Msg != "Cannot set a value for an element that is not settable" {
 		t.Fatalf("message = %v, want the not-settable refusal", cmdErr)
@@ -160,7 +162,7 @@ func TestUnavailableActionAtPointNamesThePoint(t *testing.T) {
 	s.secondaryErr = &uia.UnavailableActionError{Action: "Expand", Index: -1, Offered: []string{"Toggle"}}
 
 	_, cmdErr := runCommand(t, cmds, "perform-secondary-action", protocol.SecondaryActionArgs{
-		Window: "101", Point: &protocol.Point{X: 400, Y: 235}, Action: "Expand",
+		Window: "101", Point: &protocol.Point{X: 400, Y: 235}, Action: "Expand", Headed: true,
 	})
 	if cmdErr == nil || cmdErr.Msg != "secondary action 'Expand' is not available for the Element at the point; available actions: Toggle" {
 		t.Fatalf("message = %v, want the point form of the unavailable-action failure", cmdErr)

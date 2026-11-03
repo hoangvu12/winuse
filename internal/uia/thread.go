@@ -463,5 +463,8 @@ func walkConfig(ctx context.Context, budget time.Duration) WalkConfig {
 	if cfg.Budget <= 0 {
 		cfg.Budget = time.Millisecond // a non-positive budget still walks the root
 	}
+	if skeleton(ctx) {
+		cfg.MaxDepth, cfg.CountHidden = SkeletonDepth, true
+	}
 	return cfg
 }
