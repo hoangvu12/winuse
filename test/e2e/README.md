@@ -171,7 +171,10 @@ and `--disable-features=msImplicitSignin`. Without the last, Edge signs a
 fresh profile in to the Windows account on its own, turns on sync of that
 account's data, and puts a modal "Sync your profile" dialog over the page
 (the laptop's 0693039 run). `winuse browser launch` turns
-`msImplicitSignin` off as well. The tests that act in the user's own
+`msImplicitSignin` off as well. `TestIsolatedEdgeStaysSignedOut` is the
+one-launch check: one Edge on a temp profile, its Window State read for
+10 s, failing on any sign of the sign-in dialog, then the browser
+terminated by its pid and the profile removed. The tests that act in the user's own
 browser through the extension (`TestBrowserPagesExtension`, the probe's
 extension questions) skip unless `WINUSE_E2E_USER_BROWSER=1` is set too.
 

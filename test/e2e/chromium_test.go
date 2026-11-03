@@ -152,6 +152,67 @@ func findIsolatedWindow(t *testing.T, pid uint32, title string, timeout time.Dur
 	return 0
 }
 
+// signInSigns are what Edge's implicit sign-in put in the Window State at
+// 0693039: the "Sync your profile" dialog over the page, its
+// edge://sync-confirmation/ document, and the Window disabled under it.
+var signInSigns = []*regexp.Regexp{
+	regexp.MustCompile(`Sync your profile`),
+	regexp.MustCompile(`sync-confirmation`),
+	regexp.MustCompile(`signed you in|has signed in on this device|syncing your browsing data`),
+	regexp.MustCompile(`(?m)^\t0 window \([^)]*disabled`),
+}
+
+// TestIsolatedEdgeStaysSignedOut is the one-launch check of
+// startIsolatedBrowser on Edge: one Edge on a temp profile, the fixture
+// page, and the Window State read every half second for 10 s (the dialog
+// came about 2 s after launch at 0693039). Any sign of the implicit
+// sign-in fails it. The browser is then terminated by its pid and the
+// profile removed with the temp dir.
+func TestIsolatedEdgeStaysSignedOut(t *testing.T) {
+	optIn(t)
+	var edge *chromiumBrowser
+	for _, b := range findChromiumBrowsers() {
+		if b.name == "edge" {
+			b := b
+			edge = &b
+		}
+	}
+	if edge == nil {
+		t.Skip("Edge is not installed in a standard location")
+	}
+	killHelper(t)
+
+	pid := startIsolatedBrowser(t, edge.exe, "--new-window", chromiumFixtureURL(t))
+	id := findIsolatedWindow(t, pid, chromiumPageTitle, 30*time.Second)
+	window := strconv.FormatUint(id, 10)
+
+	deadline := time.Now().Add(10 * time.Second)
+	reads := 0
+	for time.Now().Before(deadline) {
+		state, stderr, exit := runGetWindowState(t, window)
+		if exit != 0 {
+			t.Fatalf("get-window-state: exit %d, stderr:\n%s", exit, stderr)
+		}
+		reads++
+		for _, re := range signInSigns {
+			if re.MatchString(state) {
+				t.Fatalf("Edge (pid %d) shows its implicit sign-in (%q) after %d reads:\n%s", pid, re.String(), reads, state)
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	w, _ := windowByID(t, id)
+	t.Logf("Edge (pid %d) Window %d, title %q: no sign-in in %d reads over 10 s", pid, id, w.Title, reads)
+
+	terminatePID(t, pid)
+	for end := time.Now().Add(5 * time.Second); pidAlive(pid) && time.Now().Before(end); {
+		time.Sleep(100 * time.Millisecond)
+	}
+	if pidAlive(pid) {
+		t.Errorf("Edge (pid %d) still runs 5 s after it was terminated", pid)
+	}
+}
+
 // TestChromiumWebContentInWindowState runs the Chromium fixture page through
 // every installed Chromium browser: the Window State of the browser Window
 // must expose the page's web content Elements. If accessibility has not
