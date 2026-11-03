@@ -950,6 +950,11 @@ Escape key. During a Headed Action, or a Batch with a Headed step, the key
 never reaches the app. During a Headless Action it still reaches whatever
 app the user is working in, and it stops winuse all the same.
 
+The stop is for everyone: one press stops the Action that runs and every
+command waiting its turn behind it, whichever agent sent them. A waiting
+command says nothing was sent. A command sent after the press runs as
+usual, so check what the user wants before you send one.
+
 After exit 130, stop sending winuse commands for the task and leave the
 stopped Action as it is. Tell the user what you were doing and where the
 task stands, then ask how to proceed. Your own `press-key Escape` is an

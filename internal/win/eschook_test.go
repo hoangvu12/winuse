@@ -343,3 +343,50 @@ func TestEscWatcherArmDisarmStoppedThroughTheWatcher(t *testing.T) {
 	nilWatch.Disarm()
 	nilWatch.Close()
 }
+
+// Esc stops every agent (multi-agent 05): a press during a running scope
+// advances the stop generation a waiting request compares; a press while
+// only requests wait is recorded too and passes through, without leaving a
+// latch for the next command; a request that arrives after the press sees
+// no stop.
+func TestEscLatchStopsWaitingRequests(t *testing.T) {
+	l := &escLatch{}
+	l.arm() // the running Action
+	waiting := l.beginWait()
+	if l.stoppedSince(waiting) {
+		t.Fatal("stopped before any press")
+	}
+	physicalEscDown.event(l)
+	if !l.stopped() || !l.stoppedSince(waiting) {
+		t.Error("the press must stop the running and the waiting request")
+	}
+	l.disarm()
+	l.endWait()
+	later := l.beginWait()
+	if l.stoppedSince(later) || l.stopped() {
+		t.Error("a request that arrives after the press must run")
+	}
+	l.endWait()
+
+	// Only waiting requests: the press is recorded, passes through and
+	// latches nothing.
+	l = &escLatch{}
+	g := l.beginWait()
+	if r := physicalEscDown.event(l); r != escPass {
+		t.Errorf("a press while only waiting: verdict %v, want pass", r)
+	}
+	if !l.stoppedSince(g) || l.stopped() {
+		t.Error("the waiting request must stop, with no latch left for the next command")
+	}
+	l.endWait()
+	l.endWait() // a stray end is harmless
+	if l.waiting.Load() != 0 {
+		t.Errorf("waiting = %d", l.waiting.Load())
+	}
+	// Nothing in flight: a press records nothing.
+	g = l.gen.Load()
+	physicalEscDown.event(l)
+	if l.gen.Load() != g {
+		t.Error("a press with nothing in flight must not count")
+	}
+}
