@@ -79,7 +79,7 @@ is not, which is why ADR 0011 made Posted Keys opt-in.
 | restore-window reports self-activation | 6 | 02 | done |
 | Detect and report self-activation around restore | 6 | 03 | done |
 | Headless tab switch on a launched browser | 1 | 05 | done |
-| Accelerator lookup for press-key | 1 | 06 | planned |
+| Accelerator lookup for press-key | 1 | 06 | done |
 | Chords through attached key state, `--post` | 2 | 07 | done |
 | invoke-menu on classic menu bars | 1 | 08 | done |
 | ContextMenu Secondary Action | 1 | 09 | planned |
