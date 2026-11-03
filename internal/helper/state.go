@@ -182,6 +182,13 @@ type Services struct {
 	// Window polls use Windows, Foreground and Sleep above.
 	StartApp func(spec apps.Spec, opts win.LaunchOptions) (pid uint32, err error)
 
+	// OpenProcess opens one process of an App for close-app (desktop-parity
+	// ticket 10, closeapp.go), to wait for its exit and, with terminate, to
+	// end it under --force. Nil falls back to win.OpenAppProcess; tests
+	// fake it so offline tests never open or end a process. close-app's
+	// closes and polls use CloseWindow, WindowOpen and Sleep above.
+	OpenProcess func(pid uint32, terminate bool) (AppProcess, error)
+
 	// The Windows an Action opened (desktop-parity 02, opened.go):
 	// Surfaces lists every visible top-level window, unfiltered, menus and
 	// popups included (win.Collect), for the before-and-after diff and for
@@ -300,6 +307,7 @@ func CommandsWith(s Services) map[string]Command {
 		"hover":                    hover(s),
 		"list-apps":                listApps(store),
 		"launch-app":               launchApp(s, store),
+		"close-app":                closeApp(s),
 		StatusCommand:              statusCommand(s),
 		"maximize-window":          maximizeWindow(s), // windowactions.go, desktop-parity ticket 11
 	}
@@ -332,14 +340,15 @@ func CommandsWith(s Services) map[string]Command {
 	cmds["list-displays"] = listDisplays(s)
 	cmds["screenshot"] = displayScreenshot(s)
 
-	// The serialized registry: every control-path command runs alone, and
-	// the Actions that can open a Window report it (opened.go). The Batch
-	// keeps the raw step commands, so it diffs once around all its steps.
+	// The serialized registry: every control-path command runs alone, the
+	// Actions that can open a Window report it (opened.go), and so does an
+	// Action whose App took the foreground (selfactivation.go). The Batch
+	// keeps the raw step commands, so it reports once around all its steps.
 	// Every command but status records the Agent it ran for (agents.go).
 	out := make(map[string]Command, len(cmds))
 	for name, cmd := range cmds {
 		if !observationOnlyCommand(name) {
-			cmd = s.serialized(s.reportOpened(name, cmd))
+			cmd = s.serialized(s.reportAfter(name, cmd))
 		}
 		if name != StatusCommand {
 			cmd = s.tracked(name, cmd)
@@ -587,6 +596,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.StartApp == nil {
 		s.StartApp = apps.StartApp
+	}
+	if s.OpenProcess == nil {
+		s.OpenProcess = openAppProcess
 	}
 	if s.Surfaces == nil {
 		s.Surfaces = func() ([]win.WindowInfo, error) {

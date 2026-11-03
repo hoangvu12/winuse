@@ -394,6 +394,16 @@ still the foreground window afterwards. The shared helpers are in
   retry, leaving the fixture at its size and the cover in front;
   `--headed maximize-window` brings the fixture to the foreground and
   maximizes it (IsZoomed), and `restore-window` returns it to its size.
+- `TestCloseAppClosesTwoWindowsWithOneCommand` (`close_app_test.go`,
+  desktop-parity ticket 10): two instances of a uniquely named copy of the
+  fixture, closed by one `close-app <name>`, which prints `ok` once both
+  processes have exited; a plain fixture beside them stays open. The copy's
+  name keeps close-app away from any process the test did not start.
+- `TestCloseAppForceEndsAnAppThatStaysOpen` (`close_app_test.go`): the
+  copy with `-ignore-close` stays open on `close-app`, which prints the
+  still-running `ok`; `close-app --force` then ends its process. The
+  protected-process refusal is tested offline only: a live test would aim
+  at the user's own explorer.exe.
 - `TestLaunchAppKeepsTheForeground`, `TestLaunchAppMinimized` and
   `TestLaunchAppNotepadReportsTheForeground` (`launch_noactivate_test.go`,
   headless-max ticket 01): a cover fixture is made the foreground with
@@ -428,6 +438,12 @@ still the foreground window afterwards. The shared helpers are in
   `get-window <id>` finds that Window, and a Headless Escape on it prints
   `Note: window <id> closed`. The foreground stays put. Every other test
   accepts such note lines after `ok` and logs them (`assertActionOK`).
+- `TestHeadlessClickReportsSelfActivation` (`self_activation_test.go`,
+  headless-max 03): the same click on the covered fixture must end with
+  `Note: the App took the foreground` exactly when the fixture holds the
+  foreground right after it, and never otherwise. The App only takes the
+  foreground when the foreground lock has lapsed (in the probe, the
+  user's last-input process had exited), so the log says which case ran.
 - `TestHeadlessTypeTextIntoPasswordEdit`: a posted Tab moves the focus to
   the password Edit, then `type-text` fills it and the output is exactly
   `ok`, without the text.
@@ -507,7 +523,7 @@ Run only these tests:
 
 ```
 set WINUSE_E2E=1
-go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted|OpenedAndClosed" ./test/e2e
+go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted|OpenedAndClosed|SelfActivation" ./test/e2e
 ```
 
 ## The clipboard test

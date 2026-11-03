@@ -213,6 +213,15 @@ type LaunchArgs struct {
 	CDP       bool     `json:"cdp,omitempty"`       // an Electron or WebView2 App with a loopback debugging port (headless-max 15)
 }
 
+// CloseAppArgs are close-app's arguments (desktop-parity ticket 10): the
+// App whose Windows to close, named as a Window reference names an App
+// (display name or executable name), and with Force, agent-desktop's
+// --force: end the App's processes still running after the posted close.
+type CloseAppArgs struct {
+	App   string `json:"app"`
+	Force bool   `json:"force,omitempty"`
+}
+
 // AttachArgs are the arguments of browser attach and browser detach
 // (headless-max 15): a Window of the running Electron App.
 type AttachArgs struct {
