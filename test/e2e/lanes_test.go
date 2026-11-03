@@ -16,7 +16,6 @@ package e2e
 
 import (
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -75,9 +74,7 @@ func TestTwoAgentsRunInTheirOwnLanes(t *testing.T) {
 	if !gamma.end.After(a.end) {
 		t.Errorf("gamma's click on alpha's Window ended %s before alpha's typing: it did not wait for alpha's lane", a.end.Sub(gamma.end))
 	}
-	if a.exit != 0 || !strings.HasPrefix(a.stdout, "ok (posted") || a.stderr != "" {
-		t.Errorf("alpha's posted typing: exit %d, stdout %q, stderr %q", a.exit, a.stdout, a.stderr)
-	}
+	assertActionOK(t, "alpha's posted typing", a.stdout, a.stderr, a.exit)
 	fixA.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.Typed == typed })
 	if fg := win.ForegroundWindow(); fg != cover {
 		t.Errorf("the foreground is %s; the last cover %d must stay in front", describeWindow(t, fg), cover)
