@@ -403,8 +403,9 @@ fits) from the start. Without it they are refused with nothing sent.
   `select-text` by Element; scrolling, keys, `invoke-menu` and screenshots
   need `restore-window`.
 - A WPF App's right-click menu (other Apps' open Headless with
-  `perform-secondary-action <ref> ContextMenu`, which names the menu;
-  `click --button right --post` posts one to a classic control).
+  `perform-secondary-action <ref> ContextMenu`, which names the menu, up
+  to 8 s later on File Explorer; `click --button right --post` posts one
+  to a classic control).
 - The shell: opening Start, the hidden icons or the notification panel
   (`--headed open-shell`), and any click on it but a toast's buttons (see
   "The taskbar and the shell").

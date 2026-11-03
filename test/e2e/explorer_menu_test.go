@@ -87,3 +87,36 @@ func TestHeadedRightClickKeepsALateExplorerMenu(t *testing.T) {
 		t.Errorf("closing the menu: exit %d, stderr %q", exit, stderr)
 	}
 }
+
+// The Headless ContextMenu on a File Explorer item (headless-max ticket
+// 22): ShowContextMenu opens it, but an Explorer that showed no menu for a
+// while shows it up to about 6 s later (measured 2026-11-03), past the 2 s
+// read-back other Apps get. The test opens an Explorer Window of its own
+// (cold), covers it, and expects the menu read back, the cover keeping
+// the foreground; it then closes the menu and the Window.
+func TestContextMenuOnACoveredExplorerItem(t *testing.T) {
+	optIn(t)
+	const file = "winuse-e2e-context.txt"
+	window := openExplorerOn(t, file)
+	cover := coverWindow(t, window)
+	item := explorerItem(t, window, file)
+
+	start := time.Now()
+	stdout, stderr, exit := runWinuse(t, []string{"perform-secondary-action", window, item, "ContextMenu"}, "WINUSE_HELPER_IDLE="+e2eIdle)
+	t.Logf("ContextMenu took %s", time.Since(start))
+	assertActionOK(t, "ContextMenu on the Explorer item", stdout, stderr, exit)
+	m := regexp.MustCompile(`Note: the context menu opened: read it with winuse get-window-state (\d+)`).FindStringSubmatch(stdout)
+	if m == nil {
+		t.Fatalf("the ok does not name the menu: %q", stdout)
+	}
+	menu, _ := strconv.ParseUint(m[1], 10, 64)
+	if !win.WindowOpen(menu) {
+		t.Errorf("the menu %d is not open", menu)
+	}
+	if fg := win.ForegroundWindow(); fg != cover {
+		t.Errorf("the foreground is %s; the cover %d must keep it", describeWindow(t, fg), cover)
+	}
+	if _, stderr, exit := runWinuse(t, []string{"press-key", m[1], "Escape"}, "WINUSE_HELPER_IDLE="+e2eIdle); exit != 0 {
+		t.Errorf("closing the menu: exit %d, stderr %q", exit, stderr)
+	}
+}

@@ -21,6 +21,15 @@ package helper
 // --headed retry, which right-clicks the Element with the real pointer.
 // The @x,y form has no Headless route either.
 //
+// A Windows 11 File Explorer list item takes ShowContextMenu, but its menu
+// can show late: 5.8 s after the call on an Explorer that had shown no
+// context menu for a while, under 2 s once warm (headless-max ticket 22,
+// measured live on covered Explorer Windows). So an Explorer Window's
+// read-back waits up to contextMenuSlowWait, within the request's budget.
+// A posted WM_CONTEXTMENU to the items view (DirectUIHWND) opens the menu
+// too, but only for the selected items, and a posted Shift+F10 or Menu
+// key opens nothing.
+//
 // The menu is topmost over the user's work, so it does not outlive the
 // agent's interest in it: the Agent's next Action on another Window closes
 // the menu its own ContextMenu opened, and says so in a Note
@@ -38,6 +47,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -69,7 +79,35 @@ const (
 	contextMenuWait = 2 * time.Second
 	menuCloseWait   = 2 * time.Second
 	contextMenuPoll = 50 * time.Millisecond
+
+	// contextMenuSlowWait is the read-back on a File Explorer Window
+	// (slowMenuApp), and contextMenuMargin what it leaves of the request's
+	// budget for the answer.
+	contextMenuSlowWait = 8 * time.Second
+	contextMenuMargin   = time.Second
 )
+
+// slowMenuApp reports whether w's App shows its context menus late: File
+// Explorer (explorer.exe), whose first menu in a while took 5.8 s.
+func slowMenuApp(w win.WindowInfo) bool {
+	return strings.EqualFold(filepath.Base(w.ExePath), "explorer.exe")
+}
+
+// menuWait is the read-back of a menu opened on w under ctx:
+// contextMenuWait, or contextMenuSlowWait for File Explorer, cut to the
+// request's deadline less contextMenuMargin.
+func menuWait(ctx context.Context, w win.WindowInfo) time.Duration {
+	wait := contextMenuWait
+	if slowMenuApp(w) {
+		wait = contextMenuSlowWait
+	}
+	if dl, ok := ctx.Deadline(); ok {
+		if left := time.Until(dl) - contextMenuMargin; left < wait {
+			wait = max(left, contextMenuPoll)
+		}
+	}
+	return wait
+}
 
 // menuRoute is how a context menu opens on an Element.
 type menuRoute int
@@ -105,8 +143,12 @@ var (
 	errMenuNoReadback = errors.New("winuse cannot list the App's Windows to read an opened menu back")
 )
 
-// menuNotOpenedError is a delivered open that showed no menu.
-type menuNotOpenedError struct{ route menuRoute }
+// menuNotOpenedError is a delivered open that showed no menu; late is set
+// for an App whose menu can still show after the read-back (slowMenuApp).
+type menuNotOpenedError struct {
+	route menuRoute
+	late  bool
+}
 
 func (e *menuNotOpenedError) Error() string {
 	how := "UI Automation's ShowContextMenu was delivered"
@@ -199,7 +241,8 @@ func (s Services) openContextMenu(ctx context.Context, cm ContextMenuActor, w wi
 	if sleep == nil {
 		sleep = time.Sleep
 	}
-	for waited := time.Duration(0); waited < contextMenuWait; waited += contextMenuPoll {
+	wait := menuWait(ctx, w)
+	for waited := time.Duration(0); waited < wait; waited += contextMenuPoll {
 		sleep(contextMenuPoll)
 		if ctx.Err() != nil {
 			break
@@ -212,7 +255,7 @@ func (s Services) openContextMenu(ctx context.Context, cm ContextMenuActor, w wi
 			return contextMenuOpened{menu: opened[0], opened: opened, owner: owner}, nil
 		}
 	}
-	return contextMenuOpened{}, &menuNotOpenedError{route: route}
+	return contextMenuOpened{}, &menuNotOpenedError{route: route, late: slowMenuApp(w)}
 }
 
 // contextMenuRefusal maps the route's failures: WPF, no read-back and a
@@ -230,9 +273,13 @@ func contextMenuRefusal(err error, w win.WindowInfo, index int, retry func(id st
 	case errors.As(err, &notSent):
 		return nothingSent(Fail(err.Error(), notSent.hint))
 	case errors.As(err, &none):
+		late := ""
+		if none.late {
+			late = "; File Explorer can still show it late: if a menu Window appears in winuse list-windows, close it with winuse press-key <menu> Escape"
+		}
 		return Fail(err.Error(),
 			"the Element may have no context menu here; read the Window State (winuse get-window-state "+id+
-				"), or open it with the real pointer, which brings the Window to the foreground: winuse --headed "+retry(id))
+				"), or open it with the real pointer, which brings the Window to the foreground: winuse --headed "+retry(id)+late)
 	}
 	return secondaryError(err, w, index)
 }
