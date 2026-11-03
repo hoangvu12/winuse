@@ -1,4 +1,4 @@
-Status: ready-for-agent (triaged by the user 2026-11-03; ADR 0013 accepted)
+﻿Status: ready-for-agent (triaged by the user 2026-11-03; ADR 0013 accepted)
 
 # Headless max: every Action headless where Windows allows it
 
@@ -55,7 +55,7 @@ Close every gap that has a route, and say plainly where none exists.
 | 20 | Background typing, keys and clicks for Chromium and Electron without CDP | M | ready-for-agent |
 | 21 | No Headed Action without `--headed` | M | ready-for-agent (build before the click and typing chains) |
 
-21 tickets: 10 S, 1 S-M, 9 M (one spike), 1 L. Done: 01, 02, 04, 05, 08, 10, 14, 18, 19.
+21 tickets: 10 S, 1 S-M, 9 M (one spike), 1 L. Done: 01, 02, 04, 05, 08, 10, 14, 15, 18, 19.
 
 ## Impossible headless (stays a refusal with a `--headed` hint)
 
