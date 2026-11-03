@@ -102,6 +102,11 @@ func writeElement(b *strings.Builder, index int, e *Element, indent bool) {
 		b.WriteString(strconv.Itoa(e.Truncated.OmittedChildren))
 		b.WriteString(" children)")
 	}
+	if e.MoreChildren > 0 {
+		b.WriteString(" (+")
+		b.WriteString(strconv.Itoa(e.MoreChildren))
+		b.WriteString(" children)")
+	}
 	if indent {
 		b.WriteByte('\n')
 	}

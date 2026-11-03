@@ -113,11 +113,16 @@ func parseRegionArg(s string) (protocol.Region, error) {
 // and the global --headed flag (ADR 0011: a screenshot activates only
 // when headed).
 func windowStateRequest(args []string, headed bool) (windowArgs, error) {
+	args, sh, err := takeShapeFlags(args) // find.go: --root, --depth, --interactive, --skeleton
+	if err != nil {
+		return windowArgs{}, err
+	}
 	window, screenshot, err := parseWindowStateArgs(args)
 	if err != nil {
 		return windowArgs{}, err
 	}
-	return windowArgs{Window: window, Screenshot: screenshot, Headed: headed}, nil
+	return windowArgs{Window: window, Screenshot: screenshot, Headed: headed,
+		Root: sh.Root, Depth: sh.Depth, Interactive: sh.Interactive, Skeleton: sh.Skeleton}, nil
 }
 
 // errZoomArgs is zoom's argument-count failure: the usage line alone says

@@ -11,6 +11,7 @@ package uia
 
 import (
 	"context"
+	"errors"
 
 	"github.com/hoangvu12/winuse/internal/wstate"
 )
@@ -21,11 +22,45 @@ import (
 // the candidates (never a guess), and a Window with no cached Window
 // State for the Agent fails as ErrNoState (read the Window State again,
 // the shared stale contract).
+//
+// Elements that find or a region read added after the Window State's own
+// (desktop-parity 04) often repeat Elements of the read itself, so the
+// read's own Elements are searched first, and the added ones only when
+// none of them matches: a reference that worked before a find still
+// resolves to the same Element after it.
 func (c *Client) ResolveElementRef(ctx context.Context, hwnd uint64, ref string) (int, error) {
 	who := storeAgent(ctx)
-	els, ok := c.store.state(who, hwnd)
+	els, base, ok := c.store.refState(who, hwnd)
 	if !ok {
 		return 0, c.store.noState(who, hwnd)
 	}
-	return wstate.ResolveElementRef(els, ref)
+	return resolveBaseFirst(els, base, ref)
+}
+
+// resolveBaseFirst resolves ref against els[:base], then, when nothing
+// matched there, against the Elements added after it.
+func resolveBaseFirst(els []wstate.Element, base int, ref string) (int, error) {
+	if base >= len(els) || base <= 0 {
+		return wstate.ResolveElementRef(els, ref)
+	}
+	i, err := wstate.ResolveElementRef(els[:base], ref)
+	var none *wstate.NoMatchRefError
+	if !errors.As(err, &none) {
+		return i, err
+	}
+	i, err = wstate.ResolveElementRef(els[base:], ref)
+	var several *wstate.AmbiguousRefError
+	if errors.As(err, &several) {
+		for k := range several.Matches {
+			several.Matches[k] += base
+		}
+		several.Candidates = nil
+		for _, m := range several.Matches {
+			several.Candidates = append(several.Candidates, wstate.Line(m, &els[m]))
+		}
+	}
+	if err != nil {
+		return 0, err
+	}
+	return base + i, nil
 }

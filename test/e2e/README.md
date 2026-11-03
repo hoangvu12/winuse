@@ -489,6 +489,13 @@ still the foreground window afterwards. The shared helpers are in
   `get-window <id>` finds that Window, and a Headless Escape on it prints
   `Note: window <id> closed`. The foreground stays put. Every other test
   accepts such note lines after `ok` and logs them (`assertActionOK`).
+- `TestFindAndRegionReadOnTheFixture` (`find_test.go`, desktop-parity
+  04): after a full read, `find --role "list item" --name charlie` prints
+  Charlie with an index after the read's last, and a click on it selects
+  Charlie; a click on Alpha's index from the full read still works.
+  `--count` prints 8, a `slider` role miss lists the roles present,
+  `--root <list> --depth 1` prints the list and its 8 items, and
+  `--skeleton` ends with its note. The cover keeps the foreground.
 - `TestHeadlessClickReportsSelfActivation` (`self_activation_test.go`,
   headless-max 03): the same click on the covered fixture must end with
   `Note: the App took the foreground` exactly when the fixture holds the
@@ -580,7 +587,7 @@ Run only these tests:
 
 ```
 set WINUSE_E2E=1
-go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted|OpenedAndClosed|SelfActivation" ./test/e2e
+go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted|OpenedAndClosed|SelfActivation|FindAndRegionRead" ./test/e2e
 ```
 
 ## The clipboard test

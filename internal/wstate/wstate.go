@@ -24,7 +24,7 @@
 //	window, one TAB per depth level (the root itself gets one TAB), with the
 //	grammar:
 //
-//	<index> <role>[ (<states>)][ <name>][ Description: <HelpText>][ Value: <value>][ on|off|indeterminate][ Secondary Actions: A, B][ ID: <AutomationId>][ (truncated: <limit>, omitted <n> children)]
+//	<index> <role>[ (<states>)][ <name>][ Description: <HelpText>][ Value: <value>][ on|off|indeterminate][ Secondary Actions: A, B][ ID: <AutomationId>][ (truncated: <limit>, omitted <n> children)][ (+<n> children)]
 //
 //	Divergence from Codex (orchestrator decision): role strings are English
 //	names derived from the numeric UIA ControlType, never
@@ -87,6 +87,10 @@ type Element struct {
 
 	// Truncated is set when a walk budget cut this Element's children.
 	Truncated *Truncation `json:"truncated,omitempty"`
+
+	// MoreChildren is the number of children a skeleton read left unread
+	// below its depth (desktop-parity 04), rendered as "(+N children)".
+	MoreChildren int `json:"moreChildren,omitempty"`
 }
 
 // Tree is one Window State: the header data plus the depth-first Element

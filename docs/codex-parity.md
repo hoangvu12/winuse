@@ -416,12 +416,18 @@ automation. **matched**.
 An Element Index whose Element went away fails as stale, with the
 instruction to read the Window State again; references copied from an
 older state go stale the same way. `name:`/`id:` references survive
-re-reads better — an extension. **matched (extended)**.
+re-reads better — an extension. `find` and `get-window-state --root`
+(desktop-parity 04) add the Elements they print after the Window State's
+own indexes instead of renumbering, so the indexes the agent holds keep
+working until the next full read. **matched (extended)**.
 
 ### extensions beyond Codex
 
 Codex's surface has no hover, no zoom, no Batch, no `name:`/`id:`
-references, no `record-tree`; winuse has all of them, keeping Codex's
+references, no `record-tree`, no `find`, no partial tree reads; winuse has
+all of them (`find` with role, name, text and state filters,
+`get-window-state --root`, `--depth`, `--interactive` and `--skeleton`,
+desktop-parity 04, from agent-desktop), keeping Codex's
 parameter names where a parameter exists. Headless Actions bring two
 more: the global `--headed` flag (before or after the command, and on a
 Batch) that restores Codex's foreground, real-input behaviour for any

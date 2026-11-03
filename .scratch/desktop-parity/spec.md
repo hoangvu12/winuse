@@ -46,7 +46,7 @@ Details are in each ticket's Comments.
 | 01 | Clipboard commands | P1 | S | done |
 | 02 | Report Windows that an Action opened | P1 | S-M | done (live e2e run still to do) |
 | 03 | Desktop waits | P1 | M | ready-for-agent |
-| 04 | `find` and a region read | P1 | M-L | ready-for-agent |
+| 04 | `find` and a region read | P1 | M-L | done (live e2e run still to do) |
 | 05 | Blocked dangerous combos with `--force` | P1 | S | done |
 | 06 | Modifiers on point clicks and wheel | P1 | S | ready-for-agent |
 | 07 | Opt-in `--json` output with codes and delivery | P1 | L | ready-for-agent |
