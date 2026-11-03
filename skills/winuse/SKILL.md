@@ -395,9 +395,8 @@ fits) from the start. Without it they are refused with nothing sent.
   Windows still take `click`, `set-value`, `perform-secondary-action` and
   `select-text` by Element; scrolling, keys, `invoke-menu` and screenshots
   need `restore-window`.
-- A right-click menu in a desktop App, such as a WPF App's
-  (`click --button right --post` posts it to a classic control, best
-  effort, like Posted Keys).
+- A WPF App's right-click menu (other Apps' open Headless with
+  `perform-secondary-action <ref> ContextMenu`, which names the menu).
 - The shell: Start, the hidden icons, and the clock's calendar and
   notification panel, which does not open from UI Automation at all (see
   "The taskbar and the shell").
@@ -987,7 +986,7 @@ zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right] [--post] [--modifiers ctrl,shift,alt]
 # --modifiers: Headless on a Page and for ctrl or shift on a multi-select list item; else --post or --headed
 set-value <window> <ref> <value|on|off|item name>
-perform-secondary-action <window> <ref> <action>   # Raise, Scroll Up/Down/Left/Right, Expand, Collapse, Toggle, Select
+perform-secondary-action <window> <ref> <action>   # Raise, Scroll Up/Down/Left/Right, Expand, Collapse, Toggle, Select, ContextMenu
 type-text <window> [--post | --into <ref>] [--interval-ms <n>] <text>
 press-key <window> <key> [--post] [--force]
 select-text <window> <ref> <start> <length> | select-text <window> <ref> all

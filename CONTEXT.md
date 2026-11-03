@@ -65,7 +65,7 @@ A command aimed at the desktop as a whole rather than at a Window, such as readi
 _Avoid_: Global action, system command
 
 **Secondary Action**:
-An operation an Element offers besides a plain click, such as Expand, Collapse, Toggle or Scroll Down, listed next to that Element in the Window State.
+An operation an Element offers besides a plain click, such as Expand, Collapse, Toggle or Scroll Down, listed next to that Element in the Window State. ContextMenu, which opens the Element's right-click menu and names the menu's Window, is never listed: any Element may take it, and the menu is closed when the same Agent next acts on another Window.
 _Avoid_: Pattern, verb, default action
 
 **Element Reference**:
@@ -81,7 +81,7 @@ An Action that winuse can deliver reliably without the foreground: no foreground
 _Avoid_: Background action, silent action, pattern action
 
 **Headed Action**:
-An Action performed the way a person would: the Window is brought to the foreground and real pointer or keyboard input is sent, under the in-control banner. An Action is Headed only when the agent asks for it with `--headed`. Activating a Window is the one exception: the command itself asks for the foreground. These have no other route, so without `--headed` they are refused with nothing sent and the exact `--headed` retry: dragging, hovering, an Action aimed at screen coordinates where no Element of the Window under the point can take it, double, right or middle clicks outside a Page, maximizing a Window (Windows has no maximize that leaves the foreground alone), Raise, a click, set value or Secondary Action on an Element of a Shell surface (it opens a flyout or activates an App), and keys and typing that have no Headless route and are not sent as Posted Keys. winuse never takes the user's screen on its own. ADR 0013 narrows this set as its routes land: a route that reads its effect back becomes Headless, and one that cannot becomes opt-in Posted. A Headed Action is polite (ADR 0014): it waits while the user is typing or clicking, stops when they take over, and afterwards gives back their foreground and pointer, unless it left a menu or Window of the App open.
+An Action performed the way a person would: the Window is brought to the foreground and real pointer or keyboard input is sent, under the in-control banner. An Action is Headed only when the agent asks for it with `--headed`. Activating a Window is the one exception: the command itself asks for the foreground. These have no other route, so without `--headed` they are refused with nothing sent and the exact `--headed` retry: dragging, hovering, an Action aimed at screen coordinates where no Element of the Window under the point can take it, double, right or middle clicks outside a Page, maximizing a Window (Windows has no maximize that leaves the foreground alone), Raise, a WPF Element's ContextMenu, a click, set value or Secondary Action on an Element of a Shell surface (it opens a flyout or activates an App), and keys and typing that have no Headless route and are not sent as Posted Keys. winuse never takes the user's screen on its own. ADR 0013 narrows this set as its routes land: a route that reads its effect back becomes Headless, and one that cannot becomes opt-in Posted. A Headed Action is polite (ADR 0014): it waits while the user is typing or clicking, stops when they take over, and afterwards gives back their foreground and pointer, unless it left a menu or Window of the App open.
 _Avoid_: Foreground action, physical action, v1 mode
 
 **Posted Keys**:
