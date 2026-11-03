@@ -218,6 +218,11 @@ type Services struct {
 	DPIAwareness func() string          // the helper's DPI awareness, named
 	WindowsBuild func() string          // the Windows build, named
 
+	// The clipboard (desktop parity ticket 01, clipboard.go). Nil falls
+	// back to the live *win.Clipboard, one per helper, so an abandoned
+	// read refuses the clipboard commands after it; tests fake it.
+	Clipboard ClipboardService
+
 	// actionGate serializes every command that activates a Window, injects
 	// input or shows the overlay (finding 11): two concurrent CLI calls
 	// must never interleave control of the desktop. It is a capacity-1
@@ -227,7 +232,9 @@ type Services struct {
 	// (ADR 0010) stay serialized too: they write into apps and drive the
 	// one Agent Cursor, and one command at a time is the promise either
 	// way. The Window Actions (ADR 0011) are serialized as well: they
-	// place and close the Windows that other Actions act in.
+	// place and close the Windows that other Actions act in, and so are
+	// the Desktop commands (the clipboard's): a paste in a Batch must not
+	// see the clipboard change halfway.
 	actionGate chan struct{}
 }
 
@@ -296,6 +303,11 @@ func CommandsWith(s Services) map[string]Command {
 	}
 	// The page-only Actions (pagecommands.go, browser merge ticket 06).
 	for name, cmd := range pageCommands(s) {
+		cmds[name] = cmd
+	}
+	// The clipboard's Desktop commands (clipboard.go, desktop parity
+	// ticket 01): serialized below like the Actions.
+	for name, cmd := range clipboardCommands(s) {
 		cmds[name] = cmd
 	}
 
@@ -570,6 +582,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.WindowsBuild == nil {
 		s.WindowsBuild = win.WindowsBuild
+	}
+	if s.Clipboard == nil {
+		s.Clipboard = win.NewClipboard()
 	}
 	if s.actionGate == nil {
 		s.actionGate = make(chan struct{}, 1)

@@ -125,6 +125,7 @@ at all, and winuse says so.
 | `wait`, `eval` | Waits for an element, text, URL, load or download, or runs JavaScript in the page |
 | `dialog`, `upload` | Answers a JavaScript dialog, or gives files to a file input |
 | `tab list`, `tab new`, `tab switch`, `tab close` | Manages a browser window's tabs |
+| `clipboard-get`, `clipboard-set`, `clipboard-clear` | Reads, replaces or empties the clipboard: text, an image as a PNG file, or a list of files |
 | `browser status`, `browser ext install`, `browser launch`, `browser clone`, `browser connect` | Connects to a browser and reports how |
 | `status` | Prints the versions, whether the helper runs, the lock state, integrity level, DPI awareness, browser connections and Windows build, without starting anything |
 

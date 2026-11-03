@@ -5,10 +5,11 @@ package cli
 // real-input pipeline for any Action or Batch. It is accepted before the
 // command and anywhere after it, with one exception: inside a literal-text
 // position — type-text's text and set-value's value, standalone or as a
-// Batch step — the token is text like any other, so an agent typing the
-// literal "--headed" never has it silently eaten. Put the flag before the
-// command (or before the text) there. Commands that are always Headed
-// accept the flag and ignore it.
+// Batch step, and clipboard-set's text — the token is text like any
+// other, so an agent typing the literal "--headed" never has it silently
+// eaten. Put the flag before the command (or before the text) there.
+// Commands that are always Headed, and the Desktop commands, accept the
+// flag and ignore it.
 
 import "strings"
 
@@ -34,6 +35,8 @@ func extractHeaded(args []string) (rest []string, headed bool) {
 		cmdArgs, h = stripHeadedBefore(args[1:], typeTextTextAfter(args[1:])) // <window> [--into <element>] <text...>
 	case "set-value":
 		cmdArgs, h = stripHeadedBefore(args[1:], 2) // <window> <element> <value...>
+	case "clipboard-set":
+		cmdArgs, h = stripHeadedBefore(args[1:], 0) // <text...>, a Desktop command with no headed form
 	case "batch":
 		cmdArgs, h = stripHeadedBatch(args[1:])
 	case "launch-app":

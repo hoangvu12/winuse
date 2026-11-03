@@ -379,8 +379,9 @@ AUMIDs — `launch-app` never guesses between several distinct matches.
 Codex's helper rejects concurrent requests ("already has an active
 request"); winuse's helper serializes every command that activates a
 Window, injects input or shows the overlay — and every Headless Action,
-which writes into an app and drives the one Agent Cursor — through one
-helper-wide action gate — one command controls the desktop at a time, and a request
+which writes into an app and drives the one Agent Cursor, and the
+clipboard's Desktop commands — through one helper-wide action gate — one
+command controls the desktop at a time, and a request
 queued behind another Action until its own budget expired fails instead
 of acting late. Observation-only commands (list-windows, get-window,
 list-apps, the plain tree read, record-tree, launch-app) may answer
@@ -421,4 +422,9 @@ Tabs it opened. The tab commands (`tab list|new|close|switch`) are
 Headless; `tab switch` on a browser winuse launched or cloned selects the
 Tab's item in the Window's UIA tab strip and reads IsSelected back
 (headless-max 05), and `--headed` switches with real keys in the
-foreground instead. Codex switches tabs only with keys. **extension**.
+foreground instead. Codex switches tabs only with keys.
+`clipboard-get`, `clipboard-set` and `clipboard-clear` read, replace and
+empty the clipboard (text, an image as PNG, a file list), like
+agent-desktop's: Desktop commands that name no Window, need no
+foreground and refuse a clipboard owner that does not respond. Codex has
+no clipboard tool. **extension**.

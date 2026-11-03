@@ -19,6 +19,7 @@ func TestRegistryHasEveryCLICommand(t *testing.T) {
 		"browser-status", "browser-use", "browser-launch", "browser-clone", "browser-connect", "browser-stop",
 		"browser-ext-install", "browser-ext-status",
 		"tab-list", "tab-new", "tab-close", "tab-switch",
+		"clipboard-get", "clipboard-set", "clipboard-clear",
 	}, protocol.PageCommands...) {
 		if _, ok := cmds[name]; !ok {
 			t.Errorf("command %q is not registered in CommandsWith", name)
