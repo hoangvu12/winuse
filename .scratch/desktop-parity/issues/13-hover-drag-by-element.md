@@ -43,3 +43,7 @@ Tests:
 - e2e `test/e2e/pointer_test.go`: `TestDragBetweenElements`. Unheaded `drag <id> id:canvas id:status --drop-delay 200` is refused with the exact retry; with `--headed` the fixture records a canvas drag from the canvas's centre to the status line's centre (within 2 px), and the command takes at least the 200 ms hold.
 
 Ran: `go build ./...`, `go vet ./...`, `go test ./...`, `go vet -tags e2e ./test/e2e` all pass. Live: `TestDragBetweenElements` passed on this laptop (7.4 s). No hover-by-Element e2e: the fixture has no Element whose hover state it records (its hover band is no Element), so hover by Element is covered offline only.
+
+### 2026-11-03: merged main (d9793b4)
+
+One conflict, SKILL.md's command reference: main's point-scroll line (headless-max 11) kept, with this ticket's drag lines. headless-max 11 leaves hover and drag at `@x,y` Headed, so nothing changed there. desktop-parity 17's live `name:`/`id:` re-resolution and its output note reach hover and drag by Element through `resolveElementRef` and the shared command wrapper. The four checks pass after the merge, and `TestDragBetweenElements` passed live again on the merged tree.
