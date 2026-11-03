@@ -10,6 +10,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 // ProcInfo is one process in a snapshot: its exe base name (lower-cased)
@@ -230,7 +232,7 @@ func processName(pid uint32) (string, bool) {
 // KillTree kills a process tree (taskkill /T /F), used only for a Harness
 // that exceeded its time limit — its own tree.
 func KillTree(pid uint32, logf func(string)) {
-	out, err := exec.Command("taskkill", "/PID", strconv.FormatUint(uint64(pid), 10), "/T", "/F").CombinedOutput()
+	out, err := win.NoConsoleWindow(exec.Command("taskkill", "/PID", strconv.FormatUint(uint64(pid), 10), "/T", "/F")).CombinedOutput()
 	if logf != nil {
 		if err != nil {
 			logf(fmt.Sprintf("cleanup: killing pid %d: %v: %s", pid, err, strings.TrimSpace(string(out))))
@@ -258,7 +260,7 @@ func CleanupTaskProcesses(pids []uint32, names []string, logf func(string)) {
 		if neverKill[name] {
 			continue
 		}
-		out, err := exec.Command("taskkill", "/PID", strconv.FormatUint(uint64(pid), 10), "/F").CombinedOutput()
+		out, err := win.NoConsoleWindow(exec.Command("taskkill", "/PID", strconv.FormatUint(uint64(pid), 10), "/F")).CombinedOutput()
 		if logf == nil {
 			continue
 		}

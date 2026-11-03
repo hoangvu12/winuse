@@ -100,7 +100,7 @@ func menuAppExe(t *testing.T, env, what string) string {
 func contextMenuAppLeg(t *testing.T, exe, title string, isMenu func(win.WindowInfo) bool) {
 	t.Helper()
 	statePath := filepath.Join(t.TempDir(), "menu-app.log")
-	cmd := exec.Command(exe, statePath, "120", "120")
+	cmd := win.NoConsoleWindow(exec.Command(exe, statePath, "120", "120"))
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("starting %s: %v", exe, err)
 	}

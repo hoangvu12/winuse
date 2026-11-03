@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/hoangvu12/winuse/internal/fixture"
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 // runBatch invokes `winuse batch ...` with the suite's short helper idle
@@ -336,7 +337,7 @@ func TestBatchFromStdin(t *testing.T) {
 	fix, window := startFixtureWithState(t)
 
 	const text = `from stdin: then "quoted"`
-	cmd := exec.Command(winuseBinary(t), "batch", "-")
+	cmd := win.NoConsoleWindow(exec.Command(winuseBinary(t), "batch", "-"))
 	cmd.Env = append(os.Environ(), "WINUSE_HELPER_IDLE="+e2eIdle)
 	cmd.Stdin = strings.NewReader("# the e2e stdin Batch\r\n" + window + " --stop-on-error\r\n\r\n" +
 		"click id:button-click\r\n" +

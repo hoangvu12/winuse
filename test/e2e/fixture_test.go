@@ -16,6 +16,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/hoangvu12/winuse/internal/fixture"
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 // This file is the fixture side of the runner: it builds and starts the
@@ -41,7 +42,7 @@ func fixtureBinary(t *testing.T) string {
 			return
 		}
 		fixturePath = filepath.Join(dir, "winusefixture.exe")
-		cmd := exec.Command("go", "build", "-ldflags", "-H windowsgui", "-o", fixturePath, "../../cmd/winusefixture")
+		cmd := win.NoConsoleWindow(exec.Command("go", "build", "-ldflags", "-H windowsgui", "-o", fixturePath, "../../cmd/winusefixture"))
 		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 		out, err := cmd.CombinedOutput()
 		if err != nil {

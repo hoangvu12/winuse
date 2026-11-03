@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hoangvu12/winuse/internal/version"
+	"github.com/hoangvu12/winuse/internal/win"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -299,7 +300,7 @@ func (rs *runState) runTask(t Task) TaskResult {
 		return res
 	}
 	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd := exec.Command(rs.inv.Argv[0], rs.inv.Argv[1:]...)
+	cmd := win.NoConsoleWindow(exec.Command(rs.inv.Argv[0], rs.inv.Argv[1:]...))
 	cmd.Dir = scratch
 	cmd.Env = env
 	cmd.Stdin = strings.NewReader(prompt)
@@ -420,7 +421,7 @@ func (rs *runState) taskEnv(scratch, baseURL string) []string {
 // screen is touched.
 func preflight(rs *runState, spec HarnessSpec) error {
 	prompt := "Reply with the single word: ready."
-	cmd := exec.Command(rs.inv.Argv[0], rs.inv.Argv[1:]...)
+	cmd := win.NoConsoleWindow(exec.Command(rs.inv.Argv[0], rs.inv.Argv[1:]...))
 	cmd.Dir = rs.runRoot
 	cmd.Env = append([]string{}, os.Environ()...)
 	cmd.Stdin = strings.NewReader(prompt)
@@ -455,7 +456,7 @@ func preflight(rs *runState, spec HarnessSpec) error {
 
 // runScript runs a task's PowerShell script in the scratch folder.
 func runScript(script, dir string, env []string, timeout time.Duration) (stdout, stderr string, exit int, timedOut bool, err error) {
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script)
+	cmd := win.NoConsoleWindow(exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script))
 	cmd.Dir = dir
 	cmd.Env = env
 	var out, errOut bytes.Buffer
@@ -484,7 +485,7 @@ func buildWinuse(repoRoot, binDir string) error {
 		return err
 	}
 	exe := filepath.Join(binDir, "winuse.exe")
-	cmd := exec.Command("go", "build", "-o", exe, "./cmd/winuse")
+	cmd := win.NoConsoleWindow(exec.Command("go", "build", "-o", exe, "./cmd/winuse"))
 	cmd.Dir = repoRoot
 	cmd.Env = append(append([]string{}, os.Environ()...), "CGO_ENABLED=0")
 	out, err := cmd.CombinedOutput()
