@@ -55,7 +55,7 @@ Close every gap that has a route, and say plainly where none exists.
 | 20 | Background typing, keys and clicks for Chromium and Electron without CDP | M | done (live e2e not run yet) |
 | 21 | No Headed Action without `--headed` | M | done (live e2e not run yet) |
 | 22 | ContextMenu on File Explorer list items | S-M | done |
-| 23 | A Headed double click on an Explorer folder does not open it | S | ready-for-agent |
+| 23 | A Headed double click on an Explorer folder does not open it | S | done (no winuse bug; SKILL.md note) |
 | 24 | set-value read-back false alarms (Explorer rename, line endings) | S | done |
 
 24 tickets: 12 S, 2 S-M, 9 M (one spike), 1 L. Done: 01-15, 17-21 (16 is wontfix). 22-24 came from the 2026-11-03 Task Suite run.

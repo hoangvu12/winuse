@@ -385,6 +385,9 @@ Pick the Headless way whenever one does the job.
   the Action cannot land on a neighbour.
 - Show, hide, place and close Windows with the Window Actions rather than
   `activate-window`.
+- In File Explorer a click opens the item: a folder in place, a file in its
+  App. Select files with `perform-secondary-action <ref> Select` (add more
+  with `click <ref> --modifiers ctrl`).
 
 ### What winuse cannot do headless
 
