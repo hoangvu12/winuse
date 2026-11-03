@@ -487,9 +487,10 @@ eval are redacted unless `--trace-unredacted`. The file rolls over at
 traces without the HTML export. Codex keeps no trace. **extension**.
 `list-windows --shell` (desktop-parity 09, ADR 0015) adds the shell
 surfaces: the taskbar, and the tray overflow, Start and the Action Center
-while open, named by Window ID. The taskbar reads Headless, and a click on
-an App's taskbar button activates that App through UI Automation; Start,
-Search and the notification area's buttons open their flyouts only with
-`--headed`, and Escape closes the open tray overflow Headless. Like
-agent-desktop's shell surfaces, without its Windows-key accelerators.
+while open, named by Window ID. The taskbar reads Headless; a click,
+set-value or Secondary Action on any shell Element (an App's taskbar
+button activates its App, the others open flyouts) needs `--headed`, and
+the refusal of an App's button names `activate-window`. Escape closes the
+open tray overflow Headless. Like agent-desktop's shell surfaces,
+without its Windows-key accelerators.
 Codex lists no shell surface. **extension**.

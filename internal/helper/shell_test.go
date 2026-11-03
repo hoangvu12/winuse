@@ -62,7 +62,14 @@ type shellActor struct {
 }
 
 func (a shellActor) StoredElements(ctx context.Context, hwnd uint64) ([]wstate.Element, bool) {
-	if hwnd != shellTaskbarID {
+	switch hwnd {
+	case shellOverflowID:
+		return []wstate.Element{
+			{Role: "pane", Name: "System tray overflow window."},
+			{Depth: 1, Role: "button", Name: "Bluetooth Devices"},
+		}, true
+	case shellTaskbarID:
+	default:
 		return nil, false
 	}
 	return []wstate.Element{
@@ -70,6 +77,9 @@ func (a shellActor) StoredElements(ctx context.Context, hwnd uint64) ([]wstate.E
 		{Depth: 1, Role: "button", Name: "Show Hidden Icons", AutomationId: "SystemTrayIcon"},
 		{Depth: 1, Role: "button", Name: "Start", AutomationId: "StartButton"},
 		{Depth: 1, Role: "button", Name: "Notepad - 1 running window", AutomationId: "Appid: Microsoft.Windows.Notepad"},
+		{Depth: 1, Role: "button", Name: "Chrome - 2 running windows"},
+		{Depth: 1, Role: "button", Name: "Paint - 1 running window"},
+		{Depth: 1, Role: "button", Name: "Copilot"},
 	}, true
 }
 
@@ -258,34 +268,82 @@ func TestShellFlyoutButtonsRefuseHeadless(t *testing.T) {
 	}
 }
 
-func TestTaskbarAppButtonClickIsHeadlessAndSaysWhereTheForegroundWent(t *testing.T) {
+func TestShellElementsRefuseHeadless(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		window string
+		index  int
+		msg    string
+		hint   []string
+		absent string
+	}{
+		{"an App with one Window", "900", 3, "activates its App",
+			[]string{"winuse activate-window 101", "winuse --headed click 900 3"}, ""},
+		{"an App with several Windows", "900", 4, "activates its App",
+			[]string{`winuse list-windows --app "Chrome"`, "winuse --headed click 900 4"}, ""},
+		{"an App with no listed Window", "900", 5, "activates its App",
+			[]string{"winuse --headed click 900 5"}, "activate-window"},
+		{"an unknown taskbar Element", "900", 6, "open flyouts or activate Apps",
+			[]string{"winuse --headed click 900 6"}, "activate-window"},
+		{"a tray icon in the overflow", "950", 1, "open flyouts or activate Apps",
+			[]string{"winuse --headed click 950 1"}, ""},
+	} {
+		s := newShellSpy()
+		s.surfaces = func() []win.WindowInfo { return shellDesktop(true, false) }
+		_, cmdErr := runCommand(t, CommandsWith(s.svc), "click", clickArgs(tc.window, tc.index, 0, ""))
+		if cmdErr == nil {
+			t.Errorf("%s: the click ran Headless", tc.name)
+			continue
+		}
+		if !strings.HasSuffix(cmdErr.Msg, nothingSentNote) || !strings.Contains(cmdErr.Msg, tc.msg) {
+			t.Errorf("%s: message = %q", tc.name, cmdErr.Msg)
+		}
+		for _, h := range tc.hint {
+			if !strings.Contains(cmdErr.Hint, h) {
+				t.Errorf("%s: hint %q misses %q", tc.name, cmdErr.Hint, h)
+			}
+		}
+		if tc.absent != "" && strings.Contains(cmdErr.Hint, tc.absent) {
+			t.Errorf("%s: hint %q names %q", tc.name, cmdErr.Hint, tc.absent)
+		}
+		if steps := s.recorded(); hasStep(steps, "headless-click") || hasStep(steps, "bounds") {
+			t.Errorf("%s: the refusal reached the Element: %v", tc.name, steps)
+		}
+	}
+
+	// set-value and the Secondary Actions are refused the same way, and a
+	// name: reference resolves to the Element first.
+	s := newShellSpy()
+	if _, cmdErr := runCommand(t, CommandsWith(s.svc), "perform-secondary-action", secondaryArgs("900", 3, "Expand")); cmdErr == nil {
+		t.Error("Expand on an App's taskbar button ran Headless")
+	}
+	if _, cmdErr := runCommand(t, CommandsWith(s.svc), "set-value", setValueArgs("900", 3, "x")); cmdErr == nil {
+		t.Error("set-value on the taskbar ran Headless")
+	}
+	if steps := s.recorded(); hasStep(steps, "headless-secondary") || hasStep(steps, "headless-set-value") {
+		t.Errorf("a refusal reached the Element: %v", steps)
+	}
+}
+
+func TestShellHeadedClickSaysWhereTheForegroundWent(t *testing.T) {
 	s := newShellSpy()
 	s.fg = 202 // the user works in Chrome
-	s.svc.Actions = shellActorActivating{shellActor{s.headlessSpy}, s}
-	out, cmdErr := runCommand(t, CommandsWith(s.svc), "click", clickArgs("900", 3, 0, ""))
+	s.svc.Activate = func(hwnd uint64) error { s.step("activate"); s.setForeground(hwnd); return nil }
+	s.svc.Click = func(target uint64, x, y int32, button win.MouseButton, count int) error {
+		s.step("click")
+		s.setForeground(101) // the taskbar button brings Notepad forward
+		return nil
+	}
+	out, cmdErr := runCommand(t, CommandsWith(s.svc), "click", protocol.ClickArgs{Window: "900", ElementIndex: intPtr(3), Headed: true})
 	if cmdErr != nil {
-		t.Fatalf("click on the App's button: %v", cmdErr.Error())
+		t.Fatalf("--headed click on the App's button: %v", cmdErr.Error())
 	}
-	steps := s.recorded()
-	if !hasStep(steps, "headless-click") || hasStep(steps, "activate") {
-		t.Errorf("steps = %v, want the Headless click and no activation", steps)
+	if !hasStep(s.recorded(), "activate") || hasStep(s.recorded(), "headless-click") {
+		t.Errorf("steps = %v, want the Headed click", s.recorded())
 	}
-	if !strings.HasPrefix(out, "ok\n") || !strings.Contains(out, `Note: the foreground moved to 101 Notepad "Untitled - Notepad"`) {
+	if !strings.Contains(out, `Note: the foreground moved to 101 Notepad "Untitled - Notepad"`) {
 		t.Errorf("output:\n%s", out)
 	}
-}
-
-// shellActorActivating is the shell actor whose Headless click activates
-// the App, as a taskbar button's Invoke does.
-type shellActorActivating struct {
-	shellActor
-	spy *shellSpy
-}
-
-func (a shellActorActivating) HeadlessClick(ctx context.Context, hwnd uint64, index int) (string, error) {
-	route, err := a.shellActor.HeadlessClick(ctx, hwnd, index)
-	a.spy.setForeground(101) // Notepad comes to the front
-	return route, err
 }
 
 func TestOverflowEscapeIsHeadless(t *testing.T) {

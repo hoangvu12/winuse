@@ -367,8 +367,8 @@ func (s Services) runHeadless(ctx context.Context, ref string, actor HeadlessAct
 	if rerr != nil {
 		return "", nothingSent(rerr)
 	}
-	if rerr := s.shellFlyoutRefusal(ctx, w, index, run); rerr != nil {
-		return "", rerr // a taskbar button that opens a flyout (shell.go)
+	if rerr := s.shellElementRefusal(ctx, w, index, run); rerr != nil {
+		return "", rerr // an Element of a shell surface (shell.go)
 	}
 	var rect win.Rect
 	var shown bool

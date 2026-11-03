@@ -48,19 +48,24 @@ Probe rounds 4 and 5 (`.scratch/headless-gaps/probes-round4.md` section 7,
    (Windows Explorer) never names one.
 3. **Reading is Headless**: the Window State, through UI Automation like
    any Window.
-4. **A click on a running App's taskbar button is Headless** (UIA
-   Invoke). winuse sends no input and takes no foreground itself; the
-   App coming to the front is the Action's effect, which the agent asked
-   for, as with `activate-window`. The output says where the foreground
-   went.
-5. **The taskbar's flyout buttons are Headed only**: Start, Search, Task
-   View, Widgets and every notification-area button (`SystemTrayIcon`,
-   matched by AutomationId, not by Name). A Headless click or Secondary
-   Action on them is refused with nothing sent and the `--headed` retry:
-   the chevron's Invoke takes the foreground, the clock's opens nothing,
-   and the others are unmeasured flyouts. With `--headed` they are
-   clicked with the real pointer, and Start opens with
-   `--headed press-key <taskbar> Control_L+Escape`.
+4. **Acting on a shell surface's Elements is Headed only.** A Headless
+   click, set-value or Secondary Action on any Element of a shell
+   surface, in any form (index, `name:`/`id:`, `@x,y`), is refused with
+   nothing sent and the `--headed` retry. A running App's taskbar button
+   activates its App, which takes the user's foreground: ADR 0013 rule 3
+   exempts only `activate-window`, so the refusal names
+   `winuse activate-window <window>` when the button's App has one
+   listed Window (its `list-windows --app` when it has several). The
+   chevron's Invoke opens the overflow and takes the foreground, the
+   clock's opens nothing, and the rest (Start, Search, Task View,
+   Widgets, the other notification-area buttons, matched by
+   AutomationId `SystemTrayIcon` rather than by Name, the overflow's tray
+   icons, the items of an open Start or Action Center) are unmeasured
+   flyouts or App activations, refused on the cautious side. Element
+   scroll and select-text stay Headless: they activate nothing.
+5. **With `--headed`** they are clicked with the real pointer, Start
+   opens with `--headed press-key <taskbar> Control_L+Escape`, and the
+   output says where the foreground went.
 6. **Escape on the open tray overflow is Headless**: posted to the XAML
    island's input windows, read back by the overflow hiding. It does not
    give the foreground back: that stays on the taskbar.
@@ -93,9 +98,9 @@ with one reports it as the Action Center opening. Ticket 18
 
 ## Consequences
 
-- An agent can read the taskbar and switch Apps through it without
-  taking the foreground itself. Switching Apps still changes what the
-  user sees, so the skill says so.
+- An agent reads the taskbar without the foreground, but every click on
+  it needs `--headed`. To switch Apps it uses `activate-window`, which
+  asks for the foreground by name.
 - Opening the overflow, Start or the panel changes the user's screen and
   needs `--headed`. The overflow's tray icons are read only while it is
   open, so reading them is foreground-taking too.

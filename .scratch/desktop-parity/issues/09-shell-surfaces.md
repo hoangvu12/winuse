@@ -74,3 +74,14 @@ Run once each, one after the other, under the live lock, with `WINUSE_E2E=1 WINU
 - `TestShellOpensAndClosesTheTrayOverflow`: passed (5.5 s). The `--headed` click on the hidden-icons chevron opened the overflow, and the click's output named it as a new Window. Its Window State had buttons, and the Headless `press-key <overflow> Escape` closed it: it was gone from `list-windows --shell` and, checked afterwards, hidden (not visible, not cloaked). The cleanup re-activated the Window that was in the foreground before.
 
 Nothing was left open. `TestShellReadsTheTaskbar` last ran (and passed) on the previous merge, 779798a.
+
+### 2026-11-03: shell Elements refused without --headed (PC orchestrator review)
+
+A Headless Invoke on a running App's taskbar button activates that App, which takes the user's foreground without `--headed`, and ADR 0013 rule 3 (as headless-max 21 set it) exempts only `activate-window`. So the "built" entry's Headless App-button click is withdrawn:
+
+- A Headless click, set-value or Secondary Action on any Element of a shell surface (taskbar, tray overflow, an open Start or Action Center), in any form (index, `name:`/`id:`, `@x,y` through headless-max 11's point route), is refused with nothing sent and the `--headed` retry (`shellElementRefusal`, `internal/helper/shell.go`, in runHeadless). An Element the helper cannot read is refused too.
+- A running App's taskbar button ("<App> - N running window(s)") gets `winuse activate-window <id>` in the hint when its App has one listed Window, `winuse list-windows --app "<App>"` when it has several, and only the `--headed` retry when none matches. Start's button keeps the `--headed press-key <taskbar> Control_L+Escape` hint.
+- Still Headless on the shell: reading (get-window-state, list-windows --shell), Element scroll and select-text (they activate nothing), and Escape on the open tray overflow.
+- The foreground note stays, now only after a `--headed` Action (and the overflow's Escape, which leaves the foreground on the taskbar).
+- ADR 0015 decisions 4-5, CONTEXT.md (Shell surface, Headed Action), SKILL.md ("The taskbar and the shell", "What winuse cannot do headless") and codex-parity are updated. Offline tests: `TestShellElementsRefuseHeadless` (an App with one, several and no listed Window, an unknown taskbar Element, an overflow tray icon, Expand and set-value) and `TestShellHeadedClickSaysWhereTheForegroundWent` replace the Headless App-button test.
+- Not live-tested on an App button: a regression there would activate one of the user's Apps. `TestShellRefusesWithoutHeaded` covers the same refusal hook through Start's button.

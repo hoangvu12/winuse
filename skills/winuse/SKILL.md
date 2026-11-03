@@ -159,12 +159,16 @@ Start, Search, the notification area (every one of its buttons has the ID
 battery, Show Desktop) and one button per running App.
 
 - Clicking a running App's taskbar button activates that App: it comes
-  to the front (one already in front may minimize instead). That is the
-  Action's visible effect, so do it only when the task asks for that App
-  in front. A note after `ok` says where the foreground went.
-- Start, Search and the notification area's buttons open their flyouts
-  only with `--headed`, which changes the user's screen: tell the user
-  first. Without `--headed` they are refused with nothing sent.
+  to the front (one already in front may minimize instead), which takes
+  the user's foreground. So it is refused without `--headed`, with nothing
+  sent. To bring an App forward, use `winuse activate-window <window>`
+  with the Window from `list-windows`; the refusal names it.
+- Every other click, `set-value` or Secondary Action on a shell Element
+  is refused without `--headed` too: Start, Search and the notification
+  area's buttons open flyouts, and the tray icons in the overflow and the
+  items of an open Start or Action Center may activate an App. With
+  `--headed` they change the user's screen, so tell the user first. A note
+  after a `--headed` Action's `ok` says where the foreground went.
   `winuse --headed press-key <taskbar> Control_L+Escape` opens Start.
   `winuse --headed click <taskbar> <chevron>` opens the hidden icons; the
   output names the overflow's Window ID, and the overflow keeps the
@@ -437,8 +441,9 @@ without it the command is refused with nothing sent.
 - Opening the shell: Start, the taskbar's hidden icons, and the clock's
   calendar and notification panel. The hidden-icons overflow takes the
   foreground when it opens, and the panel does not open from UI
-  Automation at all. Reading the taskbar and clicking an App's taskbar
-  button stay Headless (see "The taskbar and the shell").
+  Automation at all. Clicking anything on the taskbar or in the overflow
+  needs `--headed` too; reading them stays Headless (see "The taskbar and
+  the shell").
 - Games, canvases and Apps that read raw input. They expose no Elements
   and ignore posted keys, so work with `--headed` from a screenshot with
   `@x,y` points.
