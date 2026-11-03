@@ -283,6 +283,17 @@ Matching is exact and case-sensitive. A name or ID that matches several
 Elements fails and lists the candidates. Pick a more specific reference or
 read the Window State again.
 
+An Element Index is valid only for the Window State that printed it. A
+`name:` or `id:` reference outlasts it: when the Window State you read
+cannot answer it (the helper restarted, the Window changed, or the
+Element went away), winuse looks for it in a fresh read of the Window
+and acts on what it finds. The output then says
+`Note: found name:Save in a fresh read of window 101, as Element Index 245`,
+and the Window State you have is unchanged: its indexes still work. Prefer
+`name:` and `id:` for an Element you will act on again later. A fresh read
+that finds the name twice refuses, with the candidates under new indexes
+you can act on.
+
 ## Choose Headless or Headed
 
 A Headless Action leaves the user's pointer, keyboard and foreground

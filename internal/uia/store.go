@@ -81,6 +81,9 @@ type windowState struct {
 	// base is how many Elements the read itself stored; find and region
 	// reads add theirs after it (add, desktop-parity 04).
 	base int
+	// added maps the RuntimeId of each added Element to its Element Index
+	// (desktop-parity 17), so the same Element is never added twice.
+	added map[string]int
 }
 
 func newStore(addRef, release func(comPtr)) *store {
@@ -281,13 +284,15 @@ func (s *store) noStateLocked(agent string, hwnd uint64) error {
 }
 
 // add stores more live Elements of hwnd for the Agent after the ones its
-// latest Window State holds (desktop-parity 04, option c: find and region
-// reads add Element Indexes, a full read replaces them all) and returns
-// the first new Element Index. An Agent with no Window State of hwnd gets
-// one holding only these, numbered from 0, which its next full read
-// replaces. The list is copied, so a caller still reading the old one
-// (reference resolution) is not disturbed.
-func (s *store) add(agent string, hwnd uint64, elems []comPtr, elements []wstate.Element) int {
+// latest Window State holds (desktop-parity 04, option c: find, region
+// reads and live reference resolution add Element Indexes, a full read
+// replaces them all) and returns each one's Element Index. ids are their
+// RuntimeIds (desktop-parity 17): an Element already added keeps its
+// index, and the new handle to it is released instead of stored. An Agent
+// with no Window State of hwnd gets one holding only these, numbered from
+// 0, which its next full read replaces. The lists are copied, so a caller
+// still reading the old ones (reference resolution) is not disturbed.
+func (s *store) add(agent string, hwnd uint64, elems []comPtr, elements []wstate.Element, ids []string) []int {
 	key := storeKey{agent, hwnd}
 	s.mu.Lock()
 	st := s.states[key]
@@ -295,16 +300,39 @@ func (s *store) add(agent string, hwnd uint64, elems []comPtr, elements []wstate
 		st = &windowState{}
 		s.states[key] = st
 	}
-	first := len(st.elems)
-	st.elems = append(append(make([]comPtr, 0, first+len(elems)), st.elems...), elems...)
-	st.elements = append(append(make([]wstate.Element, 0, first+len(elements)), st.elements...), elements...)
+	if st.added == nil {
+		st.added = map[string]int{}
+	}
+	n := len(st.elems)
+	newElems := append(make([]comPtr, 0, n+len(elems)), st.elems...)
+	newElements := append(make([]wstate.Element, 0, n+len(elements)), st.elements...)
+	indexes := make([]int, len(elems))
+	var dup []comPtr
+	for i, p := range elems {
+		id := ""
+		if i < len(ids) {
+			id = ids[i]
+		}
+		if at, ok := st.added[id]; ok && id != "" {
+			indexes[i] = at
+			dup = append(dup, p)
+			continue
+		}
+		indexes[i] = len(newElems)
+		if id != "" {
+			st.added[id] = len(newElems)
+		}
+		newElems = append(newElems, p)
+		newElements = append(newElements, elements[i])
+	}
+	st.elems, st.elements = newElems, newElements
 	s.touch(agent, st)
-	dropped := s.evict(key)
+	dropped := append(dup, s.evict(key)...)
 	s.mu.Unlock()
 	for _, p := range dropped {
 		s.release(p)
 	}
-	return first
+	return indexes
 }
 
 // refState returns the Elements of the Agent's latest Window State of hwnd

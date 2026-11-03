@@ -142,16 +142,35 @@ func renderAdded(w win.WindowInfo, added uia.Added, flat bool, what string) stri
 		if !flat {
 			tabs = e.Depth + 1
 		}
-		b.WriteString(strings.Repeat("\t", tabs) + wstate.Line(added.First+i, e) + "\n")
+		b.WriteString(strings.Repeat("\t", tabs) + wstate.Line(added.Indexes[i], e) + "\n")
 	}
 	b.WriteByte('\n')
 	for _, n := range added.Notes {
 		b.WriteString(notePrefix + n + "\n")
 	}
-	last := added.First + len(added.Elements) - 1
-	fmt.Fprintf(&b, "%sthese Elements (%s) were added to window %d's Window State as %d to %d; its earlier Element Indexes still work until the next full get-window-state\n",
-		notePrefix, what, w.ID, added.First, last)
+	fmt.Fprintf(&b, "%sthese Elements (%s) are in window %d's Window State as %s; its earlier Element Indexes still work until the next full get-window-state\n",
+		notePrefix, what, w.ID, indexList(added.Indexes))
 	return b.String()
+}
+
+// indexList names Element Indexes: "241 to 245" when they run in order,
+// else each one.
+func indexList(idx []int) string {
+	if len(idx) == 1 {
+		return strconv.Itoa(idx[0])
+	}
+	run := true
+	for i := 1; i < len(idx); i++ {
+		run = run && idx[i] == idx[i-1]+1
+	}
+	if run && len(idx) > 1 {
+		return fmt.Sprintf("%d to %d", idx[0], idx[len(idx)-1])
+	}
+	parts := make([]string, len(idx))
+	for i, v := range idx {
+		parts[i] = strconv.Itoa(v)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // windowStateShape answers the get-window-state forms that read part of a

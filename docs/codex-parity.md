@@ -419,7 +419,10 @@ older state go stale the same way. `name:`/`id:` references survive
 re-reads better — an extension. `find` and `get-window-state --root`
 (desktop-parity 04) add the Elements they print after the Window State's
 own indexes instead of renumbering, so the indexes the agent holds keep
-working until the next full read. **matched (extended)**.
+working until the next full read. A `name:`/`id:` reference the cached
+Window State cannot answer (a helper restart, a gone Element) is resolved
+in a fresh bounded read instead of failing (desktop-parity 17), and the
+output says so. **matched (extended)**.
 
 ### extensions beyond Codex
 

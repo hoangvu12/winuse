@@ -39,9 +39,11 @@ func skeleton(ctx context.Context) bool {
 }
 
 // Added is the Elements find or a region read added to the Agent's live
-// store: they hold Element Indexes First, First+1, ... in order.
+// store, with the Element Index each one holds: a new one after the
+// Window State's, or the one it already had when an earlier find added the
+// same Element (desktop-parity 17).
 type Added struct {
-	First    int
+	Indexes  []int
 	Elements []wstate.Element
 	Notes    []string // the walk's partial-tree note, when it was cut
 }
@@ -91,7 +93,7 @@ func (c *Client) Find(ctx context.Context, hwnd uint64, budget time.Duration, ma
 			}
 			release(res.Live[i])
 		}
-		out.First = c.addRead(who, hwnd, live, out.Elements, r)
+		out.Indexes = c.addRead(who, hwnd, live, out.Elements, r)
 	})
 	if err != nil {
 		return FindResult{}, err
@@ -160,7 +162,7 @@ func (c *Client) ReadRegion(ctx context.Context, hwnd uint64, index, depth int, 
 			}
 			release(res.Live[i])
 		}
-		out.First = c.addRead(who, hwnd, live, out.Elements, r)
+		out.Indexes = c.addRead(who, hwnd, live, out.Elements, r)
 	})
 	if err != nil {
 		return Added{}, err
@@ -168,21 +170,26 @@ func (c *Client) ReadRegion(ctx context.Context, hwnd uint64, index, depth int, 
 	return out, jobErr
 }
 
-// addRead adds a find's or region read's Elements to the store, unless the
-// run was abandoned (installRead's rule): then they are released.
-func (c *Client) addRead(agent string, hwnd uint64, elems []comPtr, elements []wstate.Element, r *run) int {
+// addRead adds a find's, region read's or live resolution's Elements to
+// the store, keyed by their RuntimeIds (read here, on the worker), unless
+// the run was abandoned (installRead's rule): then they are released.
+func (c *Client) addRead(agent string, hwnd uint64, elems []comPtr, elements []wstate.Element, r *run) []int {
+	ids := make([]string, len(elems))
+	for i, p := range elems {
+		ids[i], _ = runtimeID(p)
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.abandoned {
 		for _, p := range elems {
 			c.store.release(p)
 		}
-		return 0
+		return nil
 	}
 	if len(elems) == 0 {
-		return 0
+		return nil
 	}
-	return c.store.add(agent, hwnd, elems, elements)
+	return c.store.add(agent, hwnd, elems, elements, ids)
 }
 
 // partialOnly keeps the walk's partial-tree note: a region or a find is

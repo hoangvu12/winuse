@@ -489,6 +489,13 @@ still the foreground window afterwards. The shared helpers are in
   `get-window <id>` finds that Window, and a Headless Escape on it prints
   `Note: window <id> closed`. The foreground stays put. Every other test
   accepts such note lines after `ok` and logs them (`assertActionOK`).
+- `TestNameReferenceAfterHelperRestart` (`live_refs_test.go`,
+  desktop-parity 17): after `get-window-state`, the helper is killed, and
+  a click by `name:Click Me` and a set-value by `id:text-field` still act
+  through a fresh read, each with its `Note: found ... in a fresh read`
+  line. The same name again needs no fresh read, and `name:Twin` after
+  another restart refuses with both candidates. The cover keeps the
+  foreground.
 - `TestFindAndRegionReadOnTheFixture` (`find_test.go`, desktop-parity
   04): after a full read, `find --role "list item" --name charlie` prints
   Charlie with an index after the read's last, and a click on it selects
@@ -596,7 +603,7 @@ Run only these tests:
 
 ```
 set WINUSE_E2E=1
-go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted|OpenedAndClosed|SelfActivation|FindAndRegionRead" ./test/e2e
+go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted|OpenedAndClosed|SelfActivation|FindAndRegionRead|NameReferenceAfterHelperRestart" ./test/e2e
 ```
 
 ## The clipboard test
