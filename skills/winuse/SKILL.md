@@ -917,6 +917,9 @@ ordinary Escape; only the physical key stops winuse.
   it, and leave the lock screen alone.
 - A modal dialog blocking the target is named in the failure, with its
   Window ID. Handle that dialog's Window, then return to the owner.
+- `window <id>'s App is not responding; nothing was sent` means the App
+  is hung. Wait until it responds and retry, or work in another App's
+  Window meanwhile; other Apps are not held up.
 - A timeout fails with `winuse request timed out: <command>`. Requests have
   10 seconds; `launch-app` 15, a Batch 60, Page, tab and most browser
   commands 30, `browser connect` 90 and `browser clone` 180. Only

@@ -291,6 +291,11 @@ type Services struct {
 	WindowThread func(hwnd uint64) uint32
 	LaneWait     time.Duration
 
+	// WindowHung tells that a Window's UI thread is not responding
+	// (multi-agent ticket 07, hung.go): an Action on it is refused with
+	// nothing sent. Nil checks nothing.
+	WindowHung func(hwnd uint64) bool
+
 	// The Window identity check (multi-agent ticket 09, identity.go):
 	// WindowIdentity reads what a Window ID names now (its process, that
 	// process's start time, its class); windowIDs records what each one
@@ -396,7 +401,8 @@ func CommandsWith(s Services) map[string]Command {
 		case !observationOnlyCommand(name):
 			// The Window identity check runs once the command holds the
 			// gate, before anything else looks at the Window (identity.go).
-			cmd = s.laned(name, s.checkWindow(s.reportAfter(name, cmd)))
+			// A hung App is refused next (hung.go), before anything is sent.
+			cmd = s.laned(name, s.checkWindow(s.refuseHung(s.reportAfter(name, cmd))))
 		default:
 			cmd = s.recordReads(name, cmd) // identity.go: what a read Window ID names
 		}
@@ -767,6 +773,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.WindowThread == nil {
 		s.WindowThread = win.WindowThreadID
+	}
+	if s.WindowHung == nil {
+		s.WindowHung = win.WindowHung
 	}
 	return s
 }
