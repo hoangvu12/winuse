@@ -323,7 +323,7 @@ func closeApp(exe string) error {
 		return err
 	}
 	cmd := exec.Command("taskkill", taskkillArgs(exe)...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow} // taskkill has no window to hide
 	err := cmd.Run()
 	var exit *exec.ExitError
 	if errors.As(err, &exit) {

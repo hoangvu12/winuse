@@ -52,7 +52,7 @@ type actionResult struct {
 // goroutine).
 func runActionAsync(t *testing.T, args []string, extraEnv ...string) <-chan actionResult {
 	t.Helper()
-	cmd := exec.Command(winuseBinary(t), args...)
+	cmd := win.NoConsoleWindow(exec.Command(winuseBinary(t), args...))
 	cmd.Env = append(os.Environ(), extraEnv...)
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout

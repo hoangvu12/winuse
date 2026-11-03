@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 // StoreApp is a packaged (Store) App from the Start-apps listing.
@@ -30,6 +32,7 @@ func GetStartApps(ctx context.Context) ([]StoreApp, error) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
 		"[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Get-StartApps | ConvertTo-Json -Compress")
+	win.NoConsoleWindow(cmd) // the helper has no console: no Terminal window
 	out, err := cmd.Output()
 	if err != nil {
 		if ctx.Err() != nil {

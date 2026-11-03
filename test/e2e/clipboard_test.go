@@ -122,7 +122,7 @@ func keepUserClipboard(t *testing.T) {
 // System.Windows.Forms clipboard calls work) and returns its output.
 func powershell(t *testing.T, script string) string {
 	t.Helper()
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Sta", "-Command", script)
+	cmd := win.NoConsoleWindow(exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Sta", "-Command", script))
 	// No console window of its own, which could take the foreground.
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
 	out, err := cmd.CombinedOutput()

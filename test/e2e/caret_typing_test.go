@@ -19,6 +19,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 // wpfBoxScript shows a WPF window with one TextBox (AutomationId "box",
@@ -51,7 +53,7 @@ func startWPFBox(t *testing.T) (string, func() string) {
 	}
 	state := filepath.Join(dir, "box.txt")
 	title := "winuse e2e wpf box " + strconv.FormatInt(time.Now().UnixNano(), 36)
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", script, title, state)
+	cmd := win.NoConsoleWindow(exec.Command("powershell.exe", "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", script, title, state))
 	if err := cmd.Start(); err != nil {
 		t.Skipf("starting Windows PowerShell: %v", err)
 	}

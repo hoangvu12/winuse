@@ -111,7 +111,7 @@ func TestPostedChordFiresAWPFKeyBinding(t *testing.T) {
 	}
 	state := filepath.Join(dir, "keys.txt")
 	title := "winuse e2e wpf keys " + strconv.FormatInt(time.Now().UnixNano(), 36)
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", script, title, state)
+	cmd := win.NoConsoleWindow(exec.Command("powershell.exe", "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", script, title, state))
 	if err := cmd.Start(); err != nil {
 		t.Skipf("starting Windows PowerShell: %v", err)
 	}

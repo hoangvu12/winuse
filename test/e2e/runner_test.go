@@ -54,7 +54,7 @@ func winuseBinary(t *testing.T) string {
 			return
 		}
 		binaryPath = filepath.Join(dir, "winuse.exe")
-		cmd := exec.Command("go", "build", "-o", binaryPath, "../../cmd/winuse")
+		cmd := win.NoConsoleWindow(exec.Command("go", "build", "-o", binaryPath, "../../cmd/winuse"))
 		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -71,7 +71,7 @@ func winuseBinary(t *testing.T) string {
 // and returns (stdout, stderr, exit code).
 func runWinuse(t *testing.T, args []string, extraEnv ...string) (string, string, int) {
 	t.Helper()
-	cmd := exec.Command(winuseBinary(t), args...)
+	cmd := win.NoConsoleWindow(exec.Command(winuseBinary(t), args...))
 	cmd.Env = append(os.Environ(), extraEnv...)
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout

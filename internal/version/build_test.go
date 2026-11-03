@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 func TestBuildOfThisTestBinary(t *testing.T) {
@@ -23,7 +25,7 @@ func TestBuildOfThisTestBinary(t *testing.T) {
 	if got := ExeBuild(exe); got != b {
 		t.Errorf("ExeBuild(own exe) = %q, Build() = %q", got, b)
 	}
-	out, err := exec.Command("go", "tool", "buildid", exe).Output()
+	out, err := win.NoConsoleWindow(exec.Command("go", "tool", "buildid", exe)).Output()
 	if err != nil {
 		t.Skipf("go tool buildid: %v", err)
 	}
