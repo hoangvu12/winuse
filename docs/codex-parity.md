@@ -416,6 +416,12 @@ automation. **matched**.
 
 ### stale elements
 
+A Window ID that a new Window reused after the old one closed is refused
+before any Action, with nothing sent (multi-agent 09, ADR 0014: the
+helper records each Window ID's process, process start and class when it
+is listed or read, shared by every agent). Codex's Window IDs carry no
+such check. **extension**.
+
 An Element Index whose Element went away fails as stale, with the
 instruction to read the Window State again; references copied from an
 older state go stale the same way. `name:`/`id:` references survive

@@ -95,6 +95,12 @@ Window. With several, the error lists the candidates, and you pick one of
 them. Use `get-window` as a cheap check that a Window still exists, for
 example after a helper restart.
 
+Windows hands a closed Window's ID to a new Window. winuse remembers what
+each Window ID named when it was listed or read, so an Action on an ID
+that a new Window took is refused with
+`window <id> closed; a new window reused its ID; nothing was sent`. Run
+`list-windows` again, and read the new Window before you act on it.
+
 `--details` puts a column between the App and the title, for example
 `120,80 1024x768 pid 4312 focused`. The rectangle is the Window's visible
 frame, the numbers `move-window` and `resize-window` take. The flags
