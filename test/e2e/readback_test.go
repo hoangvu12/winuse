@@ -74,19 +74,14 @@ func TestRenameInExplorerReadsBack(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Registered before the window exists, so a failure anywhere still
+	// closes it.
+	t.Cleanup(func() { closeTestWindows(t, folder) })
 	if err := exec.Command("explorer.exe", dir).Start(); err != nil {
 		t.Skipf("starting explorer.exe: %v", err)
 	}
 	id := findWindowByTitle(t, folder, 30*time.Second)
 	window := strconv.FormatUint(id, 10)
-	// The Window belongs to the shell's own process: close it, never kill.
-	defer func() {
-		if win.WindowOpen(id) {
-			if _, stderr, exit := runWinuse(t, []string{"close-window", window}, "WINUSE_HELPER_IDLE="+e2eIdle); exit != 0 {
-				t.Errorf("closing the test's Explorer window: %s", stderr)
-			}
-		}
-	}()
 
 	// The item reads "draft.txt", or "draft" when the user hides file
 	// extensions; the new name follows the same form.
@@ -118,4 +113,30 @@ func TestRenameInExplorerReadsBack(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "summary.txt")); err != nil {
 		t.Errorf("the file was not renamed to summary.txt: %v", err)
 	}
+}
+
+// closeTestWindows closes every Window whose title holds title (the
+// test's own folder name): an Explorer window belongs to the shell's
+// process, so it is closed, never killed. It asks up to three times, and
+// reports one still open.
+func closeTestWindows(t *testing.T, title string) {
+	t.Helper()
+	for attempt := 0; attempt < 3; attempt++ {
+		var open []uint64
+		if all, err := win.Collect(); err == nil {
+			for _, w := range all {
+				if strings.Contains(w.Title, title) {
+					open = append(open, w.ID)
+				}
+			}
+		}
+		if len(open) == 0 {
+			return
+		}
+		for _, id := range open {
+			runWinuse(t, []string{"close-window", strconv.FormatUint(id, 10)}, "WINUSE_HELPER_IDLE="+e2eIdle)
+		}
+		time.Sleep(time.Second)
+	}
+	t.Errorf("a test window titled %q is still open; close it by hand", title)
 }

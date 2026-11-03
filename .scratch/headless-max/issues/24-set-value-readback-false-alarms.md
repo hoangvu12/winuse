@@ -29,7 +29,15 @@ Found by b6e5189e in the transcripts; approved by the user ("YES").
 
 ### 2026-11-03: live
 
-- `TestMultiLineSetValueIntoNotepadReadsBack` passes with the fix and fails on main 68568e3 with the run's false alarm (`reads "...Opens at 9:30...." afterwards, not "...
+- `TestMultiLineSetValueIntoNotepadReadsBack` passes with the fix and fails on main 68568e3 with the run's false alarm (`reads "...
+
+Opens at 9:30.
+..." afterwards, not "...
 
 ..."`): Windows 11 Notepad's editor reads CRLF back as CR.
 - `TestRenameInExplorerReadsBack` passes with the fix, and on main too: the false alarm did not reproduce, neither with one file nor with the run's layout (four files, the renamed one moving in the sort). Whatever rebuilt the item in the Task Suite run (the folder view, timing, the file open elsewhere) was not recreated. The sibling check stays as the fallback for an item that reads `""`, covered offline in its decisions; the live test pins that a rename prints a plain ok.
+
+### 2026-11-03: review fix (orchestrator 3)
+
+The sibling fallback could pass a write that did not take: a sibling already named the value (a label "Name" beside the edit set to "Name", another file already showing the name) would read as the renamed item. `SetValueHeadless` now checks the siblings before the write too, and the fallback counts only a name that is new (`uia.renamedInPlace`, offline-tested: found, already there, not found, another value read, no mismatch; the siblings are read again only when the name was new). The rename e2e registers its cleanup before Explorer starts and closes every window titled with its folder, asking up to three times, so a failing run leaves no window open.
+

@@ -47,3 +47,31 @@ func TestNamedAs(t *testing.T) {
 		}
 	}
 }
+
+func TestRenamedInPlaceNeedsANewName(t *testing.T) {
+	empty := &VerifyError{Action: "set-value", Expected: `"summary.txt"`, Observed: `""`}
+	other := &VerifyError{Action: "set-value", Expected: `"summary.txt"`, Observed: `"draft.txt"`}
+	asked := 0
+	after := func(v bool) func() bool { return func() bool { asked++; return v } }
+	for _, c := range []struct {
+		name        string
+		err         error
+		before, now bool
+		want        bool
+	}{
+		{"the item is found under its new name", empty, false, true, true},
+		{"a sibling was named so already", empty, true, true, false},
+		{"no sibling is named so", empty, false, false, false},
+		{"the Element reads another value", other, false, true, false},
+		{"the write read back", nil, false, true, false},
+	} {
+		if got := renamedInPlace(c.err, c.before, after(c.now)); got != c.want {
+			t.Errorf("%s: renamedInPlace = %v, want %v", c.name, got, c.want)
+		}
+	}
+	// The siblings are read again only when the read-back is "" and the
+	// name was new: the first and third cases.
+	if asked != 2 {
+		t.Errorf("the siblings were read %d times after the write, want 2", asked)
+	}
+}

@@ -6,7 +6,10 @@ package uia
 // reads "" afterwards, although the rename took (measured in the
 // 2026-11-03 Task Suite run). Before reporting that as a mismatch, the
 // set-value read-back looks among the Element's siblings for one now
-// named as asked; finding it is the read-back.
+// named as asked; finding it is the read-back. Only a name that is new
+// counts: a sibling named so before the write (a label "Name" beside the
+// edit set to "Name", another file already showing that name) proves
+// nothing, so then the mismatch stands.
 
 import (
 	"errors"
@@ -20,6 +23,13 @@ import (
 func readEmpty(err error) bool {
 	var v *VerifyError
 	return errors.As(err, &v) && v.Action == "set-value" && v.Observed == `""`
+}
+
+// renamedInPlace decides the read-back of a write that read "": the
+// write took when no sibling was named value before it and one is now
+// (namedAfter, asked only then).
+func renamedInPlace(err error, namedBefore bool, namedAfter func() bool) bool {
+	return readEmpty(err) && !namedBefore && namedAfter()
 }
 
 // parentOf is el's parent in the raw view, or nil; the caller releases it.
