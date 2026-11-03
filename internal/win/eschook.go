@@ -32,6 +32,16 @@ package win
 // stop (exit 130) but passes through to the app. Any swallowing scope
 // armed at the same time wins — a Batch with a Headed step swallows for
 // its whole run, Headless steps included.
+//
+// Esc stops every agent (multi-agent ticket 05, ADR 0014 Decision 5): every
+// recorded press also advances a stop generation. A request that waits its
+// turn behind another Action snapshots the generation when it arrives and
+// is stopped, with nothing sent, when it moved while it waited. Waiting
+// requests open a waiting scope: a press is then recorded (and passes
+// through) even when the Action that holds the turn armed nothing, but the
+// waiting scope never holds the running scope's latch, so a request that
+// arrives after the press starts clean: Esc stops what is in flight, it is
+// not a lock.
 
 import (
 	"errors"
@@ -90,7 +100,32 @@ type escLatch struct {
 	// swallowUp is set when a key-down was swallowed, and cleared by its
 	// key-up: an app must never see half an Esc press.
 	swallowUp atomic.Bool
+	// waiting counts requests waiting for their turn (multi-agent 05):
+	// while it is > 0 a press advances gen even with no scope open.
+	waiting atomic.Int32
+	// gen counts the presses recorded in any scope or wait: the stop
+	// generation waiting requests compare.
+	gen atomic.Uint64
 }
+
+// beginWait enters a waiting scope and returns the stop generation now.
+func (l *escLatch) beginWait() uint64 {
+	l.waiting.Add(1)
+	return l.gen.Load()
+}
+
+// endWait leaves a waiting scope (never below zero).
+func (l *escLatch) endWait() {
+	for {
+		cur := l.waiting.Load()
+		if cur <= 0 || l.waiting.CompareAndSwap(cur, cur-1) {
+			return
+		}
+	}
+}
+
+// stoppedSince reports whether a press was recorded since generation g.
+func (l *escLatch) stoppedSince(g uint64) bool { return l.gen.Load() != g }
 
 // arm enters an armed scope. Scopes nest; the outermost Disarm clears the
 // latch.
@@ -147,12 +182,17 @@ func (l *escLatch) onKey(msg uint32, vk, flags uint32) bool {
 	case wmKeyDown, wmSysKeyDown:
 		if l.armed.Load() > 0 {
 			l.pressed.Store(true)
+			l.gen.Add(1)
 			l.swallowUp.Store(true)
 			return true
 		}
 		if l.passive.Load() > 0 {
 			l.pressed.Store(true)
+			l.gen.Add(1)
 			return false
+		}
+		if l.waiting.Load() > 0 {
+			l.gen.Add(1) // only waiting requests: they stop, the key passes
 		}
 		return false
 	case wmKeyUp, wmSysKeyUp:
@@ -345,6 +385,34 @@ func (w *EscWatcher) Stopped() bool {
 		return false
 	}
 	return w.latch.stopped()
+}
+
+// BeginWait enters a waiting scope for a request about to wait for its
+// turn behind another Action (multi-agent 05) and returns the stop
+// generation to compare with StoppedSince. Safe on a nil watcher.
+func (w *EscWatcher) BeginWait() uint64 {
+	if w == nil {
+		return 0
+	}
+	return w.latch.beginWait()
+}
+
+// EndWait leaves the waiting scope BeginWait entered. Safe on a nil
+// watcher.
+func (w *EscWatcher) EndWait() {
+	if w != nil {
+		w.latch.endWait()
+	}
+}
+
+// StoppedSince reports whether the user pressed the physical Esc key, in
+// any scope or wait, since BeginWait returned g. A nil watcher never
+// stopped.
+func (w *EscWatcher) StoppedSince(g uint64) bool {
+	if w == nil {
+		return false
+	}
+	return w.latch.stoppedSince(g)
 }
 
 // ErrEscStopped is returned by input injection aborted mid-way by the

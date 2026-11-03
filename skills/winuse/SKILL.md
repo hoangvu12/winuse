@@ -483,8 +483,8 @@ winuse picks the route from the live Window before it sends anything.
   types into whatever has keyboard focus. That includes WinUI, WPF,
   Electron and browser Windows without a Browser Connection. Without the
   flag they are refused with nothing sent, and the hint names the
-  `--headed` command, `--into` for text and `--post` for text or a key
-  without modifiers. For a WinUI or WPF text box, name it with `--into`:
+  `--headed` command, `--into` for text and `--post` for text, a key or a
+  chord. For a WinUI or WPF text box, name it with `--into`:
   that is Headless.
 
 A Headless route prints `ok`; a refusal means nothing was typed, so pick
@@ -569,13 +569,18 @@ effort.
   `ok (posted; the app may ignore posted keys, read the Window State to check)`.
   Read the Window State and confirm the effect before you go on; if nothing
   changed, send the command again without `--post`.
-- Posted keys carry no modifiers, so a chord with Control, Alt or Shift is
-  refused with nothing sent.
+- A chord with Control, Shift or Alt, such as `Control_L+s` or `Alt_L+f`,
+  is posted with its modifiers held for that Window's thread only; the
+  user's own keyboard is untouched. This reaches shortcuts and menus in
+  classic Win32, WinForms, WPF and browser Windows. Control and Alt
+  together, a chord of modifiers alone, and the Blocked Combos are refused
+  with nothing sent, even with `--force`. A Window whose App is in front is
+  refused too: send the chord with `--headed` there.
 - An administrator Window, a locked desktop, a minimized Window and a Window
   blocked by a modal dialog are refused with nothing sent.
 - `--post` and `--headed` do not combine.
 
-Use `--post` for a single key or plain text on a Window with no Headless
+Use `--post` for a key, a chord or plain text on a Window with no Headless
 route, when the user's foreground matters more than certainty.
 
 ## Run a menu command
@@ -947,6 +952,35 @@ Action, a Window Action or a Page Action, the output then ends with
 `Note: the App took the foreground; winuse does not take it back.` The user
 may have been typing elsewhere: tell them, and do not repeat the Action.
 
+## Wait for a change
+
+When an Action starts something slow, wait for its effect instead of
+reading the Window State over and over:
+
+```
+winuse wait window "Save As"                   # a Window of that App, or whose title holds the text, shows: prints its line
+winuse wait window "Save As" --gone            # no such Window is left
+winuse wait <window> text <text>               # the text shows in the Window
+winuse wait <window> <ref> enabled             # also disabled, gone, value <v>, checked, unchecked, expanded, collapsed
+winuse wait 500                                # a plain pause, in milliseconds (at most 300000)
+```
+
+- A wait lasts 10 seconds by default; `--timeout <seconds>` gives it up to
+  300. One that runs out fails with what it saw last, such as
+  `it reads disabled`.
+- `<ref>` is an Element Index, `name:` or `id:` from your latest Window
+  State, so read the Window first. It resolves once, when the wait starts.
+  `gone` succeeds when that Element goes away, also when its Window
+  closes. Any other wait whose Window closes fails with
+  `the Window closed`.
+- A wait only reads, Headless. It does not renumber your Element Indexes,
+  and an Action can run while it waits.
+- A wait for something the Element cannot show, such as `value` on an
+  Element without `Value:`, fails at once.
+- In a browser Window with a Browser Connection, `text` waits in the Page,
+  and the Page waits are under "Act on a Page". An element wait there
+  takes the frame's Elements, not the Page's.
+
 ## When the user presses Esc
 
 The Esc stop is the user's way to take back control. While an Action or
@@ -955,6 +989,11 @@ with code 130 and a message saying the user stopped it with the physical
 Escape key. During a Headed Action, or a Batch with a Headed step, the key
 never reaches the app. During a Headless Action it still reaches whatever
 app the user is working in, and it stops winuse all the same.
+
+The stop is for everyone: one press stops the Action that runs and every
+command waiting its turn behind it, whichever agent sent them. A waiting
+command says nothing was sent. A command sent after the press runs as
+usual, so check what the user wants before you send one.
 
 After exit 130, stop sending winuse commands for the task and leave the
 stopped Action as it is. Tell the user what you were doing and where the
@@ -1059,6 +1098,8 @@ maximize-window <window>            # needs --headed: takes the foreground
 batch <window> [--timeout <s>] <action> [args] [then <action> [args]] ...
 navigate <window> <url> [--wait load|domcontentloaded|none] | back | forward | reload <window>
 wait <window> selector <css> | text <text> | url <url> | load | download [--timeout <s>]
+wait <window> <ref> enabled|disabled|gone|value <v>|checked|unchecked|expanded|collapsed [--timeout <s>]
+wait window <app|title> [--gone] [--timeout <s>] | wait <ms>
 eval <window> <expression> | dialog <window> accept|dismiss [text]
 upload <window> [<element>] <file>...
 tab list <window> | tab new <window> [url] | tab switch <window> <tab> | tab close <window> <tab>

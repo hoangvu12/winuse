@@ -20,7 +20,10 @@ func PageUsage(cmd string) string {
 	case "dialog":
 		return "usage: winuse dialog <window> accept|dismiss [text]   (text answers a prompt)"
 	case "wait":
-		return "usage: winuse wait <window> selector <css> | text <text> | url <url or pattern with *> | load [domcontentloaded] | download   [--timeout <seconds>]"
+		return "usage: winuse wait <window> selector <css> | text <text> | url <url or pattern with *> | load [domcontentloaded] | download   [--timeout <seconds>]\n" +
+			"       winuse wait <window> <element index | name: | id:> enabled | disabled | gone | value <value> | checked | unchecked | expanded | collapsed   [--timeout <seconds>]\n" +
+			"       winuse wait window <app or title> [--gone] [--timeout <seconds>]\n" +
+			"       winuse wait <milliseconds>"
 	case "eval":
 		return "usage: winuse eval <window> <expression>"
 	}
@@ -58,12 +61,38 @@ type DialogArgs struct {
 // load or download), its value, and a timeout in milliseconds (0: the
 // default; capped by the request budget, which the CLI widens to the
 // timeout plus WaitMargin through Request.TimeoutMS).
+//
+// The desktop waits (desktop-parity ticket 03) add three kinds. window
+// waits for a Window whose App or title is Value to appear, or with Gone
+// for none to be left, and names no Window (in a Batch the Batch's Window
+// is set and ignored). element waits for the Element (ElementIndex or Ref)
+// of the Window's latest Window State to reach State, with Value for
+// State value. ms pauses MS milliseconds. text on a Window that is no
+// browser Window waits in its UI Automation tree.
 type WaitArgs struct {
 	Window    string `json:"window"`
 	For       string `json:"for"`
 	Value     string `json:"value,omitempty"`
 	TimeoutMS int    `json:"timeout_ms,omitempty"`
+
+	Gone         bool   `json:"gone,omitempty"`          // window: wait until no such Window is left
+	ElementIndex *int   `json:"element_index,omitempty"` // element: the Element, from the Window's latest Window State
+	Ref          string `json:"ref,omitempty"`           // element: name:<text> or id:<AutomationId>
+	State        string `json:"state,omitempty"`         // element: one of WaitStates
+	MS           int    `json:"ms,omitempty"`            // ms: the pause, up to MaxWaitTimeout
 }
+
+// The desktop wait kinds (desktop-parity ticket 03), beside page.go's
+// Page kinds.
+const (
+	WaitWindow  = "window"
+	WaitElement = "element"
+	WaitMS      = "ms"
+)
+
+// WaitStates are the states an element wait waits for; value takes the
+// value to wait for.
+var WaitStates = []string{"enabled", "disabled", "gone", "value", "checked", "unchecked", "expanded", "collapsed"}
 
 // EvalArgs are eval's arguments: one JavaScript expression run in the
 // Tab's page.

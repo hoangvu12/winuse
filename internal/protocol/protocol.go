@@ -435,7 +435,8 @@ type TypeTextArgs struct {
 // Tab, Control_L+a, Numpad_0). Return and Escape on a classic dialog run
 // Headless (ADR 0011, Decision 4) unless headed; every other key is
 // Headed. With post, the key is posted as Posted Keys instead (WM_KEYDOWN
-// and WM_KEYUP to the focused control, no foreground, no modifiers); post
+// and WM_KEYUP to the focused control, no foreground; a chord with
+// modifiers through attached key state, headless-max ticket 07); post
 // and headed do not combine. A Blocked Combo (Alt+F4, Alt+Tab,
 // Ctrl+Shift+Escape and their supersets) is refused unless force.
 type PressKeyArgs struct {

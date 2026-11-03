@@ -205,7 +205,7 @@ func TestStateJSONFieldNames(t *testing.T) {
 		"dialogFileName", "text", "typed", "textSelected", "checkbox", "lastButton", "lastToolbar",
 		"lastMenu", "lastKey", "selectedItem", "listFirstVisible", "detailsExpanded",
 		"toolbarVisible", "openMenu", "canvasClicks", "canvasDoubleClicks",
-		"canvasRightClicks", "canvasDrags", "canvasScrolls", "canvasRect", "focusRequests", "generation",
+		"canvasRightClicks", "canvasDrags", "canvasScrolls", "canvasRect", "focusRequests", "accelerators", "generation",
 		"classicOpen", "classicWindowId", "classicResult", "classicText", "classicPassword", "classicFocus", "classicColor", "classicComboDrops",
 		"classicMenu", "classicMenuInits",
 		"messageBoxOpen", "messageBoxResult",

@@ -310,12 +310,38 @@ func postFlagsError(cmd string) *Error {
 		"--post posts keys to the Window without the foreground; --headed sends real keys in the foreground; pass one of them")
 }
 
-// modifierRefusal refuses a posted chord with a modifier before anything
-// is posted: posted messages do not change the keyboard state that apps
-// read with GetKeyState, so Control_L+a would arrive as a plain a.
-func modifierRefusal(chord keys.Chord) *Error {
-	return nothingSent(Fail("press-key --post cannot send "+chord.String()+": posted keys carry no modifiers (Control, Alt, Shift)",
-		"send the chord without --post (this takes the foreground), or use set-value or perform-secondary-action on the Element instead"))
+// modifierRefusal refuses a posted chord that the attached key state
+// route cannot post (win.PlanPostedChord's reason) before anything is
+// posted.
+func modifierRefusal(chord keys.Chord, why error) *Error {
+	return nothingSent(Fail("press-key --post cannot send "+chord.String()+": "+why.Error(),
+		"send the chord with --headed (this takes the foreground), or use set-value or perform-secondary-action on the Element instead"))
+}
+
+// blockedPostRefusal refuses posting a Blocked Combo, whatever --force
+// says: it goes only the Headed way, where the user sees it.
+func blockedPostRefusal(chord keys.Chord) *Error {
+	return nothingSent(Fail("press-key --post never sends "+chord.String()+": it is a Blocked Combo",
+		"close a Window with winuse close-window; if you mean the combo itself, send it with --headed --force (this takes the foreground)"))
+}
+
+// postChord posts a chord with modifiers to w's focused control through
+// attached key state (headless-max ticket 07; win.PostChord): the plan
+// for w's class (the activation pair for WPF, Chromium and Alt chords),
+// then the post. The thread that owns the foreground is refused with
+// nothing sent: attaching to it would share the user's keyboard state.
+func (s Services) postChord(w win.WindowInfo, target uint64, chord keys.Chord) (int, error) {
+	plan, err := win.PlanPostedChord(chord, w.Class)
+	if err != nil {
+		return 0, &notSentError{err: err, hint: "send the chord with --headed (this takes the foreground)"}
+	}
+	n, err := s.PostChord(w.ID, target, plan)
+	if errors.Is(err, win.ErrChordForeground) {
+		id := strconv.FormatUint(w.ID, 10)
+		return 0, &notSentError{err: err,
+			hint: "the Window's App is in front, so a real key reaches it: winuse --headed press-key " + id + " " + chord.String()}
+	}
+	return n, err
 }
 
 // postedModifier reports whether a chord holds a modifier key.
@@ -336,7 +362,7 @@ func postedModifier(chord keys.Chord) bool {
 // the focused control with label. A post that sent no message says
 // "nothing was sent"; a partial post may have taken effect. The output is
 // postedOutput: there is nothing to read back.
-func (s Services) postKeys(ctx context.Context, ref, label string, post func(target uint64) (int, error)) (string, *Error) {
+func (s Services) postKeys(ctx context.Context, ref, label string, post func(w win.WindowInfo, target uint64) (int, error)) (string, *Error) {
 	w, rerr := resolveWindow(s, ref)
 	if rerr != nil {
 		return "", rerr
@@ -352,7 +378,11 @@ func (s Services) postKeys(ctx context.Context, ref, label string, post func(tar
 		target: rect,
 		posted: true,
 		act: func() error {
-			n, err := post(target)
+			n, err := post(w, target)
+			var notSent *notSentError
+			if errors.As(err, &notSent) {
+				return err
+			}
 			if err != nil && n == 0 {
 				return &notSentError{err: err, hint: "the Window or its focused control may have closed; run winuse list-windows"}
 			}
