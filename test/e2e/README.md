@@ -525,6 +525,15 @@ still the foreground window afterwards. The shared helpers are in
   --into id:1001` fills the name Edit, and `--into id:1` (the OK button)
   is refused with "nothing was sent" and the `--headed` retry. The
   foreground and the pointer stay put.
+- `TestTypeTextIntoAWPFBoxSplicesAtTheCaret` (`caret_typing_test.go`,
+  headless-max ticket 13) **needs Windows PowerShell**, which shows the
+  test's own WPF TextBox (`id:box`, "hello world") without activating it.
+  With the box covered, `select-text id:box 5 0` puts the caret after
+  "hello" and `type-text --into id:box xy😀` splices the text there:
+  the box reads `helloxy😀 world` and the output says no key events
+  fired. A second `--into` must follow the caret (or the output must say
+  it could not be placed, logged as MEASURED). The foreground and the
+  pointer stay put, and no banner shows.
 - `TestHeadlessSelectTextInClassicEdit` (`select_text_test.go`): types
   `hello world` into the covered Classic Dialog's Edit, `select-text`
   6 5 on it by `id:1001`, then `type-text winuse` replaces the selection

@@ -455,7 +455,8 @@ winuse picks the route from the live Window before it sends anything.
   Electron and browser Windows without a Browser Connection. Without the
   flag they are refused with nothing sent, and the hint names the
   `--headed` command, `--into` for text and `--post` for text or a key
-  without modifiers.
+  without modifiers. For a WinUI or WPF text box, name it with `--into`:
+  that is Headless.
 
 A Headless route prints `ok`; a refusal means nothing was typed, so pick
 the next step from its hint. Before a Headed type, check the
@@ -486,8 +487,17 @@ and picks the route from the Element before it sends anything.
 - A Page field in a browser Window with a Browser Connection is Headless.
   winuse focuses the field and types the text there; a newline is a real
   Return and a tab a real Tab, as in plain `type-text` on the Page.
-- Anything else, and text with a control character in a classic edit box,
-  is refused with nothing sent. The hint gives the `--headed` retry, which
+- Another text field with a text caret, such as a WinUI or WPF text box,
+  is Headless when the text has no control character. winuse puts the
+  text at the field's own caret, or over its selection, by rewriting the
+  field's value, reads the value back, and moves the caret after the text.
+  This is not typing: no key events fire, so the app's typing handlers and
+  some validators do not run, and the field's undo may not hold the change.
+  The output says so. Place the caret first with `select-text <ref> <n> 0`
+  when it matters where the text goes.
+- Anything else is refused with nothing sent: a password box, a read-only
+  or rich text field, a field with no text caret, and text with a control
+  character outside a Page. The hint gives the `--headed` retry, which
   activates the Window, clicks the Element and types with real keys.
 
 `--into` works on a Batch step too: `type-text --into id:1001 hello`. It does

@@ -15,6 +15,12 @@ package helper
 //     deactivation. A covered Windows 11 Notepad reports no focused
 //     control on its thread, so plain type-text has no Headless route
 //     there; its editor's Element still names its window;
+//   - an Element with the Text and Value patterns and no classic edit
+//     control behind it (WPF, WinUI), with text that has no control
+//     characters: the caret splice (spliceInto, headless-max ticket 13),
+//     the Value rewritten as prefix + text + suffix at the field's own
+//     selection, read back, and the caret placed after the text. No key
+//     events fire, and the output says so;
 //   - any other Element: with headed, v1's pipeline (activate, click the
 //     Element, type with real keys); without, a refusal that says nothing
 //     was sent and gives the --headed retry.
@@ -24,11 +30,13 @@ package helper
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
 	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
+	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
 )
 
@@ -78,7 +86,81 @@ func (s Services) typeTextInto(ctx context.Context, a protocol.TypeTextArgs) (st
 	if edit.Writable() && !hasControlChars(a.Text) {
 		return s.typeIntoEdit(ctx, w, edit, a.Text)
 	}
+	if sp, ok := s.Actions.(TextSplicer); ok && !edit.IsEdit() && !hasControlChars(a.Text) {
+		return s.spliceInto(ctx, a.Window, target, a.Text, sp)
+	}
 	return "", intoRefusal(w, target, index, edit, a.Text)
+}
+
+// TextSplicer is the caret splice's element side (headless-max ticket
+// 13): *uia.Client. A helper whose Services.Actions is not one refuses
+// --into on Elements with no classic edit control, as before.
+type TextSplicer interface {
+	// SpliceText puts text at the Element's caret through its Text and
+	// Value patterns, reads the value back and places the caret after it.
+	SpliceText(ctx context.Context, hwnd uint64, index int, text string) (uia.SpliceResult, error)
+}
+
+var _ TextSplicer = (*uia.Client)(nil)
+
+// spliceOutput is the splice's success: the text is in, written as the
+// field's value, which is not typing; the agent learns what that means.
+func spliceOutput(r uia.SpliceResult) string {
+	out := "ok (set as the field's value at the caret: no key events fired, and the field's undo may not hold it"
+	if !r.CaretPlaced {
+		out += "; the caret could not be placed after the text"
+	}
+	return out + ")\n"
+}
+
+// spliceInto runs the caret splice through runHeadless (its refusals, the
+// passive Esc scope, the Agent Cursor). Measured on minimized WPF and
+// WinUI 3 Windows too (headless-max ticket 14), so it reaches them.
+func (s Services) spliceInto(ctx context.Context, ref string, target elementTarget, text string, sp TextSplicer) (string, *Error) {
+	ha, ok := s.Actions.(HeadlessActor)
+	if !ok {
+		return "", Fail("type-text --into is unavailable: no UIA client", "")
+	}
+	var res uia.SpliceResult
+	if _, rerr := s.runHeadless(ctx, ref, ha, headlessRun{
+		cmd:       "type-text",
+		verb:      "type", // never the text: it could be secret
+		target:    target,
+		minimized: true,
+		act: func(ctx context.Context, w win.WindowInfo, index int) error {
+			r, err := sp.SpliceText(ctx, w.ID, index, text)
+			res = r
+			return err
+		},
+		refusal: func(err error, w win.WindowInfo, index int) *Error {
+			return spliceRefusal(err, w, index, target)
+		},
+	}); rerr != nil {
+		return "", rerr
+	}
+	return spliceOutput(res), nil
+}
+
+// spliceRefusal maps the splice's refusals (raised before the write; see
+// refusedBeforeCall), each with the --headed retry where real keys can do
+// what the splice cannot.
+func spliceRefusal(err error, w win.WindowInfo, index int, target elementTarget) *Error {
+	id := strconv.FormatUint(w.ID, 10)
+	retry := "to click it and type with real keys (this brings the Window to the foreground): winuse --headed type-text " +
+		id + " --into " + target.token() + " <text>"
+	switch {
+	case errors.Is(err, uia.ErrNoTextPattern), errors.Is(err, uia.ErrSpliceNoValue), errors.Is(err, uia.ErrSpliceRichText),
+		errors.Is(err, uia.ErrSpliceMismatch), errors.Is(err, uia.ErrSpliceNoCaret), errors.Is(err, uia.ErrTextUnreadable):
+		return Fail(fmt.Sprintf("type-text --into has no Headless route into element %d: %v", index, err), retry)
+	case errors.Is(err, uia.ErrSplicePassword):
+		return Fail(fmt.Sprintf("type-text --into does not rewrite element %d: %v", index, err), retry)
+	case errors.Is(err, uia.ErrNotSettable):
+		return Fail(fmt.Sprintf("type-text --into cannot type into element %d: it is read-only", index),
+			"a read-only field takes no text; read a fresh Window State (winuse get-window-state "+id+") and pick another Element")
+	case errors.Is(err, uia.ErrDisabled):
+		return Fail(err.Error(), "a disabled Element cannot be acted on; read a fresh Window State and pick another Element")
+	}
+	return elementError(err, w, index)
 }
 
 // intoEdit reads the window behind the Element (its NativeWindowHandle)
@@ -112,7 +194,11 @@ func intoRefusal(w win.WindowInfo, target elementTarget, index int, edit win.Con
 		return nothingSent(Fail(fmt.Sprintf("type-text --into has no Headless route for this text into element %d: a newline, a tab or another control character is typed as a real key", index),
 			"type the text without it, or press the key with winuse press-key; "+retry))
 	}
-	return nothingSent(Fail(fmt.Sprintf("type-text --into has no Headless route into element %d: it is neither a classic edit control nor a Page Element", index), retry))
+	if hasControlChars(text) {
+		return nothingSent(Fail(fmt.Sprintf("type-text --into has no Headless route for this text into element %d: a newline, a tab or another control character is typed as a real key", index),
+			"type the text without it, or press the key with winuse press-key; "+retry))
+	}
+	return nothingSent(Fail(fmt.Sprintf("type-text --into has no Headless route into element %d: it is neither a classic edit control, a Text-pattern field nor a Page Element", index), retry))
 }
 
 // typeIntoHeaded is --into with headed: v1's pipeline (activate and

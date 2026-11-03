@@ -99,10 +99,10 @@ func TestTypeTextIntoRefusals(t *testing.T) {
 		hint  string
 	}{
 		{"no edit window", func(s *keyRouteSpy) { s.text.native = 0 }, secret,
-			"type-text --into has no Headless route into element 2: it is neither a classic edit control nor a Page Element; nothing was sent",
+			"type-text --into has no Headless route into element 2: it is neither a classic edit control, a Text-pattern field nor a Page Element; nothing was sent",
 			"winuse --headed type-text 101 --into 2 <text>"},
 		{"a window of another class", func(s *keyRouteSpy) { s.text.edit = okButton }, secret,
-			"it is neither a classic edit control nor a Page Element", "winuse --headed type-text 101 --into 2 <text>"},
+			"it is neither a classic edit control, a Text-pattern field nor a Page Element", "winuse --headed type-text 101 --into 2 <text>"},
 		{"a control character", nil, "a\nb",
 			"a newline, a tab or another control character is typed as a real key", "winuse --headed type-text 101 --into 2 <text>"},
 		{"a read-only edit", func(s *keyRouteSpy) { s.text.edit = readOnly }, secret,
