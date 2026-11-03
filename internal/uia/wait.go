@@ -10,11 +10,32 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 	"unsafe"
 
 	"github.com/hoangvu12/winuse/internal/wstate"
 )
+
+// waitPollKey marks the context of a wait's poll (WithWaitPoll).
+type waitPollKey struct{}
+
+// WithWaitPoll marks ctx as the context of a wait's poll (desktop-parity
+// 03). When it ends, Run gives the job up without abandoning the worker:
+// a wait ends at its deadline as an ordinary outcome, so a poll still
+// queued behind another request's job, or still reading, says nothing
+// about a wedged worker, and abandoning it would fail the requests queued
+// on it. A poll installs nothing, so a job left running is harmless; a
+// worker that is really wedged is abandoned by the next request that
+// overruns on it.
+func WithWaitPoll(ctx context.Context) context.Context {
+	return context.WithValue(ctx, waitPollKey{}, true)
+}
+
+func isWaitPoll(ctx context.Context) bool {
+	poll, _ := ctx.Value(waitPollKey{}).(bool)
+	return poll
+}
 
 // errNoCOMThread is a wait job on a fake worker (offline tests), which
 // carries no COM thread to read with.
@@ -93,21 +114,39 @@ func (c *Client) HoldElement(ctx context.Context, hwnd uint64, index int) (Held,
 	return &heldElement{c: c, el: el}, nil
 }
 
-// heldElement is a Held over the store's AddRef'd hand-out.
+// errHoldEnded is a State read after Release: a wait's poll still running
+// when the wait ended (its result is dropped).
+var errHoldEnded = errors.New("the wait that held the Element has ended")
+
+// heldElement is a Held over the store's AddRef'd hand-out. A wait's poll
+// can outlive the wait (pollUntil leaves a check that does not answer), so
+// a State read can meet Release: the Element is taken under mu inside the
+// read's job, and the last of Release and the reads in flight releases it,
+// on a worker.
 type heldElement struct {
-	c  *Client
-	el comPtr
+	c *Client
+
+	mu       sync.Mutex
+	el       comPtr // nil once released
+	reading  int    // State reads using el now
+	released bool   // Release was called
 }
 
 func (h *heldElement) State(ctx context.Context) (ElementState, error) {
 	var st ElementState
 	var jobErr error
 	err := h.c.Run(ctx, func(w *worker, _ *run) {
+		el := h.use()
+		if el == nil {
+			jobErr = errHoldEnded
+			return
+		}
+		defer h.done(el)
 		if w.thread == nil {
 			jobErr = errNoCOMThread
 			return
 		}
-		st, jobErr = readElementState(h.el)
+		st, jobErr = readElementState(el)
 	})
 	if err != nil {
 		return ElementState{}, err
@@ -115,13 +154,46 @@ func (h *heldElement) State(ctx context.Context) (ElementState, error) {
 	return st, jobErr
 }
 
+// use takes the Element for one read on the worker; nil after Release.
+func (h *heldElement) use() comPtr {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.released || h.el == nil {
+		return nil
+	}
+	h.reading++
+	return h.el
+}
+
+// done ends one read; the last read after Release releases the Element,
+// on the worker it ran on.
+func (h *heldElement) done(el comPtr) {
+	h.mu.Lock()
+	h.reading--
+	last := h.released && h.reading == 0 && h.el != nil
+	if last {
+		h.el = nil
+	}
+	h.mu.Unlock()
+	if last {
+		h.c.store.release(el)
+	}
+}
+
 // Release releases the Element on the UIA worker, off the caller's
 // goroutine: a worker busy with another request's read must not hold up
-// the wait's answer. A worker that winds down first leaks the reference.
+// the wait's answer. With a read in flight, that read releases it when it
+// ends. A worker that winds down first leaks the reference.
 func (h *heldElement) Release() {
+	h.mu.Lock()
 	el := h.el
-	h.el = nil
-	if el == nil {
+	idle := !h.released && h.reading == 0
+	h.released = true
+	if idle {
+		h.el = nil
+	}
+	h.mu.Unlock()
+	if !idle || el == nil {
 		return
 	}
 	go h.c.Run(context.Background(), func(_ *worker, _ *run) { h.c.store.release(el) })

@@ -126,6 +126,9 @@ func (s Services) runDesktopWait(ctx context.Context, a protocol.WaitArgs) (stri
 	}
 	wctx, cancel := pageWaitContext(ctx, want)
 	defer cancel()
+	// The polls' UIA calls end with the wait without abandoning the UIA
+	// worker: a wait that times out is no overrun.
+	wctx = uia.WithWaitPoll(wctx)
 	switch kind {
 	case protocol.WaitWindow:
 		return s.waitWindow(wctx, a, want, esc.Stopped)
