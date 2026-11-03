@@ -78,6 +78,16 @@ name ahead of the action, such as `reviewer: click "Save"`. To choose the
 colour, set `WINUSE_CURSOR_COLOR` to a hex colour such as `#FF8A3D` on
 every command, next to `WINUSE_AGENT`.
 
+Agents working in Windows of different Apps run at the same time.
+Windows of one App that share a UI thread take turns, as all of one
+Chrome's or Explorer's Windows do, and so do two agents in one Window.
+Page Actions in two browser Windows run at once. A Headed Action holds the
+whole desktop, and its banner names the agent: another agent's Headed
+Action waits for it. A command that has waited about 12 seconds, or most
+of its budget, is refused with nothing sent and names the agent it waited
+for, such as `agent reviewer is using window 101`. Retry when that agent is
+done, or work in another App's Window meanwhile. Reads never wait.
+
 ## Find the Window
 
 ```
@@ -364,7 +374,8 @@ Every other Action is a Headed Action, and it runs only when you pass
 `--headed`. winuse then brings the Window to the foreground, uses the real
 pointer and keyboard, and frames the Window with a banner telling the user
 that winuse is in control and Esc stops it. Headed covers a point that
-names no usable Element, `--count 2|3`, `--button right|middle`, `drag`, `hover`,
+names no usable Element, `--count 2|3` and `--button right|middle` outside
+a Chromium or Electron Window (there they go as window messages), `drag`, `hover`,
 `maximize-window`, Raise, and `press-key` and `type-text` anywhere the
 routes below do not reach. Sent without `--headed`, these are refused: the
 line says why there is no background route and ends in `nothing was sent`,
@@ -434,7 +445,11 @@ from the start. Each one needs `--headed` (or `--post`, where it fits);
 without it the command is refused with nothing sent.
 
 - Hover and drag in a desktop App. Only a Page with a Browser Connection
-  takes them Headless.
+  takes them Headless. With `--headed` they take an Element as well as
+  `@x,y`: `winuse --headed drag 101 id:card id:done` drags from the
+  Element's clickable point to the other's, and `--drop-delay <ms>` holds
+  the drag at its end before the drop, for a target that needs hover
+  time.
 - A minimized browser, Electron App or Store app. Run `restore-window`
   first. A Store app such as Calculator has no UI at all while minimized
   and comes to the front when restored, so tell the user before you
@@ -519,13 +534,21 @@ winuse picks the route from the live Window before it sends anything.
   typing, and winuse checks the length afterwards.
 - In a browser Window with a Browser Connection, both go to the Page
   Headless while a Page Element has the focus.
+- In a Chromium browser or Electron App Window otherwise (no Browser
+  Connection, or the focus outside the Page), both go to the Window as
+  window messages, without the foreground: `ok (typed as window messages;
+  ...)`. The page sees a focus and blur around each step. Typed text is
+  read back from the focused field where it has a value; otherwise the
+  output says it was not verified, so read the Window State. Click into
+  the field first with `click <window> <ref> --count 2`, which goes as
+  window messages too. A minimized Window, and a browser the user is
+  working in, are refused with nothing sent. WebView2 is not covered.
 - Everywhere else both need `--headed`, which takes the foreground and
-  types into whatever has keyboard focus. That includes WinUI, WPF,
-  Electron and browser Windows without a Browser Connection. Without the
-  flag they are refused with nothing sent, and the hint names the
-  `--headed` command, `--into` for text and `--post` for text, a key or a
-  chord. For a WinUI or WPF text box, name it with `--into`:
-  that is Headless.
+  types into whatever has keyboard focus. That includes WinUI and WPF.
+  Without the flag they are refused with nothing sent, and the hint names
+  the `--headed` command, `--into` for text and `--post` for text, a key
+  or a chord. For a WinUI or WPF text box, name it with `--into`: that is
+  Headless.
 
 A Headless route prints `ok`; a refusal means nothing was typed, so pick
 the next step from its hint. Before a Headed type, check the
@@ -622,6 +645,12 @@ effort.
 
 Use `--post` for a key, a chord or plain text on a Window with no Headless
 route, when the user's foreground matters more than certainty.
+
+Some Apps drop characters typed fast. `type-text <window> --interval-ms 50
+<text>` pauses that many milliseconds (0 to 1000) between characters
+when the text goes key by key, with `--headed` or `--post`; it sits with
+`--post` or `--into` right after the Window. A route that puts the text in
+at once ignores it, and its `ok` says so.
 
 ## Run a menu command
 
@@ -1121,16 +1150,16 @@ zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right] [--post]
 set-value <window> <ref> <value|on|off|item name>
 perform-secondary-action <window> <ref> <action>   # Raise, Scroll Up/Down/Left/Right, Expand, Collapse, Toggle, Select
-type-text <window> [--post | --into <ref>] <text>
+type-text <window> [--post | --into <ref>] [--interval-ms <n>] <text>
 press-key <window> <key> [--post] [--force]
 select-text <window> <ref> <start> <length> | select-text <window> <ref> all
 invoke-menu <window> "<menu> > <item>"   # a classic menu bar command, Headless
 scroll <window> <ref> <up|down|left|right> [steps] | scroll <window> <ref> into-view
 scroll <window> @x,y <dx> <dy> [--post]   # Headless: the Page, or the Window's Element under the point; --post posts the wheel
-drag <window> @x,y @x,y             # --headed: left button, point to point
-drag <window> <element> <element|@x,y>   # a Page Element, Headless
+drag <window> @x,y @x,y [--drop-delay <ms>]   # --headed: left button, point to point
+drag <window> <element> <element|@x,y> [--drop-delay <ms>]   # a Page Element Headless; other Elements --headed
 hover <window> @x,y                 # --headed: moves the pointer and leaves it there, to reveal tooltips
-hover <window> <element>            # a Page Element, Headless
+hover <window> <element>            # a Page Element Headless; other Elements --headed, at the clickable point
 activate-window <window>            # takes the foreground, no flag needed
 restore-window <window> | minimize-window <window> | close-window <window>
 move-window <window> <x> <y> | resize-window <window> <width> <height>

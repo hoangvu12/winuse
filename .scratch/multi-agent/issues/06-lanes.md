@@ -18,10 +18,27 @@
 
 **Blocked by:** 02; ticket 07 removes the UIA thread as the remaining serial point
 
-**Status:** ready-for-agent
+**Status:** done (the live two-agent e2e run is still to do: paused while the user games)
 
-- [ ] Lane manager with ordered acquisition and a timeout
-- [ ] Every command's lane class (Window, desktop) from the existing routing predicates
-- [ ] Batch lanes
-- [ ] Offline tests: parallel Headless on Windows of two threads, serial on one Window and on two Windows of one thread, parallel Page Actions on two Tabs, Headed vs Headless, timeout wording, the deadlock order, Esc while waiting (05)
-- [ ] docs/codex-parity.md "one request at a time" wording; SKILL.md
+- [x] Lane manager with ordered acquisition and a timeout
+- [x] Every command's lane class (Window, desktop) from the existing routing predicates
+- [x] Batch lanes
+- [x] Offline tests: parallel Headless on Windows of two threads, serial on one Window and on two Windows of one thread, parallel Page Actions on two Tabs, Headed vs Headless, timeout wording, the deadlock order, Esc while waiting (05)
+- [x] docs/codex-parity.md "one request at a time" wording; SKILL.md
+
+### 2026-11-03: done (worker, branch ma06-lanes)
+
+- `internal/helper/lanes.go` replaces `actionGate` with a `laneManager`: one capacity-1 channel per lane key, made on first use, with holder records (agent label, Window).
+  - Keys: `desktop`, `thread <tid>` (win.WindowThreadID, behind `Services.WindowThread`; a Window whose thread cannot be read gets a lane of its own), and `page <hwnd>`. The Page lane is keyed by the browser Window, whose one active Tab its Page Actions act on, so two browser Windows run at once, even in one browser. Keys sort desktop, then threads, then Pages: the one acquisition order.
+- Lane classes come from the commands' own routing (`stepHeadless`, `pageStep`, unchanged).
+  - Window Actions: thread lane. activate-window: desktop and thread.
+  - press-key and type-text: from the `--headed` flag (since headless-max 21 nothing else goes Headed), so the Window's focus is not probed twice.
+  - A command with no Window (clipboard, display screenshot) or an unresolvable Window: desktop.
+  - A Batch: desktop if `headed` or any step is Headed; the Page lane if any step goes to the Page; the thread lane if any step does not. A Batch never switches class halfway: it holds what it computed.
+- `onLanes` takes the lanes in order inside one `gateWait`, so Esc stops a waiter (ticket 05). The wait limit is 12 s (`Services.LaneWait`), cut to 100 ms before the request's deadline. Past it the request is refused: `agent <label> is using <the desktop | window N>; nothing was sent`. A cancelled request keeps the old queued-out message. `serialized` is now "the desktop lane alone", used by the screenshot path, and a Page wait takes its Page lane (`waitGated`).
+- The banner names the agent holding the desktop lane: `win.Overlay.SetAgent` and `OverlayBannerText` ("winuse is in control for <label> — press Esc to stop"). The default agent is unnamed (old text); the bracket overlay forwards.
+- Concurrency fix: the self-activation note (headless-max 03) is skipped when the desktop lane was taken during the Action (`desktopUses`), so another agent's Headed activation is never blamed on this App.
+- Docs: codex-parity "one request at a time" (reworded; matched for one agent, extension for several), SKILL.md "Several agents", ADR 0014 status and Consequences (the Page-lane keying, and the shared identity-records limit the orchestrator asked for).
+- Tests: `internal/helper/lanes_test.go`: parallel on two threads; serial on one thread and on one Window; parallel Page Actions in two browser Windows; Page beside the browser's thread; Headed vs Headless; two Headed; refusal wording; budget clamp; sorted order and 40 crossing Batches with no deadlock; lane classes of real command arguments incl. the Page rig and mixed Batches; the banner's agent; the self-activation skip. Esc while waiting: `escall_test.go`. Updated: the browser/status/escall tests that held the old gate.
+- Opt-in e2e `TestTwoAgentsRunInTheirOwnLanes` (`test/e2e/lanes_test.go`), compiled, NOT run. Two fixtures, three agents: alpha's Batch holds A's lane for 2 s; beta's click on B finishes within 1.5 s; gamma's click on A waits (>0.5 s) and then runs; covers keep the foreground.
+

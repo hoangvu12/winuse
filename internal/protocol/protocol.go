@@ -345,6 +345,13 @@ type DragArgs struct {
 	// form drags with the real pointer only with it, and is refused with
 	// nothing sent without it. The Page form ignores it.
 	Headed bool `json:"headed,omitempty"`
+
+	// Desktop-parity 13: the Element form also starts on a UIA Element,
+	// Headed like the point form (only with Headed), from the Element's
+	// clickable point to the target Element's or to the point. DropDelayMS
+	// (--drop-delay) holds the drag at its end before the drop, on every
+	// route.
+	DropDelayMS int `json:"drop_delay_ms,omitempty"`
 }
 
 // HoverArgs are hover's arguments: the point to move the pointer to,
@@ -357,7 +364,9 @@ type HoverArgs struct {
 	Y      int    `json:"y"`
 
 	// Browser merge ticket 06: a hover over a Page Element instead of a
-	// point, Headless over the Browser Connection.
+	// point, Headless over the Browser Connection. A UIA Element is hovered
+	// at its clickable point, Headed like the point form (desktop-parity
+	// 13).
 	ElementIndex *int   `json:"element_index,omitempty"`
 	Ref          string `json:"ref,omitempty"`
 
@@ -431,6 +440,10 @@ type TypeTextArgs struct {
 	Post      bool   `json:"post,omitempty"`       // Posted Keys: post WM_CHAR to the Window's focused control (ADR 0011, Decision 5)
 	IntoIndex *int   `json:"into_index,omitempty"` // type into this Element, from the Window's latest Window State
 	IntoRef   string `json:"into_ref,omitempty"`   // name:<text> or id:<AutomationId>: type into this Element
+	// IntervalMS pauses this long between characters on the routes that
+	// type character by character (Headed, Posted); 0 to 1000
+	// (desktop-parity ticket 23).
+	IntervalMS int `json:"interval_ms,omitempty"`
 }
 
 // PressKeyArgs are press-key's arguments — Codex's press_key parameters:

@@ -40,9 +40,10 @@ package helper
 // was listed with; otherwise they refuse with nothing sent. A banner shows
 // for about 5 seconds, so the agent acts right after listing it.
 //
-// The read and the wait only read: they skip the action gate. The two
-// actions are serialized like any Action, in a passive Esc scope, and
-// show no Agent Cursor (a Desktop command).
+// The read and the wait only read: they take no lane. The two actions
+// name no Window, so they take the desktop lane like the other Desktop
+// commands that act (lanes.go), run in a passive Esc scope and show no
+// Agent Cursor.
 
 import (
 	"context"

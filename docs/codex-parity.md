@@ -147,7 +147,7 @@ retried with `--headed`.
 
 | Parameter | Codex | winuse `press-key` | Status |
 |---|---|---|---|
-| `window` | the Window receiving the key | `<window>`; with `--headed` activated first, like every Headed Action. Without it, Return or Escape on a classic dialog and Page keys are Headless, `--post` posts, and any other key is refused with nothing sent and the `--headed` retry (ticket 21) | intentionally different |
+| `window` | the Window receiving the key | `<window>`; with `--headed` activated first, like every Headed Action. Without it, Return or Escape on a classic dialog and Page keys are Headless, keys into a Chromium or Electron Window without a Browser Connection go as window messages (headless-max ticket 20), `--post` posts, and any other key is refused with nothing sent and the `--headed` retry (ticket 21) | intentionally different |
 | `key` | X keysym names and `+` chords (`Return`, `Control_L+a`, `Numpad_0`), aliases, whitespace around `+` ignored; unknown → `unsupported key: <name>` | the same names, aliases and chord delivery (all key-downs in order, key-ups in reverse, scan codes filled, extended keys flagged); the same error | matched |
 
 The Windows key differs in enforcement only: Codex's guidance forbids
@@ -157,7 +157,7 @@ it and winuse's code refuses it (see cross-cutting).
 
 | Parameter | Codex | winuse `type-text` | Status |
 |---|---|---|---|
-| `window` | the Window with the focused Element | `<window>`; text into a focused classic edit box, `--into` a named field, Page typing and `--post` need no foreground; anything else types Headed only with `--headed`, and is refused with nothing sent without it (ticket 21) | intentionally different |
+| `window` | the Window with the focused Element | `<window>`; text into a focused classic edit box, `--into` a named field, Page typing, typing into a Chromium or Electron Window without a Browser Connection (window messages, read back where the field has a value, ticket 20) and `--post` need no foreground; anything else types Headed only with `--headed`, and is refused with nothing sent without it (ticket 21) | intentionally different |
 | `text` | one string, typed into the current focus as Unicode | every argument after the Window joins into the text (CLI sugar); injected as Unicode key events, one UTF-16 unit per event, newline/tab as real Return/Tab keys | matched |
 
 ### scroll
@@ -215,7 +215,10 @@ Left button only, as in Codex. winuse interpolates ~16 absolute moves
 reorder) instead of a teleport — a fidelity extension on the same
 contract. The point form drags only with `--headed`; without it, it is
 refused with nothing sent (ticket 21). Hover at a point follows the same
-rule.
+rule. As winuse extensions (desktop-parity 13, as agent-desktop's refs),
+drag and hover also take an Element: a Page Element Headless, any other
+from its clickable point, again only with `--headed`; and
+`--drop-delay <ms>` holds a drag at its end before the drop.
 
 ### perform_secondary_action
 
@@ -403,16 +406,21 @@ AUMIDs — `launch-app` never guesses between several distinct matches.
 ### one request at a time
 
 Codex's helper rejects concurrent requests ("already has an active
-request"); winuse's helper serializes every command that activates a
-Window, injects input or shows the overlay — and every Headless Action,
-which writes into an app and drives the one Agent Cursor, and the
-clipboard's Desktop commands — through one helper-wide action gate — one
-command controls the desktop at a time, and a request
-queued behind another Action until its own budget expired fails instead
-of acting late. Observation-only commands (list-windows, get-window,
-list-apps, the plain tree read, record-tree, launch-app, and the desktop
-waits, which only read) may answer concurrently; the UIA worker serializes everything that touches
-automation. **matched**.
+request"); winuse's helper runs Actions in lanes (multi-agent 06, ADR 0014
+Decisions 1, 6 and 7). A Headless or Posted Action takes the lane of its
+target Window's UI thread, a Page Action the lane of its browser Window's
+Page, and a Headed Action (or a command that names no Window, such as the
+clipboard's) the one desktop lane plus its Window's thread lane: one
+command still controls the real input and the foreground at a time, and
+so does one command per UI thread, while Actions on Windows of different
+Apps run together. Lanes are taken in one order (desktop, threads, Pages),
+so Batches cannot deadlock. A request waits for its lanes up to 12 s,
+clamped by its own budget, then fails with nothing sent, naming the agent
+that holds the lane. Observation-only commands (list-windows, get-window,
+list-apps, the plain tree read, find, record-tree, launch-app, and the
+desktop waits) take no lane; the UIA worker still serializes everything
+that touches automation until multi-agent 07's pool. **matched** for one
+agent at a time; several agents at once is an **extension**.
 
 ### stale elements
 

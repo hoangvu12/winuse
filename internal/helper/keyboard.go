@@ -23,7 +23,7 @@ import (
 // typeTextUsageHint and pressKeyUsageHint are the recovery hints for the
 // commands' argument failures.
 const (
-	typeTextUsageHint = "usage: winuse type-text <window> [--post | --into <element>] <text>"
+	typeTextUsageHint = "usage: winuse type-text <window> [--post | --into <element>] [--interval-ms <n>] <text>"
 	pressKeyUsageHint = "usage: winuse press-key <window> <key> [--post] [--force]"
 )
 
@@ -58,8 +58,23 @@ func typeText(s Services) Command {
 			return "", Fail("type-text: text is required",
 				"pass the text as one argument; quote it if it contains spaces")
 		}
+		interval, ierr := intervalOf(a)
+		if ierr != nil {
+			return "", ierr
+		}
+		// A Headless route puts the text in at once: its output says the
+		// pause did not apply (interval.go).
+		paced := func(out string, rerr *Error) (string, *Error) {
+			if rerr == nil && interval > 0 {
+				out = intervalNote(out)
+			}
+			return out, rerr
+		}
 		if typesInto(a) {
-			return s.typeTextInto(ctx, a)
+			if a.Headed {
+				return s.typeTextInto(ctx, a)
+			}
+			return paced(s.typeTextInto(ctx, a))
 		}
 		if a.Post {
 			// Posted Keys (ADR 0011, Decision 5): WM_CHAR per UTF-16 unit
@@ -68,14 +83,14 @@ func typeText(s Services) Command {
 				return "", postFlagsError("type-text")
 			}
 			return s.postKeys(ctx, a.Window, "type", func(_ win.WindowInfo, target uint64) (int, error) {
-				return s.PostText(target, a.Text)
+				return s.postText(target, a.Text, interval, func() bool { return s.Esc.Stopped() || ctx.Err() != nil })
 			})
 		}
 		if !a.Headed {
 			// The Page holds the focus: typing goes over the Browser
 			// Connection (pageactions.go).
 			if out, rerr, ok := s.pageTypeText(ctx, a.Window, a.Text); ok {
-				return out, rerr
+				return paced(out, rerr)
 			}
 		}
 		if !a.Headed {
@@ -92,8 +107,14 @@ func typeText(s Services) Command {
 			route := s.keyRoute(args, w)
 			if route != nil {
 				if edit, ok := editTypeRoute(a.Text, *route); ok {
-					return s.typeIntoEdit(ctx, w, edit, a.Text)
+					return paced(s.typeIntoEdit(ctx, w, edit, a.Text))
 				}
+			}
+			// A Chromium or Electron Window without a Browser Connection:
+			// window messages, read back where the field has a value
+			// (headless-max ticket 20, chromium.go).
+			if out, rerr, ok := s.chromiumType(ctx, w, a.Text); ok {
+				return out, rerr
 			}
 			return "", headedRefusal(w, typeTextWhy(w, a.Text, route),
 				func(id string) string { return "type-text " + id + " <text>" },
@@ -101,9 +122,9 @@ func typeText(s Services) Command {
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
 			// The abort checkpoint polls the Esc stop and the request's
-			// deadline (finding 10): typing stops between its batches when
-			// either fires.
-			if err := s.TypeText(a.Text, func() bool { return s.Esc.Stopped() || ctx.Err() != nil }); err != nil {
+			// deadline (finding 10): typing stops between its batches, or
+			// its paced characters, when either fires.
+			if err := s.typeKeys(a.Text, interval, func() bool { return s.Esc.Stopped() || ctx.Err() != nil }); err != nil {
 				return "", inputAbortError(s, ctx, err, "while typing (the text injected so far landed)")
 			}
 			return okOutput, nil
@@ -197,6 +218,11 @@ func pressKey(s Services) Command {
 				if dk, ok := dialogKeyRoute(chord, *route); ok {
 					return s.pressDialogKey(ctx, w, dk)
 				}
+			}
+			// A Chromium or Electron Window without a Browser Connection:
+			// window messages (headless-max ticket 20, chromium.go).
+			if out, rerr, ok := s.chromiumPress(ctx, w, chord, a.Force); ok {
+				return out, rerr
 			}
 			force := ""
 			if a.Force {

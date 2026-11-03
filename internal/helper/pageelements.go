@@ -7,8 +7,8 @@ package helper
 // browser's context menu it kept closed).
 //
 //	command                              Page Element                                       UIA Element
-//	hover <el>                           CDP mouseMoved at its centre, Headless             refused: hover @x,y
-//	drag <el> <el | @x,y>                CDP press, moves, release (HTML5 drags dropped     refused: drag @x,y @x,y
+//	hover <el>                           CDP mouseMoved at its centre, Headless             Headed with --headed (pointer.go, desktop-parity 13)
+//	drag <el> <el | @x,y>                CDP press, moves, release (HTML5 drags dropped     Headed with --headed (pointer.go, desktop-parity 13)
 //	                                     through CDP drag events), Headless
 //	set-value <select> <label|value>     the option set by the page's JS, input + change   (today's routes)
 //	set-value <check box> on|off         a trusted click when the state differs, read back (today's routes)
@@ -91,17 +91,10 @@ type actRefusal struct{ msg, hint string }
 
 func (e *actRefusal) Error() string { return e.msg }
 
-// pageHover runs `hover <window> <element>`: a mouse move to the Page
-// Element's centre, after the actionability checks.
-func (s Services) pageHover(ctx context.Context, a protocol.HoverArgs) (string, *Error) {
-	target, rerr := parseElementTarget("hover", a.ElementIndex, a.Ref, nil, hoverUsageHint)
-	if rerr != nil {
-		return "", rerr
-	}
-	w, index, o, ok := s.pageRoute(ctx, a.Window, target)
-	if !ok {
-		return "", s.notPageElement(ctx, a.Window, target, "hover", "hover reaches other Elements by a point: run winuse get-window-state %s --screenshot, then winuse hover %s @x,y")
-	}
+// pageHover runs `hover <window> <element>` on a Page Element (elementHover
+// routes it here): a mouse move to its centre, after the actionability
+// checks.
+func (s Services) pageHover(ctx context.Context, w win.WindowInfo, index int, o *page.Origin, target elementTarget) (string, *Error) {
 	return s.runPage(ctx, pageRun{
 		noun: "hover", done: "hovered", verb: "hover", w: w, index: index, origin: o, target: target,
 		aim: page.AimOptions{Scroll: true, Visible: true, HitTest: true},
@@ -128,32 +121,15 @@ func (s Services) notPageElement(ctx context.Context, ref string, target element
 }
 
 // pageDrag runs `drag <window> <element> <element | @x,y>` from a Page
-// Element: to another Element of the same Page, or to a point of the
-// Window's latest screenshot inside that Page.
-func (s Services) pageDrag(ctx context.Context, a protocol.DragArgs) (string, *Error) {
-	from, rerr := parseElementTarget("drag", a.FromIndex, a.FromRef, nil, dragUsageHint)
-	if rerr != nil {
-		return "", rerr
-	}
-	var to *elementTarget
-	if a.ToIndex != nil || a.ToRef != "" {
-		t, rerr := parseElementTarget("drag", a.ToIndex, a.ToRef, nil, dragUsageHint)
-		if rerr != nil {
-			return "", rerr
-		}
-		to = &t
-	} else if a.ToX < 0 || a.ToY < 0 {
-		return "", Fail("drag: the @x,y coordinates must be non-negative integers", dragUsageHint)
-	}
-	w, index, o, ok := s.pageRoute(ctx, a.Window, from)
-	if !ok {
-		return "", s.notPageElement(ctx, a.Window, from, "drag", "drag reaches other Elements by points: run winuse get-window-state %s --screenshot, then winuse drag %s @x,y @x,y")
-	}
+// Element (elementDrag routes it here): to another Element of the same
+// Page, or to the point (x, y) of the Window's latest screenshot inside
+// that Page, held drop at the end before the drop.
+func (s Services) pageDrag(ctx context.Context, w win.WindowInfo, index int, o *page.Origin, from elementTarget, to *elementTarget, x, y int, drop time.Duration) (string, *Error) {
 	id := strconv.FormatUint(w.ID, 10)
 	var toOrigin *page.Origin
 	toIndex := -1
 	if to != nil {
-		_, ti, to2, ok := s.pageRoute(ctx, a.Window, *to)
+		_, ti, to2, ok := s.pageRoute(ctx, id, *to)
 		if !ok || to2.Client != o.Client || to2.TargetID != o.TargetID {
 			return "", nothingSent(Fail(fmt.Sprintf("a drag from element %d ends in the same Page, and the target %s is not in it", index, to.token()),
 				"drag to an element of that Page, or to @x,y inside it (run winuse get-window-state "+id+" --screenshot)"))
@@ -164,11 +140,11 @@ func (s Services) pageDrag(ctx context.Context, a protocol.DragArgs) (string, *E
 		noun: "drag", done: "dragged", verb: "drag", w: w, index: index, origin: o, target: from,
 		aim: page.AimOptions{Scroll: true, Visible: true, HitTest: true},
 		act: func(ctx context.Context, in *page.Input, aim page.Aim) error {
-			end, err := s.dragEnd(ctx, w, o, aim, toOrigin, toIndex, a.ToX, a.ToY)
+			end, err := s.dragEnd(ctx, w, o, aim, toOrigin, toIndex, x, y)
 			if err != nil {
 				return err
 			}
-			_, err = in.Drag(ctx, aim.Point, end)
+			_, err = in.Drag(ctx, aim.Point, end, drop)
 			return err
 		},
 	})

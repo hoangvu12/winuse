@@ -22,6 +22,7 @@ import (
 
 	"github.com/hoangvu12/winuse/internal/cdp"
 	"github.com/hoangvu12/winuse/internal/cdp/cdptest"
+	"github.com/hoangvu12/winuse/internal/keys"
 	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/shot"
@@ -119,6 +120,21 @@ func newPageRig(t *testing.T) *pageRig {
 	r.svc.Pages = r.pages
 	r.svc.Shots = shot.NewStore()
 	r.svc.FrameOrigin = func(hwnd uint64) (image.Point, error) { return image.Point{}, nil }
+	// The Chromium message route (headless-max ticket 20): the browser
+	// Window is Chrome_WidgetWin_1, so keys, text and clicks the Page does
+	// not take go there; recorded, never sent.
+	r.svc.ChromiumText = func(top uint64, text string, stopped func() bool) (int, error) {
+		r.step("chromium-text " + text)
+		return 3 * len(text), nil
+	}
+	r.svc.ChromiumKey = func(top uint64, k keys.Key) (int, error) {
+		r.step("chromium-key " + k.Name)
+		return 3, nil
+	}
+	r.svc.ChromiumClick = func(top uint64, sx, sy int32, button win.MouseButton, count int) (int, error) {
+		r.step(fmt.Sprintf("chromium-click %d", count))
+		return 4, nil
+	}
 	r.svc.Scroll = func(target uint64, x, y, dx, dy int32) error {
 		r.step("wheel")
 		r.mu.Lock()
@@ -268,6 +284,19 @@ func (r *pageRig) noForeground(t *testing.T) {
 		switch s {
 		case "activate", "click", "type-text", "press-key", "integrity", "ready", "headless-click", "headless-set-value", "wheel":
 			t.Errorf("a Page Action ran %q: %v", s, r.recorded())
+		}
+	}
+}
+
+// noInput fails if a route sent real input or activated the Window: the
+// Chromium message route runs the Headless refusals (integrity, ready),
+// which noForeground counts as a Page Action's slip.
+func (r *pageRig) noInput(t *testing.T) {
+	t.Helper()
+	for _, s := range r.recorded() {
+		switch s {
+		case "activate", "click", "type-text", "press-key", "wheel":
+			t.Errorf("the Chromium route ran %q: %v", s, r.recorded())
 		}
 	}
 }
@@ -595,9 +624,9 @@ func TestPageScrollAtAPoint(t *testing.T) {
 }
 
 // TestPageKeys: typing and keys reach the Page when it holds the focus,
-// newline as Return; with the focus on the body they keep today's route,
-// which is Headed and runs only with --headed: without it they are refused
-// with nothing sent (headless-max ticket 21).
+// newline as Return. With the focus on the body, or no Page in the Window
+// State, the browser Window (Chrome_WidgetWin_1) takes them as window
+// messages (headless-max ticket 20); with --headed they keep v1's route.
 func TestPageKeys(t *testing.T) {
 	r := newPageRig(t)
 	if _, e := r.run(t, "type-text", protocol.TypeTextArgs{Window: "301", Text: "hi\nyo"}); e != nil {
@@ -625,11 +654,13 @@ func TestPageKeys(t *testing.T) {
 		r = newPageRig(t)
 		r.set(func() { r.focus = map[string]any{"kind": kind} })
 		out, e := r.run(t, "type-text", protocol.TypeTextArgs{Window: "301", Text: "x"})
-		wantHeadedRefusal(t, "type-text with the focus on "+kind, out, e)
-		if len(r.sent()) != 0 {
-			t.Errorf("focus %s refused: sent %v", kind, r.sent())
+		if e != nil || out != chromiumUnverifiedOutput {
+			t.Errorf("type-text with the focus on %s = %q, %v; want the Chromium route, unverified", kind, out, e)
 		}
-		r.noForeground(t)
+		if len(r.sent()) != 0 || !containsString(r.recorded(), "chromium-text x") {
+			t.Errorf("focus %s: CDP sent %v, steps %v; want the window messages only", kind, r.sent(), r.recorded())
+		}
+		r.noInput(t)
 
 		r = newPageRig(t)
 		r.set(func() { r.focus = map[string]any{"kind": kind} })
@@ -644,11 +675,10 @@ func TestPageKeys(t *testing.T) {
 	r = newPageRig(t)
 	delete(r.trees.origins, browserWindowID)
 	out, e := r.run(t, "press-key", protocol.PressKeyArgs{Window: "301", Key: "Return"})
-	wantHeadedRefusal(t, "press-key with no Page", out, e)
-	if len(r.sent()) != 0 {
-		t.Errorf("no Page, refused: sent %v", r.sent())
+	if e != nil || out != chromiumKeyOutput || len(r.sent()) != 0 || !containsString(r.recorded(), "chromium-key Return") {
+		t.Errorf("press-key with no Page = %q, %v, CDP %v, steps %v; want the Chromium route", out, e, r.sent(), r.recorded())
 	}
-	r.noForeground(t)
+	r.noInput(t)
 
 	r = newPageRig(t)
 	delete(r.trees.origins, browserWindowID)
@@ -721,22 +751,21 @@ func TestBatchPageStepsArePassive(t *testing.T) {
 	}
 	r.noForeground(t)
 
-	// A UIA step that needs the foreground, sent without --headed, is
-	// refused at its turn with nothing sent (headless-max ticket 21), so
-	// the scope stays passive.
+	// A double click on a UIA Element of the browser frame, sent without
+	// --headed, goes as mouse messages to the Chromium Window (headless-max
+	// ticket 20), so the scope stays passive.
 	r = newPageRig(t)
-	_, e = r.run(t, "batch", protocol.BatchArgs{Window: "301", Steps: []protocol.Step{
+	out, e = r.run(t, "batch", protocol.BatchArgs{Window: "301", Steps: []protocol.Step{
 		stepOf("click", protocol.ClickArgs{ElementIndex: idx(7)}),
 		stepOf("click", protocol.ClickArgs{ElementIndex: idx(2), ClickCount: 2}),
 	}})
-	if e == nil || !strings.HasPrefix(e.Msg, "batch stopped at Action 2 (click): ") ||
-		!strings.HasSuffix(e.Msg, "; nothing was sent") || !strings.Contains(e.Hint, "winuse --headed ") {
-		t.Errorf("unheaded UIA step: %+v, want the --headed refusal", e)
+	if e != nil || out != okOutput || !containsString(r.recorded(), "chromium-click 2") {
+		t.Errorf("unheaded double click on a frame Element: %q, %+v, steps %v; want the Chromium route", out, e, r.recorded())
 	}
 	if got := strings.Join(r.esc.brackets(), ","); strings.Contains(got, "arm,") || !strings.HasPrefix(got, "arm-passive") {
-		t.Errorf("Esc scope with the refused step = %s", got)
+		t.Errorf("Esc scope with the Chromium step = %s", got)
 	}
-	r.noForeground(t)
+	r.noInput(t)
 
 	// Sent with `headed`, it makes it a swallowing scope.
 	r = newPageRig(t)

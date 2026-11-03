@@ -32,6 +32,7 @@ import (
 type agentCursor interface {
 	TravelAbove(anchor uint64, origin, target win.Rect, label string)
 	ClickAbove(anchor uint64, target win.Rect)
+	CaretAbove(anchor uint64, x, top, bottom int32) // the insertion caret (multi-agent ticket 11)
 	HideWhile(f func())
 	Close()
 }
@@ -255,6 +256,9 @@ func (a anchoredCursor) Travel(origin, target win.Rect, label string) {
 func (a anchoredCursor) Click(target win.Rect) { a.c.ClickAbove(a.anchor, target) }
 
 func (a anchoredCursor) HideWhile(f func()) { a.c.HideWhile(f) }
+
+// Caret draws the insertion caret above the Action's Window (caret.go).
+func (a anchoredCursor) Caret(x, top, bottom int32) { a.c.CaretAbove(a.anchor, x, top, bottom) }
 
 // cursorFor is the Cursor the requesting Agent's Action on w shows (see
 // cursorSet.cursorFor); without a cursor set (offline tests, a helper

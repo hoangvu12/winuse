@@ -314,15 +314,17 @@ func wheelEvent(flags uint32, delta int32) input {
 // start, the button goes down, interpolated injected absolute moves
 // carry the pointer to the end in steps (so apps register a drag —
 // menus track, canvases draw, lists reorder — instead of a teleport),
-// the exact end point is pinned, and the button comes up. The button
-// is released even when a move fails, so a failed drag never leaves it
-// held.
+// the exact end point is pinned, the button stays down there for drop
+// (desktop-parity 13's --drop-delay: drop targets that need hover time
+// before they accept), and the button comes up. The button is released
+// even when a move fails, so a failed drag never leaves it held.
 //
 // stopped is the abort checkpoint (finding 10, the Esc stop's drag
-// interpolation follow-up from ADR 0007): polled before anything moves
-// and between the interpolation steps, an abort returns ErrEscStopped
-// with the events already injected landed (the button is still released).
-func MouseDrag(target uint64, fx, fy, tx, ty int32, stopped func() bool) error {
+// interpolation follow-up from ADR 0007): polled before anything moves,
+// between the interpolation steps and through the drop wait, an abort
+// returns ErrEscStopped with the events already injected landed (the
+// button is still released).
+func MouseDrag(target uint64, fx, fy, tx, ty int32, drop time.Duration, stopped func() bool) error {
 	// Both endpoints are verified before anything moves: a drag whose
 	// start or end is over another window would drag that app's content.
 	if err := checkOverTarget(target, fx, fy); err != nil {
@@ -342,6 +344,9 @@ func MouseDrag(target uint64, fx, fy, tx, ty int32, stopped func() bool) error {
 		return fmt.Errorf("injecting the drag press failed: %v", err)
 	}
 	err := dragSteps(fx, fy, tx, ty, stopped)
+	if err == nil {
+		err = dropWait(drop, stopped)
+	}
 	// Always release: a drag that failed part-way must not leave the
 	// button held (the pointer would drag whatever it passes on the
 	// user's next physical click).
@@ -378,6 +383,21 @@ func dragSteps(fx, fy, tx, ty int32, stopped func() bool) error {
 		}
 	}
 	return moveCursor(tx, ty)
+}
+
+// dropWait holds the drag at its end point for drop before the button
+// comes up, in dragStepDelay slices so the stopped checkpoint still stops
+// it.
+func dropWait(drop time.Duration, stopped func() bool) error {
+	for drop > 0 {
+		if stopped != nil && stopped() {
+			return ErrEscStopped
+		}
+		d := min(drop, dragStepDelay)
+		time.Sleep(d)
+		drop -= d
+	}
+	return nil
 }
 
 // dragStepPoint is the drag's i-th of n interpolation steps from

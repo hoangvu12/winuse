@@ -309,6 +309,10 @@ type cursorView interface {
 	// pop about the element's centre.
 	showOutline(target Rect, opacity, pop, scale float64)
 	hideOutline()
+	// showCaret shows the insertion caret's bar (screen pixels) at
+	// opacity; hideCaret hides it.
+	showCaret(bar Rect, opacity float64)
+	hideCaret()
 	// composed waits until hidden windows are off the screen (DwmFlush).
 	composed()
 	// raise places the windows just above the Window anchor in the
@@ -446,6 +450,11 @@ func (u *cursorUI) show(f cursorFrame) {
 	} else {
 		u.view.hideOutline()
 	}
+	if f.Caret {
+		u.view.showCaret(f.CaretBar, f.CaretOp)
+	} else {
+		u.view.hideCaret()
+	}
 }
 
 // finishTravel releases the waiting Travel, if any.
@@ -463,6 +472,7 @@ func (u *cursorUI) pause() {
 		u.view.hideCursor()
 		u.view.hideRipple()
 		u.view.hideOutline()
+		u.view.hideCaret()
 		u.view.composed()
 	}
 }

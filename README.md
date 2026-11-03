@@ -121,7 +121,7 @@ at all, and winuse says so.
 | `select-text` | Selects text in a field without keys or the mouse |
 | `invoke-menu` | Runs a command of a classic menu bar, such as `"File > Save As..."`, without opening the menu |
 | `scroll` | Scrolls an element by steps or into view, or scrolls at a point |
-| `drag`, `hover`, `zoom` | Drags or hovers at a point or on a page element, or saves a close-up of a screenshot |
+| `drag`, `hover`, `zoom` | Drags or hovers at a point or on an element, or saves a close-up of a screenshot |
 | `restore-window`, `minimize-window`, `move-window`, `resize-window`, `close-window` | Manages a window without bringing it to the front |
 | `--headed maximize-window` | Maximizes a window; it comes to the front, because Windows cannot maximize a window behind others |
 | `close-app <app> [--force]` | Closes every window of an app and waits for it to exit; `--force` ends it if it stays open |

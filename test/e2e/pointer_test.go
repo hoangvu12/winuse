@@ -228,3 +228,44 @@ func TestPointerRefusalsAfterRestartAndOutside(t *testing.T) {
 			before.Generation, after.Generation)
 	}
 }
+
+// TestDragBetweenElements: desktop-parity 13. A drag by Element runs from
+// the canvas's clickable point to the status line's, Headed, with a drop
+// delay. The fixture gives no clickable points, so winuse aims at each
+// Element's bounds centre, re-derived here from the Element contract: the
+// canvas (480, 28)-(792, 436) centres at client (636, 232), canvas-local
+// (156, 204); the status line's centre is client ((8+800)/2, 452),
+// canvas-local (-76, 424). Without --headed the same drag is refused
+// first, with nothing sent.
+func TestDragBetweenElements(t *testing.T) {
+	optIn(t)
+	fix, window, _ := startFixtureForShots(t)
+
+	stdout, stderr, exit := runWinuse(t, []string{"drag", window, "id:canvas", "id:status", "--drop-delay", "200"},
+		"WINUSE_HELPER_IDLE="+e2eIdle)
+	if exit != 1 || stdout != "" || !strings.Contains(stderr, "nothing was sent") ||
+		!strings.Contains(stderr, "winuse --headed drag "+window+" id:canvas id:status --drop-delay 200") {
+		t.Fatalf("drag by Element without --headed: exit %d, stdout %q, stderr %q; want the --headed refusal", exit, stdout, stderr)
+	}
+
+	start := time.Now()
+	stdout, stderr, exit = runWinuse(t, []string{"--headed", "drag", window, "id:canvas", "id:status", "--drop-delay", "200"},
+		"WINUSE_HELPER_IDLE="+e2eIdle)
+	assertActionOK(t, "drag canvas to status", stdout, stderr, exit)
+	if took := time.Since(start); took < 200*time.Millisecond {
+		t.Errorf("the drag with --drop-delay 200 returned after %s", took)
+	}
+
+	st := fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return len(s.CanvasDrags) == 1 })
+	canvas, _ := fixture.Rect(fixture.ElemCanvas, 0)
+	status, _ := fixture.Rect(fixture.ElemStatus, 0)
+	fromX, fromY := (canvas.Left+canvas.Right)/2-canvas.Left, (canvas.Top+canvas.Bottom)/2-canvas.Top
+	toX, toY := (status.Left+status.Right)/2-canvas.Left, (status.Top+status.Bottom)/2-canvas.Top
+	d := st.CanvasDrags[0]
+	if abs32(d.From.X-fromX) > 2 || abs32(d.From.Y-fromY) > 2 {
+		t.Errorf("drag started at canvas (%d, %d), want the canvas centre (%d, %d) within 2 px", d.From.X, d.From.Y, fromX, fromY)
+	}
+	if abs32(d.To.X-toX) > 2 || abs32(d.To.Y-toY) > 2 {
+		t.Errorf("drag ended at canvas (%d, %d), want the status centre (%d, %d) within 2 px", d.To.X, d.To.Y, toX, toY)
+	}
+}

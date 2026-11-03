@@ -19,9 +19,11 @@ import (
 	"image"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/shot"
+	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
 	"github.com/hoangvu12/winuse/internal/wstate"
 )
@@ -46,7 +48,23 @@ type pointerSpy struct {
 
 	scrolled [5]int32 // target, x, y, dx, dy
 	dragged  [5]int32 // target, fx, fy, tx, ty
+	dropped  time.Duration
 	hovered  [3]int32 // target, x, y
+
+	// The Element forms of drag and hover (desktop-parity 13): the
+	// clickable point of each Element Index, served by ElementPoint once a
+	// test sets svc.Actions to the spy.
+	points map[int]uia.Point
+}
+
+// ElementPoint implements ElementPointer: the configured clickable point,
+// or the stale error for an index the spy does not know.
+func (s *pointerSpy) ElementPoint(ctx context.Context, hwnd uint64, index int) (uia.Point, error) {
+	pt, ok := s.points[index]
+	if !ok {
+		return uia.Point{}, uia.ErrStale
+	}
+	return pt, nil
 }
 
 func newPointerSpy(t *testing.T) *pointerSpy {
@@ -73,8 +91,9 @@ func newPointerSpy(t *testing.T) *pointerSpy {
 		s.scrolled = [5]int32{int32(target), x, y, dx, dy}
 		return s.scrollErr
 	}
-	s.svc.Drag = func(target uint64, fx, fy, tx, ty int32, stopped func() bool) error {
+	s.svc.Drag = func(target uint64, fx, fy, tx, ty int32, drop time.Duration, stopped func() bool) error {
 		s.dragged = [5]int32{int32(target), fx, fy, tx, ty}
+		s.dropped = drop
 		return s.dragErr
 	}
 	s.svc.Hover = func(target uint64, x, y int32) error {
@@ -458,7 +477,7 @@ func TestDragStopsOnTheRequestDeadline(t *testing.T) {
 	stoppedByDeadline := false
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s.svc.Drag = func(target uint64, fx, fy, tx, ty int32, stopped func() bool) error {
+	s.svc.Drag = func(target uint64, fx, fy, tx, ty int32, drop time.Duration, stopped func() bool) error {
 		cancel() // the budget expires mid-drag
 		if stopped != nil && stopped() {
 			stoppedByDeadline = true
@@ -481,5 +500,132 @@ func TestDragStopsOnTheRequestDeadline(t *testing.T) {
 	}
 	if !stoppedByDeadline {
 		t.Error("the drag must receive the deadline-aware checkpoint")
+	}
+}
+
+// elementSpy is a pointerSpy whose Elements 3 and 5 have clickable points
+// (desktop-parity 13), with the screenshot recorded for the @x,y ends.
+func elementSpy(t *testing.T) (*pointerSpy, map[string]Command) {
+	t.Helper()
+	s := newPointerSpy(t)
+	s.points = map[int]uia.Point{3: {X: 310, Y: 320}, 5: {X: 510, Y: 520}}
+	s.svc.Actions = s
+	cmds := CommandsWith(s.svc)
+	s.recordScreenshot(t, cmds)
+	return s, cmds
+}
+
+func TestHoverAndDragByUIAElement(t *testing.T) {
+	three, five := 3, 5
+	s, cmds := elementSpy(t)
+	s.origin = image.Point{X: 150, Y: 260}
+
+	// hover: the pointer goes to the Element's clickable point.
+	out, cmdErr := runJSON(t, cmds, "hover", protocol.HoverArgs{Window: "101", ElementIndex: &three, Headed: true})
+	if cmdErr != nil || out != okOutput {
+		t.Fatalf("hover 3 = %q, %v", out, cmdErr)
+	}
+	if s.hovered != [3]int32{101, 310, 320} {
+		t.Errorf("hovered %+v, want 101 at element 3's point (310, 320)", s.hovered)
+	}
+
+	// drag Element to Element, with a drop delay.
+	out, cmdErr = runJSON(t, cmds, "drag", protocol.DragArgs{Window: "101", FromIndex: &three, ToIndex: &five, DropDelayMS: 250, Headed: true})
+	if cmdErr != nil || out != okOutput {
+		t.Fatalf("drag 3 5 = %q, %v", out, cmdErr)
+	}
+	if s.dragged != [5]int32{101, 310, 320, 510, 520} || s.dropped != 250*time.Millisecond {
+		t.Errorf("dragged %+v held %s, want 101 from (310, 320) to (510, 520) held 250ms", s.dragged, s.dropped)
+	}
+
+	// drag Element to a screenshot point: (400, 235) with the frame at
+	// (150, 260) is screen (550, 495), as the point form maps it.
+	if _, cmdErr = runJSON(t, cmds, "drag", protocol.DragArgs{Window: "101", FromIndex: &five, ToX: 400, ToY: 235, Headed: true}); cmdErr != nil {
+		t.Fatalf("drag 5 @400,235: %v", cmdErr)
+	}
+	if s.dragged != [5]int32{101, 510, 520, 550, 495} || s.dropped != 0 {
+		t.Errorf("dragged %+v held %s, want 101 from (510, 520) to (550, 495), no hold", s.dragged, s.dropped)
+	}
+	if s.activations != 3 {
+		t.Errorf("activations = %d, want 3 (each Headed Action activates)", s.activations)
+	}
+}
+
+func TestDragByUIAElementRefusals(t *testing.T) {
+	three, nine := 3, 9
+	s, cmds := elementSpy(t)
+
+	// A stale Element fails as click's does, after the activation and
+	// before any input.
+	_, cmdErr := runJSON(t, cmds, "drag", protocol.DragArgs{Window: "101", FromIndex: &three, ToIndex: &nine, Headed: true})
+	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "element 9 is not available in the cached Window State for window 101") {
+		t.Fatalf("drag to a stale Element = %v", cmdErr)
+	}
+	_, cmdErr = runJSON(t, cmds, "hover", protocol.HoverArgs{Window: "101", ElementIndex: &nine, Headed: true})
+	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "element 9 is not available") {
+		t.Fatalf("hover on a stale Element = %v", cmdErr)
+	}
+	if s.dragged != [5]int32{} || s.hovered != [3]int32{} {
+		t.Errorf("a refused Action sent input: dragged %+v, hovered %+v", s.dragged, s.hovered)
+	}
+
+	// A drop delay out of range is a usage failure, before anything runs,
+	// on both forms.
+	before := s.activations
+	for _, a := range []protocol.DragArgs{
+		{Window: "101", FromIndex: &three, ToX: 1, ToY: 1, DropDelayMS: maxDropDelayMS + 1, Headed: true},
+		{Window: "101", FromX: 1, FromY: 1, ToX: 2, ToY: 2, DropDelayMS: -1, Headed: true},
+	} {
+		_, cmdErr = runJSON(t, cmds, "drag", a)
+		if cmdErr == nil || !strings.Contains(cmdErr.Msg, "--drop-delay must be 0 to 5000 milliseconds") {
+			t.Errorf("drop delay %d = %v", a.DropDelayMS, cmdErr)
+		}
+	}
+	if s.activations != before {
+		t.Errorf("a bad drop delay activated the Window %d times", s.activations-before)
+	}
+}
+
+func TestPointDragHoldsTheDropDelay(t *testing.T) {
+	s := newPointerSpy(t)
+	cmds := CommandsWith(s.svc)
+	s.recordScreenshot(t, cmds)
+	if _, cmdErr := runJSON(t, cmds, "drag", protocol.DragArgs{Window: "101", FromX: 10, FromY: 10, ToX: 400, ToY: 235, DropDelayMS: 800, Headed: true}); cmdErr != nil {
+		t.Fatalf("drag: %v", cmdErr)
+	}
+	if s.dropped != 800*time.Millisecond {
+		t.Errorf("held %s, want 800ms", s.dropped)
+	}
+}
+
+func TestBatchRunsElementDragAndHoverSteps(t *testing.T) {
+	three, five := 3, 5
+	s, cmds := elementSpy(t)
+	out, cmdErr := runJSON(t, cmds, "batch", protocol.BatchArgs{
+		Window: "101",
+		Headed: true,
+		Steps: []protocol.Step{
+			stepOf("hover", protocol.HoverArgs{ElementIndex: &five}),
+			stepOf("drag", protocol.DragArgs{FromIndex: &three, ToIndex: &five, DropDelayMS: 100}),
+		},
+	})
+	if cmdErr != nil || out != okOutput {
+		t.Fatalf("batch = %q, %v", out, cmdErr)
+	}
+	if s.hovered != [3]int32{101, 510, 520} || s.dragged != [5]int32{101, 310, 320, 510, 520} || s.dropped != 100*time.Millisecond {
+		t.Errorf("hovered %+v, dragged %+v held %s", s.hovered, s.dragged, s.dropped)
+	}
+
+	// Unheaded, the Element steps are no Headless steps: the Batch stops
+	// at the first with the --headed refusal, and nothing was sent.
+	s.hovered = [3]int32{}
+	_, cmdErr = runJSON(t, cmds, "batch", protocol.BatchArgs{Window: "101", Steps: []protocol.Step{
+		stepOf("hover", protocol.HoverArgs{ElementIndex: &five}),
+	}})
+	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "nothing was sent") || !strings.Contains(cmdErr.Hint, "winuse --headed hover 101 5") {
+		t.Fatalf("unheaded batch = %v", cmdErr)
+	}
+	if s.hovered != [3]int32{} {
+		t.Errorf("an unheaded batch hovered %+v", s.hovered)
 	}
 }

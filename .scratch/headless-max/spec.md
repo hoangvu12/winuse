@@ -52,10 +52,10 @@ Close every gap that has a route, and say plainly where none exists.
 | 17 | ADR 0013, CONTEXT.md, skill and the impossible list | S | ready-for-agent |
 | 18 | Longer settle for a cold Chromium UIA tree | S | done |
 | 19 | Headless typing into a covered Windows 11 Notepad | S-M | done |
-| 20 | Background typing, keys and clicks for Chromium and Electron without CDP | M | ready-for-agent |
+| 20 | Background typing, keys and clicks for Chromium and Electron without CDP | M | done (live e2e not run yet) |
 | 21 | No Headed Action without `--headed` | M | done (live e2e not run yet) |
 
-21 tickets: 10 S, 1 S-M, 9 M (one spike), 1 L. Done: 01, 02, 03, 04, 05, 06, 07, 08, 10, 11, 12, 13, 14, 15, 18, 19, 21.
+21 tickets: 10 S, 1 S-M, 9 M (one spike), 1 L. Done: 01, 02, 03, 04, 05, 06, 07, 08, 10, 11, 12, 13, 14, 15, 18, 19, 20, 21.
 
 ## Impossible headless (stays a refusal with a `--headed` hint)
 
