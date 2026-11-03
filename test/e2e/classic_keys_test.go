@@ -224,6 +224,7 @@ func TestHeadlessTypeTextIntoNotepad(t *testing.T) {
 	}
 	id := findWindowByTitle(t, strings.TrimSuffix(name, ".txt"), 30*time.Second)
 	defer func() {
+		closeNotepadTab(t, id, name) // no tab left for Notepad to restore (headless-max 26)
 		if win.WindowOpen(id) {
 			killWindowProcess(t, id)
 		}

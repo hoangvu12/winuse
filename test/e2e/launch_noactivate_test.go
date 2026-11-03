@@ -146,6 +146,7 @@ func TestLaunchAppNotepadReportsTheForeground(t *testing.T) {
 		t.Fatalf("launch-app Notepad: stdout %q has no Window line", stdout)
 	}
 	t.Cleanup(func() {
+		closeLaunchedNotepadTab(t, id) // the empty tab of a Notepad with no session (headless-max 26)
 		if win.WindowOpen(id) {
 			killWindowProcess(t, id)
 		}
