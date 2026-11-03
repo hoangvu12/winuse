@@ -1061,8 +1061,9 @@ Headed tests take it, and give it back.
   `WINUSE_E2E_HUMAN=1` is set, and the press must come within about 10 s
   of the prompt, before gamma's 12 s lane wait ends.
 - `TestTwoAgentsRunInTheirOwnLanes` (`lanes_test.go`, ticket 06): alpha's
-  Batch holds fixture A's UI-thread lane for 2 s; beta's click on fixture
-  B finishes within 1.5 s, and gamma's click on A waits its turn.
+  `type-text --post --interval-ms 200` of ten characters holds fixture A's
+  UI-thread lane for about 2 s; beta's click on fixture B finishes within
+  1.5 s, and gamma's click on A waits its turn.
 - `TestHungAppStallsOnlyItsOwnWorker` (`hung_app_test.go`, ticket 07):
   fixture A runs with `-hang-on-click 15000`, which stops its UI thread
   after Click Me. While it hangs, beta's click on fixture B lands within
