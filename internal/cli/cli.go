@@ -153,9 +153,12 @@ commands:
                                its default or Cancel button headless).
                                --post posts the key to the focused control
                                without the foreground instead: best effort,
-                               no modifiers, and the app may ignore it (the
-                               output says posted; read the Window State to
-                               check). --post and --headed do not combine.
+                               and the app may ignore it (the output says
+                               posted; read the Window State to check); a
+                               chord with Control, Shift or Alt (not Control
+                               and Alt together) is posted with the
+                               modifiers held for the Window's thread
+                               only. --post and --headed do not combine.
                                Alt+F4, Alt+Tab, Ctrl+Shift+Escape and any
                                chord holding one of them are refused with
                                nothing sent unless --force (also per batch

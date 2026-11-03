@@ -51,10 +51,11 @@ func TestPostedKeysIntoClassicEdit(t *testing.T) {
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.ClassicText == "posted tex" })
 	assertForeground(t, "press-key --post", cover)
 
-	// A chord with a modifier cannot be posted: refused, nothing sent.
-	stdout, stderr, exit = runPressKey(t, []string{dialog, "Control_L+a", "--post"})
+	// Control and Alt together cannot be posted (headless-max ticket 07
+	// posts the other chords): refused, nothing sent.
+	stdout, stderr, exit = runPressKey(t, []string{dialog, "Control_L+Alt_L+a", "--post"})
 	if exit == 0 || stdout != "" || !strings.Contains(stderr, "nothing was sent") {
-		t.Errorf("press-key Control_L+a --post: exit %d, stdout %q, stderr %q, want a refusal saying nothing was sent", exit, stdout, stderr)
+		t.Errorf("press-key Control_L+Alt_L+a --post: exit %d, stdout %q, stderr %q, want a refusal saying nothing was sent", exit, stdout, stderr)
 	}
 	time.Sleep(300 * time.Millisecond)
 	if st := fix.waitState(t, time.Second, func(*fixture.State) bool { return true }); st.ClassicText != "posted tex" {

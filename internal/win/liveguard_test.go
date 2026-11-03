@@ -35,6 +35,8 @@ func TestLiveDesktopEntryPointsRefuseInTests(t *testing.T) {
 		// Posted Keys (ADR 0011, Decision 5).
 		"PostKeys": func() error { _, err := PostKeys(0, keys.Chord{{Name: "Return", VK: 0x0D}}); return err }(),
 		"PostText": func() error { _, err := PostText(0, "x"); return err }(),
+		// Posted chords (headless-max ticket 07).
+		"PostChord": func() error { _, err := PostChord(0, 0, ChordPlan{}); return err }(),
 	}
 	for name, err := range checks {
 		if !errors.Is(err, ErrLiveDesktopInTest) {

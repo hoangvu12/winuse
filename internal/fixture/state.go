@@ -119,6 +119,10 @@ type State struct {
 	// first, a Headless one never does (ADR 0010).
 	FocusRequests int `json:"focusRequests"`
 
+	// Accelerators counts the main window's accelerator (AcceleratorChord)
+	// firing: TranslateAccelerator's WM_COMMAND.
+	Accelerators int `json:"accelerators"`
+
 	// Generation increments on every state write.
 	Generation uint64 `json:"generation"`
 }

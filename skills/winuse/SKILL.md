@@ -477,8 +477,8 @@ winuse picks the route from the live Window before it sends anything.
   types into whatever has keyboard focus. That includes WinUI, WPF,
   Electron and browser Windows without a Browser Connection. Without the
   flag they are refused with nothing sent, and the hint names the
-  `--headed` command, `--into` for text and `--post` for text or a key
-  without modifiers. For a WinUI or WPF text box, name it with `--into`:
+  `--headed` command, `--into` for text and `--post` for text, a key or a
+  chord. For a WinUI or WPF text box, name it with `--into`:
   that is Headless.
 
 A Headless route prints `ok`; a refusal means nothing was typed, so pick
@@ -563,13 +563,18 @@ effort.
   `ok (posted; the app may ignore posted keys, read the Window State to check)`.
   Read the Window State and confirm the effect before you go on; if nothing
   changed, send the command again without `--post`.
-- Posted keys carry no modifiers, so a chord with Control, Alt or Shift is
-  refused with nothing sent.
+- A chord with Control, Shift or Alt, such as `Control_L+s` or `Alt_L+f`,
+  is posted with its modifiers held for that Window's thread only; the
+  user's own keyboard is untouched. This reaches shortcuts and menus in
+  classic Win32, WinForms, WPF and browser Windows. Control and Alt
+  together, a chord of modifiers alone, and the Blocked Combos are refused
+  with nothing sent, even with `--force`. A Window whose App is in front is
+  refused too: send the chord with `--headed` there.
 - An administrator Window, a locked desktop, a minimized Window and a Window
   blocked by a modal dialog are refused with nothing sent.
 - `--post` and `--headed` do not combine.
 
-Use `--post` for a single key or plain text on a Window with no Headless
+Use `--post` for a key, a chord or plain text on a Window with no Headless
 route, when the user's foreground matters more than certainty.
 
 ## Run a menu command
