@@ -77,6 +77,10 @@ type windowState struct {
 	elements []wstate.Element
 	origins  map[int]any // the Page Elements' origins by Element Index (splice.go); nil for a UIA-only read
 	used     time.Time   // the last time the Agent installed or used it
+
+	// base is how many Elements the read itself stored; find and region
+	// reads add theirs after it (add, desktop-parity 04).
+	base int
 }
 
 func newStore(addRef, release func(comPtr)) *store {
@@ -150,7 +154,7 @@ func (s *store) install(agent string, hwnd uint64, seq uint64, elems []comPtr, e
 		delete(s.states, key)
 		s.touch(agent, nil)
 	} else {
-		st = &windowState{seq: seq, elems: elems, elements: elements}
+		st = &windowState{seq: seq, elems: elems, elements: elements, base: len(elements)}
 		s.states[key] = st
 		s.touch(agent, st)
 	}
@@ -274,6 +278,46 @@ func (s *store) noStateLocked(agent string, hwnd uint64) error {
 		}
 	}
 	return errNoState(hwnd)
+}
+
+// add stores more live Elements of hwnd for the Agent after the ones its
+// latest Window State holds (desktop-parity 04, option c: find and region
+// reads add Element Indexes, a full read replaces them all) and returns
+// the first new Element Index. An Agent with no Window State of hwnd gets
+// one holding only these, numbered from 0, which its next full read
+// replaces. The list is copied, so a caller still reading the old one
+// (reference resolution) is not disturbed.
+func (s *store) add(agent string, hwnd uint64, elems []comPtr, elements []wstate.Element) int {
+	key := storeKey{agent, hwnd}
+	s.mu.Lock()
+	st := s.states[key]
+	if st == nil {
+		st = &windowState{}
+		s.states[key] = st
+	}
+	first := len(st.elems)
+	st.elems = append(append(make([]comPtr, 0, first+len(elems)), st.elems...), elems...)
+	st.elements = append(append(make([]wstate.Element, 0, first+len(elements)), st.elements...), elements...)
+	s.touch(agent, st)
+	dropped := s.evict(key)
+	s.mu.Unlock()
+	for _, p := range dropped {
+		s.release(p)
+	}
+	return first
+}
+
+// refState returns the Elements of the Agent's latest Window State of hwnd
+// and how many of them its read stored (the rest were added by find or a
+// region read).
+func (s *store) refState(agent string, hwnd uint64) ([]wstate.Element, int, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.lookupState(agent, hwnd)
+	if st == nil {
+		return nil, 0, false
+	}
+	return st.elements, st.base, true
 }
 
 // releaseAll drops every stored Window of every Agent. Called on the

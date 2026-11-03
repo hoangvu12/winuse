@@ -213,6 +213,33 @@ cold Chromium page, pass `--timeout <seconds>` (up to 60): the read gets
 that long, and the wait for a thin Chromium tree to build gets the extra
 time too.
 
+### Dense Windows
+
+A big Window (Outlook, Excel, an IDE, a long page) can fill the tree with
+thousands of lines, or cut it at its caps with a note. Narrow the read
+instead:
+
+```
+winuse find <window> --role button --name save     # search the whole live tree, past the caps
+winuse find <window> --text "invoice" --first      # also --state disabled|enabled|selected|expanded|collapsed|settable|on|off|interactive
+winuse find <window> --role "list item" --count    # just how many
+winuse get-window-state <window> --skeleton        # three levels, with "(+N children)" where it stops
+winuse get-window-state <window> --root 42 --depth 2 --interactive
+```
+
+`--role` takes the role as the tree prints it, and `--name` and `--text` a
+part of the name (or the value and description), ignoring case. A role
+that matches nothing lists the roles the Window shows. Start a dense
+Window with `--skeleton`, then read the part you need with `--root`.
+
+`find` and `--root` add the Elements they print after the Window State's
+own Element Indexes: if the tree ended at 240, `find` prints 241, 242 and
+so on. Act on those indexes like any other, and the earlier ones keep
+working too. The next full `get-window-state` renumbers from 0 and drops
+the added ones. A `--skeleton` is a full read: it renumbers too. In a
+browser Window with a Browser Connection, `find` reads the Window State
+afresh and says so, so use its indexes, not older ones.
+
 ### Displays
 
 ```
@@ -931,7 +958,8 @@ list-windows [--details] [--app <name>]
 list-apps | get-window <window>
 launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <s>]
 close-app <app> [--force]           # --force ends what is still running: the only command that ends a process
-get-window-state <window> [--screenshot] [--timeout <s>]
+get-window-state <window> [--screenshot] [--skeleton | --root <element> [--depth N] [--interactive]] [--timeout <s>]
+find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --count] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right]
 set-value <window> <ref> <value|on|off|item name>
