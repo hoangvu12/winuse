@@ -28,6 +28,7 @@ package win
 import (
 	"errors"
 	"fmt"
+	"image/color"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -58,9 +59,11 @@ var cursorLiveGuard = LiveDesktopGuard
 // cursor it draws.
 var cursorExcludeFromCapture = true
 
-// AgentCursor is the Agent Cursor. Create one per helper process with
-// NewAgentCursor on the overlay's UI thread and Close it when the helper
-// exits. All methods are safe on a nil cursor (no cursor).
+// AgentCursor is one Agent Cursor. The helper creates one per Agent
+// (multi-agent ticket 04) on the overlay's UI thread with
+// NewAgentCursorIn, each in its own colour, and Closes it when the Agent
+// is gone or the helper exits. All methods are safe on a nil cursor (no
+// cursor).
 type AgentCursor struct {
 	do    func(func()) error
 	ui    *cursorUI // touched only from jobs run through do
@@ -90,10 +93,17 @@ func (s *cursorSnapshot) load() (bool, fpoint) {
 	return s.visible, s.tip
 }
 
-// NewAgentCursor creates the cursor's hidden windows on the UI thread do
-// runs jobs on (the helper passes Overlay.Do, like NewEscWatcherOnUI).
-// An error means no cursor; Headless Actions then run without one.
+// NewAgentCursor creates a cursor in the default accent (the default
+// Agent's): see NewAgentCursorIn.
 func NewAgentCursor(do func(func()) error) (*AgentCursor, error) {
+	return NewAgentCursorIn(do, cursorAccent)
+}
+
+// NewAgentCursorIn creates the cursor's hidden windows, drawn in accent,
+// on the UI thread do runs jobs on (the helper passes Overlay.Do, like
+// NewEscWatcherOnUI). An error means no cursor; Headless Actions then run
+// without one.
+func NewAgentCursorIn(do func(func()) error, accent color.RGBA) (*AgentCursor, error) {
 	if do == nil {
 		return nil, errors.New("the Agent Cursor needs a UI thread")
 	}
@@ -110,7 +120,7 @@ func NewAgentCursor(do func(func()) error) (*AgentCursor, error) {
 			createErr = errors.New("abandoned")
 			return
 		}
-		view, createErr = newCursorWin()
+		view, createErr = newCursorWin(accent)
 	}); err != nil {
 		abandoned.Store(true) // a late job must not create orphan windows
 		return nil, fmt.Errorf("creating the Agent Cursor on the UI thread: %w", err)
@@ -191,12 +201,19 @@ func (c *AgentCursor) postWait(job func(), bound time.Duration) {
 	}
 }
 
-// Travel shows the cursor — at origin's centre when it is hidden or
-// fading, else where it is — and glides it to target's centre with label
-// in the pill beside it. It returns when the travel completed, or after
-// a bound of about twice the travel time: a stuck UI thread never holds
-// the Action back longer than that.
+// Travel is TravelAbove with no anchor: the cursor sits at the top of the
+// non-topmost band.
 func (c *AgentCursor) Travel(origin, target Rect, label string) {
+	c.TravelAbove(0, origin, target, label)
+}
+
+// TravelAbove shows the cursor, at origin's centre when it is hidden or
+// fading, else where it is, and glides it to target's centre with label
+// in the pill beside it, its windows placed just above the Window anchor
+// in the z-order (cursor_zorder.go). It returns when the travel
+// completed, or after a bound of about twice the travel time: a stuck UI
+// thread never holds the Action back longer than that.
+func (c *AgentCursor) TravelAbove(anchor uint64, origin, target Rect, label string) {
 	if c == nil {
 		return
 	}
@@ -204,7 +221,7 @@ func (c *AgentCursor) Travel(origin, target Rect, label string) {
 	done := make(chan struct{})
 	failed := make(chan struct{})
 	if !c.enqueue(func() {
-		if err := c.do(func() { c.ui.travel(origin, target, label, done) }); err != nil {
+		if err := c.do(func() { c.ui.travel(anchor, origin, target, label, done) }); err != nil {
 			close(failed)
 		}
 	}) {
@@ -233,13 +250,18 @@ func (c *AgentCursor) travelBound(origin, target Rect) time.Duration {
 	return 2*cursorTravelDuration(from, rectCentre(target), 1) + cursorTravelSlack
 }
 
-// Click ripples at the cursor and briefly outlines target's bounds.
-// Non-blocking.
+// Click is ClickAbove with no anchor.
 func (c *AgentCursor) Click(target Rect) {
+	c.ClickAbove(0, target)
+}
+
+// ClickAbove ripples at the cursor and briefly outlines target's bounds,
+// the windows just above anchor. Non-blocking.
+func (c *AgentCursor) ClickAbove(anchor uint64, target Rect) {
 	if c == nil {
 		return
 	}
-	c.post(func() { c.ui.click(target) })
+	c.post(func() { c.ui.click(anchor, target) })
 }
 
 // HideWhile runs f with the cursor hidden — the hide is applied (and
@@ -289,8 +311,9 @@ type cursorView interface {
 	hideOutline()
 	// composed waits until hidden windows are off the screen (DwmFlush).
 	composed()
-	// raise re-asserts the windows' place at the top of the topmost band.
-	raise()
+	// raise places the windows just above the Window anchor in the
+	// z-order (0: the top of the non-topmost band).
+	raise(anchor uint64)
 	// schedule (re)arms the controller's tick after d; cancel disarms it.
 	schedule(d time.Duration)
 	cancel()
@@ -312,9 +335,9 @@ type cursorUI struct {
 	closed bool
 }
 
-// travel starts a Travel (see AgentCursor.Travel); done is closed when
-// it completes, is superseded, or cannot run.
-func (u *cursorUI) travel(origin, target Rect, label string, done chan struct{}) {
+// travel starts a Travel (see AgentCursor.TravelAbove); done is closed
+// when it completes, is superseded, or cannot run.
+func (u *cursorUI) travel(anchor uint64, origin, target Rect, label string, done chan struct{}) {
 	if u.closed {
 		close(done)
 		return
@@ -335,7 +358,7 @@ func (u *cursorUI) travel(origin, target Rect, label string, done chan struct{})
 	if newLabel {
 		u.model.revealLabel()
 	}
-	u.view.raise()
+	u.view.raise(anchor)
 	u.render(now)
 }
 
@@ -365,8 +388,8 @@ func (u *cursorUI) lookFor(tip fpoint, label string, work Rect, scale float64) c
 	return look
 }
 
-// click starts a Click's ripple and outline (see AgentCursor.Click).
-func (u *cursorUI) click(target Rect) {
+// click starts a Click's ripple and outline (see AgentCursor.ClickAbove).
+func (u *cursorUI) click(anchor uint64, target Rect) {
 	if u.closed {
 		return
 	}
@@ -377,7 +400,7 @@ func (u *cursorUI) click(target Rect) {
 		u.look = cursorLook{Scale: u.fx} // appearing without a travel: no label
 	}
 	u.model.startClick(now, target, u.fx)
-	u.view.raise()
+	u.view.raise(anchor)
 	u.render(now)
 }
 

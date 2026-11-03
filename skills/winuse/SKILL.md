@@ -73,6 +73,11 @@ this agent, even when another agent read it. If that refusal comes on
 every command, your identity is changing between commands; set
 `WINUSE_AGENT` to one name for all of them.
 
+Each agent also has its own Agent Cursor, in its own colour and with its
+name ahead of the action, such as `reviewer: click "Save"`. To choose the
+colour, set `WINUSE_CURSOR_COLOR` to a hex colour such as `#FF8A3D` on
+every command, next to `WINUSE_AGENT`.
+
 ## Find the Window
 
 ```
@@ -280,8 +285,10 @@ applies to every `@x,y` form, `--count 2|3`, `--button right|middle`,
 
 The user sees each Headless Action through the Agent Cursor, a second cursor
 that glides to the Element with a short label such as `click "Save"` and
-ripples on the click. It leaves the user's pointer alone, never appears in
-your screenshots, and needs nothing from you.
+ripples on the click. It sits just above the Window it acts on, so a Window
+the user keeps in front of that one also covers the cursor. It leaves the
+user's pointer alone, never appears in your screenshots, and needs nothing
+from you.
 
 A Headless click uses the Element's first pattern among Invoke, Toggle,
 Select and Expand/Collapse, else its default action. winuse reads Toggle,

@@ -177,6 +177,7 @@ type Request struct {
 	// Cursor and messages show. Both empty: the shared default Agent.
 	Agent      string `json:"agent,omitempty"`
 	AgentLabel string `json:"agent_label,omitempty"`
+	AgentColor string `json:"agent_color,omitempty"` // WINUSE_CURSOR_COLOR, for the Agent's cursor (multi-agent ticket 04)
 }
 
 // ListWindowsArgs are list-windows's optional arguments (desktop-parity

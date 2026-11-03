@@ -94,7 +94,7 @@ _Avoid_: Dangerous key, forbidden shortcut
 
 **Agent Cursor**:
 The second, presentation-only cursor that shows the user each Headless Action: it travels to the Element, says what is happening in a label and ripples on the click. It never takes the user's pointer, keyboard or foreground and never appears in winuse's own screenshots.
-Planned (ADR 0014): one Agent Cursor per Agent, with its own colour and label, placed just above the Window it acts on rather than topmost.
+Each Agent has its own Agent Cursor (ADR 0014), with its own colour and its name in the label, placed just above the Window it acts on rather than topmost; it closes when its Agent has gone idle.
 _Avoid_: Fake cursor, ghost cursor, pointer
 
 **Esc stop**:
@@ -108,7 +108,7 @@ _Avoid_: Client, agent, host
 ### Agents
 
 **Agent**:
-One caller of winuse, with an identity: by default the Harness process the command came from, or the name in `WINUSE_AGENT`; a command with neither belongs to one shared default Agent. Every request names its Agent, each Agent has its own Window States, and `winuse status` lists the Agents the helper served. Planned (ADR 0014): several Agents run at once, each with its own Agent Cursor.
+One caller of winuse, with an identity: by default the Harness process the command came from, or the name in `WINUSE_AGENT`; a command with neither belongs to one shared default Agent. Every request names its Agent, each Agent has its own Window States, and `winuse status` lists the Agents the helper served. Each Agent has its own Agent Cursor. Planned (ADR 0014): several Agents run at once.
 _Avoid_: Session, client, user
 
 **Lane**:
