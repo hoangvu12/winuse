@@ -68,7 +68,9 @@ func reportsOpened(name string, args json.RawMessage) bool {
 			return false
 		}
 		action, ok := uia.CanonicalSecondaryAction(a.Action)
-		return ok && (action == "Expand" || action == "Select")
+		// A Headless ContextMenu reports its menu itself (contextmenu.go);
+		// the Headed one, a right click, through the diff.
+		return ok && (action == "Expand" || action == "Select" || (action == uia.ContextMenuAction && a.Headed))
 	}
 	return false
 }

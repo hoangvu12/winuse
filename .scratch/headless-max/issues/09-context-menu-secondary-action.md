@@ -17,14 +17,14 @@ Then:
 
 **Blocked by:** none
 
-**Status:** ready-for-agent (routes measured; see Comments)
+**Status:** done
 
-- [ ] Probe: cross-process WM_CONTEXTMENU, item Invoke on `#32768`, ShowContextMenu on Chrome and a WinUI app
-- [ ] Route selection and readback
-- [ ] Menu Window reported in the output; cancel path
-- [ ] Offline tests: route per Element kind, readback timeout
-- [ ] Opt-in e2e: fixture edit box and Chrome frame, covered
-- [ ] CONTEXT.md Secondary Action list; SKILL.md
+- [x] Probe: cross-process WM_CONTEXTMENU, item Invoke on `#32768`, ShowContextMenu on Chrome and a WinUI app
+- [x] Route selection and readback
+- [x] Menu Window reported in the output; cancel path
+- [x] Offline tests: route per Element kind, readback timeout
+- [x] Opt-in e2e: fixture edit box and Chrome frame, covered
+- [x] CONTEXT.md Secondary Action list; SKILL.md
 
 ## Comments
 
@@ -74,3 +74,52 @@ This updates the route table above.
 ### 2026-11-03: never Collapse a Chromium menu
 
 On a second open Chrome menu, UIA Collapse on the SubmenuView hung the UIA client indefinitely in 1 of 3 runs (`../headless-gaps/probes-round5.md` section 4). Close Chromium menus only with Escape posted to the menu window.
+
+### 2026-11-03: landed (laptop, branch `laptop/hm-09-context-menu`)
+
+The scope decisions, from the orchestrators: the #32768 item pick is a narrow click branch; both close paths are built, and the automatic close applies only to a menu the Agent's own Action opened; ContextMenu is never listed in the Window State.
+
+What landed:
+
+- **Open.** `perform-secondary-action <window> <element> ContextMenu` picks a route from the Element's UIA FrameworkId and NativeWindowHandle:
+  - Win32 or WinForms (or no framework) with its own HWND: posted WM_CONTEXTMENU(control, -1), never sent.
+  - WPF: refused with "nothing was sent" and the `--headed` retry, which right-clicks the Element with the real pointer (ADR 0013, "What stays impossible").
+  - Everything else (Chromium, XAML and the rest): `IUIAutomationElement3::ShowContextMenu` (vtable slot 91, SDK 10.0.26100.0).
+  - The @x,y form is refused with the `--headed` retry. Page Elements keep the Page refusal (use CDP).
+- **Read-back.** The desktop-parity 02 snapshot (`opened.go`, `snapshotOf`): a new menu or popup Window of the target's process within 2 s. If none appears, the Action fails as delivered ("... but no menu opened") with the `--headed` retry.
+- **Output.** `ok (the context menu opened: read it with winuse get-window-state <id>, click an item, or close it with winuse press-key <id> Escape)`, plus `Note: a new Window opened: ...` for each new Window. A Chromium menu adds that its edit items act on the browser's focus, not on the Element (round 5). The Headed form (a right click) reports the menu through the opened-Window diff.
+- **Picking a #32768 item** (`menuitem.go`). `click <menu> <ref>` (left, single, no modifiers) never reaches UIA Invoke:
+  - MN_GETHMENU gives the HMENU, read with `win.ReadMenu`, and the Element's name is matched with invoke-menu's `matchMenuItems`.
+  - If the item's mnemonic is unique among the menu's enabled items (submenus count), it is posted to the #32768. Otherwise WM_COMMAND(id) is posted to GetGUIThreadInfo's hwndMenuOwner.
+  - Read-back: the menu closed within 2 s. If it is still open, it is closed with WM_CANCELMODE and the click fails with the exact `--headed` retry: for a menu this Agent's ContextMenu opened, the command that reopens it, then the click.
+  - A submenu, a greyed item, an unknown or ambiguous name, a menu that cannot be read, an item with no owner, an ID over 0xFFFF, and a click at a point are all refused with nothing sent and the `--headed` retry.
+  - Chromium and WinUI 3 items keep today's Headless click (UIA Invoke, which keeps the foreground there).
+- **Closing.**
+  - `press-key <menu> Escape` on a #32768 or a WinUI 3 PopupHost posts Escape to the #32768, or to the PopupHost's island input windows (`InputSiteWindowClass`), and reads the close back. It is also Headless in a Batch's scope.
+  - A Chromium menu popup is a Chrome_WidgetWin_1, so its Escape takes ticket 20's window-message route. **Unmeasured on a menu popup**: `TestContextMenuOnACoveredBrowserPage` is for the PC's live run.
+  - The Agent's next Action on another Window closes the menu its own ContextMenu opened, tracked per Agent in `Services.Menus`: WM_CANCELMODE to the menu owner for a #32768, Escape otherwise (never Collapse). It says so in a Note (`Note: closed context menu <id>, which this Agent's ContextMenu had opened and left open`), or in the hint of a failed Action. A menu the user or another Agent opened is never closed. The wrapper runs after the hung-App refusal.
+
+Files:
+
+- New: `internal/helper/contextmenu.go`, `internal/helper/menuitem.go`, `internal/uia/contextmenu.go`, `internal/win/contextmenu.go`, `internal/helper/contextmenu_test.go`, `test/e2e/context_menu_test.go`.
+- Edited: `internal/uia/value.go` (the canonical table's ContextMenu row, never offered), `internal/helper/{actions,setvalue,keyboard,headless,opened,state}.go` (one hook each, the Services seams, the wrapper).
+- Docs: CONTEXT.md, SKILL.md (the WPF bullet and the usage list), docs/codex-parity.md, ADR 0013's route table, spec row 09.
+
+Tests:
+
+- New offline tests: route per Element kind, the classic post and its report, Chromium ShowContextMenu and its warning, the WPF refusal, the read-back timeout, the @x,y and no-actor refusals, the Headed right click, the automatic close (same Agent only, once; not for the menu itself or a gone menu; Escape for Chromium), press-key Escape (closed, and still open), the mnemonic parse and uniqueness, picking by mnemonic and by WM_COMMAND, the refusals, and the ignored pick.
+- Updated: the expected-set strings in the uia, helper and e2e tests.
+
+Checks: `go build ./...`, `go vet ./...`, `go test ./...` and `go vet -tags e2e ./test/e2e` all pass.
+
+Live on the laptop: `TestContextMenuOnACoveredEdit` passed (9.5 s, run alone under `.live-lock`, test-launched fixtures only). On the covered Classic Dialog's name Edit:
+- ContextMenu opened the Edit's own #32768, a menu of the fixture's process.
+- `click <menu> name:Select All` posted the mnemonic: the menu closed and the Edit selected all 11 characters.
+- `press-key <menu> Escape` closed the second menu.
+- A click on the cover closed the third, with the Note.
+- The cover kept the foreground throughout. No visible #32768 was left afterwards.
+
+The browser leg (`TestContextMenuOnACoveredBrowserPage`) did not run here: it is left to the PC.
+
+Not measured: WinForms ContextMenuStrip through a posted WM_CONTEXTMENU; WinUI 3 live; Chrome live (the PC runs it).
+

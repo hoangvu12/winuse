@@ -256,7 +256,7 @@ func TestUnsupportedSecondaryActionFails(t *testing.T) {
 
 	stdout, stderr, exit := runSecondary(t, window, 1, "Fly")
 	assertActionFailed(t, "unsupported secondary action", stdout, stderr, exit,
-		"unsupported secondary action: Fly; expected Raise, Scroll Up, Scroll Down, Scroll Left, Scroll Right, Expand, Collapse, Toggle, or Select")
+		"unsupported secondary action: Fly; expected Raise, Scroll Up, Scroll Down, Scroll Left, Scroll Right, Expand, Collapse, Toggle, Select, or ContextMenu")
 	if !strings.Contains(stderr, "hint: ") {
 		t.Errorf("the failure needs a recovery hint: %q", stderr)
 	}

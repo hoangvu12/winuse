@@ -227,7 +227,7 @@ from its clickable point, again only with `--headed`; and
 |---|---|---|---|
 | `window` | the Window holding the Element | `<window>` | matched |
 | `element_index` | the Element to act on | the Element Index, a `name:`/`id:` reference, or `@x,y` (as set-value's) | matched (extended) |
-| `action` | case-insensitive; only `Raise`, `Scroll Up/Down/Left/Right`, `Expand`, `Collapse`; unknown → `unsupported secondary action: {action}; expected …` | the same set and the same error listing the expected names, **plus** the `Toggle` and `Select` extensions | matched (extended) |
+| `action` | case-insensitive; only `Raise`, `Scroll Up/Down/Left/Right`, `Expand`, `Collapse`; unknown → `unsupported secondary action: {action}; expected …` | the same set and the same error listing the expected names, **plus** the `Toggle`, `Select` and `ContextMenu` extensions (ContextMenu, never listed on an Element, opens its right-click menu Headless and names the menu's Window; headless-max 09) | matched (extended) |
 | (delivery) | activates the Window first | by Element Index or reference **Headless** (no activation), Toggle/Select/Expand/Collapse read back; `--headed` is Headed; `@x,y` is Headless on the Element under the point (ticket 11); Raise (a foreground operation) runs only with `--headed` and is refused with nothing sent without it (ticket 21) | intentionally different |
 
 An action the Element does not offer fails listing the ones it does,
@@ -385,7 +385,9 @@ different (roles, bounds)**.
 
 Codex offers Raise, Scroll Up/Down/Left/Right, Expand, Collapse —
 winuse offers exactly those plus the Toggle and Select extensions,
-rendered in the same style. **matched (extended)**.
+rendered in the same style. **matched (extended)**. The ContextMenu
+extension is performed but never listed (no UIA property says an
+Element has a context menu).
 
 ### key names
 
