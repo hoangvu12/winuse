@@ -18,12 +18,12 @@ Write the ADR before the tickets that reverse earlier decisions land; update CON
 
 **Blocked by:** none for the ADR; the documentation pass follows 01-15
 
-**Status:** ready-for-agent (ADR 0013 accepted by the user)
+**Status:** done
 
 - [x] ADR 0013 drafted and accepted by the user
-- [ ] CONTEXT.md terms
-- [ ] SKILL.md impossible list and routing rules
-- [ ] codex-parity rows reworded; parity guard test passes
+- [x] CONTEXT.md terms
+- [x] SKILL.md impossible list and routing rules
+- [x] codex-parity rows reworded; parity guard test passes
 
 ## Comments
 
@@ -48,3 +48,22 @@ Update the impossible list from round 3: Chromium and Electron keys without CDP 
 - CONTEXT.md: Posted Clicks next to Posted Keys (marked planned); the Headed Action definition notes ADR 0013.
 - SKILL.md: "What winuse cannot do headless" under "Choose Headless or Headed", with when to use `--post` or `--headed`. It describes only what winuse does today, so it names no planned route.
 - Still open, as each code ticket lands: CONTEXT.md's Headed Action narrowing and the new Actions (invoke-menu, ContextMenu), the SKILL.md routes, README's headless line, and the docs/codex-parity.md rows. Then check the whole set here.
+
+### 2026-11-03: the final doc pass
+
+Checked the whole set against what landed (headless-max 01 to 21, desktop-parity, multi-agent 01 to 11) and fixed what had gone stale.
+
+- **ADR 0013:** the Status no longer says most routes are planned (all landed but ticket 09); the impossible list points the shell surfaces at ADR 0015; the consequence about the skill's keys rule names the tickets that replaced it.
+- **ADR cross-links:** ADR 0007 now notes ADR 0014's amendments (one press stops every agent; the hook's yield to the user's keys and mouse, with a WH_MOUSE_LL hook). ADR 0010 notes the Agent Cursor per Agent. ADR 0011's Status names its later amendments (headless-max 19 with desktop-parity 23, headless-max 03), which were only at the end of the file.
+- **CONTEXT.md:** the stale "Planned" Posted Clicks entry (a duplicate of the landed one) is gone; Agent and Lane drop "Planned"; Headed Action says ADR 0013 narrowed the set and leaves out Chromium and Electron Windows and Posted Clicks from the double, right and middle clicks; Headless Action says Element Actions reach a minimized Window except a Store App's.
+- **SKILL.md:** two contradictions fixed: a browser Window without a Browser Connection said typing needs `--headed` (ticket 20 sends it as window messages), and the clipboard paste said `Control_L+v` is Headed (it takes the key routes). The impossible list already matched ADR 0013; it stays the agent-facing subset (IME, a WebView2 attach and the self-activation guarantee are covered where the agent meets them). 55 KB.
+- **README:** the headless paragraph says what runs in the background now (menus, shortcuts, text selection, named fields, minimized Windows, Chromium and Electron messages), points at ADR 0013's list for the rest, and says how a Headed Action behaves (it waits, gives the foreground and pointer back, stops when the user touches the keyboard or mouse).
+- **docs/codex-parity.md:** reworded, statuses kept: the double, right and middle click refusals leave out Chromium and Electron Windows; press-key names the shortcut lookup; activate-window no longer says Headless Actions refuse every minimized Window; polite real input (multi-agent 08) in activate-window, process model's notes and the Esc stop. `go test ./internal/skill/...` passes.
+
+### 2026-11-03: refreshed after desktop-parity 07, 18 and 24 and headless-max 09
+
+Merged main c017f4c. These branches updated their own docs; the pass adds: ADR 0013's Status says every route has landed, and its impossible list says the tray overflow and the notification panel open only with `--headed open-shell` while a toast's own buttons are Headless; codex-parity's perform-secondary-action delivery row says where ContextMenu is Headless and that a WPF Element refuses it; README's headless sentence names right-click menus and a notification's buttons. CONTEXT.md's merge keeps both sides: the toast commands and the WPF ContextMenu from main, the narrowed Headed set and the minimized sentence from this pass. The SKILL.md result-phrase pass waits for the e2e-live-fixes branch (`ok (...)` becoming `ok` plus `Note:`).
+
+### 2026-11-03: final pass after e2e-live-fixes and desktop-parity 25
+
+Merged main 0693039. No `ok (...)` output is left in SKILL.md, README, CONTEXT.md or codex-parity. Every result phrase SKILL.md quotes was checked against the strings in `internal/helper` (the notes, the refusals, the lane holder's `<agent> is using <window>`, the helper-restart note). Two sentences still described the old form: the `--interval-ms` note and "Read the result"'s opening, which now says an Action prints `ok` and any `Note:` lines. dp-25's stale-helper build is already in README's `status` row, codex-parity's process model and SKILL.md's restart note; CONTEXT.md has no term for it. SKILL.md is 57.0 KB.
