@@ -19,6 +19,8 @@ package helper
 //     before.
 //   - A Batch takes the lanes of its Window: the desktop lane too when any
 //     step is Headed, the Page lane too when any step goes to the Page.
+//     A step in its own Window adds that Window's lanes, and an `in new`
+//     step its opener's (desktop-parity ticket 24, batchLanes).
 //   - Reads take no lane, as before.
 //
 // Lanes are taken in one fixed order (the desktop, then threads by id,
@@ -175,49 +177,106 @@ func (s Services) lanesFor(ctx context.Context, name string, args json.RawMessag
 	if rerr != nil {
 		return newLaneSet(0, desktopLane) // it fails on the Window anyway
 	}
-	thread := windowLane(w.ID)
+	if name == "batch" {
+		return s.batchLanes(ctx, args, w)
+	}
+	headed, page := s.stepClass(ctx, name, args, w)
+	return newLaneSet(w.ID, s.classKeys(w.ID, headed, page)...)
+}
+
+// classKeys is the lanes of one Action on Window hwnd: Headed takes the
+// desktop lane and the thread lane, a Page Action the Page lane, any
+// other the thread lane.
+func (s Services) classKeys(hwnd uint64, headed, page bool) []string {
+	thread := windowLane(hwnd)
 	if s.WindowThread != nil {
-		if tid := s.WindowThread(w.ID); tid != 0 {
+		if tid := s.WindowThread(hwnd); tid != 0 {
 			thread = threadLane(tid)
 		}
 	}
-	headed, page, uia := s.laneClass(ctx, name, args, w)
+	switch {
+	case headed && page:
+		return []string{desktopLane, thread, pageLane(hwnd)}
+	case headed:
+		return []string{desktopLane, thread}
+	case page:
+		return []string{pageLane(hwnd)}
+	}
+	return []string{thread}
+}
+
+// batchLanes is the lanes of a Batch: every step's, on the step's own
+// Window (desktop-parity ticket 24) or the Batch's, and the desktop lane
+// when the Batch is sent with headed. They are taken up front. An `in new`
+// step's Window does not exist yet: it takes the lanes of the Window of
+// the step before it, whose App opens it, and at its turn the Batch checks
+// that the new Window needs no other lane (lanesHeld); a dialog runs on its
+// owner's UI thread. A step's Window that does not resolve takes the
+// desktop lane alone: the Batch fails on it before any step.
+func (s Services) batchLanes(ctx context.Context, args json.RawMessage, w win.WindowInfo) laneSet {
+	var b protocol.BatchArgs
+	if json.Unmarshal(args, &b) != nil {
+		return newLaneSet(w.ID, s.classKeys(w.ID, true, false)...)
+	}
 	var keys []string
-	if headed {
-		keys = append(keys, desktopLane, thread)
+	if b.Headed {
+		keys = s.classKeys(w.ID, true, false)
 	}
-	if page {
-		keys = append(keys, pageLane(w.ID))
-	}
-	if uia {
-		keys = append(keys, thread)
+	prev := w
+	for _, st := range b.Steps {
+		sw := w
+		if st.Window != "" {
+			r, rerr := resolveWindow(s, st.Window)
+			if rerr != nil {
+				return newLaneSet(0, desktopLane)
+			}
+			sw = r
+		}
+		if st.InNew {
+			sw = prev
+		}
+		step, err := withWindow(strconv.FormatUint(sw.ID, 10), st.Args)
+		if err == nil && b.Headed && takesHeaded(st.Kind) {
+			step, err = withHeaded(step) // as the Batch runs it
+		}
+		if err != nil {
+			return newLaneSet(w.ID, s.classKeys(w.ID, true, false)...)
+		}
+		headed, page := inNewHeaded(st.Kind, step), false
+		if !st.InNew {
+			headed, page = s.stepClass(ctx, st.Kind, step, sw)
+		}
+		keys = append(keys, s.classKeys(sw.ID, headed, page)...)
+		prev = sw
 	}
 	return newLaneSet(w.ID, keys...)
 }
 
-// laneClass tells whether a command is Headed (the desktop lane), goes to
-// the Page (the Page lane) and acts outside the Page (the thread lane). A
-// Batch is Headed when it is sent with headed or any step is, and takes
-// the Page lane and the thread lane for its Page and other steps.
-func (s Services) laneClass(ctx context.Context, name string, args json.RawMessage, w win.WindowInfo) (headed, page, uia bool) {
-	if name != "batch" {
-		headed, page = s.stepClass(ctx, name, args, w)
-		return headed, page, !page
+// heldLanesKey carries the lanes a request holds (onLanes) to its command.
+type heldLanesKey struct{}
+
+// lanesHeld reports whether the request under ctx holds every lane the
+// command with these arguments takes: a Batch's `in new` step checks its
+// new Window this way before it runs. Outside onLanes (no lanes) it
+// holds them all, and so does a Window that does not resolve: the command
+// fails on it. The desktop lane is left out: an `in new` step that asks
+// for Headed took it up front (inNewHeaded), and one with no Headless
+// route that does not ask is refused by its own command.
+func (s Services) lanesHeld(ctx context.Context, name string, args json.RawMessage) bool {
+	held, ok := ctx.Value(heldLanesKey{}).(laneSet)
+	if !ok {
+		return true
 	}
-	var b protocol.BatchArgs
-	if json.Unmarshal(args, &b) != nil {
-		return true, false, true
+	need := s.lanesFor(ctx, name, args)
+	if need.window == 0 {
+		return true
 	}
-	headed = b.Headed
-	for _, st := range b.Steps {
-		step, err := withWindow(b.Window, st.Args)
-		if err != nil {
-			return true, page, true
+	for _, k := range need.keys {
+		if k != desktopLane && !held.has(k) {
+			return false
 		}
-		h, p := s.stepClass(ctx, st.Kind, step, w)
-		headed, page, uia = headed || h, page || p, uia || !p
 	}
-	return headed, page, uia
+	return true
 }
 
 // stepClass is laneClass for one command or Batch step.
@@ -320,7 +379,7 @@ func (s Services) onLanes(ctx context.Context, set laneSet, cmd Command, args js
 	if set.has(desktopLane) {
 		s.setOverlayAgent(who) // the banner names the agent holding the desktop
 	}
-	return cmd(ctx, args)
+	return cmd(context.WithValue(ctx, heldLanesKey{}, set), args)
 }
 
 // laneBusyError is the refusal of a request that waited for a lane past

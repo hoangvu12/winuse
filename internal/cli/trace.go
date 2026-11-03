@@ -323,8 +323,9 @@ func redactsOut(cmd string, raw json.RawMessage) bool {
 
 // batchStepLine starts one step's output in a Batch's: "Action N
 // (<kind>): ", the step's other lines indented two spaces under it
-// (helper batch.go, desktop-parity ticket 20).
-var batchStepLine = regexp.MustCompile(`^Action (\d+) \([a-z-]+\): `)
+// (helper batch.go, desktop-parity ticket 20), "(<kind> in <window>)" for
+// a step in its own Window (ticket 24).
+var batchStepLine = regexp.MustCompile(`^Action (\d+) \([a-z-]+(?: in (?:\d+|new))?\): `)
 
 // redactBatchOut redacts, in a Batch's output, the output of each step
 // whose own output redactsOut covers (an eval step's result), found by

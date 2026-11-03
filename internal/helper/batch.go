@@ -45,11 +45,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/keys"
 	"github.com/hoangvu12/winuse/internal/protocol"
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 // batchUsageHint is the recovery hint for batch's argument failures.
@@ -100,15 +103,25 @@ func batch(commands map[string]Command, s Services) Command {
 		// flag or the Batch's, is refused here too (postFlagsError), and so
 		// is a press-key step with a Blocked Combo and no `force` of its own
 		// (blockedStep), so the steps before it never act.
-		type prepared struct {
-			kind string
-			cmd  Command
-			args json.RawMessage
-		}
-		steps := make([]prepared, 0, len(a.Steps))
+		//
+		// A step may name its own Window (desktop-parity ticket 24): it
+		// resolves here with the Batch's, so a step's Window that does not
+		// resolve, or whose ID another Window took (reusedID), fails the
+		// Batch before any step. An `in new` step's Window is the one the
+		// step before it opened, known only at its turn: it cannot be the
+		// first step, and it takes no Element Index or @x,y point, which
+		// only a Window State or screenshot of that Window could give.
+		steps := make([]batchStep, 0, len(a.Steps))
 		for i, st := range a.Steps {
 			if st.Kind == "" {
 				return "", Fail(fmt.Sprintf("batch: Action %d has no action", i+1), batchUsageHint)
+			}
+			if st.InNew && (i == 0 || st.Window != "") {
+				return "", Fail(fmt.Sprintf("batch: Action %d (%s): `in new` needs an Action before it and names no other Window", i+1, st.Kind), batchUsageHint)
+			}
+			if st.InNew && indexedStep(st.Args) {
+				return "", Fail(fmt.Sprintf("batch: Action %d (%s) is in a new Window, which has no Window State or screenshot yet; nothing was sent", i+1, st.Kind),
+					"name its Element with name: or id:, which resolve in a fresh read, or send a key or a Window Action")
 			}
 			if !batchableStep(st.Kind) {
 				return "", Fail(fmt.Sprintf("batch: Action %d (%s) is not a batchable action; expected one of %s",
@@ -118,7 +131,11 @@ func batch(commands map[string]Command, s Services) Command {
 			if !ok {
 				return "", Fail(fmt.Sprintf("batch: Action %d (%s) is unavailable", i+1, st.Kind), batchUsageHint)
 			}
-			injected, err := withWindow(a.Window, st.Args)
+			window := a.Window
+			if st.Window != "" {
+				window = st.Window
+			}
+			injected, err := withWindow(window, st.Args)
 			if err == nil && a.Headed && takesHeaded(st.Kind) {
 				injected, err = withHeaded(injected)
 			}
@@ -135,7 +152,7 @@ func batch(commands map[string]Command, s Services) Command {
 			if e := blockedStep(st.Kind, injected); e != nil {
 				return "", Fail(fmt.Sprintf("batch: Action %d (%s): %s", i+1, st.Kind, e.Msg), e.Hint)
 			}
-			steps = append(steps, prepared{kind: st.Kind, cmd: cmd, args: injected})
+			steps = append(steps, batchStep{kind: st.Kind, cmd: cmd, args: injected, own: st.Window, inNew: st.InNew})
 		}
 
 		// The Batch's scope, decided up front by the same predicate each
@@ -160,15 +177,41 @@ func batch(commands map[string]Command, s Services) Command {
 			return "", &Error{Msg: "batch: " + werr.Msg, Hint: werr.Hint, Exit: werr.Exit}
 		}
 		bw := &w
+		for i := range steps {
+			st := &steps[i]
+			if st.inNew {
+				continue // its Window opens during the Batch
+			}
+			st.w = w
+			if st.own == "" {
+				continue
+			}
+			sw, serr := resolveWindow(s, st.own)
+			if serr == nil {
+				serr = s.reusedID(sw.ID)
+			}
+			if serr != nil {
+				return "", &Error{Msg: fmt.Sprintf("batch: Action %d (%s): %s", i+1, st.kind, serr.Msg), Hint: serr.Hint, Exit: serr.Exit}
+			}
+			st.w = sw
+		}
 		//
 		// A step with no Headless route that is not `headed` never goes
 		// Headed: its command refuses it at its turn with nothing sent
 		// (headless-max ticket 21), so it does not make the Batch Headed.
 		// activate-window is the one step that asks for the foreground
-		// itself.
+		// itself. An `in new` step cannot be probed before its Window
+		// opens: only its flag (inNewHeaded) makes it Headed.
 		allHeadless := true
 		for _, st := range steps {
-			if s.stepHeadless(ctx, st.kind, st.args, bw) {
+			if st.inNew {
+				if inNewHeaded(st.kind, st.args) {
+					allHeadless = false
+					break
+				}
+				continue
+			}
+			if s.stepHeadless(ctx, st.kind, st.args, &st.w) {
 				continue
 			}
 			if st.kind != "activate-window" && !stepHeaded(st.args) {
@@ -204,7 +247,9 @@ func batch(commands map[string]Command, s Services) Command {
 			e.Out = lines.String()
 			return "", e
 		}
-		for i, st := range steps {
+		var opened *Error // why the next `in new` step has no Window
+		for i := range steps {
+			st := &steps[i]
 			if esc.Stopped() {
 				return stop(escStopError())
 			}
@@ -215,7 +260,28 @@ func batch(commands map[string]Command, s Services) Command {
 				return stop(Fail(fmt.Sprintf("the batch's request budget expired before Action %d (%s); the Actions that ran took effect", i+1, st.kind),
 					"re-observe the Window and continue in a fresh request"))
 			}
-			out, err := st.cmd(ctx, st.args)
+			var err *Error
+			if st.inNew {
+				err = opened // the Window the step before opened, or why there is none
+				if err == nil {
+					err = s.inNewWindow(ctx, st)
+				}
+			}
+			// The next step acts in the Window this one opens: snapshot
+			// the Windows of this step's App before it runs (opened.go).
+			next := i+1 < len(steps) && steps[i+1].inNew
+			var before openedBefore
+			listed := false
+			if next && err == nil {
+				before, listed = s.snapshotWindow(st.w)
+			}
+			out := ""
+			if err == nil {
+				out, err = st.cmd(ctx, st.args)
+			}
+			if next {
+				steps[i+1].w, opened = s.openedByStep(ctx, esc, i+1, err, before, listed)
+			}
 			if err != nil && (a.StopOnError || err.Exit == protocol.ExitEsc) {
 				return stop(&Error{
 					Msg:  fmt.Sprintf("batch stopped at Action %d (%s): %s", i+1, st.kind, err.Msg),
@@ -224,11 +290,11 @@ func batch(commands map[string]Command, s Services) Command {
 				})
 			}
 			if err != nil {
-				lines.WriteString(stepLines(i+1, st.kind, failedStepOutput(err)))
-				failed = append(failed, batchFailure{n: i + 1, kind: st.kind, uncertain: uncertainFailure(err)})
+				lines.WriteString(stepLines(i+1, st.label(), failedStepOutput(err)))
+				failed = append(failed, batchFailure{n: i + 1, kind: st.kind, window: st.w.ID, uncertain: uncertainFailure(err)})
 				continue
 			}
-			lines.WriteString(stepLines(i+1, st.kind, out))
+			lines.WriteString(stepLines(i+1, st.label(), out))
 		}
 		// A press in the last step's tail: the steps all ran, but the user's
 		// stop must still surface (their Esc was swallowed, or in a passive
@@ -237,7 +303,7 @@ func batch(commands map[string]Command, s Services) Command {
 			return stop(escStopError())
 		}
 		if len(failed) > 0 {
-			return stop(batchReport(len(steps), failed, w.ID))
+			return stop(batchReport(len(steps), failed))
 		}
 		return lines.String(), nil
 	}
@@ -277,7 +343,8 @@ func failedStepOutput(e *Error) string {
 type batchFailure struct {
 	n         int
 	kind      string
-	uncertain bool // the step may have acted (uncertainFailure)
+	window    uint64 // the step's Window; 0 for an `in new` step whose Window was not found
+	uncertain bool   // the step may have acted (uncertainFailure)
 }
 
 // uncertainFailure reports whether a failed step may have acted: its
@@ -291,15 +358,18 @@ func uncertainFailure(e *Error) bool {
 // batchReport is the failure a Batch ends with after it ran past failed
 // steps: how many failed, each one named, the uncertain ones marked, and
 // a hint that sends the agent to the Window State before repeating an
-// uncertain one.
-func batchReport(total int, failed []batchFailure, window uint64) *Error {
+// uncertain one: the State of each Window an uncertain step acted in.
+func batchReport(total int, failed []batchFailure) *Error {
 	names := make([]string, len(failed))
-	var uncertain []string
+	var uncertain, reads []string
 	for i, f := range failed {
 		names[i] = fmt.Sprintf("Action %d (%s)", f.n, f.kind)
 		if f.uncertain {
 			names[i] = fmt.Sprintf("Action %d (%s, uncertain)", f.n, f.kind)
 			uncertain = append(uncertain, strconv.Itoa(f.n))
+			if read := fmt.Sprintf("winuse get-window-state %d", f.window); f.window != 0 && !slices.Contains(reads, read) {
+				reads = append(reads, read)
+			}
 		}
 	}
 	msg := fmt.Sprintf("batch: %d of %d Actions failed: %s", len(failed), total, strings.Join(names, ", "))
@@ -309,8 +379,12 @@ func batchReport(total int, failed []batchFailure, window uint64) *Error {
 		if len(uncertain) > 1 {
 			it = "them"
 		}
-		hint = fmt.Sprintf("%s may have taken effect: read the Window State (winuse get-window-state %d) before repeating %s; %s",
-			actionsWord(uncertain), window, it, hint)
+		state := "the Window State"
+		if len(reads) > 1 {
+			state = "the Window States"
+		}
+		hint = fmt.Sprintf("%s may have taken effect: read %s (%s) before repeating %s; %s",
+			actionsWord(uncertain), state, strings.Join(reads, "; "), it, hint)
 	}
 	return Fail(msg, hint)
 }
@@ -394,4 +468,98 @@ func withHeaded(raw json.RawMessage) (json.RawMessage, error) {
 	}
 	fields["headed"] = json.RawMessage("true")
 	return json.Marshal(fields)
+}
+
+// batchStep is one prepared Batch step.
+type batchStep struct {
+	kind  string
+	cmd   Command
+	args  json.RawMessage // the command's arguments, its Window and the Batch's headed injected
+	own   string          // the step's own Window reference (desktop-parity ticket 24), "" for the Batch's
+	inNew bool            // the step acts in the Window the step before it opened (`in new`)
+	w     win.WindowInfo  // the step's Window, resolved; an `in new` step's once it opened
+}
+
+// label is the step's name in its output line: the Action, and the
+// Window of a step that acts in its own ("press-key in 5678"; "in new"
+// when the new Window was not found).
+func (st batchStep) label() string {
+	switch {
+	case st.inNew && st.w.ID == 0:
+		return st.kind + " in new"
+	case st.inNew || st.own != "":
+		return fmt.Sprintf("%s in %d", st.kind, st.w.ID)
+	}
+	return st.kind
+}
+
+// inNewWait bounds the wait for the Window a step opened, when the step
+// after it is `in new`: longer than the opened-Window note's settle
+// (openedSettle), since the agent says a Window will open; it stops at the
+// first new Window.
+const inNewWait = 2 * time.Second
+
+// indexedStep reports whether a step's arguments name an Element Index or
+// an @x,y point of a screenshot, which an `in new` step cannot.
+func indexedStep(raw json.RawMessage) bool {
+	var f struct {
+		ElementIndex *int            `json:"element_index"`
+		FromIndex    *int            `json:"from_index"`
+		ToIndex      *int            `json:"to_index"`
+		Point        *protocol.Point `json:"point"`
+	}
+	return json.Unmarshal(raw, &f) == nil && (f.ElementIndex != nil || f.FromIndex != nil || f.ToIndex != nil || f.Point != nil)
+}
+
+// inNewHeaded is an `in new` step's class before its Window exists:
+// Headed when it asks for the foreground (activate-window) or carries
+// headed. Without the flag, a step with no Headless route is refused at
+// its turn with nothing sent (headless-max ticket 21).
+func inNewHeaded(kind string, raw json.RawMessage) bool {
+	return kind == "activate-window" || stepHeaded(raw)
+}
+
+// openedByStep finds the Window that Action n opened, for the `in new`
+// step after it: the one new Window of its App (openedChanges) within
+// inNewWait. err is Action n's failure; before and listed its snapshot
+// (snapshotWindow). None, several, or a failed Action n refuses the `in
+// new` step with nothing sent.
+func (s Services) openedByStep(ctx context.Context, esc EscWatch, n int, err *Error, before openedBefore, listed bool) (win.WindowInfo, *Error) {
+	hint := "run winuse list-windows, then name the Window with in <window ID> in a new Batch"
+	switch {
+	case err != nil:
+		return win.WindowInfo{}, Fail(fmt.Sprintf("Action %d failed, so no Window it opened is known; nothing was sent", n), hint)
+	case !listed:
+		return win.WindowInfo{}, Fail(fmt.Sprintf("the Windows could not be listed to find the one Action %d opened; nothing was sent", n), hint)
+	}
+	opened := s.openedWithin(ctx, esc.Stopped, before, inNewWait)
+	switch len(opened) {
+	case 0:
+		return win.WindowInfo{}, Fail(fmt.Sprintf("Action %d opened no Window within %s; nothing was sent", n, inNewWait), hint)
+	case 1:
+		return opened[0], nil
+	}
+	names := make([]string, len(opened))
+	for i, w := range opened {
+		names[i] = fmt.Sprintf("%d %q", w.ID, strings.Join(strings.Fields(w.Title), " "))
+	}
+	return win.WindowInfo{}, Fail(fmt.Sprintf("Action %d opened %d Windows (%s), and `in new` needs one; nothing was sent", n, len(opened), strings.Join(names, ", ")),
+		"name the one to act in with in <window ID> in a new Batch")
+}
+
+// inNewWindow aims an `in new` step at the Window found for it. The Batch
+// took its lanes up front (batchLanes): a new Window on another UI thread,
+// or a step that goes to its Page, needs a lane the Batch does not hold,
+// and is refused with nothing sent.
+func (s Services) inNewWindow(ctx context.Context, st *batchStep) *Error {
+	args, err := withWindow(strconv.FormatUint(st.w.ID, 10), st.args)
+	if err != nil {
+		return Fail(fmt.Sprintf("invalid arguments: %v", err), batchUsageHint)
+	}
+	if !s.lanesHeld(ctx, st.kind, args) {
+		return Fail(fmt.Sprintf("window %d needs a lane this Batch did not take when it started (it runs on another UI thread than the Window that opened it, or the Action goes to its Page); nothing was sent", st.w.ID),
+			fmt.Sprintf("send this Action on its own, or in a new Batch on window %d", st.w.ID))
+	}
+	st.args = args
+	return nil
 }

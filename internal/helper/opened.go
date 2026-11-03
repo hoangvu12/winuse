@@ -165,6 +165,15 @@ func (s Services) snapshotOpened(args json.RawMessage) (openedBefore, bool) {
 	if rerr != nil {
 		return openedBefore{}, false // the Action fails on it anyway
 	}
+	return s.snapshotWindow(w)
+}
+
+// snapshotWindow is snapshotOpened for a resolved Window (a Batch step's
+// before an `in new` step, batch.go).
+func (s Services) snapshotWindow(w win.WindowInfo) (openedBefore, bool) {
+	if s.Surfaces == nil {
+		return openedBefore{}, false
+	}
 	all, err := s.Surfaces()
 	if err != nil {
 		return openedBefore{}, false
@@ -293,4 +302,29 @@ func (s Services) popupByID(ref string) (win.WindowInfo, bool) {
 		}
 	}
 	return win.WindowInfo{}, false
+}
+
+// openedWithin waits up to limit for the target's App to open Windows
+// (openedChanges), and returns them in z-order; nil when none opened, the
+// listing failed, or the request ended or stopped meanwhile. It looks
+// before its first pause: the Action may have opened the Window already.
+// A Batch's `in new` step acts in what it finds (batch.go, desktop-parity
+// ticket 24).
+func (s Services) openedWithin(ctx context.Context, stopped func() bool, before openedBefore, limit time.Duration) []win.WindowInfo {
+	for waited := time.Duration(0); ; waited += openedPoll {
+		after, err := s.Surfaces()
+		if err != nil {
+			return nil
+		}
+		if opened, _ := openedChanges(before, after); len(opened) > 0 {
+			return opened
+		}
+		if waited >= limit {
+			return nil
+		}
+		s.pause(openedPoll)
+		if ctx.Err() != nil || stopped() {
+			return nil
+		}
+	}
 }

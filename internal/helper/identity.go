@@ -117,25 +117,35 @@ func (s Services) checkWindow(cmd Command) Command {
 		return cmd
 	}
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
-		id, ok := numericWindow(args)
-		if !ok {
-			return cmd(ctx, args)
-		}
-		now, ok := s.WindowIdentity(id)
-		if !ok {
-			s.windowIDs.forget(id) // gone: the command fails on it anyway
-			return cmd(ctx, args)
-		}
-		was, ok := s.windowIDs.lookup(id)
-		switch {
-		case !ok:
-			s.windowIDs.record(id, now) // first seen here (a helper restart)
-		case was != now:
-			s.windowIDs.forget(id)
-			return "", reusedWindowError(id)
+		if id, ok := numericWindow(args); ok {
+			if err := s.reusedID(id); err != nil {
+				return "", err
+			}
 		}
 		return cmd(ctx, args)
 	}
+}
+
+// reusedID is checkWindow's check of one Window ID, also run on the
+// Window a Batch step names itself (batch.go, desktop-parity ticket 24).
+func (s Services) reusedID(id uint64) *Error {
+	if s.windowIDs == nil || s.WindowIdentity == nil {
+		return nil
+	}
+	now, ok := s.WindowIdentity(id)
+	if !ok {
+		s.windowIDs.forget(id) // gone: the command fails on it anyway
+		return nil
+	}
+	was, ok := s.windowIDs.lookup(id)
+	switch {
+	case !ok:
+		s.windowIDs.record(id, now) // first seen here (a helper restart)
+	case was != now:
+		s.windowIDs.forget(id)
+		return reusedWindowError(id)
+	}
+	return nil
 }
 
 // reusedWindowError is the refusal of a Window ID another Window took.

@@ -312,3 +312,16 @@ func TestTraceShowUsage(t *testing.T) {
 		}
 	}
 }
+
+func TestTraceRedactsAnEvalStepInItsOwnWindow(t *testing.T) {
+	// Desktop-parity 24: a step in its own Window prints "(eval in 302)".
+	args := protocol.BatchArgs{Window: "301", Steps: []protocol.Step{
+		{Kind: "click", Args: json.RawMessage(`{"ref":"name:Open"}`)},
+		{Kind: "eval", Args: json.RawMessage(`{"expression":"document.cookie"}`), Window: "302"},
+	}}
+	raw, _ := json.Marshal(args)
+	got := redactBatchOut(raw, "Action 1 (click): ok\nAction 2 (eval in 302): \"the secret\"\n")
+	if want := "Action 1 (click): ok\nAction 2 (eval in 302): {\"redacted\":true,\"len\":12}\n"; got != want {
+		t.Errorf("out = %q, want %q", got, want)
+	}
+}

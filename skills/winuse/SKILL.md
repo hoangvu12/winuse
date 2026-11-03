@@ -797,7 +797,7 @@ winuse refuses to close a Window's last Tab; use `close-window`.
 
 ## Batches
 
-A Batch runs a routine sequence on one Window in one call, in order, and
+A Batch runs a routine sequence on a Window in one call, in order, and
 prints each step as `Action N (<action>): <output>` (more lines indented),
 then any `Note:` lines.
 
@@ -812,6 +812,11 @@ groups words (`\"` inside), and blank and `#` lines are skipped. A
 malformed Batch or unknown Window sends nothing. Batch only sequences you
 understand well. A Batch has 60 s; `--timeout <s>` (up to 300) after the
 Window widens it (a later one is a `wait` step's).
+
+A step starting `in <window>` acts in that Window, and `in new` in the one
+the step before it opened, printed as `(<action> in <id>)`:
+`batch 101 click name:Delete then in new press-key Return`. A new Window
+has no Window State: name its Elements by `name:`/`id:`, or send keys.
 
 A failed step prints `failed: <message>` and its hint, and the rest run.
 The Batch exits 1 naming them: retry only those, reading the Window State
@@ -996,7 +1001,7 @@ activate-window <window>            # takes the foreground, no flag needed
 restore-window <window> | minimize-window <window> | close-window <window>
 move-window <window> <x> <y> | resize-window <window> <width> <height>
 maximize-window <window>            # needs --headed: takes the foreground
-batch <window>|- [--timeout <s>] [--stop-on-error] <action> [args] [then ...]
+batch <window>|- [--timeout <s>] [--stop-on-error] [in <window>|new] <action> [args] [then ...]
 navigate <window> <url> [--wait load|domcontentloaded|none] | back | forward | reload <window>
 wait <window> selector <css> | text <text> | url <url> | load | download [--timeout <s>]
 wait <window> <ref> enabled|disabled|gone|value <v>|checked|unchecked|expanded|collapsed [--timeout <s>]
