@@ -120,7 +120,7 @@ func TestBatchTabSteps(t *testing.T) {
 
 func TestUsageMentionsTabCommands(t *testing.T) {
 	for _, s := range []string{"tab list <window>", "tab new <window> [url]", "tab close <window> <tab>", "tab switch <window> <tab>",
-		"tab switch is headless through the\n  winuse extension"} {
+		"tab new, tab close and tab switch are headless"} {
 		if !strings.Contains(Usage, s) {
 			t.Errorf("usage text missing %q", s)
 		}
@@ -128,6 +128,28 @@ func TestUsageMentionsTabCommands(t *testing.T) {
 	for _, cmd := range []string{"tab-list", "tab-new", "tab-close", "tab-switch"} {
 		if d, ok := protocol.CommandTimeout(cmd); !ok || d != protocol.BrowserTimeout {
 			t.Errorf("%s budget = %v, %v", cmd, d, ok)
+		}
+	}
+}
+
+// The global --headed reaches tab switch only (headless-max 05), wherever
+// it stands on the command line.
+func TestTabSwitchTakesHeaded(t *testing.T) {
+	for _, c := range []struct {
+		line   []string
+		cmd    string
+		headed bool
+	}{
+		{[]string{"--headed", "tab", "switch", "301", "aaaa"}, "tab-switch", true},
+		{[]string{"tab", "switch", "301", "aaaa", "--headed"}, "tab-switch", true},
+		{[]string{"tab", "switch", "301", "aaaa"}, "tab-switch", false},
+		{[]string{"--headed", "tab", "new", "301"}, "tab-new", false},
+		{[]string{"tab", "close", "301", "aaaa", "--headed"}, "tab-close", false},
+	} {
+		rest, headed := extractHeaded(c.line)
+		cmd, a, err := tabRequest(rest[1:], headed)
+		if err != nil || cmd != c.cmd || a.Headed != c.headed {
+			t.Errorf("%q: %s %+v, %v; want %s headed=%v", c.line, cmd, a, err, c.cmd, c.headed)
 		}
 	}
 }

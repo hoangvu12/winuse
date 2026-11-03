@@ -15,12 +15,18 @@ package helper
 //     strip item when the latest Window State has it (else to the Window),
 //     inside a passive Esc scope.
 //   - tab-switch is Headless through the extension (Winuse.activateTab,
-//     chrome.tabs.update active, never focusing the window). On a
-//     launched, cloned or toggled browser it is always Headed: the probe
-//     never measured a Headless route there, and Target.activateTarget and
-//     Page.bringToFront are forbidden. The Window comes to the foreground
-//     under the banner (runAction), real keys switch the Tab (Ctrl+<n>,
-//     or Ctrl+Tab steps), and CDP verifies the Tab became visible.
+//     chrome.tabs.update active, never focusing the window), with or
+//     without --headed. On a launched, cloned or toggled browser it is
+//     Headless too (headless-max ticket 05, ADR 0013 rule 1): the Tab's
+//     item in the Window's own UIA tab strip is matched by the Tab's title
+//     and selected through SelectionItem.Select, and its IsSelected is
+//     read back (probes round 4, section 4: foreground and cursor
+//     unchanged on a covered Chrome). No match, several matches or no tab
+//     strip refuse with "nothing was sent" and the --headed retry: winuse
+//     never switches mode on its own. With --headed the Window comes to
+//     the foreground under the banner (runAction), real keys switch the
+//     Tab (Ctrl+<n>, or Ctrl+Tab steps), and CDP verifies the Tab became
+//     visible. Target.activateTarget and Page.bringToFront stay forbidden.
 //
 // winuse never sends Target.activateTarget or Page.bringToFront.
 //
@@ -43,6 +49,7 @@ import (
 	"github.com/hoangvu12/winuse/internal/keys"
 	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
+	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
 	"github.com/hoangvu12/winuse/internal/wstate"
 )
@@ -282,7 +289,8 @@ func tabClose(s Services) Command {
 }
 
 // tabSwitch runs `winuse tab switch <window> <tab>`: Headless through the
-// extension, Headed otherwise (always, with or without --headed).
+// extension; on a launched or cloned browser Headless through the tab
+// strip, or Headed with --headed.
 func tabSwitch(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		a, e := parseTabArgs("tab-switch", args, true)
@@ -303,8 +311,83 @@ func tabSwitch(s Services) Command {
 		if tw.conn.Mode == browser.ModeExtension {
 			return s.tabSwitchExtension(ctx, tw, tab)
 		}
-		return s.tabSwitchHeaded(ctx, a.Window, tw, tab)
+		if a.Headed {
+			return s.tabSwitchHeaded(ctx, a.Window, tw, tab)
+		}
+		return s.tabSwitchStrip(ctx, tw, tab)
 	}
+}
+
+// TabSelector is the tab strip's side of the Headless switch on a
+// launched or cloned browser (headless-max 05): the Window's UIA tab-strip
+// items, one chosen by pick among their names and selected through
+// SelectionItem.Select, read back through IsSelected. The real one is
+// *uia.Client; Services.Actions is type-asserted to it, so a fake without
+// it has no Headless switch there.
+type TabSelector interface {
+	SelectTab(ctx context.Context, hwnd uint64, pick func(names []string) (int, error)) error
+}
+
+var _ TabSelector = (*uia.Client)(nil)
+
+// tabStripPickError is a tab-strip pick that found no item, or several,
+// named after the Tab: nothing was selected.
+type tabStripPickError struct {
+	title   string
+	matches int
+}
+
+func (e *tabStripPickError) Error() string {
+	if e.matches == 0 {
+		return fmt.Sprintf("no item of the tab strip is named %q", tabTitle(e.title))
+	}
+	return fmt.Sprintf("%d items of the tab strip are named %q", e.matches, tabTitle(e.title))
+}
+
+// tabSwitchStrip is the Headless switch on a launched or cloned browser:
+// the refusals every Headless Action makes (a locked desktop, an
+// administrator Window, a modal dialog or a minimized Window), then, in a
+// passive Esc scope with the Agent Cursor, the Tab's tab-strip item
+// matched by its title, selected and read back.
+func (s Services) tabSwitchStrip(ctx context.Context, tw tabWindow, tab page.Tab) (string, *Error) {
+	sel, ok := s.Actions.(TabSelector)
+	if !ok {
+		return "", nothingSent(Fail("tab switch is unavailable: no UIA client", tabStripRetry(tw, tab)))
+	}
+	if rerr := s.headlessRefusals(tw.w, adminPatternHint); rerr != nil {
+		return "", rerr
+	}
+	return s.tabHeadless(ctx, tw, &tab, "switch to", func(ctx context.Context) (string, *Error, bool) {
+		err := sel.SelectTab(ctx, tw.w.ID, func(names []string) (int, error) {
+			m := stripMatches(names, tab.Title)
+			if len(m) != 1 {
+				return -1, &tabStripPickError{title: tab.Title, matches: len(m)}
+			}
+			return m[0], nil
+		})
+		if err == nil {
+			return okOutput, nil, true
+		}
+		var pick *tabStripPickError
+		var verify *uia.VerifyError
+		var write *uia.WriteError
+		switch {
+		case errors.As(err, &pick), errors.Is(err, uia.ErrNoTabStrip):
+			return "", nothingSent(Fail(fmt.Sprintf("tab %s cannot be switched to headless: %v", page.TabID(tab.TargetID), err),
+				tabStripRetry(tw, tab))), false
+		case errors.As(err, &verify):
+			return "", tabNotActive(tw, tab, "the switch was delivered"), true
+		case errors.As(err, &write):
+			return "", Fail(err.Error(), "the switch may have taken effect; read winuse tab list "+tw.id()+" before repeating it"), true
+		}
+		return "", nothingSent(Fail(fmt.Sprintf("reading the tab strip of window %d failed: %v", tw.w.ID, err), tabStripRetry(tw, tab))), false
+	})
+}
+
+// tabStripRetry is the --headed retry of a refused Headless switch.
+func tabStripRetry(tw tabWindow, tab page.Tab) string {
+	return "retry with --headed to switch with real keys (this brings the Window to the foreground): winuse --headed tab switch " +
+		tw.id() + " " + page.TabID(tab.TargetID)
 }
 
 // tabSwitchExtension is the Headless switch: Winuse.activateTab, then the
@@ -428,22 +511,33 @@ func (s Services) tabStrip(w win.WindowInfo) []stripItem {
 // a Tab's title, or 0 when none or several are. Chrome may add a state
 // after the title ("- Audio playing").
 func stripPosition(items []stripItem, title string) int {
+	names := make([]string, len(items))
+	for i, it := range items {
+		names[i] = it.name
+	}
+	if m := stripMatches(names, title); len(m) == 1 {
+		return m[0] + 1
+	}
+	return 0
+}
+
+// stripMatches are the 0-based positions of the strip items named after a
+// Tab's title: the title itself, or the title and a state Chrome adds
+// after it (" - Memory usage - 17.3 MB", ", Audio playing"). None for an
+// empty title.
+func stripMatches(names []string, title string) []int {
 	title = page.Collapse(title)
 	if title == "" {
-		return 0
+		return nil
 	}
-	pos := 0
-	for i, it := range items {
-		name := page.Collapse(it.name)
-		if name != title && !strings.HasPrefix(name, title+" ") && !strings.HasPrefix(name, title+",") {
-			continue
+	var m []int
+	for i, n := range names {
+		name := page.Collapse(n)
+		if name == title || strings.HasPrefix(name, title+" ") || strings.HasPrefix(name, title+",") {
+			m = append(m, i)
 		}
-		if pos != 0 {
-			return 0
-		}
-		pos = i + 1
 	}
-	return pos
+	return m
 }
 
 // tabKeys is how the Headed switch presses its way to a Tab.
@@ -541,16 +635,26 @@ func (s Services) tabSwitchHeaded(ctx context.Context, ref string, tw tabWindow,
 }
 
 // tabStepHeadless is the Batch's scope question for a tab step: tab-new
-// and tab-close are Headless; tab-switch is Headless only when the Window's
-// Browser Connection goes through the extension. Anything unknown counts
-// as Headed, the safe side (a swallowing scope and the banner).
-func (s Services) tabStepHeadless(kind string, w *win.WindowInfo) bool {
+// and tab-close are Headless; tab-switch is Headless unless it is headed
+// (a Headless switch on a launched or cloned browser goes through the tab
+// strip or sends nothing, headless-max 05), and a headed one is Headless
+// only when the Window's Browser Connection goes through the extension.
+// Anything unknown counts as Headed, the safe side (a swallowing scope and
+// the banner).
+func (s Services) tabStepHeadless(kind string, args json.RawMessage, w *win.WindowInfo) bool {
 	switch kind {
 	case "tab-new", "tab-close":
 		return true
 	case "tab-switch":
 	default:
 		return false
+	}
+	var a protocol.TabArgs
+	if len(args) > 0 && json.Unmarshal(args, &a) != nil {
+		return false
+	}
+	if _, ok := s.Actions.(TabSelector); ok && !a.Headed {
+		return true
 	}
 	if w == nil {
 		return false

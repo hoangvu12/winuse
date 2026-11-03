@@ -414,4 +414,8 @@ prints the winuse and helper versions, the helper's uptime, the desktop's
 lock state, the integrity level, DPI awareness, the Browser Connections
 and the Windows build; it only reads and never starts the helper. The
 notes after an Action's `ok` (see process model) report the Windows and
-Tabs it opened. **extension**.
+Tabs it opened. The tab commands (`tab list|new|close|switch`) are
+Headless; `tab switch` on a browser winuse launched or cloned selects the
+Tab's item in the Window's UIA tab strip and reads IsSelected back
+(headless-max 05), and `--headed` switches with real keys in the
+foreground instead. Codex switches tabs only with keys. **extension**.
