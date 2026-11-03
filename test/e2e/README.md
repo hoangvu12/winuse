@@ -932,3 +932,23 @@ set WINUSE_E2E_ELECTRON=C:\electron-dist\electron-vX.Y.Z-win32-x64\electron.exe
 set WINUSE_E2E_WEBVIEW2=C:\path\to\WebView2App.exe
 go test -tags e2e -v -timeout 5m -run "TestLaunchAppCDP|TestAttachToRunningElectron" ./test/e2e
 ```
+
+## Shell surfaces (desktop-parity 09)
+
+`test/e2e/shell_test.go` runs against the user's own taskbar: there is no
+fixture shell. `TestShellReadsTheTaskbar` only reads (`list-windows
+--shell`, the taskbar's Window State, the foreground unchanged) and runs
+with the usual opt-in. The other two act on the shell and skip unless
+`WINUSE_E2E_SHELL=1` is set as well, only when the user agreed:
+`TestShellRefusesWithoutHeaded` checks that Start's button and
+Control_L+Escape are refused without `--headed` (a regression would open
+Start), and `TestShellOpensAndClosesTheTrayOverflow` opens the tray
+overflow with a `--headed` click on the hidden-icons chevron (it takes
+the foreground), reads its icons, closes it with the Headless Escape, and
+activates the Window that was in the foreground before.
+
+```
+set WINUSE_E2E=1
+set WINUSE_E2E_SHELL=1
+go test -tags e2e -v -run "TestShell" ./test/e2e
+```

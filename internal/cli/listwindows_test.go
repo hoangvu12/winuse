@@ -1,7 +1,8 @@
 package cli
 
 // Offline tests for list-windows's flags (desktop-parity 22): --details
-// and --app parse locally; usage errors exit 2 and never dial the helper.
+// and --app parse locally, and so does --shell (desktop-parity 09); usage
+// errors exit 2 and never dial the helper.
 
 import (
 	"os"
@@ -21,6 +22,9 @@ func TestParseListWindowsArgs(t *testing.T) {
 	}{
 		{name: "no flags: Codex's list_windows", args: nil},
 		{name: "details", args: []string{"--details"}, want: protocol.ListWindowsArgs{Details: true}},
+		{name: "shell", args: []string{"--shell"}, want: protocol.ListWindowsArgs{Shell: true}},
+		{name: "shell with the others", args: []string{"--shell", "--details", "--app", "explorer.exe"},
+			want: protocol.ListWindowsArgs{Details: true, App: "explorer.exe", Shell: true}},
 		{name: "app", args: []string{"--app", "Notepad"}, want: protocol.ListWindowsArgs{App: "Notepad"}},
 		{name: "app=", args: []string{"--app=Google Chrome"}, want: protocol.ListWindowsArgs{App: "Google Chrome"}},
 		{name: "both, any order", args: []string{"--app", "chrome.exe", "--details"},

@@ -14,7 +14,9 @@ package helper
 // `#32768` menu, a WinUI 3 PopupHost, a Chromium menu popup). Tooltips
 // and click-through windows are skipped. A Windows toast reuses
 // ShellExperienceHost's window in another process, so it is never
-// reported (headless-gaps probes round 5, section 7). A reported menu
+// reported (headless-gaps probes round 5, section 7). An Action on a
+// shell surface reports Start or the Action Center when it shows, though
+// each lives in its own host process (desktop-parity 09). A reported menu
 // that list-windows drops still resolves by its Window ID
 // (resolveWindow), so the agent can read it next.
 //
@@ -74,6 +76,9 @@ func reportsOpened(name string, args json.RawMessage) bool {
 type openedBefore struct {
 	target win.WindowInfo
 	known  map[uint64]bool
+	// shells are the shell surfaces shown before (desktop-parity 09): a
+	// closed Start or Action Center is a known but cloaked window.
+	shells map[uint64]bool
 }
 
 // openedProbe is an extra check that a Page Action registers while it
@@ -151,10 +156,13 @@ func (s Services) snapshotOpened(args json.RawMessage) (openedBefore, bool) {
 	if err != nil {
 		return openedBefore{}, false
 	}
-	before := openedBefore{known: make(map[uint64]bool, len(all))}
+	before := openedBefore{known: make(map[uint64]bool, len(all)), shells: map[uint64]bool{}}
 	found := false
 	for _, x := range all {
 		before.known[x.ID] = true
+		if win.ShellSurface(x) {
+			before.shells[x.ID] = true
+		}
 		if x.ID == w.ID {
 			before.target, found = x, true
 		}
@@ -217,6 +225,10 @@ func openedChanges(before openedBefore, after []win.WindowInfo) (opened []win.Wi
 			closed = false
 			continue
 		}
+		if before.target.Shell != "" && win.ShellSurface(w) && !before.shells[w.ID] {
+			opened = append(opened, w) // Start or the Action Center, from its own host process
+			continue
+		}
 		if before.known[w.ID] || w.PID != before.target.PID || !win.OpenedSurface(w) {
 			continue
 		}
@@ -264,7 +276,8 @@ func stepNotes(out string) string {
 
 // popupByID finds an open menu or popup by its Window ID: a Window an
 // Action reported opening that list-windows drops (a `#32768` menu, a
-// PopupHost).
+// PopupHost), or a shell surface `list-windows --shell` lists
+// (desktop-parity 09, shell.go).
 func (s Services) popupByID(ref string) (win.WindowInfo, bool) {
 	id, err := strconv.ParseUint(strings.TrimSpace(ref), 10, 64)
 	if err != nil || s.Surfaces == nil {
@@ -275,7 +288,7 @@ func (s Services) popupByID(ref string) (win.WindowInfo, bool) {
 		return win.WindowInfo{}, false
 	}
 	for _, w := range all {
-		if w.ID == id && win.OpenedSurface(w) {
+		if w.ID == id && (win.OpenedSurface(w) || win.ShellSurface(w)) {
 			return w, true
 		}
 	}

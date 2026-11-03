@@ -84,6 +84,7 @@ every command, next to `WINUSE_AGENT`.
 winuse list-windows                 # one line per Window: <Window ID>  <App>  <title>
 winuse list-windows --details       # adds <x,y WxH pid N flags> before the title
 winuse list-windows --app <name>    # only that App's Windows (with or without --details)
+winuse list-windows --shell         # adds the taskbar and the open shell flyouts (see below)
 winuse get-window <window>          # re-resolve one Window and print its line
 winuse list-apps                    # running and recent Apps, with their Windows
 winuse launch-app <name|exe path>   # start an App and print the Window it opened
@@ -152,7 +153,34 @@ A dialog such as Save As, a file picker or a message box is its own Window
 of the same App. Target it directly. An Action that opens one names it in a
 note after its `ok` (see "Read the result"). If a dialog you expect is
 missing from the Window State, look for it in `list-windows`. Listings
-already leave out hidden, cloaked and tool windows.
+already leave out hidden, cloaked and tool windows, and the shell.
+
+### The taskbar and the shell
+
+`--shell` adds the shell's own surfaces to the listing. The taskbar's line
+is titled `Taskbar`. Name a shell surface by its Window ID only, never by
+its App (Windows Explorer). `get-window-state` reads the taskbar Headless:
+Start, Search, the notification area (every one of its buttons has the ID
+`SystemTrayIcon`: the hidden-icons chevron, the clock, network, volume,
+battery, Show Desktop) and one button per running App.
+
+- Clicking a running App's taskbar button activates that App: it comes
+  to the front (one already in front may minimize instead), which takes
+  the user's foreground. So it is refused without `--headed`, with nothing
+  sent. To bring an App forward, use `winuse activate-window <window>`
+  with the Window from `list-windows`; the refusal names it.
+- Every other click, `set-value` or Secondary Action on a shell Element
+  is refused without `--headed` too: Start, Search and the notification
+  area's buttons open flyouts, and the tray icons in the overflow and the
+  items of an open Start or Action Center may activate an App. With
+  `--headed` they change the user's screen, so tell the user first. A note
+  after a `--headed` Action's `ok` says where the foreground went.
+  `winuse --headed press-key <taskbar> Control_L+Escape` opens Start.
+  `winuse --headed click <taskbar> <chevron>` opens the hidden icons; the
+  output names the overflow's Window ID, and the overflow keeps the
+  foreground.
+- `winuse press-key <overflow> Escape` closes the open overflow Headless.
+  The foreground then stays on the taskbar, not back on the user's Window.
 
 ## Read the Window State
 
@@ -417,11 +445,12 @@ without it the command is refused with nothing sent.
 - A right-click menu in a desktop App, such as a WPF App's.
   `click --button right` needs `--headed`, or `--post` on a classic
   control (see "Posted Clicks").
-- The taskbar, with its hidden icons and the clock's calendar and
-  notification panel. winuse lists no taskbar Window, the hidden-icons
-  overflow takes the foreground when it opens, and the panel opens only
-  for a real click. Reach the setting through its App, such as Settings,
-  or ask the user.
+- Opening the shell: Start, the taskbar's hidden icons, and the clock's
+  calendar and notification panel. The hidden-icons overflow takes the
+  foreground when it opens, and the panel does not open from UI
+  Automation at all. Clicking anything on the taskbar or in the overflow
+  needs `--headed` too; reading them stays Headless (see "The taskbar and
+  the shell").
 - Games, canvases and Apps that read raw input. They expose no Elements
   and ignore posted keys, so work with `--headed` from a screenshot with
   `@x,y` points.
@@ -1088,7 +1117,7 @@ Run `winuse` with no arguments for the full usage text.
 ```
 winuse [--headed] <command> [arguments]
 
-list-windows [--details] [--app <name>]
+list-windows [--details] [--app <name>] [--shell]
 list-apps | get-window <window>
 launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <s>]
 close-app <app> [--force]           # --force ends what is still running: the only command that ends a process

@@ -193,6 +193,7 @@ type Request struct {
 type ListWindowsArgs struct {
 	Details bool   `json:"details,omitempty"`
 	App     string `json:"app,omitempty"`
+	Shell   bool   `json:"shell,omitempty"` // desktop-parity 09: add the shell surfaces (taskbar, tray overflow, Start, Action Center)
 }
 
 // GetWindowArgs are get-window's arguments: the Window to re-resolve and
