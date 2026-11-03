@@ -7,8 +7,10 @@ package uia
 // suite covers them on a covered launched Chrome.
 
 import (
+	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 // fakeStrip is a tab strip: its items' names, which one is selected, and
@@ -89,5 +91,49 @@ func TestSelectTabFailures(t *testing.T) {
 	var verify *VerifyError
 	if !errors.As(err, &verify) || verify.Expected != "selected" {
 		t.Errorf("ignored Select: %v, want a VerifyError", err)
+	}
+}
+
+// A strip that shows no items yet is walked again until it does (a lazy
+// Chromium tree); one that never does ends in ErrNoTabStrip within the
+// budget; any other answer, success or a pick's refusal, is final at once.
+func TestSettleTabStripWaitsForALazyStrip(t *testing.T) {
+	noSleep := func(context.Context, time.Duration) error { return nil }
+	ctx := context.Background()
+
+	walks := 0
+	err := settleTabStrip(ctx, time.Hour, time.Millisecond, noSleep, func() error {
+		walks++
+		if walks < 3 {
+			return ErrNoTabStrip
+		}
+		return nil
+	})
+	if err != nil || walks != 3 {
+		t.Errorf("a strip built on the third walk: %v after %d walks, want success after 3", err, walks)
+	}
+
+	walks = 0
+	start := time.Now()
+	err = settleTabStrip(ctx, 50*time.Millisecond, 10*time.Millisecond, func(ctx context.Context, d time.Duration) error {
+		time.Sleep(d)
+		return nil
+	}, func() error { walks++; return ErrNoTabStrip })
+	if !errors.Is(err, ErrNoTabStrip) || walks < 2 || time.Since(start) > time.Second {
+		t.Errorf("a strip that never shows: %v after %d walks in %s, want ErrNoTabStrip after a few walks within the budget", err, walks, time.Since(start))
+	}
+
+	refused := errors.New("no such tab")
+	walks = 0
+	if err := settleTabStrip(ctx, time.Hour, time.Millisecond, noSleep, func() error { walks++; return refused }); err != refused || walks != 1 {
+		t.Errorf("a pick's refusal: %v after %d walks, want it at once", err, walks)
+	}
+
+	// A request whose deadline is nearer than the next walk stops at once.
+	short, cancel := context.WithTimeout(ctx, time.Millisecond)
+	defer cancel()
+	walks = 0
+	if err := settleTabStrip(short, time.Hour, 100*time.Millisecond, noSleep, func() error { walks++; return ErrNoTabStrip }); !errors.Is(err, ErrNoTabStrip) || walks != 1 {
+		t.Errorf("a near deadline: %v after %d walks, want ErrNoTabStrip after 1", err, walks)
 	}
 }

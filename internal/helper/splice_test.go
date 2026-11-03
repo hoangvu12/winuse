@@ -47,7 +47,7 @@ func TestTypeTextIntoATextPatternFieldSplices(t *testing.T) {
 	if cmdErr != nil {
 		t.Fatalf("type-text --into: %v", cmdErr.Error())
 	}
-	if !strings.HasPrefix(out, "ok (set as the field's value at the caret: no key events fired") || strings.Contains(out, "caret could not") {
+	if out != "ok\nNote: the text was set as the field's value at the caret: no key events fired, and the field's undo may not hold it\n" {
 		t.Errorf("output = %q, want ok with the no-key-events note", out)
 	}
 	if spy.text != "héllo 😀" || spy.index != 2 {
@@ -69,7 +69,7 @@ func TestTypeTextIntoATextPatternFieldSplices(t *testing.T) {
 	spy = newSpliceSpy()
 	spy.result.CaretPlaced = false
 	out, cmdErr = runCommand(t, CommandsWith(spy.svc), "type-text", intoArgs(2, "x"))
-	if cmdErr != nil || !strings.Contains(out, "the caret could not be placed after the text") {
+	if cmdErr != nil || !strings.HasPrefix(out, "ok\nNote: ") || !strings.HasSuffix(out, "; the caret could not be placed after the text\n") {
 		t.Errorf("output = %q, %v, want the caret note", out, cmdErr)
 	}
 }

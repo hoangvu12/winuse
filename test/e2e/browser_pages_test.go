@@ -483,9 +483,9 @@ func (p *pageRun) navigation(t *testing.T) {
 }
 
 // tabs: tab new opens a background tab (the Window keeps showing its
-// page), tab list lists it, tab close closes it. tab switch on a launched
-// browser is Headed (ticket 07), so it is not run here;
-// TestBrowserPagesExtension runs the Headless one.
+// page), tab list lists it, tab switch selects it Headless through the
+// covered Window's tab strip (headless-max 05) and back, and tab close
+// closes it.
 func (p *pageRun) tabs(t *testing.T) {
 	p.open(t, p.srv.mainURL(false, ""), "")
 	_, before := p.tabList(t)

@@ -26,7 +26,11 @@ import (
 )
 
 // chromiumMessagesOn drives the route on a browser or Electron executable.
-func chromiumMessagesOn(t *testing.T, exe string, args ...string) {
+// A browser Window without a Browser Connection says so in a note on its
+// Window State; an Electron Window that winuse neither launched with --cdp
+// nor attached to is not a browser, so its Window State has no such note,
+// and eval failing shows that no Browser Connection reaches it.
+func chromiumMessagesOn(t *testing.T, exe string, electron bool, args ...string) {
 	t.Helper()
 	page, err := filepath.Abs("testdata/chromium-fixture.html")
 	if err != nil {
@@ -45,7 +49,11 @@ func chromiumMessagesOn(t *testing.T, exe string, args ...string) {
 	if exit != 0 {
 		t.Fatalf("get-window-state: exit %d, stderr:\n%s", exit, stderr)
 	}
-	if !strings.Contains(state, "the Page is read through UI Automation because") {
+	if electron {
+		if out, _, exit := runWinuse(t, []string{"eval", window, "1"}, "WINUSE_HELPER_IDLE="+e2eIdle); exit == 0 {
+			t.Fatalf("eval reached the Electron App (%q): a Browser Connection is open to it; this test needs none", out)
+		}
+	} else if !strings.Contains(state, "the Page is read through UI Automation because") {
 		t.Fatalf("the Window State does not say the Page is read without a Browser Connection; this test needs none:\n%s", state)
 	}
 	input := strconv.Itoa(webElementIndex(t, state, "edit", "winuse e2e input"))
@@ -91,7 +99,7 @@ func TestChromiumMessagesOnACoveredBrowser(t *testing.T) {
 	if len(browsers) == 0 {
 		t.Skip("no Chromium browser (Edge or Chrome) found in the standard install locations")
 	}
-	chromiumMessagesOn(t, browsers[0].exe, "--user-data-dir="+t.TempDir(), "--no-first-run", "--no-default-browser-check", "--new-window")
+	chromiumMessagesOn(t, browsers[0].exe, false, "--user-data-dir="+t.TempDir(), "--no-first-run", "--no-default-browser-check", "--new-window")
 }
 
 func TestChromiumMessagesOnACoveredElectron(t *testing.T) {
@@ -100,5 +108,5 @@ func TestChromiumMessagesOnACoveredElectron(t *testing.T) {
 	if exe == "" {
 		t.Skip("WINUSE_E2E_ELECTRON is not set: point it at electron.exe from an Electron release to run this test")
 	}
-	chromiumMessagesOn(t, exe)
+	chromiumMessagesOn(t, exe, true)
 }
