@@ -91,7 +91,7 @@ func TestTwoAgentsActAtOnceOnTwoFixtures(t *testing.T) {
 	checkbox, field := strconv.Itoa(idx[fixture.ElemCheckboxNotify]), strconv.Itoa(idx[fixture.ElemTextField])
 
 	// The middle step takes about 1.5 s: ten characters posted 150 ms
-	// apart (a Batch has no bare pause; its wait takes a state).
+	// apart.
 	const pause = 1500 * time.Millisecond
 	batch := func(window, text string) []string {
 		return []string{"batch", window, "click", checkbox, "then", "type-text", "--post", "--interval-ms", "150", "abcdefghij", "then", "set-value", field, text}
@@ -160,8 +160,8 @@ func TestHeadedActionsTakeTurnsOnTheDesktop(t *testing.T) {
 	canvas := strconv.Itoa(mainElementIndexes()[fixture.ElemCanvas])
 	// alpha's Headed Batch: a double click on the canvas (it opens
 	// nothing), then about 3 s holding the desktop lane: ten characters
-	// typed 300 ms apart (a Batch has no bare pause; its wait takes a
-	// state). The canvas takes no text, so they change nothing.
+	// typed 300 ms apart. The canvas takes no text, so they change
+	// nothing.
 	holdDesktop := []string{"--headed", "batch", windowA, "click", canvas, "--count", "2", "then", "type-text", "--interval-ms", "300", "abcdefghij"}
 
 	alpha := runTimedAsync(t, holdDesktop, asAgent("alpha")...)

@@ -36,6 +36,28 @@ behalf**, and never let an agent start a run: the Task Suite, like the
 opt-in e2e tests, is the user's to start (the spec's Testing Decisions
 say so).
 
+Keep your hands off the keyboard and mouse once it starts. Since
+multi-agent ticket 08, a real key press, click or wheel turn stops the
+running Headed Action like Esc (exit 130), the agent is told the user
+took over, and the task fails; a Headed Action also waits while input
+is coming in.
+
+## What to expect since ADR 0013 and 0014
+
+The prompts and Checks did not change; winuse's routing did, and the
+agent learns it from SKILL.md.
+
+- Without `--headed`, an Action with no background route is refused
+  with "nothing was sent" and the exact `--headed` retry (headless-max
+  ticket 21). Expect the agent to retry with `--headed` where the tasks
+  need the real pointer or keys: the canvas drags of `paint-draw` and
+  `paint-rect`, and typing that has no background route, such as
+  `notepad-note`'s multi-line note. A refusal costs a step or two.
+- A Headed Action gives the foreground and pointer back when it is done
+  (multi-agent 08): to the terminal running the Harness, unless the
+  Action left a menu or dialog open, which a `Note:` says. The next
+  Headed Action brings the app forward again.
+
 ## What you need
 
 - **Claude Code** on PATH (`claude`), logged in, with access to the
