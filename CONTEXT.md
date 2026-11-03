@@ -7,7 +7,7 @@ A Windows computer-use tool that lets any coding-agent harness see and operate d
 ### Targets
 
 **App**:
-An installed or running program, identified for listing, launching and recognition. An App owns zero or more Windows; it is never the thing an Action is aimed at.
+An installed or running program, identified for listing, launching, closing and recognition. An App owns zero or more Windows; it is never the thing an Action is aimed at. Closing an App asks each of its Windows to close, as a Window Action does, and is not an Action itself.
 _Avoid_: Application, program, process
 
 **Window**:

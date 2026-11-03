@@ -17,7 +17,7 @@ Rules if it is adopted:
 
 **Blocked by:** none
 
-**Status:** ready-for-agent (scope changed to detect and report, see Comments)
+**Status:** done (detect and report; the live e2e run is still to do: paused while the user games)
 
 - [ ] Probe: self-activation per host, with and without the guard
 - [ ] Guard with guaranteed re-enable and start-up recovery
@@ -43,3 +43,14 @@ Rules if it is adopted:
 ### 2026-11-03: triage decision (user)
 
 New scope: **detect and report**, no guard. Watch the foreground (EVENT_SYSTEM_FOREGROUND, or a before/after read as in ticket 02) during and just after a Headless Action. If the target App, or a Window it opened, took the foreground, the output says `ok (the App took the foreground)`. winuse does not take the foreground back: it has no foreground right, as ticket 02 found. LockSetForegroundWindow cannot work without rights (round 3), so the guard is dropped. The EnableWindow variant stays an unmeasured idea and is not built.
+
+### 2026-11-03: done as detect and report (worker, branch hm03-self-activation)
+
+The checklist above was the guard's; the decided scope replaced it. What was built:
+
+- `internal/helper/selfactivation.go`: `watchForeground` wraps every Element, keyboard, Window, tab and page Action, plus `batch` and `invoke-menu`. It does not wrap restore-window (it keeps its own note), activate-window, drag, hover, zoom or the clipboard commands. The wrapper sits outside dp-02's `reportOpened` (`reportAfter` composes them in the registry). Before the Action it reads the foreground and the target Window's process; after the Action and its opened-Window settle, it checks whether the foreground moved from another process's Window to one of the target's process. If an Action opened a Window, it looks once more `openedPoll` (50 ms) later, because the probe's dialog took the foreground 19 ms after showing.
+- Note: `Note: the App took the foreground; winuse does not take it back.`, the same line `launch-app` prints, appended after the ok and any other notes. The ticket comment wrote `ok (the App took the foreground)`; I used the Note line for consistency with launch-app and dp-02's notes.
+- `runAction` marks the request Headed (`markHeaded`, one line in actions.go), so a Headed Action, or a Batch with any Headed step, never reports its own activation. A failed Action keeps its error alone. A Window whose process cannot be read is not watched, which covers the offline tests' fake Windows.
+- No guard, no foreground taken back. ADR 0011 amendment; ADR 0013 row 03 done; SKILL.md ("Read the result": tell the user, do not repeat); codex-parity process-model row (status unchanged).
+- Tests: `internal/helper/selfactivation_test.go` (dialog/target took it, nothing moved, another App took it, the App already had it, Headed click, mixed and all-Headless Batch, failed Action, a dialog that activates after it opened, the command list). Opt-in e2e `TestHeadlessClickReportsSelfActivation` (`test/e2e/self_activation_test.go`): the covered fixture's Classic Dialog click must say so exactly when the fixture holds the foreground afterwards; it logs which case ran, because the lapse cannot be set up on demand. Compiled, NOT run.
+

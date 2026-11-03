@@ -262,8 +262,9 @@ default:
 - `invoke-menu`, a command of a classic menu bar, which has no Headed
   form either.
 - Every Window Action but one: `restore-window`, `minimize-window`,
-  `move-window`, `resize-window` and `close-window`. `maximize-window` is
-  Headed only.
+  `move-window`, `resize-window` and `close-window`, and `close-app`,
+  which closes every Window of an App the way `close-window` closes one.
+  `maximize-window` is Headed only.
 - `press-key` Return or Escape on a classic dialog, `type-text` into a
   focused classic edit box, and `type-text --into` a classic edit box or a
   Page field you name, as described in "Fill in fields, keys and text".
@@ -546,6 +547,7 @@ winuse move-window <window> <x> <y>              # visible frame top-left, scree
 winuse resize-window <window> <width> <height>   # visible frame size, physical pixels
 winuse close-window <window>                     # the same request as the close button
 winuse --headed maximize-window <window>         # a real maximize; takes the foreground
+winuse close-app <app> [--force]                 # every Window of the App, then waits for it to exit
 ```
 
 Window Actions change the Window without bringing it to the front, read it
@@ -579,8 +581,19 @@ exception.
   new screenshot line rather than repeating it.
 - `close-window` asks the Window to close and waits up to two seconds. If it
   stays open, the output says so: the app may be asking to save. Read
-  `list-windows` or the Window State and handle that prompt. winuse never
-  ends a process.
+  `list-windows` or the Window State and handle that prompt.
+- `close-app` names the App as `list-windows` prints it, or by its
+  executable name, and asks every one of its Windows to close, then waits
+  up to five seconds for it to exit. One still running gets `ok (the close
+  was requested; <App> is still running, it may be asking to save: ...)`:
+  handle its prompt as for `close-window`. It refuses administrator Apps,
+  a locked desktop and Windows' own processes (explorer, dwm, csrss,
+  winlogon and the like) with nothing sent.
+- Only `close-app --force` ends a process: after the same request and
+  wait, it ends the App's processes still running, and their unsaved work
+  is lost. Use it only when the user asked for the App to be ended, never
+  to get past a save prompt you could answer. No other command ends a
+  process.
 
 ## Clipboard
 
@@ -833,6 +846,13 @@ Windows rather than the App. No note does not prove nothing opened: a slow
 App can open its dialog later, so check `list-windows` when you expected
 one.
 
+An App can take the foreground by itself when a Headless Action reaches
+it, most often by bringing forward a dialog the click opened. winuse cannot
+stop that, and it does not take the foreground back. After any Headless
+Action, a Window Action or a Page Action, the output then ends with
+`Note: the App took the foreground; winuse does not take it back.` The user
+may have been typing elsewhere: tell them, and do not repeat the Action.
+
 ## Wait for a change
 
 When an Action starts something slow, wait for its effect instead of
@@ -939,6 +959,7 @@ winuse [--headed] <command> [arguments]
 list-windows [--details] [--app <name>]
 list-apps | get-window <window>
 launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <s>]
+close-app <app> [--force]           # --force ends what is still running: the only command that ends a process
 get-window-state <window> [--screenshot] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right]
