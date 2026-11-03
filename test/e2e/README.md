@@ -354,6 +354,11 @@ still the foreground window afterwards. The shared helpers are in
   the screenshot and zoom fail with "is minimized; there is nothing on
   screen to capture" and the `restore-window` hint. The Window stays
   minimized and the foreground does not change.
+- `TestHeadlessActionsOnMinimizedWindow` (`minimized_test.go`,
+  headless-max ticket 14): on the minimized fixture, a Headless `click`
+  toggles the checkbox and `set-value` fills the text field, while Element
+  `scroll` and the screenshot are refused with "is minimized". The Window
+  stays minimized, and the foreground and the pointer do not change.
 - `TestSetValueOnOffTheCheckbox`: `set-value` with `on`, `ON`, `checked`,
   `off`, `unchecked`, `True` and `false` on the covered checkbox. Setting
   the state it already has sends nothing (the fixture's generation stays

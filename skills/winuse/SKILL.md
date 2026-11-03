@@ -284,10 +284,13 @@ from the start.
 
 - Hover and drag in a desktop App. Only a Page with a Browser Connection
   takes them Headless.
-- A minimized Window, a browser's or an Electron App's included. Run
-  `restore-window` first. A Store app such as Calculator has no UI at all
-  while minimized and comes to the front when restored, so tell the user
-  before you restore one.
+- A minimized browser, Electron App or Store app. Run `restore-window`
+  first. A Store app such as Calculator has no UI at all while minimized
+  and comes to the front when restored, so tell the user before you
+  restore one. Other minimized Windows still take `click`,
+  `set-value`, `perform-secondary-action` and `select-text` by Element;
+  scrolling, keys, `invoke-menu` and screenshots need `restore-window`
+  first.
 - A right-click menu in a desktop App, such as a WPF App's.
   `click --button right` is Headed.
 - The taskbar, with its hidden icons and the clock's calendar and
@@ -702,7 +705,8 @@ anything reached the app.
   from it, because repeating could act twice.
 - `may have taken effect` means the write failed part way. Read the Window
   State before you repeat anything.
-- `is minimized` means a Headless Action cannot reach the Window. Run
+- `is minimized` means this Headless Action cannot reach the minimized
+  Window. Run
   `restore-window`, which does not take the foreground (some Apps bring
   themselves to the front, and the output says so), or `activate-window`,
   which takes it, or pass `--headed`, then read the Window State and retry

@@ -18,12 +18,12 @@ Plan:
 
 **Blocked by:** none
 
-**Status:** ready-for-agent (classic Win32, WPF and WinUI 3 measured; see Comments)
+**Status:** done (the live e2e run is still to do)
 
-- [ ] Probe per framework, recorded in this ticket
-- [ ] Readiness check by framework class
-- [ ] Offline tests of the readiness decision
-- [ ] Opt-in e2e: minimized fixture click and set-value
+- [x] Probe per framework, recorded in this ticket
+- [x] Readiness check by framework class
+- [x] Offline tests of the readiness decision
+- [ ] Opt-in e2e: minimized fixture click and set-value (written and compiled; not run live yet)
 
 ## Comments
 
@@ -62,3 +62,16 @@ Rule:
 - The `restore-window` hint stays, adding that restoring a Store app brings it to the front.
 
 Final scope of this ticket: lift the refusal for classic Win32, WPF and WinUI 3 Desktop; keep it for UWP and Chromium.
+
+### 2026-11-03: built (branch hm14-minimized)
+
+- `win.HeadlessReady`'s MinimizedError now carries the Window's class. `win.MinimizedPatterns(class)` is the pure decision. It returns false for `ApplicationFrameWindow` and `Windows.UI.Core.CoreWindow` (Store apps), `Chrome_WidgetWin_*` (Chromium and Electron), and Firefox, Qt and Java, which are unmeasured minimized. Every other class counts as classic Win32 and returns true: MFC, WinForms and Delphi (real Win32 controls behind the same proxies), WPF (`HwndWrapper[`) and WinUI 3 Desktop.
+- Lifted for the UI Automation pattern Actions only (runHeadless with the new `minimized` flag): click, set-value, perform-secondary-action and select-text. The Agent Cursor stays hidden, because a minimized Window has no rectangle on screen.
+- Kept refused, with nothing sent:
+  - Element scroll: its into-view read-back needs the Element on screen, and scrolling while minimized is unmeasured.
+  - The message routes: dialog Return and Escape, type-text into an edit, Posted Keys and invoke-menu. They are unmeasured minimized, apart from round 3's EM_REPLACESEL.
+  - Screenshots.
+- A minimized Store app says "a minimized Store app has no UI to act on", and its restore-window hint adds that restoring it brings it to the front. Every minimized refusal now says "this Action cannot reach a minimized Window headless".
+- Unmeasured inside the lifted set: the click's ExpandCollapse and default-action fallbacks, and the Expand, Collapse and Scroll Secondary Actions. Invoke, Toggle, SetValue and SelectionItem.Select were measured.
+- Tests: the offline tests (`internal/win/minimized_test.go`, `internal/helper/minimized_test.go` and the updated refusal table in `headless_test.go`) pass. The e2e `TestHeadlessActionsOnMinimizedWindow` (a minimized fixture: a click toggles, set-value fills, scroll and the screenshot are refused, and the Window stays iconic with the foreground and pointer unchanged) is written and passes `go vet -tags e2e`. **It has not run live:** live runs are paused while the user is gaming.
+- Docs: the SKILL.md minimized item in "What winuse cannot do headless" and the `is minimized` result line, ADR 0013 route row 14, the headless spec note and the headless-max spec row.
