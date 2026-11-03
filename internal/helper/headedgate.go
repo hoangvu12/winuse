@@ -111,10 +111,13 @@ func pressKeyWhy(w win.WindowInfo, chord keys.Chord) string {
 	return fmt.Sprintf("press-key %s has no background route in window %d: only Return or Escape on a classic dialog is pressed without the foreground", chord, w.ID)
 }
 
-// pressKeyAlt offers Posted Keys for a key with no modifier.
+// pressKeyAlt offers Posted Keys for a key, or a chord the attached key
+// state route can post (headless-max ticket 07).
 func pressKeyAlt(id string, chord keys.Chord) string {
 	if postedModifier(chord) {
-		return ""
+		if _, err := win.PlanPostedChord(chord, ""); err != nil {
+			return ""
+		}
 	}
 	return "to post it to the focused control without the foreground (best effort): winuse press-key " + id + " " + chord.String() + " --post"
 }

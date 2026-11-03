@@ -844,19 +844,70 @@ func TestTypeTextPostPostsCharacters(t *testing.T) {
 	}
 }
 
-func TestPostRefusesChordsWithModifiers(t *testing.T) {
-	for _, key := range []string{"Control_L+a", "Shift_L+Tab", "Alt_L+F5", "a+Control_R"} {
-		spy := newKeyRouteSpy(editTarget(plainEdit))
+// chordSpy fakes PostChord on a keyRouteSpy and records each plan.
+func chordSpy(target win.KeyTarget, err error) (*keyRouteSpy, *[]win.ChordPlan, *[][2]uint64) {
+	spy := newKeyRouteSpy(target)
+	var plans []win.ChordPlan
+	var to [][2]uint64
+	spy.svc.PostChord = func(top, target uint64, plan win.ChordPlan) (int, error) {
+		spy.step("post-chord")
+		plans = append(plans, plan)
+		to = append(to, [2]uint64{top, target})
+		if err != nil {
+			return 0, err
+		}
+		return 2, nil
+	}
+	return spy, &plans, &to
+}
+
+func TestPostChordsThroughAttachedKeyState(t *testing.T) {
+	// headless-max ticket 07: a chord with Control, Shift or Alt is posted
+	// through attached key state to the focused control, as Posted Keys.
+	for _, c := range []struct {
+		key string
+		vk  uint16
+		sys bool
+	}{{"Control_L+a", 'A', false}, {"Shift_L+Tab", 0x09, false}, {"Alt_L+F5", 0x74, true}, {"a+Control_R", 'A', false}} {
+		spy, plans, to := chordSpy(editTarget(plainEdit), nil)
+		out, cmdErr := runCommand(t, CommandsWith(spy.svc), "press-key", protocol.PressKeyArgs{Window: "101", Key: c.key, Post: true})
+		if cmdErr != nil || out != postedOutput {
+			t.Fatalf("%s: %q, %v, want the posted output", c.key, out, cmdErr)
+		}
+		if len(*plans) != 1 || (*plans)[0].Key.VK != c.vk || (*plans)[0].Sys != c.sys || (*plans)[0].Activate != c.sys {
+			t.Errorf("%s: plans = %+v", c.key, *plans)
+		}
+		if (*to)[0] != [2]uint64{101, plainEdit.HWND} {
+			t.Errorf("%s: posted to %v, want window 101's focused edit", c.key, (*to)[0])
+		}
+		if len(spy.postedKeys) != 0 {
+			t.Errorf("%s: the plain Posted Keys route ran too: %v", c.key, spy.postedKeys)
+		}
+		assertNoV1(t, spy.recorded())
+	}
+}
+
+func TestPostChordRefusals(t *testing.T) {
+	// Chords the route cannot post are refused before anything is touched.
+	for key, want := range map[string]string{
+		"Control_L+Alt_L+x": "Control and Alt together",
+		"Control_L":         "only modifiers",
+		"Alt_L+F4":          "press-key refuses Alt_L+F4", // the Blocked Combo refusal; with --force, blockedcombos_test
+	} {
+		spy, plans, _ := chordSpy(editTarget(plainEdit), nil)
 		_, cmdErr := runCommand(t, CommandsWith(spy.svc), "press-key", protocol.PressKeyArgs{Window: "101", Key: key, Post: true})
-		if cmdErr == nil {
-			t.Fatalf("%s: press-key --post succeeded, want the modifier refusal", key)
+		if cmdErr == nil || !strings.Contains(cmdErr.Msg, want) || !strings.HasSuffix(cmdErr.Msg, nothingSentNote) {
+			t.Errorf("%s: err = %v, want %q and nothing sent", key, cmdErr, want)
 		}
-		if !strings.Contains(cmdErr.Msg, "modifier") || !strings.HasSuffix(cmdErr.Msg, nothingSentNote) {
-			t.Errorf("%s: message = %q, want a modifier refusal that says nothing was sent", key, cmdErr.Msg)
+		if len(*plans) != 0 || len(spy.recorded()) != 0 {
+			t.Errorf("%s: plans %v steps %v, want nothing touched", key, *plans, spy.recorded())
 		}
-		if got := spy.recorded(); len(got) != 0 {
-			t.Errorf("%s: steps = %v, want nothing touched", key, got)
-		}
+	}
+	// The thread that owns the foreground: nothing sent, the --headed way.
+	spy, _, _ := chordSpy(editTarget(plainEdit), win.ErrChordForeground)
+	_, cmdErr := runCommand(t, CommandsWith(spy.svc), "press-key", protocol.PressKeyArgs{Window: "101", Key: "Control_L+s", Post: true})
+	if cmdErr == nil || !strings.HasSuffix(cmdErr.Msg, nothingSentNote) || !strings.Contains(cmdErr.Hint, "winuse --headed press-key 101 Control_L+s") {
+		t.Errorf("foreground thread: %v, want nothing sent and the --headed press", cmdErr)
 	}
 }
 

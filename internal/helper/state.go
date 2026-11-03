@@ -129,6 +129,10 @@ type Services struct {
 	// fall back to the real PostMessage calls; tests fake them.
 	PostKeys func(target uint64, chord keys.Chord) (int, error) // WM_KEYDOWN in order, WM_KEYUP in reverse
 	PostText func(target uint64, text string) (int, error)      // WM_CHAR per UTF-16 unit
+	// PostChord posts a chord with modifiers through attached key state
+	// (headless-max ticket 07, win.PostChord); nil falls back to the real
+	// one.
+	PostChord func(top, target uint64, plan win.ChordPlan) (int, error)
 
 	// The Esc stop (ticket 12): nil falls back to a no-op (no physical-Esc
 	// stopping); tests fake it with a latch they can press.
@@ -508,6 +512,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.PostText == nil {
 		s.PostText = win.PostText
+	}
+	if s.PostChord == nil {
+		s.PostChord = win.PostChord
 	}
 	if s.Esc == nil {
 		s.Esc = noopEscWatch{}

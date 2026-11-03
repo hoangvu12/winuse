@@ -81,7 +81,7 @@ An Action performed the way a person would: the Window is brought to the foregro
 _Avoid_: Foreground action, physical action, v1 mode
 
 **Posted Keys**:
-Keys or text that the agent explicitly asks to post to a Window's focused control without the foreground. Best effort: the app may ignore them, and they cannot carry modifiers. Neither Headless nor Headed.
+Keys or text that the agent explicitly asks to post to a Window's focused control without the foreground. Best effort: the app may ignore them. A chord's modifiers are held for the Window's thread only, never the user's keyboard (ADR 0013); Control and Alt together are refused. Neither Headless nor Headed.
 _Avoid_: Background keys, silent typing
 
 **Posted Clicks**:

@@ -561,7 +561,17 @@ still the foreground window afterwards. The shared helpers are in
 - `TestPostedKeysIntoClassicEdit` (`posted_keys_test.go`):
   `type-text --post` and `press-key BackSpace --post` reach the Classic
   Dialog's Edit, the output starts with `ok (posted;`, and
-  `Control_L+a --post` is refused with "nothing was sent".
+  `Control_L+Alt_L+a --post` (Control and Alt together) is refused with "nothing was sent".
+- `TestPostedChordFiresAClassicAccelerator` (`posted_chords_test.go`,
+  headless-max ticket 07): `press-key Control_L+Shift_L+k --post` on the
+  covered fixture fires its main window's accelerator
+  (TranslateAccelerator, `accelerators` 1) with no activation; the
+  foreground stays put and the user's Control key does not read as down.
+- `TestPostedChordFiresAWPFKeyBinding` **needs Windows PowerShell**, which
+  shows the test's own WPF window (KeyBinding Ctrl+S) without activating
+  it. With it covered, `press-key Control_L+s --post` fires the binding
+  (through the activation pair), the foreground stays put and the user's
+  Control key does not read as down.
 - `TestPostedKeysRefusedOnBlockedAndMinimizedWindows`: posted keys and
   text into the main window are refused while the Save As dialog blocks
   it and while it is minimized, and no key reaches the fixture.
