@@ -155,13 +155,28 @@ directory** — the user's real browser profile is never touched, and a
 separate user-data-dir means a fresh browser process even when the user's
 own browser is running — opens the local HTML fixture page
 (`testdata/chromium-fixture.html`), waits for its Window to appear in
-`list-windows`, and asserts the page's link, button, input and checkbox
+the started process (a Window with that title in any other process fails
+the test before anything acts on it), and asserts the page's link, button, input and checkbox
 Elements show up in one `get-window-state` call (the lazy-accessibility
 retry path: Chromium enables its tree at the first UI Automation contact,
 so the first read is nearly empty and the retry must surface the page). It
 skips when no Chromium browser is installed. Offline, the retry and the
 sparse-tree notes are tested against recorded Chromium/Electron trees in
 `internal/uia/testdata/` (see `internal/uia/retry_test.go`).
+
+Every test that starts a browser itself goes through `startIsolatedBrowser`
+(`chromium_test.go`): a fresh `--user-data-dir` in the test's temp
+directory (a profile flag from the caller is refused), `--disable-sync`,
+and `--disable-features=msImplicitSignin`. Without the last, Edge signs a
+fresh profile in to the Windows account on its own, turns on sync of that
+account's data, and puts a modal "Sync your profile" dialog over the page
+(the laptop's 0693039 run). `winuse browser launch` turns
+`msImplicitSignin` off as well. `TestIsolatedEdgeStaysSignedOut` is the
+one-launch check: one Edge on a temp profile, its Window State read for
+10 s, failing on any sign of the sign-in dialog, then the browser
+terminated by its pid and the profile removed. The tests that act in the user's own
+browser through the extension (`TestBrowserPagesExtension`, the probe's
+extension questions) skip unless `WINUSE_E2E_USER_BROWSER=1` is set too.
 
 The ticket-08 tests (`screenshot_test.go`) cover screenshots, zoom and
 coordinate clicks: `get-window-state --screenshot` saves a JPEG whose path
@@ -769,8 +784,8 @@ the foreground back to the Window that had it.
 
 **The extension questions** (the `chrome.windows` ids in question 1, the
 tab create and `chrome.tabs.update` activation in question 2) use the
-user's own browser and run only when the winuse extension is connected to
-it. To include them, first run `winuse browser ext install chrome` (and
+user's own browser and run only with `WINUSE_E2E_USER_BROWSER=1` and the
+winuse extension connected to it. To include them, first run `winuse browser ext install chrome` (and
 `edge`), follow the printed steps, and check with
 `winuse browser ext status chrome` (exit 0). The probe then opens one
 background tab there, switches to it and back, and closes it. The user's

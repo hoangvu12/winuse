@@ -44,6 +44,12 @@ func optIn(t *testing.T) {
 	}
 }
 
+// userBrowserOptIn reports whether the user agreed to tests that act in
+// their own running Chrome or Edge (through the winuse extension). Every
+// other browser test starts its own browser on a throwaway profile
+// (startIsolatedBrowser, `winuse browser launch`).
+func userBrowserOptIn() bool { return os.Getenv("WINUSE_E2E_USER_BROWSER") == "1" }
+
 // winuseBinary builds the winuse binary once per test run.
 func winuseBinary(t *testing.T) string {
 	t.Helper()

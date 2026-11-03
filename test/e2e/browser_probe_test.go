@@ -320,6 +320,11 @@ func (p *browserProbe) openProbePage(t *testing.T) {
 func (p *browserProbe) findExtension(t *testing.T) {
 	r := p.rep
 	r.section(t, "Extension")
+	if !userBrowserOptIn() {
+		p.extState = "not opted in"
+		r.measured(t, "extension skipped: its questions open a tab in the user's own %s; set WINUSE_E2E_USER_BROWSER=1 only when the user agreed to it", browser.DisplayName(p.name))
+		return
+	}
 	stdout, stderr, exit := runWinuse(t, []string{"browser", "ext", "status", p.name}, "WINUSE_HELPER_IDLE="+e2eIdle)
 	r.note(t, "`winuse browser ext status %s`: exit %d, output %q, stderr %q", p.name, exit, strings.TrimSpace(stdout), strings.TrimSpace(stderr))
 	if exit != 0 {

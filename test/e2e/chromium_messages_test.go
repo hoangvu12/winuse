@@ -25,25 +25,23 @@ import (
 	"time"
 )
 
-// chromiumMessagesOn drives the route on a browser or Electron executable.
-// A browser Window without a Browser Connection says so in a note on its
-// Window State; an Electron Window that winuse neither launched with --cdp
-// nor attached to is not a browser, so its Window State has no such note,
-// and eval failing shows that no Browser Connection reaches it.
-func chromiumMessagesOn(t *testing.T, exe string, electron bool, args ...string) {
+// chromiumFixtureURL is the file URL of the Chromium fixture page.
+func chromiumFixtureURL(t *testing.T) string {
 	t.Helper()
 	page, err := filepath.Abs("testdata/chromium-fixture.html")
 	if err != nil {
 		t.Fatalf("resolving the fixture page: %v", err)
 	}
-	url := "file:///" + strings.ReplaceAll(filepath.ToSlash(page), " ", "%20")
-	cmd := exec.Command(exe, append(args, url)...)
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("starting %s: %v", exe, err)
-	}
-	defer terminatePID(t, uint32(cmd.Process.Pid))
+	return "file:///" + strings.ReplaceAll(filepath.ToSlash(page), " ", "%20")
+}
 
-	window := strconv.FormatUint(findWindowByTitle(t, chromiumPageTitle, 30*time.Second), 10)
+// chromiumMessagesOn drives the route on the fixture page's Window, in a
+// browser or Electron App the caller started. A browser Window without a Browser Connection says so in a note on its
+// Window State; an Electron Window that winuse neither launched with --cdp
+// nor attached to is not a browser, so its Window State has no such note,
+// and eval failing shows that no Browser Connection reaches it.
+func chromiumMessagesOn(t *testing.T, window string, electron bool) {
+	t.Helper()
 	cover := coverWindow(t, window)
 	state, stderr, exit := runGetWindowState(t, window)
 	if exit != 0 {
@@ -99,7 +97,8 @@ func TestChromiumMessagesOnACoveredBrowser(t *testing.T) {
 	if len(browsers) == 0 {
 		t.Skip("no Chromium browser (Edge or Chrome) found in the standard install locations")
 	}
-	chromiumMessagesOn(t, browsers[0].exe, false, "--user-data-dir="+t.TempDir(), "--no-first-run", "--no-default-browser-check", "--new-window")
+	pid := startIsolatedBrowser(t, browsers[0].exe, "--new-window", chromiumFixtureURL(t))
+	chromiumMessagesOn(t, strconv.FormatUint(findIsolatedWindow(t, pid, chromiumPageTitle, 30*time.Second), 10), false)
 }
 
 func TestChromiumMessagesOnACoveredElectron(t *testing.T) {
@@ -108,5 +107,10 @@ func TestChromiumMessagesOnACoveredElectron(t *testing.T) {
 	if exe == "" {
 		t.Skip("WINUSE_E2E_ELECTRON is not set: point it at electron.exe from an Electron release to run this test")
 	}
-	chromiumMessagesOn(t, exe, true)
+	cmd := exec.Command(exe, chromiumFixtureURL(t))
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("starting %s: %v", exe, err)
+	}
+	defer terminatePID(t, uint32(cmd.Process.Pid))
+	chromiumMessagesOn(t, strconv.FormatUint(findWindowByTitle(t, chromiumPageTitle, 30*time.Second), 10), true)
 }

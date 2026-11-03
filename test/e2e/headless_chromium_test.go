@@ -16,7 +16,6 @@ package e2e
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -50,7 +49,6 @@ func TestHeadlessChromiumKeepsTheForeground(t *testing.T) {
 	b := browsers[0]
 	killHelper(t)
 
-	profile := t.TempDir()
 	page, err := filepath.Abs("testdata/chromium-fixture.html")
 	if err != nil {
 		t.Fatalf("resolving the fixture page: %v", err)
@@ -59,13 +57,9 @@ func TestHeadlessChromiumKeepsTheForeground(t *testing.T) {
 		t.Fatalf("the fixture page is missing: %v", err)
 	}
 	url := "file:///" + strings.ReplaceAll(filepath.ToSlash(page), " ", "%20")
-	cmd := exec.Command(b.exe, "--user-data-dir="+profile, "--no-first-run", "--no-default-browser-check", "--new-window", url)
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("starting %s: %v", b.exe, err)
-	}
-	defer terminatePID(t, uint32(cmd.Process.Pid))
+	pid := startIsolatedBrowser(t, b.exe, "--new-window", url)
 
-	window := strconv.FormatUint(findWindowByTitle(t, chromiumPageTitle, 30*time.Second), 10)
+	window := strconv.FormatUint(findIsolatedWindow(t, pid, chromiumPageTitle, 30*time.Second), 10)
 	cover := coverWindow(t, window)
 
 	state, stderr, exit := runGetWindowState(t, window)
