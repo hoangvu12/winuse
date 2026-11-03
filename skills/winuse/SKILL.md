@@ -298,14 +298,29 @@ An Element Reference takes one of four forms.
 - `id:<AutomationId>`, the value after `ID:`, as in
   `winuse click 101 id:okButton`.
 - `@x,y`, a point in the latest screenshot's pixels, as in
-  `winuse click 101 @412,88`. Click, scroll, drag and hover aim at the point
-  itself. set-value and perform-secondary-action act on the Element under
-  the point, so a Window with a sparse tree and a readable screenshot still
-  works.
+  `winuse click 101 @412,88`. A left click, `set-value`,
+  `perform-secondary-action` and `scroll` at a point act on the Window's
+  own Element under the point, Headless, even while another Window covers
+  it, and `ok` names that Element, as in
+  `ok (clicked element 5 button "Save" at @412,88)`. Check the name: if it
+  is not the Element you meant, read the Window State and name the Element
+  instead. Drag, hover and double, right or middle clicks aim at the point
+  itself, with `--headed`.
 
 Matching is exact and case-sensitive. A name or ID that matches several
 Elements fails and lists the candidates. Pick a more specific reference or
 read the Window State again.
+
+An Element Index is valid only for the Window State that printed it. A
+`name:` or `id:` reference outlasts it: when the Window State you read
+cannot answer it (the helper restarted, the Window changed, or the
+Element went away), winuse looks for it in a fresh read of the Window
+and acts on what it finds. The output then says
+`Note: found name:Save in a fresh read of window 101, as Element Index 245`,
+and the Window State you have is unchanged: its indexes still work. Prefer
+`name:` and `id:` for an Element you will act on again later. A fresh read
+that finds the name twice refuses, with the candidates under new indexes
+you can act on.
 
 ## Choose Headless or Headed
 
@@ -316,6 +331,13 @@ default:
 - With an Element Index, `name:` or `id:`: `click` with the left button and
   a single click, `set-value`, `perform-secondary-action` except Raise,
   `scroll`, and `select-text`, which has no Headed form.
+- At an `@x,y` point: the same `click`, `set-value`,
+  `perform-secondary-action` and `scroll`, on the Element under the point.
+  winuse picks the smallest Element there, or the nearest one around it
+  that can take the Action. A point on nothing but the Window itself, on a
+  canvas or other surface that offers nothing, or on two overlapping
+  Elements that act differently is refused with nothing sent. A scroll at a
+  point scrolls the list or page under it, three steps per wheel notch.
 - `invoke-menu`, a command of a classic menu bar, which has no Headed
   form either.
 - Every Window Action but one: `restore-window`, `minimize-window`,
@@ -331,8 +353,8 @@ default:
 Every other Action is a Headed Action, and it runs only when you pass
 `--headed`. winuse then brings the Window to the foreground, uses the real
 pointer and keyboard, and frames the Window with a banner telling the user
-that winuse is in control and Esc stops it. Headed covers every `@x,y` form
-outside a Page, `--count 2|3`, `--button right|middle`, `drag`, `hover`,
+that winuse is in control and Esc stops it. Headed covers a point that
+names no usable Element, `--count 2|3`, `--button right|middle`, `drag`, `hover`,
 `maximize-window`, Raise, and `press-key` and `type-text` anywhere the
 routes below do not reach. Sent without `--headed`, these are refused: the
 line says why there is no background route and ends in `nothing was sent`,
@@ -387,7 +409,8 @@ Pick the Headless way whenever one does the job.
   opening the menu.
 - Open other menus, trees and combo boxes with a Headless click or
   `perform-secondary-action <ref> Expand`.
-- Scroll by Element rather than at an `@x,y` point.
+- Name the Element rather than an `@x,y` point when the tree has it: the
+  point form works, but the Element Index cannot land on a neighbour.
 - Show, hide, place and close Windows with the Window Actions rather than
   `activate-window`.
 - For a key or text with no Headless route, weigh Posted Keys, which are
@@ -478,8 +501,8 @@ winuse picks the route from the live Window before it sends anything.
   types into whatever has keyboard focus. That includes WinUI, WPF,
   Electron and browser Windows without a Browser Connection. Without the
   flag they are refused with nothing sent, and the hint names the
-  `--headed` command, `--into` for text and `--post` for text or a key
-  without modifiers. For a WinUI or WPF text box, name it with `--into`:
+  `--headed` command, `--into` for text and `--post` for text, a key or a
+  chord. For a WinUI or WPF text box, name it with `--into`:
   that is Headless.
 
 A Headless route prints `ok`; a refusal means nothing was typed, so pick
@@ -564,13 +587,18 @@ effort.
   `ok (posted; the app may ignore posted keys, read the Window State to check)`.
   Read the Window State and confirm the effect before you go on; if nothing
   changed, send the command again without `--post`.
-- Posted keys carry no modifiers, so a chord with Control, Alt or Shift is
-  refused with nothing sent.
+- A chord with Control, Shift or Alt, such as `Control_L+s` or `Alt_L+f`,
+  is posted with its modifiers held for that Window's thread only; the
+  user's own keyboard is untouched. This reaches shortcuts and menus in
+  classic Win32, WinForms, WPF and browser Windows. Control and Alt
+  together, a chord of modifiers alone, and the Blocked Combos are refused
+  with nothing sent, even with `--force`. A Window whose App is in front is
+  refused too: send the chord with `--headed` there.
 - An administrator Window, a locked desktop, a minimized Window and a Window
   blocked by a modal dialog are refused with nothing sent.
 - `--post` and `--headed` do not combine.
 
-Use `--post` for a single key or plain text on a Window with no Headless
+Use `--post` for a key, a chord or plain text on a Window with no Headless
 route, when the user's foreground matters more than certainty.
 
 ## Run a menu command
@@ -605,8 +633,13 @@ redirect. When the Window State shows a menu bar, try `invoke-menu` first.
 ```
 winuse scroll <window> <ref> <up|down|left|right> [steps]   # steps 1 to 50, default 3
 winuse scroll <window> <ref> into-view
-winuse --headed scroll <window> @x,y <dx> <dy>   # the real wheel; 120 per notch, positive dy down, positive dx right
+winuse scroll <window> @x,y <dx> <dy>    # 120 per notch, positive dy down, positive dx right
 ```
+
+At a point, winuse scrolls the list or page under it Headless, three
+steps per notch, up to 16 notches per axis, and `ok` names the Element.
+A larger amount is refused with nothing sent; split it, or pass
+`--headed` to turn the real wheel at the point.
 
 The Element forms are Headless and take an Element Index, `name:` or `id:`.
 Name any Element inside the list or page; winuse scrolls the nearest
@@ -946,6 +979,11 @@ Escape key. During a Headed Action, or a Batch with a Headed step, the key
 never reaches the app. During a Headless Action it still reaches whatever
 app the user is working in, and it stops winuse all the same.
 
+The stop is for everyone: one press stops the Action that runs and every
+command waiting its turn behind it, whichever agent sent them. A waiting
+command says nothing was sent. A command sent after the press runs as
+usual, so check what the user wants before you send one.
+
 After exit 130, stop sending winuse commands for the task and leave the
 stopped Action as it is. Tell the user what you were doing and where the
 task stands, then ask how to proceed. Your own `press-key Escape` is an
@@ -1037,7 +1075,7 @@ press-key <window> <key> [--post] [--force]
 select-text <window> <ref> <start> <length> | select-text <window> <ref> all
 invoke-menu <window> "<menu> > <item>"   # a classic menu bar command, Headless
 scroll <window> <ref> <up|down|left|right> [steps] | scroll <window> <ref> into-view
-scroll <window> @x,y <dx> <dy>      # Headless on a Page, else only with --headed
+scroll <window> @x,y <dx> <dy>      # Headless: the Page, or the Window's Element under the point
 drag <window> @x,y @x,y             # --headed: left button, point to point
 drag <window> <element> <element|@x,y>   # a Page Element, Headless
 hover <window> @x,y                 # --headed: moves the pointer and leaves it there, to reveal tooltips

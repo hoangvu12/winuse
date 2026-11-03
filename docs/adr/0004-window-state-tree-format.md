@@ -106,3 +106,19 @@ snapshot-qualified refs with re-identification; or added indexes).
   indexes, consider agent-desktop's snapshot-qualified refs with
   re-identification.
 
+### Addendum: live re-resolution and one index per Element (desktop-parity 17)
+
+- A `name:`/`id:` reference resolves against the Agent's cached Window
+  State first. When that cannot answer (no Window State, no match, or a
+  matching Element whose RuntimeId no longer reads), the same match rules
+  run over a fresh bounded walk of the Window, and the Element found is
+  added like a `find` match, with a note in the Action's output. Several
+  matches still refuse; the fresh read's candidates are added and listed
+  under their new indexes. Element Indexes are never re-resolved. An Agent
+  whose Window State is missing because another Agent read the Window is
+  still refused (ADR 0014 Decision 2).
+- The added Elements are keyed by their UIA RuntimeId, so `find`, `--root`
+  and a live resolution that reach an Element already added get the index
+  it already has instead of a duplicate. The full read's own Elements are
+  not keyed (reading every RuntimeId would cost a round trip each).
+

@@ -27,6 +27,7 @@ type app struct {
 	classicHwnd uintptr // the open Classic Dialog, 0 when closed (classic.go)
 	classicProc uintptr // its dialog procedure callback
 	classicEdit uintptr // its menu bar's Edit submenu, 0 while closed (classic.go)
+	accel       uintptr // the main window's accelerator table (AcceleratorChord)
 
 	uia *uiaProviders
 
@@ -114,6 +115,7 @@ func (a *app) createWindows(origin Origin) error {
 	}
 	a.instance = hmod
 	a.font = createFont()
+	a.accel = createAccelerator()
 
 	mainProc := newCallback(a.wndMain)
 	dialogProc := newCallback(a.wndDialog)
@@ -201,6 +203,13 @@ func (a *app) loop() {
 		if int32(r) <= 0 {
 			return
 		}
+		// The main window's accelerator (AcceleratorChord), translated
+		// the way a classic Win32 App translates its shortcuts.
+		if a.accel != 0 {
+			if r, _, _ := procTranslateAcceleratorW.Call(a.mainHwnd, a.accel, uintptr(unsafe.Pointer(&m))); r != 0 {
+				continue
+			}
+		}
 		// The Classic Dialog is modeless: its keyboard handling (Tab,
 		// Return, Escape) is the dialog manager's, as in any real app.
 		if a.classicHwnd != 0 {
@@ -220,6 +229,13 @@ func (a *app) wndMain(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return r
 	}
 	switch msg {
+	case wmCommand:
+		if uint16(wp) == acceleratorID {
+			a.state.Accelerators++
+			a.setStatus("accelerator")
+			a.changed()
+			return 0
+		}
 	case wmPaint:
 		a.paintMain(hwnd)
 		return 0
@@ -1310,4 +1326,25 @@ func drawText(hdc uintptr, s string, r win.Rect, flags uint32, color uint32) {
 	procSetTextColor.Call(hdc, uintptr(color))
 	t, _ := windows.UTF16PtrFromString(s)
 	procDrawTextW.Call(hdc, uintptr(unsafe.Pointer(t)), ^uintptr(0), uintptr(unsafe.Pointer(&r)), uintptr(flags))
+}
+
+// acceleratorID is the WM_COMMAND id of the main window's accelerator.
+const acceleratorID = 40101
+
+// accelEntry is one ACCEL: the flags, the virtual key and the command.
+type accelEntry struct {
+	fVirt byte
+	_     byte
+	key   uint16
+	cmd   uint16
+}
+
+// createAccelerator builds the main window's accelerator table:
+// AcceleratorChord (FVIRTKEY|FSHIFT|FCONTROL, K) to acceleratorID. 0 when
+// it cannot be made; the fixture then has no accelerator.
+func createAccelerator() uintptr {
+	const fVirtKey, fShift, fControl = 0x01, 0x04, 0x08
+	entries := []accelEntry{{fVirt: fVirtKey | fShift | fControl, key: 'K', cmd: acceleratorID}}
+	h, _, _ := procCreateAcceleratorTableW.Call(uintptr(unsafe.Pointer(&entries[0])), uintptr(len(entries)))
+	return h
 }

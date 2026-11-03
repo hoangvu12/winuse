@@ -67,7 +67,7 @@ func typeText(s Services) Command {
 			if a.Headed {
 				return "", postFlagsError("type-text")
 			}
-			return s.postKeys(ctx, a.Window, "type", func(target uint64) (int, error) {
+			return s.postKeys(ctx, a.Window, "type", func(_ win.WindowInfo, target uint64) (int, error) {
 				return s.PostText(target, a.Text)
 			})
 		}
@@ -138,14 +138,28 @@ func pressKey(s Services) Command {
 		}
 		if a.Post {
 			// Posted Keys (ADR 0011, Decision 5): WM_KEYDOWN and WM_KEYUP
-			// to the focused control, no foreground, no modifiers.
+			// to the focused control, no foreground; a chord with
+			// modifiers through attached key state (postChord).
 			if a.Headed {
 				return "", postFlagsError("press-key")
 			}
 			if postedModifier(chord) {
-				return "", modifierRefusal(chord)
+				// A chord with Control, Shift or Alt: the attached key
+				// state route (headless-max ticket 07), planned once here
+				// so a chord it cannot post is refused before anything. A
+				// Blocked Combo is never posted, --force or not: a posted
+				// Alt+F4 would close the Window behind the user's back.
+				if blockedComboError(chord, false) != nil {
+					return "", blockedPostRefusal(chord)
+				}
+				if _, err := win.PlanPostedChord(chord, ""); err != nil {
+					return "", modifierRefusal(chord, err)
+				}
+				return s.postKeys(ctx, a.Window, "press "+chord.String(), func(w win.WindowInfo, target uint64) (int, error) {
+					return s.postChord(w, target, chord)
+				})
 			}
-			return s.postKeys(ctx, a.Window, "press "+chord.String(), func(target uint64) (int, error) {
+			return s.postKeys(ctx, a.Window, "press "+chord.String(), func(_ win.WindowInfo, target uint64) (int, error) {
 				return s.PostKeys(target, chord)
 			})
 		}

@@ -23,13 +23,13 @@ Rules:
 
 **Blocked by:** none (06 is the preferred route where an Element carries the shortcut)
 
-**Status:** ready-for-agent (measured on Win32, WinForms and WPF; see Comments)
+**Status:** done (the live e2e run is still to do)
 
-- [ ] Probe on Notepad (Win11), WordPad, Paint, an MFC app, a WinForms app and a WPF app: Ctrl+S, Ctrl+A, Ctrl+Z, Shift+Tab, Alt+F; foreground and user key state before and after
-- [ ] If adopted: attach, state, post, restore on a disposable thread; restore on every exit path
-- [ ] Offline tests: foreground-thread refusal, Win refusal, Alt policy
-- [ ] Opt-in e2e on the Apps the probe proved
-- [ ] ADR 0011 amendment, CONTEXT.md "Posted Keys", SKILL.md
+- [x] Probe on Notepad (Win11), WordPad, Paint, an MFC app, a WinForms app and a WPF app: Ctrl+S, Ctrl+A, Ctrl+Z, Shift+Tab, Alt+F; foreground and user key state before and after (done in rounds 3 and 4 on the probe's own Win32, WinForms, WPF, Chrome, Edge and Electron windows; MFC unmeasured)
+- [x] If adopted: attach, state, post, restore on a disposable thread; restore on every exit path
+- [x] Offline tests: foreground-thread refusal, Win refusal, Alt policy
+- [ ] Opt-in e2e on the Apps the probe proved: written and compiled (the fixture's Win32 accelerator, a WPF KeyBinding); not run live yet
+- [x] ADR 0011 amendment, CONTEXT.md "Posted Keys", SKILL.md
 
 ## Comments
 
@@ -70,3 +70,25 @@ Build:
 - Stays opt-in `--post` (no read-back; ADR 0013 rule 2).
 - MFC is unmeasured. Treat it as Win32 (TranslateAccelerator) until shown otherwise.
 - The laptop probe for this ticket is done.
+
+### 2026-11-03: built (branch hm07-chords)
+
+- `internal/win/postchord.go`:
+  - `PlanPostedChord(chord, topClass)` (pure) gives the modifiers to hold (generic and left VK), the one key, whether it is an Alt (system) chord, and whether the activation pair is needed.
+  - The pair is used for Alt chords, WPF (`HwndWrapper[`) and Chromium (`Chrome_WidgetWin_*`, measured in round 3), and is skipped for Win32, WinForms and MFC.
+  - Refused: a chord of modifiers alone, more than one key, and Control and Alt together (unmeasured).
+  - `PostChord(top, target, plan)` runs on a disposable, OS-locked thread bounded at 3 s. It refuses the thread that owns the foreground (`ErrChordForeground`, nothing sent), then: AttachThreadInput, save the key state, SetKeyboardState with the modifiers down, the activation pair (sent with a 500 ms bound each) when planned, the key down posted (WM_SYSKEYDOWN with the Alt context bit for Alt), a 150 ms hold, the key up, and a short wait. On every exit path it undoes the pair, restores the saved state and detaches.
+- Helper:
+  - `press-key --post` with a modifier now goes to `postChord` instead of the old refusal: planned for the Window's class, posted to the focused control (or the Window), with the Posted Keys output. A chord the plan refuses keeps a refusal that says nothing was sent. The foreground thread gets the `--headed press-key` hint.
+  - **A Blocked Combo is never posted, even with `--force`** (a posted Alt+F4 would close the Window without the user seeing it); `--headed --force` stays its only way.
+  - hm-21's refusal hint (`pressKeyAlt`) now offers `--post` for chords the route can post.
+- Fixture: the main window gains one accelerator, `Control_L+Shift_L+k` (TranslateAccelerator to WM_COMMAND, counted in `accelerators`).
+- Tests:
+  - `internal/win/postchord_test.go`: the plan per class and chord, the messages (SYSKEY and the Alt bit), and the held state touching only the modifiers. PostChord is in the live guard.
+  - `internal/helper/keyroute_test.go`: chords posted with their plans, the refusals, and the foreground thread. The old "chords are refused" tests are replaced, and the `--post --force` Blocked Combo test now wants the new refusal.
+- E2e, written and compiled, not run:
+  - New: `TestPostedChordFiresAClassicAccelerator` (fixture) and `TestPostedChordFiresAWPFKeyBinding` (a WPF window started through Windows PowerShell). Both are covered, and both check that the foreground is unchanged and that the user's Control key is not down afterwards.
+  - Changed: `TestPostedKeysIntoClassicEdit` now expects the refusal from `Control_L+Alt_L+a`.
+- Docs: SKILL.md Posted Keys, CONTEXT.md Posted Keys, the CLI usage text, ADR 0013 route row 07 done, and the headless-max spec row.
+- Not built here: choosing an item in an open menu by its mnemonic (ticket 09's route). Alt+F opens the menu; the next key goes through ticket 09 once it lands.
+
