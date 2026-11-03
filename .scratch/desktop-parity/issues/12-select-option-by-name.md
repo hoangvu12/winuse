@@ -61,3 +61,7 @@
 - Live: `WINUSE_E2E=1 go test -tags e2e -count=1 -v -run 'TestSetValueSelects' ./test/e2e` passes both tests. The combo test checks Green recorded through CBN_SELCHANGE, exact `blue`, `BLUE` refused as ambiguous, `Purple` refused with nothing sent, 0 drop-downs and the foreground kept.
 - Unmeasured live: CB_GETLBTEXT on an ANSI or owner-drawn combo, the ComboBoxEx32 forwarding, the LBS_NOTIFY ListBox path (the fixture has no Win32 ListBox), and `WithinControl` on an opened non-classic combo.
 - SKILL.md is unchanged: what it tells the agent still holds, and a classic combo now never opens. `docs/codex-parity.md` gained the classic-combo and notification sentences.
+
+### 2026-11-03: PC full run at b8f0e58 (branch e2e-live-fixes-4)
+
+- `TestSetValueSelectsAComboItemByName` failed once: `set-value combo BLUE` printed ok instead of refusing the two case-insensitive matches ("Blue", "blue"); it had passed in three earlier runs that day. The bounded search finds no exact "BLUE", so `searchItems` asks ItemContainer.FindItemByProperty, the exact rule, and took its one item without reading its name. A lookup that ignored case returned "Blue" (suspected; not measured, since the lock was taken by the Task Suite). `findHidden` now counts only items whose name reads exactly as the label (or cannot be read); any other item is left to the case-insensitive rule, which refuses several. Live rerun still to do.

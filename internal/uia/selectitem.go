@@ -394,9 +394,21 @@ func (th *thread) selectItem(el comPtr, label string) error {
 		findHidden: func(label string) (int, string, error) {
 			release(hidden)
 			hidden = nil
+			// This is the exact rule: an item whose name reads otherwise
+			// came from a lookup that ignored case (a combo picked "Blue"
+			// for "BLUE", e2e live run 2026-11-03), and is left to the
+			// case-insensitive rule, which refuses several matches.
+			exact := func(item comPtr) bool {
+				name := currentString(item, propName)
+				return name == "" || name == label
+			}
 			first, err := findItemByName(el, nil, label)
 			if err != nil || first == nil {
 				return 0, "", err
+			}
+			if !exact(first) {
+				release(first)
+				return 0, "", nil
 			}
 			hidden = first
 			next, err := findItemByName(el, first, label)
@@ -404,11 +416,11 @@ func (th *thread) selectItem(el comPtr, label string) error {
 				return 0, "", err
 			}
 			if next != nil {
+				again := exact(next)
 				release(next)
-				return 2, "", nil
-			}
-			if name := currentString(first, propName); name != "" {
-				return 1, name, nil
+				if again {
+					return 2, "", nil
+				}
 			}
 			return 1, label, nil
 		},
