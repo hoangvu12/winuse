@@ -278,8 +278,8 @@ Pick the fallback by what the step needs. `--post` fits a single key or
 plain text on `press-key` and `type-text`, when the user's foreground
 matters more than certainty; read the Window State afterwards. `--headed`
 fits the rest of this list, administrator Windows aside, and any step
-that must work the first time. It takes the foreground, so tell the user first if they are
-working in another Window.
+that must work the first time. It takes the foreground, so tell the user
+first if they are working in another Window.
 
 ## Fill in fields, keys and text
 
