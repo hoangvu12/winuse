@@ -43,9 +43,12 @@ is not, which is why ADR 0011 made Posted Keys opt-in.
    through attached key state. It is never an automatic fallback.
 3. **Where no route exists, fail before sending.** The failure says
    "nothing was sent" and gives the exact `--headed` retry. winuse never
-   falls back to Headed on its own. Routing by the live Window before
-   anything is sent (ADR 0011 Decision 4) is not a fallback, and the
-   commands that already route that way keep doing so.
+   falls back to Headed on its own. That covers routing by the live
+   Window too (ADR 0011 Decision 4): a `type-text` or `press-key` with
+   no background route, and any other Action that would go Headed, is
+   refused unless the agent passed `--headed` (ticket 21, decided by the
+   user on 2026-11-03). `activate-window` is itself the request for the
+   foreground.
 4. **No Headless or Posted route attaches to the foreground thread, sends
    input or moves the cursor.** No SendInput, no SetCursorPos, and no
    AttachThreadInput to the thread that owns the foreground: a route
@@ -87,6 +90,7 @@ is not, which is why ADR 0011 made Posted Keys opt-in.
 | Headless Actions on minimized Windows | 1 | 14 | planned |
 | Electron and WebView2 Browser Connections at launch; attach to a running Electron | 1 | 15 | planned |
 | Typing, keys and clicks into Chromium and Electron without CDP | 7 | 20 | planned |
+| No Headed Action without `--headed` | 3 | 21 | planned |
 
 ## Reversals
 
@@ -117,6 +121,11 @@ is not, which is why ADR 0011 made Posted Keys opt-in.
   and for Alt chords (round 4). The Windows key stays refused. Posted
   Clicks add double, right and middle clicks on an Element, clicks at a
   point and `scroll @x,y --post`, for an allow-list of classic controls.
+- **ADR 0011 Decision 4's "anywhere else they stay Headed"**, by ticket
+  21. `press-key` and `type-text` still route by the live Window before
+  anything is sent, but where no Headless route exists they refuse with
+  the `--headed` retry instead of taking the foreground. The same holds
+  for double, right and middle clicks, `@x,y` forms, drag and hover.
 - **ADR 0012 Decision 6** ("Chromium browsers only", and its consequence
   that Electron and WebView2 stay on UI Automation), by ticket 15.
   `launch-app --cdp` starts an Electron or WebView2 App with a loopback
