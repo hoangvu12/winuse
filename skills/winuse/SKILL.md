@@ -222,8 +222,9 @@ Window State.
 `--headed` forces the Headed way for any Action that has a Headless form, as
 in `winuse --headed click 101 3`. On a Batch it makes every step Headed.
 Window Actions have no Headed form. It goes before the command or anywhere
-after it, except inside `type-text`'s text and `set-value`'s value, where a
-`--headed` token is literal text. Put the flag before the command there. Use
+after it, except inside `type-text`'s text, `set-value`'s value and
+`clipboard-set`'s text, where a `--headed` token is literal text. Put the
+flag before the command there. Use
 `--headed` in three cases.
 
 - A Headless Action failed with a hint to retry with `--headed`.
@@ -435,6 +436,35 @@ back, and print `ok`. They are not Batch steps.
   stays open, the output says so: the app may be asking to save. Read
   `list-windows` or the Window State and handle that prompt. winuse never
   ends a process.
+
+## Clipboard
+
+```
+winuse clipboard-get                                  # the clipboard's text
+winuse clipboard-get --format files                   # copied files, one path per line
+winuse clipboard-get --format image [--out <path>]    # saves the image as a PNG, prints its path and size
+winuse clipboard-set <text>                           # or --image <png>, or --file <path>...
+winuse clipboard-clear
+```
+
+The clipboard commands are Desktop commands: they name no Window, need no
+foreground, show no Agent Cursor and are not Batch steps. `clipboard-get`
+prints the text exactly as it is, with no newline added. Without `--out`,
+the image goes to a new file in `%TEMP%\winuse`. When the clipboard holds
+nothing in the format you asked for, the command fails and its hint says
+what the clipboard holds.
+
+`clipboard-set` replaces everything on the clipboard with one thing: its
+arguments as literal text joined by spaces, like `type-text`, or a PNG
+file, or a list of files that exist. Paths are taken from your working
+directory. To put a long text into a field that has no Headless route,
+`clipboard-set` it, then paste it with `press-key <window> Control_L+v`,
+which is Headed.
+
+A program that put something on the clipboard and stopped responding can
+make the clipboard wait on it. winuse refuses such a clipboard with
+nothing sent, and gives up on a program that is too slow to hand its
+content over. Wait until that program responds, then retry.
 
 ## Browser Windows
 
@@ -723,6 +753,8 @@ browser status | launch | connect | stop [browser]
 browser use [browser|auto]          # pin a browser (it persists); auto removes the pin
 browser clone [browser] [--profile <folder>] [--fresh] [--close-source]
 browser ext install [browser|all] | browser ext status [browser]
+clipboard-get [--format text|image|files] [--out <path>]
+clipboard-set <text> | --image <png> | --file <path>... | clipboard-clear
 record-tree <window> <file>         # development only, records a tree fixture for winuse's own tests
 skill | skill install <dir>         # print this file from the binary, or write it to <dir>\winuse\SKILL.md
 status                              # read-only: versions, helper uptime, lock, integrity, DPI, browsers, Windows build

@@ -462,6 +462,31 @@ set WINUSE_E2E=1
 go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted" ./test/e2e
 ```
 
+## The clipboard test
+
+`TestClipboard` (`clipboard_test.go`, desktop-parity ticket 01) runs
+`clipboard-set`, then `clipboard-get`, for text, an image and files, and
+`clipboard-clear`, through the real binary. Windows PowerShell is the
+program on the other side: it reads the text, the image (through the
+CF_DIB winuse writes beside the PNG) and the file list winuse wrote, and
+puts a .NET bitmap on the clipboard that winuse reads back (the CF_DIBV5
+Windows synthesizes from it). A missing `--file` is refused with nothing
+changed, and the foreground must not move.
+
+The clipboard is the user's. The test saves its text first and puts it
+back at the end, or empties it again if it was empty. It skips when the
+clipboard holds any format beyond plain text, which it could not put
+back: an image, files, or text with extra formats, such as what a
+browser, .NET's `Set-Clipboard` or a password manager copies (the last
+marks it `ExcludeClipboardContentFromMonitorProcessing`). Copy plain text
+from Notepad, or empty the clipboard, to run it. Its writes land in the
+clipboard history (Win+V) when that is on.
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -run "^TestClipboard$" ./test/e2e
+```
+
 ## The browser merge probe
 
 `TestBrowserProbe` (`browser_probe_test.go`, ticket 03 of

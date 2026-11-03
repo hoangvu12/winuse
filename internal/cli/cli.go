@@ -25,8 +25,9 @@ global options:
   --headed                    run an Action the v1 way: bring the Window to the
                                foreground, use the real pointer and keyboard,
                                and show the in-control banner. Accepted before
-                               or after the command; inside type-text's text
-                               or set-value's value it is literal text
+                               or after the command; inside type-text's text,
+                               set-value's value or clipboard-set's text it is
+                               literal text
 
 headless (the default; your foreground, pointer and keyboard stay untouched):
   click (left, single), set-value, perform-secondary-action (except Raise)
@@ -42,7 +43,8 @@ headless (the default; your foreground, pointer and keyboard stay untouched):
   winuse extension and headed on a launched or cloned browser. In a
   browser Window with a Browser Connection, every Action on its Page is
   headless, and so are navigate, back, forward, reload, upload, dialog,
-  wait and eval, which have no headed form.
+  wait and eval, which have no headed form. The clipboard commands are
+  headless Desktop commands: they name no Window and have no headed form.
 
 commands:
   list-windows [--details] [--app <name>]
@@ -234,6 +236,18 @@ const usageTail = `);
   eval <window> <expression>  run a JavaScript expression in the Page and
                                print its value (JSON for objects, cut at 4000
                                characters)
+  clipboard-get [--format text|image|files] [--out <path>]
+                               print the clipboard's text exactly as it is
+                               (the default), its files one path per line, or
+                               write its image to a PNG (--out, or a new file
+                               in %TEMP%\winuse) and print the path and size;
+                               a clipboard without that format fails and says
+                               what it holds
+  clipboard-set <text> | --image <png> | --file <path>...
+                               replace the clipboard's content with the text
+                               (literal, like type-text's), a PNG image or a
+                               list of existing files
+  clipboard-clear             empty the clipboard
   skill                       print the agent skill (SKILL.md) this binary
                                was built with; read it again after an upgrade
   skill install <dir>         write that SKILL.md to <dir>\winuse\SKILL.md, for
@@ -352,6 +366,12 @@ func Main(args []string) int {
 		return tabCmd(args[1:])
 	case "navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval":
 		return pageCmd(args[0], args[1:]) // page.go, browser merge ticket 06
+	case "clipboard-get":
+		return clipboardGetCmd(args[1:]) // clipboard.go, desktop-parity ticket 01
+	case "clipboard-set":
+		return clipboardSetCmd(args[1:])
+	case "clipboard-clear":
+		return clipboardClearCmd(args[1:])
 	case "skill":
 		return skillCmd(args[1:])
 	case "status":

@@ -54,6 +54,10 @@ _Avoid_: Command, step, tool call
 An Action on the Window itself rather than on one of its Elements: restore, minimize, move, resize or close.
 _Avoid_: Window management, window op
 
+**Desktop command**:
+A command aimed at the desktop as a whole rather than at a Window, such as reading, setting or clearing the clipboard. It is not an Action: it shows no Agent Cursor and is not a Batch step, but it runs one at a time with the Actions.
+_Avoid_: Global action, system command
+
 **Secondary Action**:
 An operation an Element offers besides a plain click, such as Expand, Collapse, Toggle or Scroll Down, listed next to that Element in the Window State.
 _Avoid_: Pattern, verb, default action

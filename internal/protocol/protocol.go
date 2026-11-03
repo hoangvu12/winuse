@@ -416,6 +416,25 @@ type SelectTextArgs struct {
 	All          bool   `json:"all,omitempty"` // select the whole text (Start and Length stay 0)
 }
 
+// ClipboardGetArgs are clipboard-get's arguments (desktop-parity ticket
+// 01, a Desktop command): the format to read, text (the default), image
+// or files, and for an image the absolute path the PNG is written to
+// (the CLI resolves it; empty: a new file in %TEMP%\winuse).
+type ClipboardGetArgs struct {
+	Format string `json:"format,omitempty"`
+	Out    string `json:"out,omitempty"`
+}
+
+// ClipboardSetArgs are clipboard-set's arguments (desktop-parity ticket
+// 01): exactly one representation, the text (empty text included), an
+// absolute PNG path or absolute file paths. It replaces everything on the
+// clipboard.
+type ClipboardSetArgs struct {
+	Text  *string  `json:"text,omitempty"`
+	Image string   `json:"image,omitempty"`
+	Files []string `json:"files,omitempty"`
+}
+
 // BatchArgs are batch's arguments (ticket 11): several Actions on one
 // Window in a single call, run in order, stopping at the first failure.
 type BatchArgs struct {
