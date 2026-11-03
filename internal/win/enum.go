@@ -187,10 +187,10 @@ func collectOne(hwnd windows.HWND, shell windows.HWND, selfExe string, apps *app
 		w.ExePath, _ = exePath(pid)
 		w.App = apps.Name(w.ExePath)
 	}
-	w.Shell = shellKind(w.Class, w.ExePath)
 	// The caption is read once the process is known: a window of this
 	// process takes the no-message read (windowTitle).
 	w.Title = windowTitle(hwnd, w.PID)
+	w.Shell = shellKind(w.Class, w.ExePath, w.Title)
 	w.OwnProcess = selfExe != "" && w.ExePath == selfExe
 	return w
 }

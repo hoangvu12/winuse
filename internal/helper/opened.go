@@ -16,7 +16,8 @@ package helper
 // ShellExperienceHost's window in another process, so it is never
 // reported (headless-gaps probes round 5, section 7). An Action on a
 // shell surface reports Start or the Action Center when it shows, though
-// each lives in its own host process (desktop-parity 09). A reported menu
+// each lives in its own host process (desktop-parity 09), and never a toast
+// banner (desktop-parity 18). A reported menu
 // that list-windows drops still resolves by its Window ID
 // (resolveWindow), so the agent can read it next.
 //
@@ -226,7 +227,12 @@ func openedChanges(before openedBefore, after []win.WindowInfo) (opened []win.Wi
 			continue
 		}
 		if before.target.Shell != "" && win.ShellSurface(w) && !before.shells[w.ID] {
-			opened = append(opened, w) // Start or the Action Center, from its own host process
+			// Start or the Action Center, from its own host process. A toast
+			// banner showing meanwhile is the toast's App's doing, not the
+			// Action's (desktop-parity 18).
+			if w.Shell != win.ShellNotification {
+				opened = append(opened, w)
+			}
 			continue
 		}
 		if before.known[w.ID] || w.PID != before.target.PID || !win.OpenedSurface(w) {

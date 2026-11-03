@@ -3,26 +3,32 @@ package win
 import "testing"
 
 // shellKind recognises the shell surfaces by class, and the CoreWindow
-// flyouts by their host process (desktop-parity 09).
+// flyouts by their host process (desktop-parity 09), the toast banner by
+// its caption too (desktop-parity 18).
 func TestShellKind(t *testing.T) {
 	cases := []struct {
-		class, exe, want string
+		class, exe, title, want string
 	}{
-		{"Shell_TrayWnd", `C:\Windows\explorer.exe`, ShellTaskbar},
-		{"Shell_SecondaryTrayWnd", `C:\Windows\explorer.exe`, ShellTaskbar},
-		{"TopLevelWindowForOverflowXamlIsland", `C:\Windows\explorer.exe`, ShellTrayOverflow},
-		{"NotifyIconOverflowWindow", `C:\Windows\explorer.exe`, ShellTrayOverflow},
-		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\StartMenuExperienceHost.exe`, ShellStart},
-		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\ShellExperienceHost_cw5n1h2txyewy\ShellExperienceHost.exe`, ShellActionCenter},
-		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\ShellHost.exe`, ShellActionCenter},
-		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\TextInputHost.exe`, ""},
-		{"Progman", `C:\Windows\explorer.exe`, ""}, // the desktop stays out
-		{"CabinetWClass", `C:\Windows\explorer.exe`, ""},
-		{"Notepad", `C:\Windows\notepad.exe`, ""},
+		{"Shell_TrayWnd", `C:\Windows\explorer.exe`, "", ShellTaskbar},
+		{"Shell_SecondaryTrayWnd", `C:\Windows\explorer.exe`, "", ShellTaskbar},
+		{"TopLevelWindowForOverflowXamlIsland", `C:\Windows\explorer.exe`, "", ShellTrayOverflow},
+		{"NotifyIconOverflowWindow", `C:\Windows\explorer.exe`, "", ShellTrayOverflow},
+		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\StartMenuExperienceHost.exe`, "", ShellStart},
+		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\ShellExperienceHost_cw5n1h2txyewy\ShellExperienceHost.exe`, "", ShellActionCenter},
+		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\ShellExperienceHost_cw5n1h2txyewy\ShellExperienceHost.exe`, "Notification Center", ShellActionCenter},
+		// The toast banner (desktop-parity 18): ShellExperienceHost's
+		// reused CoreWindow, told from the panel by its caption alone.
+		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\ShellExperienceHost_cw5n1h2txyewy\ShellExperienceHost.exe`, "New notification", ShellNotification},
+		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\ShellHost.exe`, "New notification", ShellActionCenter},
+		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\ShellHost.exe`, "", ShellActionCenter},
+		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\TextInputHost.exe`, "", ""},
+		{"Progman", `C:\Windows\explorer.exe`, "", ""}, // the desktop stays out
+		{"CabinetWClass", `C:\Windows\explorer.exe`, "", ""},
+		{"Notepad", `C:\Windows\notepad.exe`, "", ""},
 	}
 	for _, c := range cases {
-		if got := shellKind(c.class, c.exe); got != c.want {
-			t.Errorf("shellKind(%q, %q) = %q, want %q", c.class, c.exe, got, c.want)
+		if got := shellKind(c.class, c.exe, c.title); got != c.want {
+			t.Errorf("shellKind(%q, %q, %q) = %q, want %q", c.class, c.exe, c.title, got, c.want)
 		}
 	}
 }

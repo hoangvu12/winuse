@@ -9,8 +9,9 @@ package cli
 // come from the helper (protocol.Response.Trace); the rest is the CLI's.
 //
 // Redacted by default: typed text, set-value values, clipboard-set text,
-// a prompt's dialog answer, eval expressions, eval results and
-// clipboard-get's text and files become {"redacted":true,"len":N} (N in
+// a prompt's dialog answer, eval expressions, eval results,
+// clipboard-get's text and files and the listed notifications (ticket 18)
+// become {"redacted":true,"len":N} (N in
 // characters). --trace-unredacted keeps them, for local debugging only.
 // Whatever the flag, a Window State tree is never kept (only its line
 // count, and the screenshot by path), so neither its size nor the names
@@ -303,12 +304,17 @@ func redactedJSON(s string) json.RawMessage {
 }
 
 // redactsOut reports whether a command's output is redacted: eval's
-// result, and clipboard-get's text or files (an image's path and size
-// are kept).
+// result, clipboard-get's text or files (an image's path and size are
+// kept), and the notifications list-notifications and wait notification
+// print (desktop-parity 18: the user's messages).
 func redactsOut(cmd string, raw json.RawMessage) bool {
 	switch cmd {
-	case "eval":
+	case "eval", "list-notifications":
 		return true
+	case "wait":
+		var a protocol.WaitArgs
+		json.Unmarshal(raw, &a)
+		return a.For == protocol.WaitNotification
 	case "clipboard-get":
 		var a protocol.ClipboardGetArgs
 		json.Unmarshal(raw, &a)

@@ -3,8 +3,9 @@ package cli
 // wait's CLI side (browser merge ticket 06, desktop-parity ticket 03).
 // After a Window, wait takes the Page's predicates (selector, text, url,
 // load, download) or an Element's state (parseWaitArgs, page.go, which a
-// Batch's wait step shares). Two forms name no Window: `wait window <app
-// or title> [--gone]` and `wait <milliseconds>`, a plain pause. The helper
+// Batch's wait step shares). Three forms name no Window: `wait window <app
+// or title> [--gone]`, `wait notification [--app] [--text]` (ticket 18)
+// and `wait <milliseconds>`, a plain pause. The helper
 // routes text by the Window: a browser Window's Page, any other Window's
 // UI Automation tree. Parsing is local (usage errors exit 2 and never
 // dial the helper).
@@ -47,6 +48,9 @@ func parseWaitCommand(args []string) (protocol.WaitArgs, error) {
 	}
 	if len(args) > 0 && args[0] == protocol.WaitWindow {
 		return parseWindowWait(args[1:])
+	}
+	if len(args) > 0 && args[0] == protocol.WaitNotification {
+		return parseNotificationWait(args[1:]) // notifications.go, desktop-parity ticket 18
 	}
 	if len(args) == 0 {
 		return protocol.WaitArgs{}, errors.New("wait takes a window reference, window <app or title>, or a number of milliseconds first")

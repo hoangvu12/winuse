@@ -1,14 +1,18 @@
 package win
 
 // Shell surfaces (desktop-parity 09, ADR 0015): the taskbar, the tray
-// overflow, Start and the Action Center. list-windows drops them
+// overflow, Start, the Action Center and a showing notification banner
+// (desktop-parity 18). list-windows drops them
 // (KeepWindow: they are not Windows a person works in), and
 // `list-windows --shell` adds them back, so the agent can read them as
 // Window States and act on their Elements by Window ID.
 //
 // A surface is recognised by its window class, and the flyouts that share
 // the UWP CoreWindow class by their host process: class names and
-// executables do not change with the display language, titles do.
+// executables do not change with the display language, titles do. The
+// one exception is the notification banner: ShellExperienceHost shows its
+// toasts in a CoreWindow of its own, reused for every toast, and only the
+// caption tells it from the panel (probes round 5, section 7).
 
 import (
 	"fmt"
@@ -22,11 +26,18 @@ import (
 
 // The shell surface kinds (WindowInfo.Shell).
 const (
-	ShellTaskbar      = "taskbar"       // Shell_TrayWnd, and Shell_SecondaryTrayWnd on other monitors
-	ShellTrayOverflow = "tray overflow" // the hidden icons, shown by the taskbar's chevron
-	ShellStart        = "Start"         // the Start menu, while open
-	ShellActionCenter = "Action Center" // the notification, calendar and quick settings panels, while open
+	ShellTaskbar      = "taskbar"             // Shell_TrayWnd, and Shell_SecondaryTrayWnd on other monitors
+	ShellTrayOverflow = "tray overflow"       // the hidden icons, shown by the taskbar's chevron
+	ShellStart        = "Start"               // the Start menu, while open
+	ShellActionCenter = "Action Center"       // the notification, calendar and quick settings panels, while open
+	ShellNotification = "notification banner" // a toast showing on its own, outside the panel (desktop-parity 18)
 )
+
+// notificationBannerTitle is the caption of ShellExperienceHost's toast
+// banner CoreWindow, as measured on an English Windows 11 (probes round
+// 5, section 7). Under another display language the caption differs and
+// the banner is taken for the Action Center, as before ticket 18.
+const notificationBannerTitle = "New notification"
 
 // shellSurfaceClasses are the surfaces known by their window class.
 var shellSurfaceClasses = map[string]string{
@@ -47,14 +58,19 @@ var shellFlyoutHosts = map[string]string{
 	"shellhost.exe":               ShellActionCenter,
 }
 
-// shellKind names the shell surface a window is, from its class and the
-// path of its process: "" for any other window. Pure: offline-testable.
-func shellKind(class, exePath string) string {
+// shellKind names the shell surface a window is, from its class, the
+// path of its process and, for ShellExperienceHost's toast banner, its
+// caption: "" for any other window. Pure: offline-testable.
+func shellKind(class, exePath, title string) string {
 	if kind, ok := shellSurfaceClasses[class]; ok {
 		return kind
 	}
 	if class == "Windows.UI.Core.CoreWindow" {
-		return shellFlyoutHosts[strings.ToLower(filepath.Base(exePath))]
+		host := strings.ToLower(filepath.Base(exePath))
+		if host == "shellexperiencehost.exe" && title == notificationBannerTitle {
+			return ShellNotification
+		}
+		return shellFlyoutHosts[host]
 	}
 	return ""
 }
@@ -74,9 +90,9 @@ func ShellKindOf(id uint64) string {
 			return ""
 		}
 		path, _ := exePath(pid)
-		return shellKind(class, path)
+		return shellKind(class, path, windowText(hwnd))
 	}
-	return shellKind(class, "")
+	return shellKind(class, "", "")
 }
 
 // ShellSurface reports whether a collected window is a shell surface that

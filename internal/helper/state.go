@@ -291,6 +291,10 @@ type Services struct {
 	// an offline test binary (nothing is then checked); tests fake it.
 	WindowIdentity func(hwnd uint64) (win.WindowOwner, bool)
 	windowIDs      *windowRecords
+
+	// notifications is what each Agent's notification numbers stand for
+	// (desktop parity ticket 18, notifications.go); nil: a fresh log.
+	notifications *notificationLog
 }
 
 // CommandsWith builds the command registry over the given services.
@@ -374,6 +378,13 @@ func CommandsWith(s Services) map[string]Command {
 	// Window screenshot, since it hides the indicator and the cursor.
 	cmds["list-displays"] = listDisplays(s)
 	cmds["screenshot"] = displayScreenshot(s)
+	// The notifications' Desktop commands (notifications.go, desktop parity
+	// ticket 18): list-notifications only reads; the two actions are
+	// serialized below. open-shell (openshell.go) is Headed only.
+	cmds["list-notifications"] = listNotifications(s)
+	cmds["notification-action"] = notificationAction(s)
+	cmds["notification-dismiss"] = notificationDismiss(s)
+	cmds["open-shell"] = openShell(s)
 
 	// The serialized registry: every control-path command runs alone, the
 	// Actions that can open a Window report it (opened.go), and so does an
@@ -417,6 +428,8 @@ func observationOnlyCommand(name string) bool {
 		"tab-list",      // reads a browser Window's Tabs only (tabs.go)
 		"list-displays", // a Desktop command that only reads the monitors (display.go)
 		StatusCommand:   // read-only probes (status.go): never waits behind an Action
+		return true
+	case "list-notifications": // a Desktop command that only reads the toast banners (notifications.go)
 		return true
 	}
 	return strings.HasPrefix(name, "browser-")
@@ -780,6 +793,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.windowIDs == nil {
 		s.windowIDs = newWindowRecords()
+	}
+	if s.notifications == nil {
+		s.notifications = newNotificationLog()
 	}
 	if s.actionGate == nil {
 		s.actionGate = make(chan struct{}, 1)

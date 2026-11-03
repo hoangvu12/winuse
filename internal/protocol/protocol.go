@@ -523,6 +523,42 @@ type ScreenshotArgs struct {
 	Display *int `json:"display"`
 }
 
+// ListNotificationsArgs are list-notifications' arguments (desktop-parity
+// ticket 18, a Desktop command): optional filters on the notifications
+// the showing toast banners hold, App on the sender's name and Text on
+// the title or text (both case-insensitive, any part).
+type ListNotificationsArgs struct {
+	App  string `json:"app,omitempty"`
+	Text string `json:"text,omitempty"`
+}
+
+// NotificationActionArgs are notification-action's arguments
+// (desktop-parity ticket 18): a notification's number from the Agent's
+// latest list-notifications or wait notification, and the name of one of
+// its buttons.
+type NotificationActionArgs struct {
+	ID     int    `json:"id"`
+	Button string `json:"button"`
+}
+
+// NotificationDismissArgs are notification-dismiss's arguments
+// (desktop-parity ticket 18): a notification's number, as for
+// notification-action.
+type NotificationDismissArgs struct {
+	ID int `json:"id"`
+}
+
+// OpenShellArgs are open-shell's arguments (desktop-parity tickets 09 and
+// 18): the shell surface to open, one of ShellSurfaces. It is Headed
+// only: without Headed nothing is sent.
+type OpenShellArgs struct {
+	Surface string `json:"surface"`
+	Headed  bool   `json:"headed,omitempty"` // the global --headed flag
+}
+
+// ShellSurfaces are the surfaces open-shell opens.
+var ShellSurfaces = []string{"start", "notifications", "quick-settings", "overflow"}
+
 // BatchArgs are batch's arguments (ticket 11): several Actions on one
 // Window in a single call, run in order, stopping at the first failure.
 type BatchArgs struct {
