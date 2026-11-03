@@ -1220,6 +1220,12 @@ Headed tests take it, and give it back.
   `type-text --post --interval-ms 200` of ten characters holds fixture A's
   UI-thread lane for about 2 s; beta's click on fixture B finishes within
   1.5 s, and gamma's click on A waits its turn.
+- `TestContextMenuOnACoveredExplorerItem` (`explorer_menu_test.go`,
+  headless-max ticket 22): the Headless ContextMenu on the file of an
+  Explorer Window of the test's own, covered. Explorer can show the menu
+  about 6 s after ShowContextMenu; the read-back waits up to 8 s there,
+  and the cover keeps the foreground. The test closes the menu and the
+  Window.
 - `TestHeadedRightClickKeepsALateExplorerMenu` (`explorer_menu_test.go`,
   ticket 12): an Explorer Window of the test's own on a temp folder,
   covered. The first right click on its file opens a context menu that

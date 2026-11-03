@@ -54,7 +54,7 @@ Close every gap that has a route, and say plainly where none exists.
 | 19 | Headless typing into a covered Windows 11 Notepad | S-M | done |
 | 20 | Background typing, keys and clicks for Chromium and Electron without CDP | M | done (live e2e not run yet) |
 | 21 | No Headed Action without `--headed` | M | done (live e2e not run yet) |
-| 22 | ContextMenu on File Explorer list items | S-M | ready-for-agent |
+| 22 | ContextMenu on File Explorer list items | S-M | done |
 | 23 | A Headed double click on an Explorer folder does not open it | S | ready-for-agent |
 | 24 | set-value read-back false alarms (Explorer rename, line endings) | S | ready-for-agent |
 

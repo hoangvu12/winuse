@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/agent"
 	"github.com/hoangvu12/winuse/internal/protocol"
@@ -548,5 +549,76 @@ func TestClassicMenuItemIgnoredIsClosedAndFails(t *testing.T) {
 		!strings.Contains(e.Hint, "winuse --headed perform-secondary-action 101 3 ContextMenu") ||
 		!strings.Contains(e.Hint, "winuse --headed click <menu> 5") {
 		t.Errorf("hint %q: want the exact --headed retry", e.Hint)
+	}
+}
+
+// A File Explorer item's menu can show late (headless-max 22: 5.8 s after
+// ShowContextMenu, measured live): on an Explorer Window the read-back
+// waits up to contextMenuSlowWait and finds it; on another App it gives up
+// after contextMenuWait.
+func TestContextMenuWaitsLongerOnFileExplorer(t *testing.T) {
+	late := func() [][]win.WindowInfo {
+		var after [][]win.WindowInfo
+		for range int(5800 * time.Millisecond / contextMenuPoll) {
+			after = append(after, []win.WindowInfo{notepadMain, otherApp})
+		}
+		return append(after, []win.WindowInfo{editMenu, notepadMain, otherApp})
+	}
+	explorer := func(spy *contextMenuSpy) {
+		windows := spy.svc.Windows
+		spy.svc.Windows = func() ([]win.WindowInfo, error) {
+			ws, err := windows()
+			for i := range ws {
+				if ws[i].ID == 101 {
+					ws[i].ExePath, ws[i].App = `C:\Windows\explorer.exe`, "Windows Explorer"
+				}
+			}
+			return ws, err
+		}
+	}
+
+	spy := newContextMenuSpy(late()...)
+	spy.menuTarget = uia.MenuTarget{Framework: "DirectUI"}
+	explorer(spy)
+	out, e := runCommand(t, CommandsWith(spy.svc), "perform-secondary-action", contextMenuArgs("101", 3))
+	if e != nil || !strings.Contains(out, "the context menu opened") {
+		t.Errorf("Explorer, a menu after 5.8 s: %q, %+v; want it found", out, e)
+	}
+	if spy.shown != 1 {
+		t.Errorf("%d ShowContextMenu calls, want 1", spy.shown)
+	}
+
+	spy = newContextMenuSpy(late()...)
+	spy.menuTarget = uia.MenuTarget{Framework: "DirectUI"}
+	if _, e := runCommand(t, CommandsWith(spy.svc), "perform-secondary-action", contextMenuArgs("101", 3)); e == nil || !strings.Contains(e.Msg, "no menu opened") {
+		t.Errorf("another App, a menu after 5.8 s: %+v; want the 2 s read-back to give up", e)
+	} else if strings.Contains(e.Hint, "File Explorer") {
+		t.Errorf("hint %q names File Explorer for another App", e.Hint)
+	}
+
+	spy = newContextMenuSpy([]win.WindowInfo{notepadMain, otherApp})
+	spy.menuTarget = uia.MenuTarget{Framework: "DirectUI"}
+	explorer(spy)
+	_, e = runCommand(t, CommandsWith(spy.svc), "perform-secondary-action", contextMenuArgs("101", 3))
+	if e == nil || !strings.Contains(e.Hint, "File Explorer can still show it late") {
+		t.Errorf("Explorer, no menu: %+v; want the late-menu hint", e)
+	}
+	if want := int(contextMenuSlowWait / contextMenuPoll); spy.desk.sleeps != want {
+		t.Errorf("the Explorer read-back paused %d times, want %d", spy.desk.sleeps, want)
+	}
+}
+
+func TestMenuWaitKeepsAMarginBeforeTheDeadline(t *testing.T) {
+	explorer := win.WindowInfo{ExePath: `C:\Windows\explorer.exe`}
+	if got := menuWait(context.Background(), explorer); got != contextMenuSlowWait {
+		t.Errorf("Explorer, no deadline: %s", got)
+	}
+	if got := menuWait(context.Background(), win.WindowInfo{ExePath: `C:\x\notepad.exe`}); got != contextMenuWait {
+		t.Errorf("Notepad: %s", got)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if got := menuWait(ctx, explorer); got > 5*time.Second-contextMenuMargin {
+		t.Errorf("Explorer with 5 s left: %s, past the deadline less the margin", got)
 	}
 }
