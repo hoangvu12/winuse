@@ -33,6 +33,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
@@ -66,7 +67,8 @@ func (s Services) typeTextInto(ctx context.Context, a protocol.TypeTextArgs) (st
 		return out, rerr
 	}
 	if a.Headed {
-		return s.typeIntoHeaded(ctx, a.Window, target, a.Text)
+		interval, _ := intervalOf(a) // checked by typeText
+		return s.typeIntoHeaded(ctx, a.Window, target, a.Text, interval)
 	}
 	w, rerr := resolveWindow(s, a.Window)
 	if rerr != nil {
@@ -204,7 +206,7 @@ func intoRefusal(w win.WindowInfo, target elementTarget, index int, edit win.Con
 // typeIntoHeaded is --into with headed: v1's pipeline (activate and
 // verify the foreground), a left click on the Element's clickable point,
 // then the text typed with real keys, as plain Headed type-text types it.
-func (s Services) typeIntoHeaded(ctx context.Context, ref string, target elementTarget, text string) (string, *Error) {
+func (s Services) typeIntoHeaded(ctx context.Context, ref string, target elementTarget, text string, interval time.Duration) (string, *Error) {
 	if s.Actions == nil {
 		return "", Fail("type-text --into is unavailable: no UIA client", "")
 	}
@@ -220,7 +222,7 @@ func (s Services) typeIntoHeaded(ctx context.Context, ref string, target element
 		if err := s.Click(w.ID, pt.X, pt.Y, win.MouseLeft, 1); err != nil {
 			return "", inputError(err)
 		}
-		if err := s.TypeText(text, func() bool { return s.Esc.Stopped() || ctx.Err() != nil }); err != nil {
+		if err := s.typeKeys(text, interval, func() bool { return s.Esc.Stopped() || ctx.Err() != nil }); err != nil {
 			return "", inputAbortError(s, ctx, err, "while typing (the text injected so far landed)")
 		}
 		return okOutput, nil
