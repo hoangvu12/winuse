@@ -88,9 +88,10 @@ func TestHeadedActionReportsNothing(t *testing.T) {
 	activate := spy.svc.Activate
 	spy.svc.Activate = func(hwnd uint64) error { d.fg = hwnd; return activate(hwnd) }
 	// A double click is Headed, with --headed (headless-max ticket 21):
-	// winuse activates the Window itself.
+	// winuse activates the Window itself, and gives the user's foreground
+	// back after it (polite real input, multi-agent ticket 08).
 	out, e := runCommand(t, CommandsWith(spy.svc), "click", headedArgs(clickArgs("101", 2, 2, "left")))
-	if e != nil || out != "ok\n" || d.fg != 101 {
+	if e != nil || out != "ok\n" || d.fg != 500 {
 		t.Errorf("headed click: %q, %+v (foreground %d)", out, e, d.fg)
 	}
 	// A Batch with a Headed step neither, even when a Headless step ran

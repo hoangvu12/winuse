@@ -335,6 +335,7 @@ func hover(s Services) Command {
 			if serr != nil {
 				return "", serr
 			}
+			keepPointerHere(ctx) // hover leaves the pointer where it hovers
 			if err := s.Hover(w.ID, int32(pt.X), int32(pt.Y)); err != nil {
 				return "", inputError(err)
 			}
@@ -372,6 +373,7 @@ func (s Services) elementHover(ctx context.Context, a protocol.HoverArgs) (strin
 		if rerr != nil {
 			return "", rerr
 		}
+		keepPointerHere(ctx) // hover leaves the pointer where it hovers
 		if err := s.Hover(w.ID, pt.X, pt.Y); err != nil {
 			return "", inputError(err)
 		}

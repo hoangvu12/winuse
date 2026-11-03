@@ -166,6 +166,9 @@ func Main() int {
 		Budget:  budget,
 		Browser: browsers,
 		Shots:   shots,
+		// What a Headed Action left open (polite.go): every visible
+		// top-level Window, popup menus included.
+		AllWindows: win.Collect,
 	}
 	if overlay != nil {
 		svc.Overlay = overlay

@@ -231,6 +231,7 @@ func activateWindow(s Services) Command {
 			return "", Fail("activate-window: "+err.Error(), "usage: winuse activate-window <window>")
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
+			keepForegroundHere(ctx) // the point of activate-window
 			return okOutput, nil
 		})
 	}
@@ -251,7 +252,7 @@ func activateWindow(s Services) Command {
 // around the act step's own abort points, and after it — turn a latched
 // press into the exit-130 stop. The refusal checks run unarmed: winuse
 // is not in control when it refuses.
-func (s Services) runAction(ctx context.Context, ref string, act func(ctx context.Context, w win.WindowInfo) (string, *Error)) (string, *Error) {
+func (s Services) runAction(ctx context.Context, ref string, act func(ctx context.Context, w win.WindowInfo) (string, *Error)) (result string, failure *Error) {
 	w, rerr := resolveWindow(s, ref)
 	if rerr != nil {
 		return "", rerr
@@ -268,6 +269,24 @@ func (s Services) runAction(ctx context.Context, ref string, act func(ctx contex
 		}
 		return "", Fail(err.Error(), "")
 	}
+	// Polite real input (polite.go, multi-agent ticket 08): wait for the
+	// user's input to go quiet, save their foreground and cursor (or join
+	// the Batch's save), and on every exit path release what winuse holds
+	// down and give the foreground and cursor back (a Note when it keeps
+	// the foreground).
+	if rerr := s.waitForQuietInput(ctx); rerr != nil {
+		return "", rerr
+	}
+	ctx, polite, own := s.beginPolite(ctx, w)
+	defer func() {
+		s.releaseHeld()
+		if !own {
+			return
+		}
+		if note := s.giveBack(polite); failure == nil {
+			result = withNotes(result, note)
+		}
+	}()
 	// The in-control indicator (ticket 13): raised over the target Window
 	// for as long as winuse controls it — the activation, the injected
 	// input, the action's own step — then hidden again, whatever the
@@ -282,17 +301,31 @@ func (s Services) runAction(ctx context.Context, ref string, act func(ctx contex
 	if err := s.Activate(w.ID); err != nil {
 		return "", activationError(err)
 	}
+	// Confirm the Window's thread took the activation before any input
+	// goes in (a WM_NULL round trip).
+	if s.SyncWindow != nil {
+		if err := s.SyncWindow(w.ID); err != nil {
+			return "", nothingSent(Fail(err.Error()+" after it was brought to the front",
+				"the App may be busy or hung; read the Window State, wait, and retry once"))
+		}
+	}
 	if s.Esc.Stopped() {
 		// The user pressed Esc during the activation: stop before any
 		// input is injected.
-		return "", escStopError()
+		return "", stopErrorFor(s.Esc)
 	}
 	out, err := act(ctx, w)
+	// The drain: the injected input handled before anything is given
+	// back; then where winuse left the cursor.
+	if s.SyncWindow != nil {
+		_ = s.SyncWindow(w.ID)
+	}
+	s.noteLeft(polite)
 	if s.Esc.Stopped() {
 		// A press during the act step (its own abort points, or its tail):
 		// the stop outranks the step's outcome — the user's signal is what
 		// the agent must act on.
-		return "", escStopError()
+		return "", stopErrorFor(s.Esc)
 	}
 	return out, err
 }

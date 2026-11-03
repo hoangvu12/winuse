@@ -68,7 +68,7 @@ func batch(commands map[string]Command, s Services) Command {
 	if esc == nil {
 		esc = noopEscWatch{}
 	}
-	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
+	return func(ctx context.Context, args json.RawMessage) (result string, failure *Error) {
 		var a protocol.BatchArgs
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("batch: "+err.Error(), batchUsageHint)
@@ -180,6 +180,15 @@ func batch(commands map[string]Command, s Services) Command {
 		if allHeadless {
 			defer armPassive(esc)()
 		} else {
+			// Polite real input (polite.go): one save before the first
+			// step and one give-back after the last, not one per step.
+			var run *politeRun
+			ctx, run = s.beginBatchPolite(ctx)
+			defer func() {
+				if note := s.giveBack(run); failure == nil {
+					result = withNotes(result, note)
+				}
+			}()
 			esc.Arm()
 			defer esc.Disarm()
 			if bw != nil {
@@ -190,7 +199,7 @@ func batch(commands map[string]Command, s Services) Command {
 		var notes strings.Builder // the steps' note lines (opened.go)
 		for i, st := range steps {
 			if esc.Stopped() {
-				return "", escStopError()
+				return "", stopErrorFor(esc)
 			}
 			// The request's deadline stops the Batch between Actions
 			// (finding 10): the remaining Actions must not run, and the
@@ -213,7 +222,7 @@ func batch(commands map[string]Command, s Services) Command {
 		// stop must still surface (their Esc was swallowed, or in a passive
 		// scope meant as a stop) rather than the Batch reporting success.
 		if esc.Stopped() {
-			return "", escStopError()
+			return "", stopErrorFor(esc)
 		}
 		return withNotes(okOutput, notes.String()), nil
 	}
