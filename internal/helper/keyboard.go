@@ -95,6 +95,12 @@ func typeText(s Services) Command {
 					return s.typeIntoEdit(ctx, w, edit, a.Text)
 				}
 			}
+			// A Chromium or Electron Window without a Browser Connection:
+			// window messages, read back where the field has a value
+			// (headless-max ticket 20, chromium.go).
+			if out, rerr, ok := s.chromiumType(ctx, w, a.Text); ok {
+				return out, rerr
+			}
 			return "", headedRefusal(w, typeTextWhy(w, a.Text, route),
 				func(id string) string { return "type-text " + id + " <text>" },
 				typeTextAlt(strconv.FormatUint(w.ID, 10)))
@@ -190,6 +196,11 @@ func pressKey(s Services) Command {
 				if dk, ok := dialogKeyRoute(chord, *route); ok {
 					return s.pressDialogKey(ctx, w, dk)
 				}
+			}
+			// A Chromium or Electron Window without a Browser Connection:
+			// window messages (headless-max ticket 20, chromium.go).
+			if out, rerr, ok := s.chromiumPress(ctx, w, chord, a.Force); ok {
+				return out, rerr
 			}
 			force := ""
 			if a.Force {

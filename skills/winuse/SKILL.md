@@ -336,7 +336,8 @@ Every other Action is a Headed Action, and it runs only when you pass
 `--headed`. winuse then brings the Window to the foreground, uses the real
 pointer and keyboard, and frames the Window with a banner telling the user
 that winuse is in control and Esc stops it. Headed covers a point that
-names no usable Element, `--count 2|3`, `--button right|middle`, `drag`, `hover`,
+names no usable Element, `--count 2|3` and `--button right|middle` outside
+a Chromium or Electron Window (there they go as window messages), `drag`, `hover`,
 `maximize-window`, Raise, and `press-key` and `type-text` anywhere the
 routes below do not reach. Sent without `--headed`, these are refused: the
 line says why there is no background route and ends in `nothing was sent`,
@@ -490,13 +491,23 @@ winuse picks the route from the live Window before it sends anything.
   typing, and winuse checks the length afterwards.
 - In a browser Window with a Browser Connection, both go to the Page
   Headless while a Page Element has the focus.
+- In a Chromium browser or Electron App Window otherwise (no Browser
+  Connection, or the focus outside the Page), both go to the Window as
+  window messages, without the foreground: `ok (typed as window messages;
+  ...)` or `ok (pressed as window messages; ...)`. The page sees a focus
+  and blur around each step. winuse reads typed text back from the focused
+  field where it has a value; where it has none, the output says the text
+  was not verified, so read the Window State. Click into the field first:
+  a double click (`click <window> <ref> --count 2`) goes as window messages
+  too and moves the page's focus there. A minimized Window, and a browser
+  the user is working in, are refused with nothing sent. WebView2 Apps are
+  not covered.
 - Everywhere else both need `--headed`, which takes the foreground and
-  types into whatever has keyboard focus. That includes WinUI, WPF,
-  Electron and browser Windows without a Browser Connection. Without the
-  flag they are refused with nothing sent, and the hint names the
-  `--headed` command, `--into` for text and `--post` for text, a key or a
-  chord. For a WinUI or WPF text box, name it with `--into`:
-  that is Headless.
+  types into whatever has keyboard focus. That includes WinUI and WPF.
+  Without the flag they are refused with nothing sent, and the hint names
+  the `--headed` command, `--into` for text and `--post` for text, a key
+  or a chord. For a WinUI or WPF text box, name it with `--into`: that is
+  Headless.
 
 A Headless route prints `ok`; a refusal means nothing was typed, so pick
 the next step from its hint. Before a Headed type, check the

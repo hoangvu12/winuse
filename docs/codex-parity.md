@@ -147,7 +147,7 @@ retried with `--headed`.
 
 | Parameter | Codex | winuse `press-key` | Status |
 |---|---|---|---|
-| `window` | the Window receiving the key | `<window>`; with `--headed` activated first, like every Headed Action. Without it, Return or Escape on a classic dialog and Page keys are Headless, `--post` posts, and any other key is refused with nothing sent and the `--headed` retry (ticket 21) | intentionally different |
+| `window` | the Window receiving the key | `<window>`; with `--headed` activated first, like every Headed Action. Without it, Return or Escape on a classic dialog and Page keys are Headless, keys into a Chromium or Electron Window without a Browser Connection go as window messages (headless-max ticket 20), `--post` posts, and any other key is refused with nothing sent and the `--headed` retry (ticket 21) | intentionally different |
 | `key` | X keysym names and `+` chords (`Return`, `Control_L+a`, `Numpad_0`), aliases, whitespace around `+` ignored; unknown → `unsupported key: <name>` | the same names, aliases and chord delivery (all key-downs in order, key-ups in reverse, scan codes filled, extended keys flagged); the same error | matched |
 
 The Windows key differs in enforcement only: Codex's guidance forbids
@@ -157,7 +157,7 @@ it and winuse's code refuses it (see cross-cutting).
 
 | Parameter | Codex | winuse `type-text` | Status |
 |---|---|---|---|
-| `window` | the Window with the focused Element | `<window>`; text into a focused classic edit box, `--into` a named field, Page typing and `--post` need no foreground; anything else types Headed only with `--headed`, and is refused with nothing sent without it (ticket 21) | intentionally different |
+| `window` | the Window with the focused Element | `<window>`; text into a focused classic edit box, `--into` a named field, Page typing, typing into a Chromium or Electron Window without a Browser Connection (window messages, read back where the field has a value, ticket 20) and `--post` need no foreground; anything else types Headed only with `--headed`, and is refused with nothing sent without it (ticket 21) | intentionally different |
 | `text` | one string, typed into the current focus as Unicode | every argument after the Window joins into the text (CLI sugar); injected as Unicode key events, one UTF-16 unit per event, newline/tab as real Return/Tab keys | matched |
 
 ### scroll
