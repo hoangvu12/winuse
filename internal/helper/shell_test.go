@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
+	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
 	"github.com/hoangvu12/winuse/internal/wstate"
 )
@@ -416,5 +417,30 @@ func TestBatchStepsOnTheShellAreGuarded(t *testing.T) {
 	}
 	if hasStep(s.recorded(), "press-key") {
 		t.Error("the Batch's step was pressed")
+	}
+}
+
+// shellAccelActor would run any shortcut the taskbar labels: the lookup
+// must never reach it on a shell surface.
+type shellAccelActor struct {
+	shellActor
+	calls *int
+}
+
+func (a shellAccelActor) InvokeAccelerator(ctx context.Context, hwnd uint64, shown func(acceleratorKey, name string, menuItem bool) bool, expandMenus bool) (uia.AccelResult, error) {
+	*a.calls++
+	return uia.AccelResult{}, nil
+}
+
+func TestShellSkipsTheShortcutLookup(t *testing.T) {
+	s := newShellSpy()
+	calls := 0
+	s.svc.Actions = shellAccelActor{shellActor{s.headlessSpy}, &calls}
+	_, cmdErr := runCommand(t, CommandsWith(s.svc), "press-key", protocol.PressKeyArgs{Window: "900", Key: "Control_L+Escape"})
+	if cmdErr == nil || !strings.HasSuffix(cmdErr.Msg, nothingSentNote) {
+		t.Errorf("press-key Control_L+Escape on the taskbar: %v", cmdErr)
+	}
+	if calls != 0 {
+		t.Errorf("the shortcut lookup ran %d times on the taskbar", calls)
 	}
 }
