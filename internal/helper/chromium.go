@@ -38,10 +38,10 @@ var _ FocusReader = (*uia.Client)(nil)
 
 // The Chromium route's outputs.
 const (
-	chromiumTypedOutput      = "ok (typed as window messages; the page saw a focus and blur around it)\n"
-	chromiumUnverifiedOutput = "ok (typed as window messages, not verified: the focused field has no readable value; read the Window State to check)\n"
-	chromiumKeyOutput        = "ok (pressed as window messages; the page saw a focus and blur around it)\n"
-	chromiumClickOutput      = "ok (clicked as window messages)\n"
+	chromiumTypedOutput      = "ok\nNote: typed as window messages; the page saw a focus and blur around it\n"
+	chromiumUnverifiedOutput = "ok\nNote: typed as window messages, not verified: the focused field has no readable value; read the Window State to check\n"
+	chromiumKeyOutput        = "ok\nNote: pressed as window messages; the page saw a focus and blur around it\n"
+	chromiumClickOutput      = "ok\nNote: clicked as window messages\n"
 )
 
 // chromiumWindow reports a Chromium browser's or Electron App's top-level

@@ -9,7 +9,6 @@ package helper
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
@@ -100,14 +99,10 @@ func (s Services) sleep(d time.Duration) {
 }
 
 // intervalNote marks a Headless route's success when --interval-ms was
-// given: the text went in at once, unpaced.
+// given: the text went in at once, unpaced. The note goes last.
 func intervalNote(out string) string {
-	const note = "--interval-ms does not apply: this route puts the text in at once"
-	switch {
-	case out == okOutput:
-		return "ok (" + note + ")\n"
-	case strings.HasPrefix(out, "ok (") && strings.HasSuffix(out, ")\n"):
-		return strings.TrimSuffix(out, ")\n") + "; " + note + ")\n"
+	if !isOK(out) {
+		return out
 	}
-	return out
+	return out + notePrefix + "--interval-ms does not apply: this route puts the text in at once\n"
 }

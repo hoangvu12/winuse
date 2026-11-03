@@ -447,7 +447,7 @@ func (s Services) waitElement(ctx context.Context, a protocol.WaitArgs, want tim
 		return "", waitTimeoutError(what, want, seen,
 			"the Window may need another Action first; read winuse get-window-state "+strconv.FormatUint(w.ID, 10))
 	case last.closed:
-		return "ok (the Window closed)\n", nil
+		return "ok\nNote: the Window closed\n", nil
 	}
 	return okOutput, nil
 }

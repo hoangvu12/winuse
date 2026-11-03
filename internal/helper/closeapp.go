@@ -146,7 +146,7 @@ func closeApp(s Services) Command {
 			return okOutput, nil
 		}
 		if !a.Force {
-			return fmt.Sprintf("ok (the close was requested; %s is still running, it may be asking to save: read winuse list-windows --app %s or the Window State next)\n",
+			return fmt.Sprintf("ok\nNote: the close was requested; %s is still running, it may be asking to save: read winuse list-windows --app %s or the Window State next\n",
 				name, quoteArg(ref)), nil
 		}
 		return s.forceEnd(ctx, name, procs)
@@ -243,7 +243,7 @@ func (s Services) forceEnd(ctx context.Context, name string, procs []AppProcess)
 	if ended != 1 {
 		noun = "processes"
 	}
-	return fmt.Sprintf("ok (%s was still running after the close; --force ended %d %s)\n", name, ended, noun), nil
+	return fmt.Sprintf("ok\nNote: %s was still running after the close; --force ended %d %s\n", name, ended, noun), nil
 }
 
 // allExited reports whether every process has ended.

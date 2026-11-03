@@ -55,6 +55,21 @@ const (
 // notePrefix starts every note line an Action adds after its `ok`.
 const notePrefix = "Note: "
 
+// okWith is a success with a note line per note after its `ok`.
+func okWith(notes ...string) string {
+	var b strings.Builder
+	b.WriteString(okOutput)
+	for _, n := range notes {
+		b.WriteString(notePrefix + n + "\n")
+	}
+	return b.String()
+}
+
+// isOK reports whether out is a success: `ok` alone on its first line.
+func isOK(out string) bool {
+	return strings.HasPrefix(out, okOutput)
+}
+
 // reportsOpened reports whether the command with these arguments is an
 // Action whose opened and closed Windows are reported.
 func reportsOpened(name string, args json.RawMessage) bool {
