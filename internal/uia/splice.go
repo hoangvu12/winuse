@@ -88,6 +88,7 @@ func (s *store) splice(agent string, hwnd uint64, base, merged []wstate.Element,
 	st.elements = merged
 	st.origins = origins
 	st.base = len(merged)
+	st.added = nil // the added Elements were not in the merge: released above
 	s.mu.Unlock()
 	for _, p := range removed {
 		s.release(p)

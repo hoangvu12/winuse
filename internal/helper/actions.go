@@ -13,10 +13,12 @@ package helper
 // passes. Element Actions are Headless by default instead (ADR 0010,
 // headless.go): a click on an Element Index or name:/id: reference (left,
 // single) runs Services.runHeadless — the same refusals, no activation,
-// no input, a pattern call. `@x,y`, double/triple and right/middle clicks
-// sent with `headed`, and activate-window, keep runAction; without
-// `headed` they are refused with nothing sent (headedgate.go, ADR 0013
-// rule 3).
+// no input, a pattern call. A left single click at `@x,y` resolves the
+// point to the target Window's own Element and clicks it the same way
+// (pointroute.go, headless-max ticket 11). Double/triple and right/middle
+// clicks sent with `headed`, any click with `headed`, and activate-window
+// keep runAction; without `headed` the others are refused with nothing
+// sent (headedgate.go, ADR 0013 rule 3).
 
 import (
 	"context"
@@ -123,10 +125,27 @@ func click(s Services) Command {
 			// The coordinate form (@x,y, ticket 08): input at the point
 			// itself.
 			x, y := target.point.X, target.point.Y
+			retry := func(id string) string { return "click " + id + " " + pointToken(x, y) + clickOptions(button, count) }
+			if actor, pr, ok := s.pointActor(); ok && !a.Headed && button == win.MouseLeft && count == 1 {
+				// A left single click at a point clicks the target Window's
+				// own Element there, Headless (headless-max ticket 11).
+				return s.runAtPoint(ctx, a.Window, actor, pr, pointRun{
+					x: x, y: y, need: uia.NeedClick, done: "clicked", retry: retry,
+					run: headlessRun{
+						cmd:  "click",
+						verb: "click",
+						act: func(ctx context.Context, w win.WindowInfo, index int) error {
+							_, err := actor.HeadlessClick(ctx, w.ID, index)
+							return err
+						},
+						refusal: clickRefusal,
+					},
+				})
+			}
 			if !a.Headed {
 				return "", s.headedOnly(a.Window,
 					fmt.Sprintf("click at %s has no background route: a click at a point needs the real pointer", pointToken(x, y)),
-					func(id string) string { return "click " + id + " " + pointToken(x, y) + clickOptions(button, count) },
+					retry,
 					"to click without the foreground, name the Element by its Element Index, name: or id: from winuse get-window-state")
 			}
 			return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {

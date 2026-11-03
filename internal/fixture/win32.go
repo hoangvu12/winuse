@@ -61,6 +61,9 @@ var (
 	procMessageBoxW                = user32.NewProc("MessageBoxW")
 	procSetWindowPos               = user32.NewProc("SetWindowPos")
 
+	procCreateAcceleratorTableW = user32.NewProc("CreateAcceleratorTableW")
+	procTranslateAcceleratorW   = user32.NewProc("TranslateAcceleratorW")
+
 	procCreateMenu      = user32.NewProc("CreateMenu")
 	procCreatePopupMenu = user32.NewProc("CreatePopupMenu")
 	procAppendMenuW     = user32.NewProc("AppendMenuW")

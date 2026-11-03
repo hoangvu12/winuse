@@ -379,7 +379,20 @@ and the fixture not raised above the cover). Then a Batch
 `click id:button-click then press-key Control_L+a then click
 id:checkbox-notify` stops with "batch stopped at Action 2 (press-key)"
 and nothing was sent: the first click took effect, no key reached the
-fixture, and the checkbox step never ran.
+fixture, and the checkbox step never ran. Its click at a point aims at the
+canvas, which offers no click route, so headless-max ticket 11 refuses it
+too.
+
+`TestPointFormsActHeadlessOnTheCoveredWindow` (`point_headless_test.go`,
+headless-max ticket 11): on the covered fixture, after a screenshot, a
+left click at the Click Me button's centre and at the Alpha list item's,
+`set-value on` at the checkbox's and a scroll of one notch down and up at
+the list each act on the fixture's own Element under the point (the
+fixture records the button, the selection, the checkbox and the list's
+first visible item: 3 after one notch, three steps, then 0). Each `ok`
+names the Element and the point, the cover stays the foreground window,
+the pointer does not move and no banner shows. A click at the canvas is
+refused with the `--headed` retry and reaches no canvas click.
 
 Run only these tests:
 
@@ -489,6 +502,13 @@ still the foreground window afterwards. The shared helpers are in
   `get-window <id>` finds that Window, and a Headless Escape on it prints
   `Note: window <id> closed`. The foreground stays put. Every other test
   accepts such note lines after `ok` and logs them (`assertActionOK`).
+- `TestNameReferenceAfterHelperRestart` (`live_refs_test.go`,
+  desktop-parity 17): after `get-window-state`, the helper is killed, and
+  a click by `name:Click Me` and a set-value by `id:text-field` still act
+  through a fresh read, each with its `Note: found ... in a fresh read`
+  line. The same name again needs no fresh read, and `name:Twin` after
+  another restart refuses with both candidates. The cover keeps the
+  foreground.
 - `TestFindAndRegionReadOnTheFixture` (`find_test.go`, desktop-parity
   04): after a full read, `find --role "list item" --name charlie` prints
   Charlie with an index after the read's last, and a click on it selects
@@ -561,7 +581,17 @@ still the foreground window afterwards. The shared helpers are in
 - `TestPostedKeysIntoClassicEdit` (`posted_keys_test.go`):
   `type-text --post` and `press-key BackSpace --post` reach the Classic
   Dialog's Edit, the output starts with `ok (posted;`, and
-  `Control_L+a --post` is refused with "nothing was sent".
+  `Control_L+Alt_L+a --post` (Control and Alt together) is refused with "nothing was sent".
+- `TestPostedChordFiresAClassicAccelerator` (`posted_chords_test.go`,
+  headless-max ticket 07): `press-key Control_L+Shift_L+k --post` on the
+  covered fixture fires its main window's accelerator
+  (TranslateAccelerator, `accelerators` 1) with no activation; the
+  foreground stays put and the user's Control key does not read as down.
+- `TestPostedChordFiresAWPFKeyBinding` **needs Windows PowerShell**, which
+  shows the test's own WPF window (KeyBinding Ctrl+S) without activating
+  it. With it covered, `press-key Control_L+s --post` fires the binding
+  (through the activation pair), the foreground stays put and the user's
+  Control key does not read as down.
 - `TestPostedKeysRefusedOnBlockedAndMinimizedWindows`: posted keys and
   text into the main window are refused while the Save As dialog blocks
   it and while it is minimized, and no key reaches the fixture.
@@ -596,7 +626,7 @@ Run only these tests:
 
 ```
 set WINUSE_E2E=1
-go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted|OpenedAndClosed|SelfActivation|FindAndRegionRead" ./test/e2e
+go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted|OpenedAndClosed|SelfActivation|FindAndRegionRead|NameReferenceAfterHelperRestart" ./test/e2e
 ```
 
 ## The clipboard test

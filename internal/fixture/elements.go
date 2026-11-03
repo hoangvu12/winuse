@@ -84,6 +84,13 @@ const (
 	ClassicFillText        = "filled from the menu"
 )
 
+// AcceleratorChord is the main window's one accelerator, in press-key's
+// names (headless-max ticket 07): a classic Win32 accelerator table entry
+// (FVIRTKEY|FCONTROL|FSHIFT, K) that TranslateAccelerator turns into a
+// WM_COMMAND, which the state file counts in Accelerators. Nothing else
+// in the fixture uses this chord.
+const AcceleratorChord = "Control_L+Shift_L+k"
+
 // ClassicColors are the Classic Dialog combo's items, in order. "Blue" and
 // "blue" differ only in case: set-value picks either by its exact name and
 // refuses "BLUE" as ambiguous.

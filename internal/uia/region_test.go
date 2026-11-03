@@ -74,9 +74,9 @@ func TestStoreAddsAfterTheWindowState(t *testing.T) {
 	f.install("A", 101, f.beginRead(), read, []wstate.Element{{Name: "Window"}, {Name: "Save", AutomationId: "save"}, {Name: "Open"}})
 
 	found := ptrs(2)
-	first := f.add("A", 101, found, []wstate.Element{{Name: "Save", AutomationId: "save"}, {Name: "Deep", AutomationId: "deep"}})
-	if first != 3 {
-		t.Fatalf("first added index %d, want 3", first)
+	idx := f.add("A", 101, found, []wstate.Element{{Name: "Save", AutomationId: "save"}, {Name: "Deep", AutomationId: "deep"}}, nil)
+	if !slices.Equal(idx, []int{3, 4}) {
+		t.Fatalf("added as %v, want 3 and 4", idx)
 	}
 	// The read's indexes keep their Elements; the added ones follow.
 	for i, want := range []comPtr{read[0], read[1], read[2], found[0], found[1]} {
@@ -112,8 +112,8 @@ func TestStoreAddWithoutAWindowState(t *testing.T) {
 	f := newFakeStore()
 	c := &Client{store: f.store}
 	found := ptrs(2)
-	if first := f.add("A", 101, found, []wstate.Element{{Name: "X"}, {Name: "X"}}); first != 0 {
-		t.Fatalf("first = %d, want 0", first)
+	if idx := f.add("A", 101, found, []wstate.Element{{Name: "X"}, {Name: "X"}}, nil); !slices.Equal(idx, []int{0, 1}) {
+		t.Fatalf("added as %v, want 0 and 1", idx)
 	}
 	var several *wstate.AmbiguousRefError
 	if _, err := c.ResolveElementRef(agentCtx("A"), 101, "name:X"); !errors.As(err, &several) || !slices.Equal(several.Matches, []int{0, 1}) {

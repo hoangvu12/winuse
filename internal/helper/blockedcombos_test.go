@@ -63,10 +63,11 @@ func TestPressKeyForceSendsBlockedCombos(t *testing.T) {
 			t.Errorf("%s --force: pressed %v", key, spy.pressChords)
 		}
 	}
-	// --force does not lift Posted Keys' modifier refusal.
+	// --force never posts a Blocked Combo (headless-max ticket 07: chords
+	// can be posted, but not these).
 	spy := &keySpy{}
 	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "press-key", protocol.PressKeyArgs{Window: "101", Key: "Alt_L+F4", Post: true, Force: true})
-	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "posted keys carry no modifiers") {
+	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "never sends Alt_L+F4: it is a Blocked Combo") || !strings.HasSuffix(cmdErr.Msg, nothingSentNote) {
 		t.Fatalf("posted --force: %v", cmdErr)
 	}
 }
