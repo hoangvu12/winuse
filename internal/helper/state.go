@@ -130,6 +130,15 @@ type Services struct {
 	PostKeys func(target uint64, chord keys.Chord) (int, error) // WM_KEYDOWN in order, WM_KEYUP in reverse
 	PostText func(target uint64, text string) (int, error)      // WM_CHAR per UTF-16 unit
 
+	// Posted Clicks and posted wheel scrolls (headless-max ticket 12,
+	// postclick.go): ChildAtPoint finds the control under a screen point
+	// from the target Window down; PostClick and PostWheel post to it and
+	// return how many messages they posted. Nil values fall back to the
+	// real Win32 calls; tests fake them so offline tests never post.
+	ChildAtPoint func(top uint64, sx, sy int32) (hwnd uint64, cx, cy int32, class string)
+	PostClick    func(target uint64, cx, cy int32, button win.MouseButton, count int) (int, error)
+	PostWheel    func(target uint64, sx, sy, dx, dy int32) (int, error)
+
 	// The Esc stop (ticket 12): nil falls back to a no-op (no physical-Esc
 	// stopping); tests fake it with a latch they can press.
 	Esc EscWatch
@@ -508,6 +517,15 @@ func defaultServices(s Services) Services {
 	}
 	if s.PostText == nil {
 		s.PostText = win.PostText
+	}
+	if s.ChildAtPoint == nil {
+		s.ChildAtPoint = win.ChildAtPoint
+	}
+	if s.PostClick == nil {
+		s.PostClick = win.PostClick
+	}
+	if s.PostWheel == nil {
+		s.PostWheel = win.PostWheel
 	}
 	if s.Esc == nil {
 		s.Esc = noopEscWatch{}

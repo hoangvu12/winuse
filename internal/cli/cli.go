@@ -131,7 +131,10 @@ commands:
                                name: or id: reference, or at @x,y
                                coordinates from the Window's latest
                                screenshot; options: --count 1|2|3 (default 1),
-                               --button left|middle|right (default left)
+                               --button left|middle|right (default left),
+                               --post (post the click to the classic
+                               control there without the foreground: best
+                               effort, the app may ignore it)
   type-text <window> [--post | --into <element index | name: | id:>] <text>
                                type Unicode text into the Window's focused
                                Element (headless into a classic edit control
@@ -186,13 +189,14 @@ const usageTail = `);
                                steps (1 to 50, default 3)
   scroll <window> <element index | name: | id:> into-view
                                scroll an Element into view
-  scroll <window> @x,y <dx> <dy>
+  scroll <window> @x,y <dx> <dy> [--post]
                                scroll the Window at a point of its latest
                                screenshot: positive dy scrolls down, positive
                                dx right; one wheel notch is 120 (three
                                steps of the list or page under the point,
                                up to 16 notches; --headed turns the real
-                               wheel)
+                               wheel; --post posts the wheel to the classic
+                               control there, best effort)
   select-text <window> <element index | name: | id:> <start> <length> | all
                                select text in a field without keys or the
                                mouse: length characters (UTF-16 units) from

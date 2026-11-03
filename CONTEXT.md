@@ -85,6 +85,10 @@ Keys or text that the agent explicitly asks to post to a Window's focused contro
 _Avoid_: Background keys, silent typing
 
 **Posted Clicks**:
+Clicks and wheel scrolls that the agent explicitly asks to post as mouse messages to the classic control under a point or an Element of a background Window, without the foreground or the real pointer. Only classic controls take them (edit boxes, buttons, list, tree and combo boxes). Best effort: the app may ignore them. Neither Headless nor Headed.
+_Avoid_: Background clicks, silent clicks
+
+**Posted Clicks**:
 Planned (ADR 0013). Mouse messages that the agent explicitly asks to post to a classic Win32 control of a background Window: double, right and middle clicks, clicks at a point, and scrolls at a point. Best effort like Posted Keys: the app may ignore them, and winuse cannot read the effect back. Neither Headless nor Headed.
 _Avoid_: Background clicks, silent clicks
 
