@@ -65,11 +65,14 @@ const (
 	ClassicPasswordID = 1002
 	ClassicComboID    = 1003
 
-	// ClassicListID is a multi-select list box (LBS_EXTENDEDSEL) of
-	// ClassicFruits, nothing selected when the dialog opens, the dialog's
-	// last control so the Elements before it keep their Element Indexes:
-	// the Ctrl+click and Shift+click route of desktop-parity 06 selects in
-	// it through UI Automation's Win32 proxy (Selection.CanSelectMultiple).
+	// ClassicListID is a multi-select list view (SysListView32, LVS_LIST
+	// without LVS_SINGLESEL) of ClassicFruits, nothing selected when the
+	// dialog opens, the dialog's last control so the Elements before it
+	// keep their Element Indexes: the Ctrl+click and Shift+click route of
+	// desktop-parity 06 selects in it through UI Automation's Win32 proxy
+	// (Selection.CanSelectMultiple). A list box would not do: its proxy
+	// reports CanSelectMultiple false even with LBS_EXTENDEDSEL (e2e live
+	// run, 2026-11-03).
 	ClassicListID = 1004
 
 	// The Classic Dialog's menu bar (headless-max ticket 08), a real HMENU:
@@ -103,7 +106,7 @@ const AcceleratorChord = "Control_L+Shift_L+k"
 // refuses "BLUE" as ambiguous.
 var ClassicColors = []string{"Red", "Green", "Blue", "blue"}
 
-// ClassicFruits are the Classic Dialog list box's items, in order.
+// ClassicFruits are the Classic Dialog list view's items, in order.
 var ClassicFruits = []string{"Apple", "Banana", "Cherry", "Damson", "Elder"}
 
 // Window class names (also the ClassName the provider reports for the

@@ -412,7 +412,7 @@ name Edit, then a screenshot. `click @x,y --count 2 --post` a few pixels
 into the Edit prints the posted output and selects the first word
 (EM_GETSEL from 0 to 5 or 6), and `click @x,y --button right --post` opens
 the Edit's context menu (a `#32768` Window of the fixture, closed with the
-fixture). The cover stays the foreground window and no banner shows. The
+fixture, and reported after the ok). The cover stays the foreground window and no banner shows. The
 posted wheel (`scroll @x,y --post`) is not run: the fixture has no classic
 list box.
 
@@ -434,11 +434,12 @@ the covered fixture's list, which is single-select, is refused with
 nothing sent and the exact `--headed` retry; the selection is unchanged
 and the cover keeps the foreground.
 `TestCtrlAndShiftClickSelectInAMultiSelectList` is the positive leg: the
-Classic Dialog's fruit list box (LBS_EXTENDEDSEL, its last control, so no
-other Element Index moves) takes `click name:Apple --modifiers ctrl`, then
+Classic Dialog's fruit list view (SysListView32 without LVS_SINGLESEL, its
+last control, so no other Element Index moves; a list box will not do, its
+UI Automation proxy reports no multi-select) takes `click name:Apple --modifiers ctrl`, then
 Cherry, then `--modifiers shift` on Elder (the range from Cherry) and Ctrl
 on Apple again (deselected), each Headless with the cover in front and no
-banner; the test reads the selection back with LB_GETSEL after each.
+banner; the test reads the selection back with LVM_GETITEMSTATE after each.
 
 Run only these tests:
 

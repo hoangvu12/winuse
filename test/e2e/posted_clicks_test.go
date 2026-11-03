@@ -12,6 +12,7 @@ package e2e
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,8 +65,9 @@ func TestPostedClicksOnACoveredEdit(t *testing.T) {
 		t.Errorf("after the posted double click the Edit selects %d to %d, want the first word (0 to 5 or 6)", st.SelStart, st.SelEnd)
 	}
 
+	// The context menu it opens is reported after the ok (desktop-parity 02).
 	res, overlaySeen = runWatched(t, []string{"click", dialog, at, "--button", "right", "--post"})
-	if res.exit != 0 || res.stdout != postedClickOK {
+	if res.exit != 0 || !strings.HasPrefix(res.stdout, postedClickOK) {
 		t.Fatalf("click %s --button right --post: exit %d, stdout %q, stderr %q", at, res.exit, res.stdout, res.stderr)
 	}
 	if overlaySeen {
