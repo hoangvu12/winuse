@@ -387,10 +387,11 @@ focus drifted and you must restore it first.
 
 The user sees each Headless Action through the Agent Cursor, a second cursor
 that glides to the Element with a short label such as `click "Save"` and
-ripples on the click. It sits just above the Window it acts on, so a Window
-the user keeps in front of that one also covers the cursor. It leaves the
-user's pointer alone, never appears in your screenshots, and needs nothing
-from you.
+ripples on the click. After a Headless `set-value` or `type-text --into`,
+it briefly shows a caret where the field's caret now is. It sits just
+above the Window it acts on, so a Window the user keeps in front of that
+one also covers the cursor. It leaves the user's pointer alone, never
+appears in your screenshots, and needs nothing from you.
 
 A Headless click uses the Element's first pattern among Invoke, Toggle,
 Select and Expand/Collapse, else its default action. winuse reads Toggle,

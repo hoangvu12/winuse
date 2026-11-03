@@ -1043,6 +1043,9 @@ type fakeViewState struct {
 	ripple     bool
 	outline    bool
 	outlinePop float64
+	caret      bool
+	caretBar   Rect
+	caretOp    float64
 	composes   int
 	armed      bool
 	period     time.Duration
@@ -1076,7 +1079,11 @@ func (v *fakeCursorView) showOutline(_ Rect, _, pop, _ float64) {
 	v.with(func(s *fakeViewState) { s.outline, s.outlinePop = true, pop })
 }
 func (v *fakeCursorView) hideOutline() { v.with(func(s *fakeViewState) { s.outline = false }) }
-func (v *fakeCursorView) composed()    { v.with(func(s *fakeViewState) { s.composes++ }) }
+func (v *fakeCursorView) showCaret(bar Rect, opacity float64) {
+	v.with(func(s *fakeViewState) { s.caret, s.caretBar, s.caretOp = true, bar, opacity })
+}
+func (v *fakeCursorView) hideCaret() { v.with(func(s *fakeViewState) { s.caret = false }) }
+func (v *fakeCursorView) composed()  { v.with(func(s *fakeViewState) { s.composes++ }) }
 func (v *fakeCursorView) raise(anchor uint64) {
 	v.with(func(s *fakeViewState) { s.anchors = append(s.anchors, anchor) })
 }

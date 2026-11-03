@@ -261,6 +261,7 @@ func (l *layeredWin) destroy() {
 // cursorWin is the Win32 cursorView.
 type cursorWin struct {
 	arrow, ripple, outline *layeredWin
+	caret                  *layeredWin // the insertion caret (cursor_caret.go)
 
 	accent color.RGBA // the dart's fill, the ripple and the outline: this Agent's colour
 
@@ -299,7 +300,7 @@ func newCursorWin(accent color.RGBA) (*cursorWin, error) {
 	}
 	w := &cursorWin{accent: accent, fonts: map[int32]uintptr{}}
 	var made []*layeredWin
-	for _, slot := range []**layeredWin{&w.outline, &w.ripple, &w.arrow} {
+	for _, slot := range []**layeredWin{&w.outline, &w.ripple, &w.caret, &w.arrow} {
 		l, err := newLayeredWin(hMod, cls)
 		if err != nil {
 			for _, m := range made {
@@ -596,7 +597,29 @@ func (w *cursorWin) composed() {
 // raise puts the windows just above anchor (cursor_zorder.go), the arrow
 // on top of its own ripple and outline.
 func (w *cursorWin) raise(anchor uint64) {
-	placeAbove(uintptr(anchor), w.outline, w.ripple, w.arrow)
+	placeAbove(uintptr(anchor), w.outline, w.ripple, w.caret, w.arrow)
+}
+
+// showCaret draws the caret's bar, a fully rounded rectangle in the
+// Agent's colour, the window the bar's size.
+func (w *cursorWin) showCaret(bar Rect, opacity float64) {
+	if bar.Width() <= 0 || bar.Height() <= 0 || !w.caret.resize(bar.Width(), bar.Height()) {
+		w.hideCaret()
+		return
+	}
+	s := &w.caret.pix
+	s.clear()
+	bw, bh := float64(bar.Width()), float64(bar.Height())
+	s.fillSDF(Rect{Right: bar.Width(), Bottom: bar.Height()}, w.accent, 1, func(x, y float64) float64 {
+		return roundRectSD(0, 0, bw, bh, bw/2, x, y)
+	})
+	w.caret.present(bar.Left, bar.Top, opacity)
+}
+
+func (w *cursorWin) hideCaret() {
+	if w.caret.hide() {
+		w.hidden = true
+	}
 }
 
 func (w *cursorWin) schedule(d time.Duration) {
@@ -620,7 +643,7 @@ func (w *cursorWin) cancel() {
 func (w *cursorWin) destroy() {
 	w.cancel()
 	cursorTicks.Delete(w.arrow.hwnd)
-	for _, l := range []*layeredWin{w.arrow, w.ripple, w.outline} {
+	for _, l := range []*layeredWin{w.arrow, w.ripple, w.outline, w.caret} {
 		l.destroy()
 	}
 	for h, f := range w.fonts {
