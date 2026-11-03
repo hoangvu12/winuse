@@ -216,13 +216,13 @@ func TestBatchTypeTextIntoKeepsTheHeadlessScope(t *testing.T) {
 		t.Errorf("inserted %q, want hello", spy.inserted)
 	}
 
-	// A refused step stops the Batch with nothing sent, still passive.
+	// A refused step fails the Batch with nothing sent, still passive.
 	spy = newIntoSpy(okButton)
 	_, cmdErr := runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{
 		Window: "101",
 		Steps:  []protocol.Step{stepOf("type-text", protocol.TypeTextArgs{Text: "hello", IntoIndex: intPtrBatch(2)})},
 	})
-	if cmdErr == nil || !strings.HasPrefix(cmdErr.Msg, "batch stopped at Action 1 (type-text): type-text --into has no Headless route") {
+	if msg, _, ok := failedStep(cmdErr, 1, "type-text"); !ok || !strings.HasPrefix(msg, "type-text --into has no Headless route") {
 		t.Errorf("batch refusal: %+v", cmdErr)
 	}
 	if b := spy.esc.brackets(); len(b) == 0 || b[0] != "arm-passive" {

@@ -599,7 +599,8 @@ func TestTabStepsInABatch(t *testing.T) {
 		{Kind: "tab-new", Args: json.RawMessage(`{"url":"https://a.test/"}`)},
 		{Kind: "tab-switch", Args: json.RawMessage(`{"tab":"e100"}`)},
 	}})
-	if e != nil || out != okOutput {
+	// tab new's id comes back under its step (desktop-parity ticket 20).
+	if e != nil || out != "Action 1 (tab-new): ok newtab5\nAction 2 (tab-switch): ok\n" {
 		t.Fatalf("batch = %q, %+v", out, e)
 	}
 	for _, br := range r.esc.brackets() {
@@ -640,7 +641,7 @@ func TestTabStepsInABatch(t *testing.T) {
 	out, e = r.run(t, "batch", protocol.BatchArgs{Window: "301", Steps: []protocol.Step{
 		{Kind: "tab-switch", Args: json.RawMessage(`{"tab":"aaaa"}`)},
 	}})
-	if e != nil || out != okOutput || strings.Join(r.esc.brackets(), ",") != "arm-passive,arm-passive,disarm-passive,disarm-passive" {
+	if e != nil || out != "Action 1 (tab-switch): ok\n" || strings.Join(r.esc.brackets(), ",") != "arm-passive,arm-passive,disarm-passive,disarm-passive" {
 		t.Errorf("launched batch: %q, %+v, %v", out, e, r.esc.brackets())
 	}
 	if sel.picked != 0 || strings.Contains(strings.Join(r.log(), ","), "press") {
@@ -680,8 +681,35 @@ func TestTabCommandsRegisteredAndGated(t *testing.T) {
 			t.Errorf("%s is a Batch step", name)
 		}
 	}
-	if batchableStep("tab-list") {
-		t.Error("tab list prints, so it is no Batch step")
+	// A Batch prints its steps' output (desktop-parity ticket 20), so tab
+	// list is a step too.
+	if !batchableStep("tab-list") {
+		t.Error("tab list is a Batch step")
+	}
+}
+
+func TestTabListStepPrintsTheTabs(t *testing.T) {
+	_, conn := extensionBrowser(t)
+	r := newTabRig(t, conn, nil, nil, nil)
+	list, e := r.run(t, "tab-list", protocol.TabArgs{Window: "301"})
+	if e != nil {
+		t.Fatalf("tab-list: %+v", e)
+	}
+	out, e := r.run(t, "batch", protocol.BatchArgs{Window: "301", Steps: []protocol.Step{
+		{Kind: "tab-list"},
+		{Kind: "tab-close", Args: json.RawMessage(`{"tab":"e100"}`)},
+	}})
+	if e != nil {
+		t.Fatalf("batch: %+v", e)
+	}
+	lines := strings.Split(strings.TrimSuffix(list, "\n"), "\n")
+	want := "Action 1 (tab-list): " + lines[0] + "\n"
+	for _, l := range lines[1:] {
+		want += "  " + l + "\n"
+	}
+	want += "Action 2 (tab-close): ok\n"
+	if out != want {
+		t.Errorf("batch = %q, want %q", out, want)
 	}
 }
 

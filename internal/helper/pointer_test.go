@@ -443,8 +443,8 @@ func TestBatchRunsThePointerSteps(t *testing.T) {
 	if cmdErr != nil {
 		t.Fatalf("batch: %v", cmdErr.Error())
 	}
-	if out != "ok\n" {
-		t.Errorf("output = %q, want ok", out)
+	if want := "Action 1 (scroll): ok\nAction 2 (drag): ok\nAction 3 (hover): ok\n"; out != want {
+		t.Errorf("output = %q, want %q", out, want)
 	}
 	// All three ran on window 101, at the screen points the screenshot
 	// pixels map to with the frame bounds re-read at (150, 260):
@@ -609,21 +609,21 @@ func TestBatchRunsElementDragAndHoverSteps(t *testing.T) {
 			stepOf("drag", protocol.DragArgs{FromIndex: &three, ToIndex: &five, DropDelayMS: 100}),
 		},
 	})
-	if cmdErr != nil || out != okOutput {
+	if cmdErr != nil || out != "Action 1 (hover): ok\nAction 2 (drag): ok\n" {
 		t.Fatalf("batch = %q, %v", out, cmdErr)
 	}
 	if s.hovered != [3]int32{101, 510, 520} || s.dragged != [5]int32{101, 310, 320, 510, 520} || s.dropped != 100*time.Millisecond {
 		t.Errorf("hovered %+v, dragged %+v held %s", s.hovered, s.dragged, s.dropped)
 	}
 
-	// Unheaded, the Element steps are no Headless steps: the Batch stops
-	// at the first with the --headed refusal, and nothing was sent.
+	// Unheaded, the Element steps are no Headless steps: the step fails
+	// with the --headed refusal, and nothing was sent.
 	s.hovered = [3]int32{}
 	_, cmdErr = runJSON(t, cmds, "batch", protocol.BatchArgs{Window: "101", Steps: []protocol.Step{
 		stepOf("hover", protocol.HoverArgs{ElementIndex: &five}),
 	}})
-	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "nothing was sent") || !strings.Contains(cmdErr.Hint, "winuse --headed hover 101 5") {
-		t.Fatalf("unheaded batch = %v", cmdErr)
+	if msg, hint, ok := failedStep(cmdErr, 1, "hover"); !ok || !strings.Contains(msg, "nothing was sent") || !strings.Contains(hint, "winuse --headed hover 101 5") {
+		t.Fatalf("unheaded batch = %+v", cmdErr)
 	}
 	if s.hovered != [3]int32{} {
 		t.Errorf("an unheaded batch hovered %+v", s.hovered)

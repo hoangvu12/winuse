@@ -238,11 +238,34 @@ func TestOpenedBatchDiffsOnce(t *testing.T) {
 	if e != nil {
 		t.Fatalf("batch: %v", e.Error())
 	}
-	if want := "ok\nNote: a new Window opened: 777 Notepad \"Save As\"\n"; out != want {
+	if want := "Action 1 (set-value): ok\nAction 2 (click): ok\nNote: a new Window opened: 777 Notepad \"Save As\"\n"; out != want {
 		t.Errorf("output %q, want %q", out, want)
 	}
 	if desk.calls != 2 {
 		t.Errorf("%d snapshots, want one before the Batch and one after", desk.calls)
+	}
+}
+
+// A Batch that ran past a failed step still reports the Window its other
+// steps opened, after their lines (desktop-parity ticket 20); a Batch
+// stopped by Esc reports nothing.
+func TestOpenedBatchPastAFailedStepStillReports(t *testing.T) {
+	spy := newHeadlessSpy()
+	desk := newDesk([]win.WindowInfo{saveDialog, notepadMain, otherApp})
+	desk.wire(&spy.svc)
+	_, e := runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{Window: "101", Steps: []protocol.Step{
+		stepOf("press-key", protocol.PressKeyArgs{Key: "Tab"}), // no Headless route: refused
+		stepOf("click", protocol.ClickArgs{ElementIndex: idx(2)}),
+	}})
+	if e == nil || !strings.HasPrefix(e.Msg, "batch: 1 of 2 Actions failed: Action 1 (press-key)") {
+		t.Fatalf("batch: %+v, want the report naming Action 1", e)
+	}
+	if !strings.HasPrefix(e.Out, "Action 1 (press-key): failed: ") ||
+		!strings.HasSuffix(e.Out, "Action 2 (click): ok\nNote: a new Window opened: 777 Notepad \"Save As\"\n") {
+		t.Errorf("out = %q, want the steps' lines, then the note", e.Out)
+	}
+	if !ranOn(e) || ranOn(&Error{Msg: "stopped", Exit: protocol.ExitEsc, Out: "Action 1 (click): ok\n"}) || ranOn(Fail("x", "")) {
+		t.Error("ranOn: a failure with step lines reports, an Esc stop or a bare failure does not")
 	}
 }
 
@@ -268,8 +291,11 @@ func TestOpenedNotesFormat(t *testing.T) {
 	if got != want {
 		t.Errorf("formatOpened = %q, want %q", got, want)
 	}
-	if got := stepNotes("ok (a download)\nNote: one\nnoise\nNote: two"); got != "Note: one\nNote: two\n" {
-		t.Errorf("stepNotes = %q", got)
+	if got := stepLines(3, "click", "ok (a download)\nNote: one\n\nNote: two\n"); got != "Action 3 (click): ok (a download)\n  Note: one\n  \n  Note: two\n" {
+		t.Errorf("stepLines = %q", got)
+	}
+	if got := stepLines(1, "tab-close", ""); got != "Action 1 (tab-close): ok\n" {
+		t.Errorf("stepLines with no output = %q", got)
 	}
 	if got := withNotes("ok", "Note: x\n"); got != "ok\nNote: x\n" {
 		t.Errorf("withNotes = %q", got)

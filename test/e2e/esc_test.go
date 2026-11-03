@@ -22,7 +22,8 @@
 //
 // The injected test is self-contained: while a Batch types, a concurrent
 // `--headed press-key Escape` injects the key — it must reach the app (the fixture
-// records it) without stopping the Batch, which still prints ok.
+// records it) without stopping the Batch, which still prints each step's
+// ok.
 
 package e2e
 
@@ -159,8 +160,16 @@ func assertEscStopped(t *testing.T, what string, res *actionResult) {
 	if res.exit != 130 {
 		t.Fatalf("%s: exit %d, want 130 (Codex's interrupt code); did you press Esc? stderr:\n%s", what, res.exit, res.stderr)
 	}
-	if res.stdout != "" {
-		t.Errorf("%s: stdout = %q, want empty", what, res.stdout)
+	// A stopped Batch prints the lines of the steps that ran before the
+	// stop (desktop-parity ticket 20); anything else prints nothing.
+	if steps, notes, ok := batchSteps(res.stdout); res.stdout != "" && (!ok || len(notes) != 0 || len(steps) == 0) {
+		t.Errorf("%s: stdout = %q, want empty or the ok lines of the steps before the stop", what, res.stdout)
+	} else {
+		for n, line := range steps {
+			if !strings.HasPrefix(line, "ok") {
+				t.Errorf("%s: Action %d printed %q before the stop, want ok", what, n, line)
+			}
+		}
 	}
 	if !strings.Contains(res.stderr, escStopMessage) {
 		t.Errorf("%s: stderr = %q, want it to contain %q", what, res.stderr, escStopMessage)
@@ -205,7 +214,7 @@ func TestInjectedEscDoesNotStopTheBatch(t *testing.T) {
 	// The Batch finished normally: the injected key did not stop it.
 	select {
 	case res := <-bg:
-		assertActionOK(t, "the batch the Esc was injected into", res.stdout, res.stderr, res.exit)
+		assertBatchOK(t, "the batch the Esc was injected into", res.stdout, res.stderr, res.exit, 2)
 	case <-time.After(30 * time.Second):
 		t.Fatal("the batch did not finish within 30 s of the injection")
 	}

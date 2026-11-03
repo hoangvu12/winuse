@@ -22,7 +22,8 @@ package helper
 // (resolveWindow), so the agent can read it next.
 //
 // The diff only reads window metadata: no input, no activation. It is
-// skipped when the Action failed (its error stands alone), when the
+// skipped when the Action failed (its error stands alone; a Batch that
+// ran past a failed step still gets it after its steps' lines), when the
 // Window does not resolve, and when the target is not in the snapshot
 // before the Action (Services.Surfaces refused, as in an offline test).
 // Page Actions add their own notes (pageactions.go): a JavaScript dialog
@@ -130,11 +131,23 @@ func (s Services) reportOpened(name string, cmd Command) Command {
 		before, windows := s.snapshotOpened(args)
 		probes := &openedProbes{}
 		out, err := cmd(context.WithValue(ctx, openedProbesKey{}, probes), args)
+		if ranOn(err) {
+			err.Out = withNotes(err.Out, s.openedNotes(ctx, before, windows, probes.all()))
+			return out, err
+		}
 		if err != nil {
 			return out, err
 		}
 		return withNotes(out, s.openedNotes(ctx, before, windows, probes.all())), nil
 	}
+}
+
+// ranOn reports whether a failure carries the output of steps that ran (a
+// Batch, batch.go, desktop-parity ticket 20): that output (Error.Out)
+// gets the reports an ok gets. An Esc stop is left alone, and a spent
+// budget reports nothing (openedNotes).
+func ranOn(err *Error) bool {
+	return err != nil && err.Out != "" && err.Exit != protocol.ExitEsc
 }
 
 // snapshotOpened resolves the Action's Window and takes the snapshot
@@ -265,19 +278,6 @@ func withNotes(out, notes string) string {
 		out += "\n"
 	}
 	return out + notes
-}
-
-// stepNotes picks the note lines out of one Batch step's output, so the
-// Batch's `ok` keeps them (a Page step's dialog or new Tab).
-func stepNotes(out string) string {
-	var b strings.Builder
-	for _, line := range strings.SplitAfter(out, "\n") {
-		if strings.HasPrefix(line, notePrefix) {
-			b.WriteString(strings.TrimSuffix(line, "\n"))
-			b.WriteByte('\n')
-		}
-	}
-	return b.String()
 }
 
 // popupByID finds an open menu or popup by its Window ID: a Window an

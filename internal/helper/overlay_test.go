@@ -355,8 +355,8 @@ func TestBatchShowsOneOverlayBracketForTheWholeRun(t *testing.T) {
 	if cmdErr != nil {
 		t.Fatalf("batch: %v", cmdErr.Error())
 	}
-	if out != "ok\n" {
-		t.Errorf("output = %q, want ok", out)
+	if want := "Action 1 (click): ok\nAction 2 (type-text): ok\nAction 3 (activate-window): ok\n"; out != want {
+		t.Errorf("output = %q, want %q", out, want)
 	}
 
 	// Exactly one real show over the Batch's Window and one real hide,
