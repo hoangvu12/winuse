@@ -199,9 +199,6 @@ func (h *heldElement) Release() {
 	go h.c.Run(context.Background(), func(_ *worker, _ *run) { h.c.store.release(el) })
 }
 
-// propIsEnabled is UIA_IsEnabledPropertyId.
-const propIsEnabled = 30010
-
 // readElementState reads one live Element's state on the worker thread.
 // IsEnabled is read first, with its HRESULT: a gone Element fails it as
 // stale, and every other property is read only from a live one.
