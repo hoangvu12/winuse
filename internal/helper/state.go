@@ -134,6 +134,15 @@ type Services struct {
 	// one.
 	PostChord func(top, target uint64, plan win.ChordPlan) (int, error)
 
+	// Posted Clicks and posted wheel scrolls (headless-max ticket 12,
+	// postclick.go): ChildAtPoint finds the control under a screen point
+	// from the target Window down; PostClick and PostWheel post to it and
+	// return how many messages they posted. Nil values fall back to the
+	// real Win32 calls; tests fake them so offline tests never post.
+	ChildAtPoint func(top uint64, sx, sy int32) (hwnd uint64, cx, cy int32, class string)
+	PostClick    func(target uint64, cx, cy int32, button win.MouseButton, count int) (int, error)
+	PostWheel    func(target uint64, sx, sy, dx, dy int32) (int, error)
+
 	// The Esc stop (ticket 12): nil falls back to a no-op (no physical-Esc
 	// stopping); tests fake it with a latch they can press.
 	Esc EscWatch
@@ -273,6 +282,15 @@ type Services struct {
 	// the Desktop commands (the clipboard's): a paste in a Batch must not
 	// see the clipboard change halfway.
 	actionGate chan struct{}
+
+	// The Window identity check (multi-agent ticket 09, identity.go):
+	// WindowIdentity reads what a Window ID names now (its process, that
+	// process's start time, its class); windowIDs records what each one
+	// named when it was listed or read, shared by every agent. Nil
+	// WindowIdentity falls back to win.WindowIdentity, which refuses inside
+	// an offline test binary (nothing is then checked); tests fake it.
+	WindowIdentity func(hwnd uint64) (win.WindowOwner, bool)
+	windowIDs      *windowRecords
 }
 
 // CommandsWith builds the command registry over the given services.
@@ -368,7 +386,11 @@ func CommandsWith(s Services) map[string]Command {
 		case name == "wait":
 			cmd = s.waitGated(cmd) // waits.go: a desktop wait only reads, a Page wait is serialized
 		case !observationOnlyCommand(name):
-			cmd = s.serialized(s.reportAfter(name, cmd))
+			// The Window identity check runs once the command holds the
+			// gate, before anything else looks at the Window (identity.go).
+			cmd = s.serialized(s.checkWindow(s.reportAfter(name, cmd)))
+		default:
+			cmd = s.recordReads(name, cmd) // identity.go: what a read Window ID names
 		}
 		if name != StatusCommand {
 			cmd = s.tracked(name, cmd)
@@ -609,6 +631,15 @@ func defaultServices(s Services) Services {
 	if s.PostChord == nil {
 		s.PostChord = win.PostChord
 	}
+	if s.ChildAtPoint == nil {
+		s.ChildAtPoint = win.ChildAtPoint
+	}
+	if s.PostClick == nil {
+		s.PostClick = win.PostClick
+	}
+	if s.PostWheel == nil {
+		s.PostWheel = win.PostWheel
+	}
 	if s.Esc == nil {
 		s.Esc = noopEscWatch{}
 	}
@@ -743,6 +774,12 @@ func defaultServices(s Services) Services {
 	}
 	if s.Clipboard == nil {
 		s.Clipboard = win.NewClipboard()
+	}
+	if s.WindowIdentity == nil {
+		s.WindowIdentity = win.WindowIdentity
+	}
+	if s.windowIDs == nil {
+		s.windowIDs = newWindowRecords()
 	}
 	if s.actionGate == nil {
 		s.actionGate = make(chan struct{}, 1)

@@ -131,7 +131,7 @@ the one frame (Codex composites several `zIndex` layers).
 |---|---|---|---|
 | `window` | the Window to click in | `<window>` | matched |
 | `element_index` | the Element Index from the last state | the Element Index, or `name:`/`id:` references resolved against the latest Window State | matched (extended) |
-| (delivery) | activates the Window and injects a real pointer click | an Element click (left, single) is **Headless**: the first pattern the Element offers (Invoke → Toggle → SelectionItem.Select → Expand/Collapse → LegacyIAccessible default action), Toggle/Select/Expand/Collapse read back; none offered fails with "nothing was sent" and the `--headed` hint, never a silent switch. with `--headed`, every click is Codex's real click; without it, a left single click at `@x,y` clicks the target Window's own Element under the point Headless and names it in the `ok` (headless-max ticket 11), and double/triple and right/middle clicks outside a Page are refused with nothing sent and the `--headed` retry (ticket 21) | intentionally different |
+| (delivery) | activates the Window and injects a real pointer click | an Element click (left, single) is **Headless**: the first pattern the Element offers (Invoke → Toggle → SelectionItem.Select → Expand/Collapse → LegacyIAccessible default action), Toggle/Select/Expand/Collapse read back; none offered fails with "nothing was sent" and the `--headed` hint, never a silent switch. with `--headed`, every click is Codex's real click; without it, a left single click at `@x,y` clicks the target Window's own Element under the point Headless and names it in the `ok` (headless-max ticket 11), and double/triple and right/middle clicks outside a Page are refused with nothing sent and the `--headed` retry (ticket 21); `--post` posts any click to the classic control there instead, best effort (ticket 12) | intentionally different |
 | `x`, `y` | window-relative **logical** pixels (the 175%-scaling offset bug) | `@x,y` in the latest screenshot's pixel space, mapped back to **physical** pixels, re-anchored to the Window's live bounds at action time | intentionally different |
 | `click_count` | 1 (single) or 2 (double); right double click is not supported | `--count 1|2|3`; non-left multi-clicks are refused with Codex's message | matched |
 | `mouse_button` | `left`/`right`/`middle`, aliases `l`/`r`/`m`; unknown → `unsupported mouse_button: <v>` | `--button left|middle|right` with the same `l`/`r`/`m` aliases and the same error | matched |
@@ -165,7 +165,7 @@ it and winuse's code refuses it (see cross-cutting).
 | Parameter | Codex | winuse `scroll` | Status |
 |---|---|---|---|
 | `window` | the Window scrolled | `<window>` | matched |
-| `x`, `y` | window-relative point to scroll at | `@x,y` in the latest screenshot's space, mapped like coordinate clicks; Headless on a Page; elsewhere the target Window's list or page under the point scrolls through UI Automation, three steps per notch up to 16 notches (ticket 11), and the real wheel only with `--headed` (ticket 21) | intentionally different |
+| `x`, `y` | window-relative point to scroll at | `@x,y` in the latest screenshot's space, mapped like coordinate clicks; Headless on a Page; elsewhere the target Window's list or page under the point scrolls through UI Automation, three steps per notch up to 16 notches (ticket 11), `--post` posts the wheel to the classic control there (ticket 12), and the real wheel only with `--headed` (ticket 21) | intentionally different |
 | `scrollX`, `scrollY` | wheel amounts; positive down/right, one notch is 120; point-based, not element-based (Codex guidance: "do not pass element_index") | the same signs, the same notch size, the same point-based contract; a point over another window is refused, not scrolled | matched |
 | `screenshotId` | validated against that screenshot | latest-screenshot binding (as click) | intentionally different |
 
@@ -415,6 +415,12 @@ waits, which only read) may answer concurrently; the UIA worker serializes every
 automation. **matched**.
 
 ### stale elements
+
+A Window ID that a new Window reused after the old one closed is refused
+before any Action, with nothing sent (multi-agent 09, ADR 0014: the
+helper records each Window ID's process, process start and class when it
+is listed or read, shared by every agent). Codex's Window IDs carry no
+such check. **extension**.
 
 An Element Index whose Element went away fails as stale, with the
 instruction to read the Window State again; references copied from an

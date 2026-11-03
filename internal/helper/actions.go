@@ -113,6 +113,11 @@ func click(s Services) Command {
 		if terr != nil {
 			return "", terr
 		}
+		if a.Post {
+			// Posted Clicks to the classic control there, opt-in
+			// (headless-max ticket 12, postclick.go).
+			return s.postClick(ctx, a, target, button, count)
+		}
 		// A Page Element routes over the Browser Connection (browser merge
 		// ticket 05, pageactions.go).
 		if out, rerr, ok := s.onPage(ctx, a.Window, target, func(w win.WindowInfo, index int, o *page.Origin) (string, *Error) {

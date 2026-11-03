@@ -79,13 +79,13 @@ is not, which is why ADR 0011 made Posted Keys opt-in.
 | restore-window reports self-activation | 6 | 02 | done |
 | Detect and report self-activation around restore | 6 | 03 | done |
 | Headless tab switch on a launched browser | 1 | 05 | done |
-| Accelerator lookup for press-key | 1 | 06 | planned |
+| Accelerator lookup for press-key | 1 | 06 | done |
 | Chords through attached key state, `--post` | 2 | 07 | done |
 | invoke-menu on classic menu bars | 1 | 08 | done |
 | ContextMenu Secondary Action | 1 | 09 | planned |
 | select-text | 1 | 10 | done |
 | Point forms resolve to an Element in the target Window | 1 | 11 | done |
-| Posted Clicks and `scroll @x,y --post` | 2 | 12 | planned |
+| Posted Clicks and `scroll @x,y --post` | 2 | 12 | done |
 | Caret-aware typing into Text-pattern fields | 1 | 13 | done (`--into` only; see the ticket) |
 | Headless Actions on minimized Windows | 1 | 14 | done |
 | Electron and WebView2 Browser Connections at launch; attach to a running Electron | 1 | 15 | done |

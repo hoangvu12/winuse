@@ -301,6 +301,9 @@ func (s Services) stepHeadless(ctx context.Context, kind string, args json.RawMe
 	case "invoke-menu":
 		return headlessStep(kind, args, nil) // the menu route needs no element side
 	}
+	if postedStep(kind, args) {
+		return true // postclick.go: posted, no foreground or banner
+	}
 	if _, _, ok := s.pointActor(); ok && pointStep(kind, args) {
 		return true // pointroute.go: Headless, or refused with nothing sent
 	}

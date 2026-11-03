@@ -77,7 +77,7 @@ Several Actions sent in one call and run in order, stopping at the first one tha
 _Avoid_: Script, macro, sequence
 
 **Headless Action**:
-An Action that winuse can deliver reliably without the foreground: no foreground change, no pointer, no real keys, no banner. Every Window Action except maximize is always Headless, and so are selecting text in a field and running a command of a classic menu bar. These are Headless unless the agent asks for Headed: a click on an Element (left button, single), a set value, every Secondary Action except Raise, scrolling an Element, the same four at a point of a screenshot (they act on the Window's own Element under the point, never on whatever covers it), Return or Escape on a classic dialog, Escape on the open tray overflow, and typing into a classic edit box that has the focus or that the agent names as the Element to type into, and typing into another text field the agent names that has a text caret (its value rewritten at the caret, with no key events). Actions on a Page Element through a Browser Connection are Headless too, whatever the button or click count, and so are keys and typing while the Page has the focus and scrolling at a point of the Page. The Actions on a Tab's Page as a whole (navigate, back, forward, reload, upload, dialog, wait and eval) are always Headless.
+An Action that winuse can deliver reliably without the foreground: no foreground change, no pointer, no real keys, no banner. Every Window Action except maximize is always Headless, and so are selecting text in a field and running a command of a classic menu bar. These are Headless unless the agent asks for Headed: a click on an Element (left button, single), a set value, every Secondary Action except Raise, scrolling an Element, the same four at a point of a screenshot (they act on the Window's own Element under the point, never on whatever covers it), Return or Escape on a classic dialog, Escape on the open tray overflow, a chord that runs the command the Window labels with it (its shortcut), and typing into a classic edit box that has the focus or that the agent names as the Element to type into, and typing into another text field the agent names that has a text caret (its value rewritten at the caret, with no key events). Actions on a Page Element through a Browser Connection are Headless too, whatever the button or click count, and so are keys and typing while the Page has the focus and scrolling at a point of the Page. The Actions on a Tab's Page as a whole (navigate, back, forward, reload, upload, dialog, wait and eval) are always Headless.
 _Avoid_: Background action, silent action, pattern action
 
 **Headed Action**:
@@ -87,6 +87,10 @@ _Avoid_: Foreground action, physical action, v1 mode
 **Posted Keys**:
 Keys or text that the agent explicitly asks to post to a Window's focused control without the foreground. Best effort: the app may ignore them. A chord's modifiers are held for the Window's thread only, never the user's keyboard (ADR 0013); Control and Alt together are refused. Neither Headless nor Headed.
 _Avoid_: Background keys, silent typing
+
+**Posted Clicks**:
+Clicks and wheel scrolls that the agent explicitly asks to post as mouse messages to the classic control under a point or an Element of a background Window, without the foreground or the real pointer. Only classic controls take them (edit boxes, buttons, list, tree and combo boxes). Best effort: the app may ignore them. Neither Headless nor Headed.
+_Avoid_: Background clicks, silent clicks
 
 **Posted Clicks**:
 Planned (ADR 0013). Mouse messages that the agent explicitly asks to post to a classic Win32 control of a background Window: double, right and middle clicks, clicks at a point, and scrolls at a point. Best effort like Posted Keys: the app may ignore them, and winuse cannot read the effect back. Neither Headless nor Headed.
