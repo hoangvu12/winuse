@@ -48,10 +48,10 @@ Details are in each ticket's Comments.
 | 03 | Desktop waits | P1 | M | done |
 | 04 | `find` and a region read | P1 | M-L | done (live e2e run still to do) |
 | 05 | Blocked dangerous combos with `--force` | P1 | S | done |
-| 06 | Modifiers on point clicks and wheel | P1 | S | done (live e2e not run yet) |
-| 07 | Opt-in `--json` output with codes and delivery | P1 | L | ready-for-agent |
+| 06 | Modifiers on point clicks and wheel | P1 | S | done |
+| 07 | Opt-in `--json` output with codes and delivery | P1 | L | done |
 | 08 | Display list and full-screen capture | P2 | S | done |
-| 09 | Shell surfaces | P2 | M | done (`open-shell` comes with 18) |
+| 09 | Shell surfaces | P2 | M | done (`open-shell` built with 18) |
 | 10 | close-app | P2 | S-M | done |
 | 11 | maximize-window | P2 | S | done |
 | 12 | Select an option by name in UIA combos and lists | P2 | S-M | done |
@@ -60,15 +60,16 @@ Details are in each ticket's Comments.
 | 15 | `winuse skill` prints the embedded skill | P2 | S | done |
 | 16 | `status` | P2 | S | done |
 | 17 | Live re-resolution of `name:`/`id:` | P2 | M | done (live e2e run still to do) |
-| 18 | Notifications | P3 | M | ready-for-agent |
+| 18 | Notifications | P3 | M | done (toasts pass live; an injected Win+N opened nothing on the laptop) |
 | 19 | Session traces with redaction | P3 | M-L | done |
 | 20 | Batch improvements | P3 | S-M | done |
 | 21 | Agent Cursor polish | P3 | S | wontfix (folded into multi-agent 04) |
 | 22 | list-windows details and filter | P2 | S | done |
 | 23 | type-text into an Element, and pacing | P2 | S-M | done (`--into` and `--interval-ms`; the Text-pattern leg landed with headless-max 13) |
-| 24 | Batch across several Windows | P3 | M | ready-for-agent |
+| 24 | Batch across several Windows | P3 | M | done |
+| 25 | Restart a helper from another build of the same version | P2 | S | ready-for-agent |
 
-24 tickets: 7 P1, 12 P2, 5 P3. Tickets 22-24 were added after a cross-check of the research's "partial" rows (rows 4, 23 and 60) against the tickets. The research's ticket 15 (`launch-app` options) moved into `../headless-max/issues/01-launch-without-foreground.md`, which changes the same code.
+25 tickets: 7 P1, 13 P2, 5 P3. Tickets 22-24 were added after a cross-check of the research's "partial" rows (rows 4, 23 and 60) against the tickets. Ticket 25 came from ticket 18's live run (a stale helper of the same version). The research's ticket 15 (`launch-app` options) moved into `../headless-max/issues/01-launch-without-foreground.md`, which changes the same code.
 
 `needs-triage` meant the ticket conflicts with an ADR, CONTEXT.md, SKILL.md or a `docs/codex-parity.md` row, and the user decides first. Each ticket names the conflict.
 

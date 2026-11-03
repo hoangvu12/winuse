@@ -86,7 +86,7 @@ func TestSecondaryActionsPolicy(t *testing.T) {
 			want: []string{"Toggle", "Select"},
 		},
 		{
-			name: "a window root with everything, in the fixed order",
+			name: "a window root with everything, in the fixed order (ContextMenu is never listed)",
 			f: patternFacts{
 				HasWindow: true, HasScroll: true, ScrollH: true, ScrollV: true,
 				HasExpand: true, ExpandState: expandPartiallyExpanded,
@@ -123,7 +123,7 @@ func TestSecondaryActionNamesCoverTheSurface(t *testing.T) {
 	// in the fixed order errors print them.
 	want := []string{
 		"Raise", "Scroll Up", "Scroll Down", "Scroll Left", "Scroll Right",
-		"Expand", "Collapse", "Toggle", "Select",
+		"Expand", "Collapse", "Toggle", "Select", "ContextMenu",
 	}
 	if len(SecondaryActionNames) != len(want) {
 		t.Fatalf("SecondaryActionNames = %v, want %v", SecondaryActionNames, want)
@@ -134,7 +134,7 @@ func TestSecondaryActionNamesCoverTheSurface(t *testing.T) {
 		}
 	}
 	if got, want := ExpectedSecondaryActions(),
-		"Raise, Scroll Up, Scroll Down, Scroll Left, Scroll Right, Expand, Collapse, Toggle, or Select"; got != want {
+		"Raise, Scroll Up, Scroll Down, Scroll Left, Scroll Right, Expand, Collapse, Toggle, Select, or ContextMenu"; got != want {
 		t.Errorf("ExpectedSecondaryActions() = %q, want %q", got, want)
 	}
 }
@@ -149,6 +149,7 @@ func TestCanonicalSecondaryAction(t *testing.T) {
 		"Expand":        "Expand",
 		"toggle":        "Toggle",
 		"select":        "Select",
+		"contextmenu":   "ContextMenu",
 	} {
 		got, ok := CanonicalSecondaryAction(name)
 		if !ok || got != want {

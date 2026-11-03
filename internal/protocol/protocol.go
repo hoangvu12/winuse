@@ -538,11 +538,47 @@ type ScreenshotArgs struct {
 	Display *int `json:"display"`
 }
 
+// ListNotificationsArgs are list-notifications' arguments (desktop-parity
+// ticket 18, a Desktop command): optional filters on the notifications
+// the showing toast banners hold, App on the sender's name and Text on
+// the title or text (both case-insensitive, any part).
+type ListNotificationsArgs struct {
+	App  string `json:"app,omitempty"`
+	Text string `json:"text,omitempty"`
+}
+
+// NotificationActionArgs are notification-action's arguments
+// (desktop-parity ticket 18): a notification's number from the Agent's
+// latest list-notifications or wait notification, and the name of one of
+// its buttons.
+type NotificationActionArgs struct {
+	ID     int    `json:"id"`
+	Button string `json:"button"`
+}
+
+// NotificationDismissArgs are notification-dismiss's arguments
+// (desktop-parity ticket 18): a notification's number, as for
+// notification-action.
+type NotificationDismissArgs struct {
+	ID int `json:"id"`
+}
+
+// OpenShellArgs are open-shell's arguments (desktop-parity tickets 09 and
+// 18): the shell surface to open, one of ShellSurfaces. It is Headed
+// only: without Headed nothing is sent.
+type OpenShellArgs struct {
+	Surface string `json:"surface"`
+	Headed  bool   `json:"headed,omitempty"` // the global --headed flag
+}
+
+// ShellSurfaces are the surfaces open-shell opens.
+var ShellSurfaces = []string{"start", "notifications", "quick-settings", "overflow"}
+
 // BatchArgs are batch's arguments (ticket 11): several Actions on one
 // Window in a single call, run in order, past a failed step unless
 // StopOnError (desktop-parity ticket 20).
 type BatchArgs struct {
-	Window      string `json:"window"`                  // the one Window every step acts on (Window ID, or an App name when that App has exactly one Window)
+	Window      string `json:"window"`                  // the Window the steps act on unless a step names its own (Window ID, or an App name when that App has exactly one Window)
 	Steps       []Step `json:"steps"`                   // the Actions to run, in order
 	Headed      bool   `json:"headed,omitempty"`        // every step runs Headed (ADR 0010)
 	StopOnError bool   `json:"stop_on_error,omitempty"` // stop at the first failed step instead of running the rest
@@ -551,10 +587,14 @@ type BatchArgs struct {
 // Step is one Batch step: an Action and its arguments — the same
 // arguments the standalone command takes, without the Window (the Batch
 // names the Window once; the helper injects it into every step). Kind
-// must be one of BatchStepKinds.
+// must be one of BatchStepKinds. A step may name its own Window instead
+// (desktop-parity ticket 24, `in <window>`), or the Window the step before
+// it opened (`in new`).
 type Step struct {
-	Kind string          `json:"kind"`           // the Action's command name, e.g. "click"
-	Args json.RawMessage `json:"args,omitempty"` // that command's arguments (window omitted)
+	Kind   string          `json:"kind"`             // the Action's command name, e.g. "click"
+	Args   json.RawMessage `json:"args,omitempty"`   // that command's arguments (window omitted)
+	Window string          `json:"window,omitempty"` // this step's own Window, instead of the Batch's
+	InNew  bool            `json:"in_new,omitempty"` // this step acts in the Window the step before it opened
 }
 
 // BatchStepKinds are the Action commands a Batch step can be — the
@@ -587,6 +627,13 @@ type Response struct {
 	Err   string `json:"err,omitempty"`   // single-line error message
 	Hint  string `json:"hint,omitempty"`  // recovery hint printed after the error
 	Exit  int    `json:"exit,omitempty"`  // exit code the CLI should use on failure
+
+	// A failure's code, and its delivery and retry when its text says
+	// (codes.go, desktop-parity ticket 07): set by Stamp, printed only
+	// under --json.
+	Code     string `json:"code,omitempty"`
+	Delivery string `json:"delivery,omitempty"`
+	Retry    string `json:"retry,omitempty"`
 
 	// Trace is the helper's part of a trace line (desktop-parity ticket
 	// 19, trace.go), only when Request.Trace asked for it.

@@ -123,6 +123,22 @@ type Services struct {
 	MenuItemRect  func(hwnd uint64, pos int) (win.Rect, bool) // GetMenuItemRect of a menu bar item
 	MenuCommand   func(hwnd uint64, id uint16) error          // PostMessage(WM_COMMAND, MAKEWPARAM(id, 0))
 
+	// The ContextMenu Secondary Action (headless-max ticket 09,
+	// contextmenu.go): PostContextMenu opens a classic control's menu,
+	// PopupMenu and MenuOwner read an open `#32768` (with ReadMenu above),
+	// PostMenuKey posts an item's mnemonic to it, CancelMenu closes it
+	// through its owner, and PostMenuEscape closes a menu with Escape.
+	// Menus holds the menu each Agent's own Action opened, for the close
+	// on its next Action elsewhere (defaultServices creates it). Nil
+	// values fall back to the real calls; tests fake them.
+	PostContextMenu func(control uint64) error               // PostMessage(WM_CONTEXTMENU, control, -1)
+	PopupMenu       func(menu uint64) uint64                 // SendMessageTimeout(MN_GETHMENU): 0 when unreadable
+	MenuOwner       func(menu uint64) uint64                 // GetGUIThreadInfo hwndMenuOwner: 0 outside menu mode
+	PostMenuKey     func(menu uint64, key rune) (int, error) // WM_KEYDOWN, WM_KEYUP of a mnemonic
+	CancelMenu      func(owner uint64) error                 // SendMessageTimeout(WM_CANCELMODE)
+	PostMenuEscape  func(menu uint64) (int, error)           // Escape to the menu, or a PopupHost's input windows
+	Menus           *agentMenus
+
 	// Posted Keys (ADR 0011, Decision 5; keyroute.go): press-key and
 	// type-text with `post`. Each returns how many messages it posted, so
 	// a failure can tell "nothing was sent" from a partial post. Nil values
@@ -326,6 +342,10 @@ type Services struct {
 	// an offline test binary (nothing is then checked); tests fake it.
 	WindowIdentity func(hwnd uint64) (win.WindowOwner, bool)
 	windowIDs      *windowRecords
+
+	// notifications is what each Agent's notification numbers stand for
+	// (desktop parity ticket 18, notifications.go); nil: a fresh log.
+	notifications *notificationLog
 }
 
 // CommandsWith builds the command registry over the given services.
@@ -409,6 +429,13 @@ func CommandsWith(s Services) map[string]Command {
 	// Window screenshot, since it hides the indicator and the cursor.
 	cmds["list-displays"] = listDisplays(s)
 	cmds["screenshot"] = displayScreenshot(s)
+	// The notifications' Desktop commands (notifications.go, desktop parity
+	// ticket 18): list-notifications only reads; the two actions take the
+	// desktop lane below. open-shell (openshell.go) is Headed only.
+	cmds["list-notifications"] = listNotifications(s)
+	cmds["notification-action"] = notificationAction(s)
+	cmds["notification-dismiss"] = notificationDismiss(s)
+	cmds["open-shell"] = openShell(s)
 
 	// The serialized registry: every control-path command runs alone, the
 	// Actions that can open a Window report it (opened.go), and so does an
@@ -423,8 +450,9 @@ func CommandsWith(s Services) map[string]Command {
 		case !observationOnlyCommand(name):
 			// The Window identity check runs once the command holds the
 			// gate, before anything else looks at the Window (identity.go).
-			// A hung App is refused next (hung.go), before anything is sent.
-			cmd = s.laned(name, s.checkWindow(s.refuseHung(s.reportAfter(name, cmd))))
+			// A hung App is refused next (hung.go), before anything is sent;
+			// then the menu the Agent left open closes (contextmenu.go).
+			cmd = s.laned(name, s.checkWindow(s.refuseHung(s.closeLeftMenu(name, s.reportAfter(name, cmd)))))
 		default:
 			cmd = s.recordReads(name, cmd) // identity.go: what a read Window ID names
 		}
@@ -453,6 +481,8 @@ func observationOnlyCommand(name string) bool {
 		"tab-list",      // reads a browser Window's Tabs only (tabs.go)
 		"list-displays", // a Desktop command that only reads the monitors (display.go)
 		StatusCommand:   // read-only probes (status.go): never waits behind an Action
+		return true
+	case "list-notifications": // a Desktop command that only reads the toast banners (notifications.go)
 		return true
 	}
 	return strings.HasPrefix(name, "browser-")
@@ -621,6 +651,27 @@ func defaultServices(s Services) Services {
 	}
 	if s.MenuCommand == nil {
 		s.MenuCommand = win.PostMenuCommand
+	}
+	if s.PostContextMenu == nil {
+		s.PostContextMenu = win.PostContextMenu
+	}
+	if s.PopupMenu == nil {
+		s.PopupMenu = win.PopupMenu
+	}
+	if s.MenuOwner == nil {
+		s.MenuOwner = win.MenuOwner
+	}
+	if s.PostMenuKey == nil {
+		s.PostMenuKey = win.PostMenuKey
+	}
+	if s.CancelMenu == nil {
+		s.CancelMenu = win.CancelMenu
+	}
+	if s.PostMenuEscape == nil {
+		s.PostMenuEscape = win.PostMenuEscape
+	}
+	if s.Menus == nil {
+		s.Menus = newAgentMenus()
 	}
 	if s.PostKeys == nil {
 		s.PostKeys = win.PostKeys
@@ -810,6 +861,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.windowIDs == nil {
 		s.windowIDs = newWindowRecords()
+	}
+	if s.notifications == nil {
+		s.notifications = newNotificationLog()
 	}
 	if s.lanes == nil {
 		s.lanes = newLaneManager()

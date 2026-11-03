@@ -81,6 +81,10 @@ type State struct {
 	LastToolbar string `json:"lastToolbar"`
 	LastMenu    string `json:"lastMenu"`
 	LastKey     string `json:"lastKey"`
+	// EscapePresses counts Escape key-downs on the main window: an Escape
+	// injected mid-typing is followed by more keys, so LastKey cannot show
+	// it.
+	EscapePresses int `json:"escapePresses"`
 
 	// List: SelectedItem is the selected item's Name ("" if none);
 	// ListFirstVisible is the index of the first visible item (scroll

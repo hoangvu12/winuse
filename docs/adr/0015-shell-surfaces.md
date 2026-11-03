@@ -6,7 +6,8 @@ Accepted (desktop-parity ticket 09, `.scratch/desktop-parity/issues/09-shell-sur
 triaged by the user on 2026-11-03: "do it like agent-desktop, Headless
 first"). It reverses the shell exclusion of `internal/win/enum.go`
 (`shellClasses`: the taskbars are no Windows an agent sees) for
-`list-windows --shell`.
+`list-windows --shell`. Decisions 8-10 were added by ticket 18, which
+closed the open point.
 
 ## Context
 
@@ -71,32 +72,83 @@ Probe rounds 4 and 5 (`.scratch/headless-gaps/probes-round4.md` section 7,
 6. **Escape on the open tray overflow is Headless**: posted to the XAML
    island's input windows, read back by the overflow hiding. It does not
    give the foreground back: that stays on the taskbar.
-7. **press-key keeps refusing the Windows key.** No route in this ADR
-   sends it.
+7. **press-key keeps refusing the Windows key.** Only `--headed
+   open-shell` sends it (decision 8, ticket 18).
 
 Every other Action on a shell surface follows the general rule (ADR 0013
 rule 3, headless-max ticket 21): without a Headless route it is refused
 unless the agent passed `--headed`.
 
-## Open
+## Closed by ticket 18 (2026-11-03)
 
-The user's triage allows agent-desktop's shell accelerators (Win+N,
-Win+A) as the `--headed` fallback for the notification panel. Which
-command sends them is not decided yet: an exception in press-key for a
-shell target, or a dedicated command like agent-desktop's
-`open-system-surface`. Until then the panel opens only with a `--headed`
-click on the clock.
+The open point was which command sends the shell accelerators the user's
+triage allows as the `--headed` fallback (Win+N, Win+A): an exception in
+press-key for a shell target, or a dedicated command like agent-desktop's
+`open-system-surface`. The PC orchestrator chose the dedicated command,
+and desktop-parity ticket 18 (`.scratch/desktop-parity/issues/18-notifications.md`)
+built it with the notifications:
 
-Decided on 2026-11-03: a dedicated
-`--headed open-shell start|notifications|quick-settings|overflow`, built
-with ticket 18, which closes this point. press-key keeps refusing the
-Windows key.
+8. **`winuse --headed open-shell start|notifications|quick-settings|overflow`**
+   is a Headed Desktop command (`internal/helper/openshell.go`). Without
+   `--headed` it is refused with nothing sent (ADR 0013 rule 3). With it,
+   under the in-control indicator over the taskbar and an armed Esc scope,
+   start presses Control_L+Escape, notifications Win+N and quick-settings
+   Win+A (`keys.ShellAccelerator`: no key name press-key accepts reaches
+   it), and overflow clicks the hidden-icons chevron with the real
+   pointer, decision 5's measured route. The surface showing within 2 s is
+   the read-back; its `list-windows` line is printed, with the foreground
+   note. A surface that is open already is printed with nothing sent: the
+   accelerators toggle. press-key keeps refusing the Windows key
+   (decision 7 stands for press-key), and so does CONTEXT.md's rule.
+9. **The toast banner is a surface of its own** (`win.ShellNotification`,
+   "notification banner"): ShellExperienceHost's reused CoreWindow whose
+   caption is "New notification" (probes round 5, section 7). This is the
+   one surface told apart by its caption, against decision 1: the panel
+   and the banner share their class and host process, and nothing else
+   measured tells them apart. Under another display language the banner is
+   taken for the Action Center, as before. An Action on a shell surface no
+   longer reports a banner that shows meanwhile as a Window it opened.
+10. **A toast's own buttons are the measured exception to decision 4.**
+    Invoke on a toast's action button reached the raising App and Invoke
+    on its dismiss button closed the banner, the foreground unchanged
+    while the App was listening (round 5). So `notification-action <n>
+    <button>` and `notification-dismiss <n>` press them Headless, after
+    agent-desktop's identity guard (the banner read again, the
+    notification acted on only while it shows with the App, title and
+    text it was listed with). Their read-back is the notification leaving
+    the banner. A press whose App is not listening can hand the foreground
+    to the shell (round 5): the `ok` says where it went (headless-max
+    03's detect-and-report). A click on the banner's Elements stays
+    refused without `--headed`, and the refusal points at the
+    notification commands.
 
-ShellExperienceHost's CoreWindow also hosts the toast banner ("New
-notification", probes round 5 section 7), so a visible toast is listed as
-the Action Center today, and an Action on a shell surface that coincides
-with one reports it as the Action Center opening. Ticket 18
-(notifications) must tell the toast banner apart from the panel.
+The Notification Center panel still does not open from UI Automation:
+the notification commands see the showing banners only, and older
+notifications are read in the panel after `--headed open-shell
+notifications`. Acting on the panel's Elements stays Headed (decision 4).
+
+Measured live on the laptop (Windows 11 25H2, with the user's approval):
+
+- A toast raised by the e2e test lists, presses (its process hears the
+  button) and dismisses as decision 10 says, the foreground unchanged.
+- **The shell's CoreWindows are immersive: EnumWindows leaves them out**
+  (since Windows 8 it lists desktop apps' top-level windows only), so
+  before this the banner, Start and the Action Center were never listed,
+  and decision 1's flyouts never showed in `--shell`. `win.Collect` now
+  adds the top-level CoreWindows of the three flyout hosts through
+  FindWindowEx, topmost first. This changes ticket 09's listing: an open
+  Start, Action Center or banner now joins `list-windows --shell`, while
+  the plain `list-windows` still drops every shell surface (KeepWindow).
+- **An injected Win+N opened nothing**, from the helper and from a bare
+  SendInput alike, and the foreground did not move. Why is unknown (the
+  shell ignoring injected accelerators there, or another keyboard hook).
+  `open-shell notifications` keeps the accelerator and fails honestly
+  ("did not show", the keys sent), with a hint that some setups ignore it
+  and the user can open the panel (decided by the orchestrators,
+  2026-11-03). Win+A and Ctrl+Esc were not tried live.
+
+Still unmeasured: the panel's tree, and the quick settings host,
+recognised as ShellHost.
 
 ## Consequences
 
@@ -107,7 +159,10 @@ with one reports it as the Action Center opening. Ticket 18
   needs `--headed`. The overflow's tray icons are read only while it is
   open, so reading them is foreground-taking too.
 - An Action on a shell surface reports Start or the Action Center
-  opening, though each lives in its own host process.
+  opening, though each lives in its own host process; never a toast
+  banner.
+- Opening a surface is one command, `--headed open-shell`, the only
+  sender of the Windows key.
 - The shell's class names and host processes are Windows 11's (and the
   Windows 10 overflow class). A future shell that renames them drops out
   of `--shell` quietly rather than misreporting.

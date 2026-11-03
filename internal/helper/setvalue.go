@@ -213,6 +213,9 @@ func performSecondaryAction(s Services) Command {
 		}); ok {
 			return out, rerr
 		}
+		if action == uia.ContextMenuAction {
+			return s.contextMenu(ctx, a, target) // headless-max ticket 09, contextmenu.go
+		}
 		if ha, ok := s.headless("perform-secondary-action", args); ok {
 			return s.runHeadless(ctx, a.Window, ha, headlessRun{
 				cmd:       "perform-secondary-action",

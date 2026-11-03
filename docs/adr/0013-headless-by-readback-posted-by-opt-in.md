@@ -7,8 +7,8 @@ Accepted by the user on 2026-11-03 (headless-max spec,
 0012. It reverses ADR 0010 Decision 1, the headless spec's minimized
 refusal, ADR 0011 Decision 5's chord refusal and ADR 0012 Decision 6's
 "Chromium browsers only"; "Reversals" below names the ticket behind
-each. Every route it rules on has landed except the ContextMenu
-Secondary Action (ticket 09); the table in "Routes" says which.
+each. Every route it rules on has landed; the table in "Routes" names
+the ticket behind each.
 
 ## Context
 
@@ -82,7 +82,7 @@ is not, which is why ADR 0011 made Posted Keys opt-in.
 | Accelerator lookup for press-key | 1 | 06 | done |
 | Chords through attached key state, `--post` | 2 | 07 | done |
 | invoke-menu on classic menu bars | 1 | 08 | done |
-| ContextMenu Secondary Action | 1 | 09 | planned |
+| ContextMenu Secondary Action | 1 | 09 | done |
 | select-text | 1 | 10 | done |
 | Point forms resolve to an Element in the target Window | 1 | 11 | done |
 | Posted Clicks and `scroll @x,y --post` | 2 | 12 | done |
@@ -163,8 +163,9 @@ administrator Windows, with the advice to start winuse elevated.
 - WPF context menus: neither ShowContextMenu nor a posted WM_CONTEXTMENU
   opens one in a background Window (round 4).
 - The tray overflow, whose opening takes the foreground, and the clock
-  and notification panel, which does not open from a UIA call (round 5;
-  the shell surfaces are ADR 0015's).
+  and notification panel, which does not open from a UIA call (round 5).
+  Both open only with `--headed open-shell`; a toast banner's own
+  buttons are Headless (ADR 0015, desktop-parity 18).
 - Guaranteeing that an App never takes the foreground itself.
 - Administrator Windows, from a helper that is not elevated.
 - Attaching CDP to a running WebView2 App, or to a running Electron App

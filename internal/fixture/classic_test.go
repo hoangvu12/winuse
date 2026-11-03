@@ -14,11 +14,12 @@ import (
 
 // parsedItem is one DLGITEMTEMPLATE read back from a template.
 type parsedItem struct {
-	offset int // in UTF-16 words from the template start
-	style  uint32
-	id     uint16
-	class  uint16
-	text   string
+	offset    int // in UTF-16 words from the template start
+	style     uint32
+	id        uint16
+	class     uint16
+	className string // a class by name (the class marker is not 0xFFFF)
+	text      string
 }
 
 // parseTemplate reads a DLGTEMPLATE back the way the dialog manager does:
@@ -72,10 +73,12 @@ func parseTemplate(t *testing.T, b []uint16) (style uint32, count int, title, fo
 		word()  // cx
 		word()  // cy
 		it.id = word()
-		if m := word(); m != 0xFFFF {
-			t.Fatalf("item %d: class marker = %#x, want 0xFFFF (an ordinal)", n, m)
+		if b[i] == 0xFFFF {
+			word()
+			it.class = word()
+		} else {
+			it.className = str()
 		}
-		it.class = word()
 		it.text = str()
 		if extra := word(); extra != 0 {
 			t.Fatalf("item %d: creation data size = %d, want 0", n, extra)
@@ -107,9 +110,9 @@ func TestClassicTemplateLayout(t *testing.T) {
 		if it.offset%2 != 0 {
 			t.Errorf("item %d starts at word %d: not DWORD-aligned", n, it.offset)
 		}
-		if it.id != want.id || it.class != want.class || it.text != want.text {
-			t.Errorf("item %d = id %d class %#x text %q, want id %d class %#x text %q",
-				n, it.id, it.class, it.text, want.id, want.class, want.text)
+		if it.id != want.id || it.class != want.class || it.className != want.className || it.text != want.text {
+			t.Errorf("item %d = id %d class %#x %q text %q, want id %d class %#x %q text %q",
+				n, it.id, it.class, it.className, it.text, want.id, want.class, want.className, want.text)
 		}
 		if it.style&(wsChild|wsVisible) != wsChild|wsVisible {
 			t.Errorf("item %d style %#x is not a visible child", n, it.style)

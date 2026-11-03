@@ -165,11 +165,17 @@ battery, Show Desktop) and one button per running App.
   `winuse activate-window <window>`; the refusal names the Window. With
   `--headed` these change the user's screen, so tell the user first; the
   note after `ok` says where the foreground went.
-- `winuse --headed press-key <taskbar> Control_L+Escape` opens Start.
-  `winuse --headed click <taskbar> <chevron>` opens the hidden icons, names
-  the overflow's Window ID, and the overflow keeps the foreground.
-  `winuse press-key <overflow> Escape` closes it Headless; the foreground
-  then stays on the taskbar.
+- `winuse --headed open-shell start|notifications|quick-settings|overflow`
+  opens one and prints its line, to read next; Start and the overflow keep
+  the foreground. Some setups ignore the injected Win+N or Win+A: then it
+  fails with "did not show", and you ask the user to open the panel.
+  `winuse press-key <overflow> Escape` closes the overflow Headless; the
+  foreground then stays on the taskbar.
+- Toasts: `winuse list-notifications [--app <a>] [--text <t>]` numbers
+  the showing banners, `notification-action <n> <button>` and
+  `notification-dismiss <n>` press them Headless (refused when it
+  changed), `wait notification [--app] [--text]` waits for one. A banner
+  lasts about 5 s: act at once. Older ones: `open-shell notifications`.
 
 ## Read the Window State
 
@@ -395,11 +401,11 @@ fits) from the start. Without it they are refused with nothing sent.
   Windows still take `click`, `set-value`, `perform-secondary-action` and
   `select-text` by Element; scrolling, keys, `invoke-menu` and screenshots
   need `restore-window`.
-- A right-click menu in a desktop App, such as a WPF App's
-  (`click --button right --post` posts it to a classic control, best
-  effort, like Posted Keys).
-- The shell: Start, the hidden icons, and the clock's calendar and
-  notification panel, which does not open from UI Automation at all (see
+- A WPF App's right-click menu (other Apps' open Headless with
+  `perform-secondary-action <ref> ContextMenu`, which names the menu;
+  `click --button right --post` posts one to a classic control).
+- The shell: opening Start, the hidden icons or the notification panel
+  (`--headed open-shell`), and any click on it but a toast's buttons (see
   "The taskbar and the shell").
 - Games, canvases and Apps that read raw input: they expose no Elements
   and ignore posted keys, so use `--headed` with `@x,y` points.
@@ -800,7 +806,7 @@ winuse refuses to close a Window's last Tab; use `close-window`.
 
 ## Batches
 
-A Batch runs a routine sequence on one Window in one call, in order, and
+A Batch runs a routine sequence on a Window in one call, in order, and
 prints each step as `Action N (<action>): <output>` (more lines indented),
 then any `Note:` lines.
 
@@ -815,6 +821,11 @@ groups words (`\"` inside), and blank and `#` lines are skipped. A
 malformed Batch or unknown Window sends nothing. Batch only sequences you
 understand well. A Batch has 60 s; `--timeout <s>` (up to 300) after the
 Window widens it (a later one is a `wait` step's).
+
+A step starting `in <window>` acts in that Window, and `in new` in the one
+the step before it opened, printed as `(<action> in <id>)`:
+`batch 101 click name:Delete then in new press-key Return`. A new Window
+has no Window State: name its Elements by `name:`/`id:`, or send keys.
 
 A failed step prints `failed: <message>` and its hint, and the rest run.
 The Batch exits 1 naming them: retry only those, reading the Window State
@@ -851,6 +862,12 @@ anything reached the app.
 
 When a failure does not say whether anything was sent, treat the outcome as
 unknown and decide from a fresh Window State.
+
+Put `--json` before the command for one JSON line instead:
+`{"ok":false,"command":"click","out":"","error":{"code":"STALE_REF",...}}`.
+`error` carries the message, hint, a code, and the phrases above as
+`delivery` (`not_delivered`, `delivered_unverified`, `delivery_uncertain`)
+and `retry` (`safe` or `unsafe`). A Window State stays text in `out`.
 
 After `click`, `perform-secondary-action` Expand or Select, `press-key`,
 `set-value` and a Batch, winuse watches the App's Windows for a moment and
@@ -987,7 +1004,7 @@ zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right] [--post] [--modifiers ctrl,shift,alt]
 # --modifiers: Headless on a Page and for ctrl or shift on a multi-select list item; else --post or --headed
 set-value <window> <ref> <value|on|off|item name>
-perform-secondary-action <window> <ref> <action>   # Raise, Scroll Up/Down/Left/Right, Expand, Collapse, Toggle, Select
+perform-secondary-action <window> <ref> <action>   # Raise, Scroll Up/Down/Left/Right, Expand, Collapse, Toggle, Select, ContextMenu
 type-text <window> [--post | --into <ref>] [--interval-ms <n>] <text>
 press-key <window> <key> [--post] [--force]
 select-text <window> <ref> <start> <length> | select-text <window> <ref> all
@@ -1002,7 +1019,7 @@ activate-window <window>            # takes the foreground, no flag needed
 restore-window <window> | minimize-window <window> | close-window <window>
 move-window <window> <x> <y> | resize-window <window> <width> <height>
 maximize-window <window>            # needs --headed: takes the foreground
-batch <window>|- [--timeout <s>] [--stop-on-error] <action> [args] [then ...]
+batch <window>|- [--timeout <s>] [--stop-on-error] [in <window>|new] <action> [args] [then ...]
 navigate <window> <url> [--wait load|domcontentloaded|none] | back | forward | reload <window>
 wait <window> selector <css> | text <text> | url <url> | load | download [--timeout <s>]
 wait <window> <ref> enabled|disabled|gone|value <v>|checked|unchecked|expanded|collapsed [--timeout <s>]
@@ -1018,6 +1035,10 @@ browser attach <window> | browser detach <window>   # a running Electron App; as
 clipboard-get [--format text|image|files] [--out <path>]
 clipboard-set <text> | --image <png> | --file <path>... | clipboard-clear
 list-displays | screenshot --display <n>   # --screen <n> is the same
+list-notifications [--app <a>] [--text <t>]   # the showing toast banners, numbered
+notification-action <n> <button> | notification-dismiss <n>   # Headless; refused if the toast changed
+wait notification [--app <a>] [--text <t>] [--timeout <s>]
+open-shell start|notifications|quick-settings|overflow   # needs --headed: changes the user's screen
 record-tree <window> <file>         # development only, records a tree fixture for winuse's own tests
 skill | skill install <dir>         # print this file from the binary, or write it to <dir>\winuse\SKILL.md
 status                              # read-only: versions, helper uptime, lock, integrity, DPI, browsers, agents, Windows build

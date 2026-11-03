@@ -301,6 +301,11 @@ func TestBatchUsageErrorsExit2WithoutDialing(t *testing.T) {
 			"--post and --headed cannot be combined"},
 		{"headed batch with posted text", []string{"batch", "101", "type-text", "--post", "hi", "then", "click", "3", "--headed"},
 			"--post and --headed cannot be combined"},
+		// Desktop-parity 24: `in new` needs an Action before it.
+		{"batch starting in new", []string{"batch", "101", "in", "new", "press-key", "Return"},
+			"the first batch Action cannot be `in new`"},
+		{"batch with an empty in", []string{"batch", "101", "click", "3", "then", "in", "new"},
+			"a batch step's `in` takes a Window and an Action"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -364,6 +369,56 @@ func TestUsageMentionsBatch(t *testing.T) {
 	for _, want := range []string{"batch", "then", "--stop-on-error"} {
 		if !strings.Contains(Usage, want) {
 			t.Errorf("usage text missing %q", want)
+		}
+	}
+}
+
+func TestParseBatchStepsInTheirOwnWindow(t *testing.T) {
+	// Desktop-parity 24: `in <window>` before a step's Action names its
+	// own Window, and `in new` the Window the step before it opened; both
+	// words are case-insensitive, like `then`. The other steps keep the
+	// Batch's Window.
+	window, steps, err := parseBatchArgs([]string{
+		"101", "click", "name:Open",
+		"then", "in", "new", "press-key", "Return",
+		"then", "IN", "3412", "type-text", "in", "new",
+		"then", "click", "2",
+	})
+	if err != nil {
+		t.Fatalf("parseBatchArgs: %v", err)
+	}
+	if window != "101" || len(steps) != 4 {
+		t.Fatalf("parse = %q, %+v", window, steps)
+	}
+	want := []struct {
+		kind, window string
+		inNew        bool
+	}{{"click", "", false}, {"press-key", "", true}, {"type-text", "3412", false}, {"click", "", false}}
+	for i, w := range want {
+		if steps[i].Kind != w.kind || steps[i].Window != w.window || steps[i].InNew != w.inNew {
+			t.Errorf("step %d = %+v, want %+v", i+1, steps[i], w)
+		}
+	}
+	// `in` later in a step is the step's own argument.
+	var tt protocol.TypeTextArgs
+	if err := json.Unmarshal(steps[2].Args, &tt); err != nil || tt.Text != "in new" {
+		t.Errorf("type-text text = %q, %v; want \"in new\"", tt.Text, err)
+	}
+	raw, _ := json.Marshal(steps[1])
+	if !strings.HasSuffix(string(raw), `},"in_new":true}`) {
+		t.Errorf("wire step %s: want in_new and no step window", raw)
+	}
+
+	for _, c := range []struct {
+		tokens []string
+		want   string
+	}{
+		{[]string{"in", "3412"}, "a batch step's `in` takes a Window and an Action"},
+		{[]string{"in", "1", "in", "2", "click", "3"}, "a batch step takes one `in <window>`"},
+		{[]string{"in", "1", "zoom", "3"}, `unknown batch action "zoom"`},
+	} {
+		if _, err := parseBatchStep(c.tokens); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("parseBatchStep(%q) = %v, want %q", c.tokens, err, c.want)
 		}
 	}
 }

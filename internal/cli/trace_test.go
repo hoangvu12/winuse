@@ -163,6 +163,12 @@ func TestTraceOutput(t *testing.T) {
 			[]string{`"refs":["C:\\Temp\\winuse\\winuse-clipboard-1.png"]`, `"out":"C:\\Temp`}, nil},
 		{"a Window State keeps its line count and screenshot", true, "get-window-state", map[string]any{"window": "101", "screenshot": true}, tree,
 			[]string{`"out_lines":5`, `"refs":["C:\\Users\\me\\AppData\\Local\\Temp\\winuse\\shot 1.png"]`}, []string{"Password", `"out":`}},
+		{"notifications", false, "list-notifications", nil, "1\tSignal\tMum\tthe secret\n",
+			[]string{`"redacted":true`}, []string{"the secret", "Mum"}},
+		{"a notification wait", false, "wait", protocol.WaitArgs{For: protocol.WaitNotification}, "1\tSignal\tMum\tthe secret\n",
+			[]string{`"redacted":true`}, []string{"the secret"}},
+		{"a window wait keeps its line", false, "wait", protocol.WaitArgs{For: protocol.WaitWindow, Value: "Notepad"}, "101\tNotepad\tUntitled\n",
+			[]string{"Untitled"}, nil},
 		{"long output is cut at the cap", false, "list-apps", nil, long,
 			[]string{`"truncated":true`, `"out_len":4100`}, []string{"tail", "é"}},
 	}
@@ -310,5 +316,18 @@ func TestTraceShowUsage(t *testing.T) {
 		if !strings.Contains(Usage, want) {
 			t.Errorf("usage text missing %q", want)
 		}
+	}
+}
+
+func TestTraceRedactsAnEvalStepInItsOwnWindow(t *testing.T) {
+	// Desktop-parity 24: a step in its own Window prints "(eval in 302)".
+	args := protocol.BatchArgs{Window: "301", Steps: []protocol.Step{
+		{Kind: "click", Args: json.RawMessage(`{"ref":"name:Open"}`)},
+		{Kind: "eval", Args: json.RawMessage(`{"expression":"document.cookie"}`), Window: "302"},
+	}}
+	raw, _ := json.Marshal(args)
+	got := redactBatchOut(raw, "Action 1 (click): ok\nAction 2 (eval in 302): \"the secret\"\n")
+	if want := "Action 1 (click): ok\nAction 2 (eval in 302): {\"redacted\":true,\"len\":12}\n"; got != want {
+		t.Errorf("out = %q, want %q", got, want)
 	}
 }

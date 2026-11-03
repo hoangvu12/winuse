@@ -286,6 +286,12 @@ parsing are offline-tested in `internal/wstate`, `internal/uia`,
 `internal/helper` and `internal/cli`; these tests pin the live wiring
 only.
 
+Desktop-parity 24 (`multi_window_batch_test.go`):
+`TestBatchInNewActsInTheOpenedMessageBox` runs one Batch on the covered
+fixture that clicks "Message Box..." and then presses Return `in new`, the
+MessageBox the click opened: step 2 prints its Window ID, the box closes
+with ok, and the foreground stays on the cover.
+
 The ticket-12 tests (`esc_test.go`) cover the Esc stop.
 **`TestEscStopsTheLongBatch` is interactive — a human must be at the
 keyboard** (with `-v`, the run prints `PRESS THE PHYSICAL ESC KEY NOW`).
@@ -412,7 +418,7 @@ name Edit, then a screenshot. `click @x,y --count 2 --post` a few pixels
 into the Edit prints the posted output and selects the first word
 (EM_GETSEL from 0 to 5 or 6), and `click @x,y --button right --post` opens
 the Edit's context menu (a `#32768` Window of the fixture, closed with the
-fixture). The cover stays the foreground window and no banner shows. The
+fixture, and reported after the ok). The cover stays the foreground window and no banner shows. The
 posted wheel (`scroll @x,y --post`) is not run: the fixture has no classic
 list box.
 
@@ -434,11 +440,12 @@ the covered fixture's list, which is single-select, is refused with
 nothing sent and the exact `--headed` retry; the selection is unchanged
 and the cover keeps the foreground.
 `TestCtrlAndShiftClickSelectInAMultiSelectList` is the positive leg: the
-Classic Dialog's fruit list box (LBS_EXTENDEDSEL, its last control, so no
-other Element Index moves) takes `click name:Apple --modifiers ctrl`, then
+Classic Dialog's fruit list view (SysListView32 without LVS_SINGLESEL, its
+last control, so no other Element Index moves; a list box will not do, its
+UI Automation proxy reports no multi-select) takes `click name:Apple --modifiers ctrl`, then
 Cherry, then `--modifiers shift` on Elder (the range from Cherry) and Ctrl
 on Apple again (deselected), each Headless with the cover in front and no
-banner; the test reads the selection back with LB_GETSEL after each.
+banner; the test reads the selection back with LVM_GETITEMSTATE after each.
 
 Run only these tests:
 
@@ -988,3 +995,93 @@ set WINUSE_E2E=1
 set WINUSE_E2E_SHELL=1
 go test -tags e2e -v -run "TestShell" ./test/e2e
 ```
+
+## Notifications and open-shell (desktop-parity 18)
+
+`test/e2e/notifications_test.go`. `TestListNotificationsOnlyReads` runs
+with the usual opt-in: `list-notifications` and a 1 s `wait
+notification` for a text no toast has, the foreground unchanged.
+
+The toast tests raise their own toasts (`internal/fixture/toast.go`,
+WinRT from Go) from Windows PowerShell's App User Model ID, as the probe
+did (an ID registered only under `HKCU\Software\Classes\AppUserModelId`
+cannot raise toasts: HRESULT 0x80070490), each in the group
+`winuse-e2e`. Cleanup removes that group alone from the Notification
+Center, so the user's own PowerShell notifications stay, and the levels of
+the PowerShell per-App settings key Windows adds, when they were not there
+before. They
+show toasts on the user's screen and skip unless `WINUSE_E2E_TOASTS=1`
+is set as well, and skip when the user's notifications are off (Settings
+> System > Notifications; writing ToastEnabled alone does not turn them
+on). `TestNotificationsPressAndDismissARaisedToast` waits for a toast,
+presses its Beta button with `notification-action` (the test process
+hears the activation) and dismisses a second one;
+`TestNotificationIdentityGuardRefusesAGoneToast` hides a listed toast and
+expects `notification-action` to refuse with nothing sent.
+
+`TestOpenShellRefusesWithoutHeaded` and
+`TestOpenShellOpensTheNotificationPanel` (Win+N, read, a `--headed`
+Escape) change the user's screen: they skip unless `WINUSE_E2E_SHELL=1`.
+On the laptop the second fails: the injected Win+N opened nothing (see
+the ticket), and open-shell says so.
+
+```
+set WINUSE_E2E=1
+set WINUSE_E2E_TOASTS=1
+set WINUSE_E2E_SHELL=1
+go test -tags e2e -v -run "TestNotification|TestListNotifications|TestOpenShell" ./test/e2e
+```
+
+## Several agents (multi-agent)
+
+These tests run two or three agents, named by `WINUSE_AGENT`, through
+one helper at the same time. Every fixture they act on is covered by
+another fixture, so the user's foreground stays on the cover; only the
+Headed tests take it, and give it back.
+
+- `TestTwoAgentsActAtOnceOnTwoFixtures` (`several_agents_test.go`, ticket
+  10): alpha and beta each run a Headless Batch (click the checkbox, pause
+  1.5 s, `set-value` the text field) on their own fixture at once. Both
+  succeed, and the Batches overlap by at least two thirds of the pause:
+  parallel, not serial.
+- `TestAgentsIndexesSurviveAnotherAgentsRead` (ticket 10): on one fixture,
+  alpha reads, beta opens the File menu and reads again, which shifts
+  beta's indexes by three. alpha's click by alpha's index still toggles
+  the checkbox and nothing else; beta's click by beta's index toggles it
+  back.
+- `TestHeadedActionsTakeTurnsOnTheDesktop` (ticket 10): alpha's Headed
+  Batch (a double click on the canvas, then 3 s) holds the desktop lane.
+  beta's Headed click waits and runs after it; beta's Headed Batch with
+  `--timeout 1` is refused with `agent alpha is using the desktop; nothing
+  was sent` and sends nothing. Both take the foreground for a moment.
+- `TestEscStopsEveryAgent` (ticket 10): alpha and beta run 25 s Headless
+  Batches on two fixtures, and gamma's click waits behind alpha's. One
+  physical Esc press stops all three with exit 130, and a command sent
+  after the press runs. **Interactive**: it skips unless
+  `WINUSE_E2E_HUMAN=1` is set, and the press must come within about 10 s
+  of the prompt, before gamma's 12 s lane wait ends.
+- `TestTwoAgentsRunInTheirOwnLanes` (`lanes_test.go`, ticket 06): alpha's
+  Batch holds fixture A's UI-thread lane for 2 s; beta's click on fixture
+  B finishes within 1.5 s, and gamma's click on A waits its turn.
+- `TestHungAppStallsOnlyItsOwnWorker` (`hung_app_test.go`, ticket 07):
+  fixture A runs with `-hang-on-click 15000`, which stops its UI thread
+  after Click Me. While it hangs, beta's click on fixture B lands within
+  2 s, and a click on A is refused as not responding, with nothing sent.
+- `TestWindowStatesArePerAgent` (`agents_test.go`, ticket 03),
+  `TestEachAgentsCursorSitsAboveItsOwnWindow` (`agent_cursors_test.go`,
+  ticket 04) and `TestHeadedClickGivesTheForegroundAndCursorBack`
+  (`polite_input_test.go`, ticket 08) are described above.
+
+Run them one at a time, as every live test here:
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -run "TestTwoAgentsActAtOnceOnTwoFixtures$" ./test/e2e
+go test -tags e2e -v -run "TestAgentsIndexesSurviveAnotherAgentsRead$" ./test/e2e
+go test -tags e2e -v -run "TestHeadedActionsTakeTurnsOnTheDesktop$" ./test/e2e
+go test -tags e2e -v -run "TestTwoAgentsRunInTheirOwnLanes$" ./test/e2e
+go test -tags e2e -v -run "TestHungAppStallsOnlyItsOwnWorker$" ./test/e2e
+set WINUSE_E2E_HUMAN=1
+go test -tags e2e -v -run "TestEscStopsEveryAgent$" ./test/e2e
+```
+

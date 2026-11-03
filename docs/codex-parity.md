@@ -228,8 +228,8 @@ from its clickable point, again only with `--headed`; and
 |---|---|---|---|
 | `window` | the Window holding the Element | `<window>` | matched |
 | `element_index` | the Element to act on | the Element Index, a `name:`/`id:` reference, or `@x,y` (as set-value's) | matched (extended) |
-| `action` | case-insensitive; only `Raise`, `Scroll Up/Down/Left/Right`, `Expand`, `Collapse`; unknown → `unsupported secondary action: {action}; expected …` | the same set and the same error listing the expected names, **plus** the `Toggle` and `Select` extensions | matched (extended) |
-| (delivery) | activates the Window first | by Element Index or reference **Headless** (no activation), Toggle/Select/Expand/Collapse read back; `--headed` is Headed; `@x,y` is Headless on the Element under the point (ticket 11); Raise (a foreground operation) runs only with `--headed` and is refused with nothing sent without it (ticket 21) | intentionally different |
+| `action` | case-insensitive; only `Raise`, `Scroll Up/Down/Left/Right`, `Expand`, `Collapse`; unknown → `unsupported secondary action: {action}; expected …` | the same set and the same error listing the expected names, **plus** the `Toggle`, `Select` and `ContextMenu` extensions (ContextMenu, never listed on an Element, opens its right-click menu Headless and names the menu's Window; headless-max 09) | matched (extended) |
+| (delivery) | activates the Window first | by Element Index or reference **Headless** (no activation), Toggle/Select/Expand/Collapse read back; `--headed` is Headed; `@x,y` is Headless on the Element under the point (ticket 11); Raise (a foreground operation) runs only with `--headed` and is refused with nothing sent without it (ticket 21); ContextMenu is Headless where a menu opening reads back (classic, WinForms, WinUI, Chromium) and refused with the `--headed` retry on a WPF Element (ticket 09) | intentionally different |
 
 An action the Element does not offer fails listing the ones it does,
 probed live — so a changed Element says so.
@@ -321,7 +321,9 @@ banner — the Agent Cursor shows them instead (see extensions).
 Lowercase, specific, one line, with a recovery hint: stale elements
 ("element N is not available in cached app state for <app>" plus the
 read-again instruction), ambiguity with candidates, timeouts, window
-gone, app not found. **matched**.
+gone, app not found. **matched**. The opt-in `--json` (desktop-parity
+07) wraps the same lines in agent-desktop's envelope with a code and a
+delivery; the text stays the default.
 
 ### admin windows
 
@@ -390,7 +392,9 @@ different (roles, bounds)**.
 
 Codex offers Raise, Scroll Up/Down/Left/Right, Expand, Collapse —
 winuse offers exactly those plus the Toggle and Select extensions,
-rendered in the same style. **matched (extended)**.
+rendered in the same style. **matched (extended)**. The ContextMenu
+extension is performed but never listed (no UIA property says an
+Element has a context menu).
 
 ### key names
 
@@ -465,7 +469,10 @@ numbered line (`Action N (<action>): ...`), a failed step does not stop
 the rest, and the Batch then fails naming every failed step, the ones
 that may have taken effect marked uncertain; `--stop-on-error` stops at
 the first failure instead. `winuse batch -` reads the Batch from stdin,
-one step per line (agent-desktop's PR #439 reads its JSON there). Headless Actions bring two
+one step per line (agent-desktop's PR #439 reads its JSON there). Like
+agent-desktop's steps, each with its own target, a step may name its own
+Window (`in <window>`, desktop-parity 24), and `in new` acts in the Window
+the step before it opened; the Batch takes every step's lanes up front. Headless Actions bring two
 more: the global `--headed` flag (before or after the command, and on a
 Batch) that restores Codex's foreground, real-input behaviour for any
 Action, and the Agent Cursor — a presentation-only second cursor that
@@ -521,12 +528,34 @@ State only as its line count. Typed text, values, clipboard content and
 eval are redacted unless `--trace-unredacted`. The file rolls over at
 32 MiB, and `trace show` summarizes it, like agent-desktop's session
 traces without the HTML export. Codex keeps no trace. **extension**.
+`--json` before the command (desktop-parity 07) prints one JSON line,
+agent-desktop's envelope: `ok`, `command`, `out` (a Window State stays its
+text tree), and on a failure `error` with a code (`STALE_REF`,
+`NO_HEADLESS_ROUTE`, `TIMEOUT`, ...), the message, the hint, and the
+delivery and retry its text states ("nothing was sent" is
+`not_delivered`, safe to retry). Codes come from the failure's text in one
+table (`internal/protocol/codes.go`). Exit codes are unchanged, and
+without the flag the output is byte-for-byte the text. Codex has no JSON
+output. **extension**.
 `list-windows --shell` (desktop-parity 09, ADR 0015) adds the shell
 surfaces: the taskbar, and the tray overflow, Start and the Action Center
 while open, named by Window ID. The taskbar reads Headless; a click,
 set-value or Secondary Action on any shell Element (an App's taskbar
 button activates its App, the others open flyouts) needs `--headed`, and
 the refusal of an App's button names `activate-window`. Escape closes the
-open tray overflow Headless. Like agent-desktop's shell surfaces,
-without its Windows-key accelerators.
+open tray overflow Headless. Like agent-desktop's shell surfaces;
+its Windows-key accelerators come as `--headed open-shell
+start|notifications|quick-settings|overflow` (desktop-parity 18), like
+its command that opens a system surface, refused with nothing sent without `--headed`
+(press-key still never sends the Windows key).
 Codex lists no shell surface. **extension**.
+`list-notifications`, `notification-action <n> <button>`,
+`notification-dismiss <n>` and `wait notification [--app] [--text]`
+(desktop-parity 18) read the showing toast banners through UI Automation
+and press a toast's button Headless, with agent-desktop's identity guard
+(the notification read again, refused with nothing sent when its App,
+title or text changed); the `ok` says when the press moved the
+foreground. agent-desktop reads the Notification Center, which does not
+open from UI Automation, so older notifications are read there after
+`--headed open-shell notifications`. Codex has no notification tool.
+**extension**.

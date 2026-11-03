@@ -127,3 +127,39 @@ func TestYieldedOnANilWatcher(t *testing.T) {
 		t.Error("a nil watcher yielded")
 	}
 }
+
+func TestTheHookSwallowsTheFlushSentinel(t *testing.T) {
+	l := &escLatch{}
+	sentinel := func(msg uint32) escHookResult {
+		return escHookEvent(0, msg, kbdllHookStruct{VkCode: flushVK, Flags: llkhfInjected, ExtraInfo: flushTag}, l)
+	}
+	// Armed or not, the sentinel never reaches an App, and only its up
+	// counts, once.
+	if r := sentinel(wmKeyDown); r != escSwallow || l.flushes.Load() != 0 {
+		t.Errorf("sentinel down: verdict %v, flushes %d", r, l.flushes.Load())
+	}
+	if r := sentinel(wmKeyUp); r != escSwallow || l.flushes.Load() != 1 {
+		t.Errorf("sentinel up: verdict %v, flushes %d", r, l.flushes.Load())
+	}
+	l.arm()
+	sentinel(wmKeyDown)
+	sentinel(wmKeyUp)
+	if l.flushes.Load() != 2 || l.stopped() {
+		t.Errorf("armed: flushes %d, stopped %v", l.flushes.Load(), l.stopped())
+	}
+	l.disarm()
+	// The same key without winuse's tag is an ordinary key.
+	if r := escHookEvent(0, wmKeyDown, kbdllHookStruct{VkCode: flushVK, Flags: llkhfInjected, ExtraInfo: injectedTag}, l); r != escPass || l.flushes.Load() != 2 {
+		t.Errorf("untagged 0xE8: verdict %v, flushes %d", r, l.flushes.Load())
+	}
+}
+
+func TestFlushInputNeedsTheHook(t *testing.T) {
+	var none *EscWatcher
+	if err := none.FlushInput(time.Second); err == nil {
+		t.Error("a nil watcher flushed")
+	}
+	if err := (&EscWatcher{}).FlushInput(time.Second); err == nil {
+		t.Error("a watcher without a hook flushed")
+	}
+}

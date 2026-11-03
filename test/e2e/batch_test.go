@@ -32,8 +32,9 @@ func runBatch(t *testing.T, args []string, extraEnv ...string) (string, string, 
 }
 
 // batchStepLine matches the first line of one step's output in a Batch's
-// stdout (desktop-parity ticket 20): "Action N (<kind>): <output>".
-var batchStepLine = regexp.MustCompile(`^Action (\d+) \(([a-z-]+)\): (.*)$`)
+// stdout (desktop-parity ticket 20): "Action N (<kind>): <output>", or
+// "(<kind> in <window>)" for a step in its own Window (ticket 24).
+var batchStepLine = regexp.MustCompile(`^Action (\d+) \(([a-z-]+)(?: in (?:\d+|new))?\): (.*)$`)
 
 // batchSteps splits a Batch's stdout into each step's first line, by step
 // number, and the note lines the whole Batch added at the left margin.

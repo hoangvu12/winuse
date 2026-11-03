@@ -154,6 +154,17 @@ var secondaryActionTable = []secondaryAction{
 			return nil
 		},
 	},
+	{
+		// ContextMenu (headless-max ticket 09) is never listed: no UIA
+		// property says an Element has a context menu. The helper opens
+		// it on its own route (contextmenu.go) and reads the menu back;
+		// this row only names it for the usage text and the expected set.
+		name:    ContextMenuAction,
+		offered: func(f patternFacts) bool { return false },
+		perform: func(el comPtr, p *probedPatterns) error {
+			return errors.New("ContextMenu opens through the helper's context menu route")
+		},
+	},
 }
 
 // SecondaryActionNames lists every Secondary Action winuse performs, in
