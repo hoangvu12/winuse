@@ -85,3 +85,5 @@ A Headless Invoke on a running App's taskbar button activates that App, which ta
 - The foreground note stays, now only after a `--headed` Action (and the overflow's Escape, which leaves the foreground on the taskbar).
 - ADR 0015 decisions 4-5, CONTEXT.md (Shell surface, Headed Action), SKILL.md ("The taskbar and the shell", "What winuse cannot do headless") and codex-parity are updated. Offline tests: `TestShellElementsRefuseHeadless` (an App with one, several and no listed Window, an unknown taskbar Element, an overflow tray icon, Expand and set-value) and `TestShellHeadedClickSaysWhereTheForegroundWent` replace the Headless App-button test.
 - Not live-tested on an App button: a regression there would activate one of the user's Apps. `TestShellRefusesWithoutHeaded` covers the same refusal hook through Start's button.
+
+Live after this change (merged with origin/main 0b31c8a, under the lock): `TestShellReadsTheTaskbar` passed (4.2 s) and `TestShellRefusesWithoutHeaded` passed (3.8 s); Start stayed closed and the foreground did not move. `TestShellOpensAndClosesTheTrayOverflow` was not rerun: its path (`--headed` click, the Headless Escape) did not change.
