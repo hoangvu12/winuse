@@ -271,6 +271,7 @@ type ClickArgs struct {
 	ClickCount   int    `json:"click_count,omitempty"`  // 1 (default), 2 (double click) or 3 (triple click)
 	MouseButton  string `json:"mouse_button,omitempty"` // "left" (default), "right" or "middle"; aliases l, r, m
 	Headed       bool   `json:"headed,omitempty"`       // force v1's foreground click with the real pointer (ADR 0010); default Headless for an Element click
+	Post         bool   `json:"post,omitempty"`         // post the click's mouse messages to the classic control there, best effort (headless-max ticket 12); not with headed
 }
 
 // Point is a coordinate Element Reference: a point in the coordinate space
@@ -318,6 +319,7 @@ type ScrollArgs struct {
 	Direction    string `json:"direction,omitempty"`     // up, down, left, right or into-view
 	Steps        *int   `json:"steps,omitempty"`         // scroll steps for a direction (default 3, 1 to 50); none for into-view
 	Headed       bool   `json:"headed,omitempty"`        // the v1 way: activate, then the wheel at the point or the Element (into-view: the ScrollItem call after activation); without it a point outside a Page is refused
+	Post         bool   `json:"post,omitempty"`          // the point form: post the wheel to the classic control there, best effort (headless-max ticket 12); not with headed
 }
 
 // DragArgs are drag's arguments — Codex's drag parameters: from and to
@@ -435,7 +437,8 @@ type TypeTextArgs struct {
 // Tab, Control_L+a, Numpad_0). Return and Escape on a classic dialog run
 // Headless (ADR 0011, Decision 4) unless headed; every other key is
 // Headed. With post, the key is posted as Posted Keys instead (WM_KEYDOWN
-// and WM_KEYUP to the focused control, no foreground, no modifiers); post
+// and WM_KEYUP to the focused control, no foreground; a chord with
+// modifiers through attached key state, headless-max ticket 07); post
 // and headed do not combine. A Blocked Combo (Alt+F4, Alt+Tab,
 // Ctrl+Shift+Escape and their supersets) is refused unless force.
 type PressKeyArgs struct {

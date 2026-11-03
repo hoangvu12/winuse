@@ -128,6 +128,7 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 			Point:        target.point,
 			ClickCount:   o.count,
 			MouseButton:  o.button,
+			Post:         o.post,
 		}
 	case "type-text":
 		// --post first in the step posts the text (Posted Keys, ticket 07),
@@ -193,7 +194,14 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 		// from ticket 12): the same arguments the standalone commands take,
 		// minus the Window. scroll's Element forms (an Element with a
 		// direction and optional steps, or into-view) are Headless steps.
+		// --post anywhere posts the wheel at the point (headless-max
+		// ticket 12); it has no Element form.
+		stripped, post := stripFlag(tokens, postFlag)
+		rest = stripped[1:]
 		if len(rest) == 0 || !isPointToken(rest[0]) {
+			if post {
+				return protocol.Step{}, errors.New("a batch scroll --post Action takes an @x,y point and two scroll amounts")
+			}
 			if len(rest) < 2 {
 				return protocol.Step{}, errors.New("a batch scroll Action takes an element and a direction (up, down, left, right or into-view), or an @x,y point and two scroll amounts")
 			}
@@ -219,7 +227,7 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 		if err != nil {
 			return protocol.Step{}, err
 		}
-		args = protocol.ScrollArgs{X: x, Y: y, ScrollX: dx, ScrollY: dy}
+		args = protocol.ScrollArgs{X: x, Y: y, ScrollX: dx, ScrollY: dy, Post: post}
 	case "drag":
 		if len(rest) > 0 && !isPointToken(rest[0]) {
 			// From a Page Element (page.go, browser merge ticket 06).

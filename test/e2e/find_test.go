@@ -40,7 +40,7 @@ func TestFindAndRegionReadOnTheFixture(t *testing.T) {
 
 	out := run("find", window, "--role", "list item", "--name", "charlie")
 	m := regexp.MustCompile(`(?m)^\t(\d+) list item \(selectable\) Charlie`).FindStringSubmatch(out)
-	if m == nil || !strings.Contains(out, "were added to window "+window+"'s Window State") {
+	if m == nil || !strings.Contains(out, "are in window "+window+"'s Window State as ") {
 		t.Fatalf("find output:\n%s", out)
 	}
 	added, _ := strconv.Atoi(m[1])

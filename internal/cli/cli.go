@@ -42,7 +42,9 @@ global options:
 
 headless (the default; your foreground, pointer and keyboard stay untouched):
   click (left, single), set-value, perform-secondary-action (except Raise)
-  and scroll on an element index, name: or id:; select-text and
+  and scroll on an element index, name: or id:, or at an @x,y point, which
+  acts on the Window's own Element under it (refused when none can take
+  the Action) and names it in the ok; select-text and
   invoke-menu, which have no headed form; press-key Return or Escape
   on a classic dialog; type-text into a focused classic edit control, or
   with --into into a classic edit control or Page field it names, for
@@ -59,11 +61,10 @@ headless (the default; your foreground, pointer and keyboard stay untouched):
   list-displays and screenshot --display are headless Desktop commands:
   they name no Window and have no headed form.
 
-headed only with --headed: every other Action (@x,y forms, double, right
-  and middle clicks, drag, hover, Raise, maximize-window, press-key and
-  type-text with no headless route) is refused with "nothing was sent"
-  and the exact
-  --headed retry. activate-window always takes the foreground: that is
+headed only with --headed: every other Action (double, right and middle
+  clicks, drag, hover, Raise, maximize-window, press-key and type-text
+  with no headless route, and a point with no usable Element) is refused
+  with "nothing was sent" and the exact --headed retry. activate-window always takes the foreground: that is
   what it is for.
 
 commands:
@@ -130,7 +131,10 @@ commands:
                                name: or id: reference, or at @x,y
                                coordinates from the Window's latest
                                screenshot; options: --count 1|2|3 (default 1),
-                               --button left|middle|right (default left)
+                               --button left|middle|right (default left),
+                               --post (post the click to the classic
+                               control there without the foreground: best
+                               effort, the app may ignore it)
   type-text <window> [--post | --into <element index | name: | id:>] <text>
                                type Unicode text into the Window's focused
                                Element (headless into a classic edit control
@@ -152,9 +156,12 @@ commands:
                                its default or Cancel button headless).
                                --post posts the key to the focused control
                                without the foreground instead: best effort,
-                               no modifiers, and the app may ignore it (the
-                               output says posted; read the Window State to
-                               check). --post and --headed do not combine.
+                               and the app may ignore it (the output says
+                               posted; read the Window State to check); a
+                               chord with Control, Shift or Alt (not Control
+                               and Alt together) is posted with the
+                               modifiers held for the Window's thread
+                               only. --post and --headed do not combine.
                                Alt+F4, Alt+Tab, Ctrl+Shift+Escape and any
                                chord holding one of them are refused with
                                nothing sent unless --force (also per batch
@@ -189,10 +196,14 @@ const usageTail = `);
                                steps (1 to 50, default 3)
   scroll <window> <element index | name: | id:> into-view
                                scroll an Element into view
-  scroll <window> @x,y <dx> <dy>
+  scroll <window> @x,y <dx> <dy> [--post]
                                scroll the Window at a point of its latest
                                screenshot: positive dy scrolls down, positive
-                               dx right; one wheel notch is 120
+                               dx right; one wheel notch is 120 (three
+                               steps of the list or page under the point,
+                               up to 16 notches; --headed turns the real
+                               wheel; --post posts the wheel to the classic
+                               control there, best effort)
   select-text <window> <element index | name: | id:> <start> <length> | all
                                select text in a field without keys or the
                                mouse: length characters (UTF-16 units) from
@@ -303,6 +314,21 @@ const usageTail = `);
                                it); wait download prints the path of the
                                file a click downloaded, on a browser winuse
                                launched or cloned
+  wait <window> <element index | name: | id:> enabled | disabled | gone | value <value> | checked | unchecked | expanded | collapsed
+                               wait until an Element of the Window's latest
+                               Window State reaches that state (gone: the
+                               Element is gone, its Window closed too); text
+                               on a Window that is no browser waits in its
+                               UI Automation tree. Both read the Window
+                               without changing its Element Indexes, and fail
+                               when it closes
+  wait window <app or title> [--gone]
+                               wait until a Window of that App, or whose title
+                               holds the text, shows, and print its line;
+                               --gone: until none is left. Desktop waits only
+                               read and poll, take --timeout like the Page's,
+                               and never hold up an Action
+  wait <milliseconds>         pause, up to 300000 (300 s)
   eval <window> <expression>  run a JavaScript expression in the Page and
                                print its value (JSON for objects, cut at 4000
                                characters)

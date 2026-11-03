@@ -69,10 +69,11 @@ func (w *fgWatch) wasHeaded() bool {
 }
 
 // reportAfter wraps an Action command with the reports that follow its
-// ok: the Windows it opened or closed (reportOpened) and, around that, the
-// foreground its App took (watchForeground).
+// ok: the references it re-resolved in a fresh read (reportRefs,
+// liverefs.go), the Windows it opened or closed (reportOpened) and, around
+// that, the foreground its App took (watchForeground).
 func (s Services) reportAfter(name string, cmd Command) Command {
-	return s.watchForeground(name, s.reportOpened(name, cmd))
+	return s.watchForeground(name, s.reportOpened(name, s.reportRefs(cmd)))
 }
 
 // watchForeground reads the foreground and the target's process before

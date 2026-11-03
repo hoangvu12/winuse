@@ -95,6 +95,12 @@ Window. With several, the error lists the candidates, and you pick one of
 them. Use `get-window` as a cheap check that a Window still exists, for
 example after a helper restart.
 
+Windows hands a closed Window's ID to a new Window. winuse remembers what
+each Window ID named when it was listed or read, so an Action on an ID
+that a new Window took is refused with
+`window <id> closed; a new window reused its ID; nothing was sent`. Run
+`list-windows` again, and read the new Window before you act on it.
+
 `--details` puts a column between the App and the title, for example
 `120,80 1024x768 pid 4312 focused`. The rectangle is the Window's visible
 frame, the numbers `move-window` and `resize-window` take. The flags
@@ -274,14 +280,29 @@ An Element Reference takes one of four forms.
 - `id:<AutomationId>`, the value after `ID:`, as in
   `winuse click 101 id:okButton`.
 - `@x,y`, a point in the latest screenshot's pixels, as in
-  `winuse click 101 @412,88`. Click, scroll, drag and hover aim at the point
-  itself. set-value and perform-secondary-action act on the Element under
-  the point, so a Window with a sparse tree and a readable screenshot still
-  works.
+  `winuse click 101 @412,88`. A left click, `set-value`,
+  `perform-secondary-action` and `scroll` at a point act on the Window's
+  own Element under the point, Headless, even while another Window covers
+  it, and `ok` names that Element, as in
+  `ok (clicked element 5 button "Save" at @412,88)`. Check the name: if it
+  is not the Element you meant, read the Window State and name the Element
+  instead. Drag, hover and double, right or middle clicks aim at the point
+  itself, with `--headed`.
 
 Matching is exact and case-sensitive. A name or ID that matches several
 Elements fails and lists the candidates. Pick a more specific reference or
 read the Window State again.
+
+An Element Index is valid only for the Window State that printed it. A
+`name:` or `id:` reference outlasts it: when the Window State you read
+cannot answer it (the helper restarted, the Window changed, or the
+Element went away), winuse looks for it in a fresh read of the Window
+and acts on what it finds. The output then says
+`Note: found name:Save in a fresh read of window 101, as Element Index 245`,
+and the Window State you have is unchanged: its indexes still work. Prefer
+`name:` and `id:` for an Element you will act on again later. A fresh read
+that finds the name twice refuses, with the candidates under new indexes
+you can act on.
 
 ## Choose Headless or Headed
 
@@ -292,6 +313,13 @@ default:
 - With an Element Index, `name:` or `id:`: `click` with the left button and
   a single click, `set-value`, `perform-secondary-action` except Raise,
   `scroll`, and `select-text`, which has no Headed form.
+- At an `@x,y` point: the same `click`, `set-value`,
+  `perform-secondary-action` and `scroll`, on the Element under the point.
+  winuse picks the smallest Element there, or the nearest one around it
+  that can take the Action. A point on nothing but the Window itself, on a
+  canvas or other surface that offers nothing, or on two overlapping
+  Elements that act differently is refused with nothing sent. A scroll at a
+  point scrolls the list or page under it, three steps per wheel notch.
 - `invoke-menu`, a command of a classic menu bar, which has no Headed
   form either.
 - Every Window Action but one: `restore-window`, `minimize-window`,
@@ -307,8 +335,8 @@ default:
 Every other Action is a Headed Action, and it runs only when you pass
 `--headed`. winuse then brings the Window to the foreground, uses the real
 pointer and keyboard, and frames the Window with a banner telling the user
-that winuse is in control and Esc stops it. Headed covers every `@x,y` form
-outside a Page, `--count 2|3`, `--button right|middle`, `drag`, `hover`,
+that winuse is in control and Esc stops it. Headed covers a point that
+names no usable Element, `--count 2|3`, `--button right|middle`, `drag`, `hover`,
 `maximize-window`, Raise, and `press-key` and `type-text` anywhere the
 routes below do not reach. Sent without `--headed`, these are refused: the
 line says why there is no background route and ends in `nothing was sent`,
@@ -363,7 +391,8 @@ Pick the Headless way whenever one does the job.
   opening the menu.
 - Open other menus, trees and combo boxes with a Headless click or
   `perform-secondary-action <ref> Expand`.
-- Scroll by Element rather than at an `@x,y` point.
+- Name the Element rather than an `@x,y` point when the tree has it: the
+  point form works, but the Element Index cannot land on a neighbour.
 - Show, hide, place and close Windows with the Window Actions rather than
   `activate-window`.
 - For a key or text with no Headless route, weigh Posted Keys, which are
@@ -386,7 +415,8 @@ without it the command is refused with nothing sent.
   scrolling, keys, `invoke-menu` and screenshots need `restore-window`
   first.
 - A right-click menu in a desktop App, such as a WPF App's.
-  `click --button right` needs `--headed`.
+  `click --button right` needs `--headed`, or `--post` on a classic
+  control (see "Posted Clicks").
 - The taskbar, with its hidden icons and the clock's calendar and
   notification panel. winuse lists no taskbar Window, the hidden-icons
   overflow takes the foreground when it opens, and the panel opens only
@@ -398,8 +428,9 @@ without it the command is refused with nothing sent.
 - An administrator Window, in any mode. See "Refusals and recovery".
 
 Pick the fallback by what the step needs. `--post` fits a single key or
-plain text on `press-key` and `type-text`, when the user's foreground
-matters more than certainty; read the Window State afterwards. `--headed`
+plain text on `press-key` and `type-text`, and a click or wheel scroll on
+a classic control, when the user's foreground matters more than
+certainty; read the Window State afterwards. `--headed`
 fits the rest of this list, administrator Windows aside, and any step
 that must work the first time. It takes the foreground, so tell the user
 first if they are working in another Window.
@@ -454,8 +485,8 @@ winuse picks the route from the live Window before it sends anything.
   types into whatever has keyboard focus. That includes WinUI, WPF,
   Electron and browser Windows without a Browser Connection. Without the
   flag they are refused with nothing sent, and the hint names the
-  `--headed` command, `--into` for text and `--post` for text or a key
-  without modifiers. For a WinUI or WPF text box, name it with `--into`:
+  `--headed` command, `--into` for text and `--post` for text, a key or a
+  chord. For a WinUI or WPF text box, name it with `--into`:
   that is Headless.
 
 A Headless route prints `ok`; a refusal means nothing was typed, so pick
@@ -540,13 +571,18 @@ effort.
   `ok (posted; the app may ignore posted keys, read the Window State to check)`.
   Read the Window State and confirm the effect before you go on; if nothing
   changed, send the command again without `--post`.
-- Posted keys carry no modifiers, so a chord with Control, Alt or Shift is
-  refused with nothing sent.
+- A chord with Control, Shift or Alt, such as `Control_L+s` or `Alt_L+f`,
+  is posted with its modifiers held for that Window's thread only; the
+  user's own keyboard is untouched. This reaches shortcuts and menus in
+  classic Win32, WinForms, WPF and browser Windows. Control and Alt
+  together, a chord of modifiers alone, and the Blocked Combos are refused
+  with nothing sent, even with `--force`. A Window whose App is in front is
+  refused too: send the chord with `--headed` there.
 - An administrator Window, a locked desktop, a minimized Window and a Window
   blocked by a modal dialog are refused with nothing sent.
 - `--post` and `--headed` do not combine.
 
-Use `--post` for a single key or plain text on a Window with no Headless
+Use `--post` for a key, a chord or plain text on a Window with no Headless
 route, when the user's foreground matters more than certainty.
 
 ## Run a menu command
@@ -581,8 +617,13 @@ redirect. When the Window State shows a menu bar, try `invoke-menu` first.
 ```
 winuse scroll <window> <ref> <up|down|left|right> [steps]   # steps 1 to 50, default 3
 winuse scroll <window> <ref> into-view
-winuse --headed scroll <window> @x,y <dx> <dy>   # the real wheel; 120 per notch, positive dy down, positive dx right
+winuse scroll <window> @x,y <dx> <dy>    # 120 per notch, positive dy down, positive dx right
 ```
+
+At a point, winuse scrolls the list or page under it Headless, three
+steps per notch, up to 16 notches per axis, and `ok` names the Element.
+A larger amount is refused with nothing sent; split it, or pass
+`--headed` to turn the real wheel at the point.
 
 The Element forms are Headless and take an Element Index, `name:` or `id:`.
 Name any Element inside the list or page; winuse scrolls the nearest
@@ -957,6 +998,35 @@ Action, a Window Action or a Page Action, the output then ends with
 `Note: the App took the foreground; winuse does not take it back.` The user
 may have been typing elsewhere: tell them, and do not repeat the Action.
 
+## Wait for a change
+
+When an Action starts something slow, wait for its effect instead of
+reading the Window State over and over:
+
+```
+winuse wait window "Save As"                   # a Window of that App, or whose title holds the text, shows: prints its line
+winuse wait window "Save As" --gone            # no such Window is left
+winuse wait <window> text <text>               # the text shows in the Window
+winuse wait <window> <ref> enabled             # also disabled, gone, value <v>, checked, unchecked, expanded, collapsed
+winuse wait 500                                # a plain pause, in milliseconds (at most 300000)
+```
+
+- A wait lasts 10 seconds by default; `--timeout <seconds>` gives it up to
+  300. One that runs out fails with what it saw last, such as
+  `it reads disabled`.
+- `<ref>` is an Element Index, `name:` or `id:` from your latest Window
+  State, so read the Window first. It resolves once, when the wait starts.
+  `gone` succeeds when that Element goes away, also when its Window
+  closes. Any other wait whose Window closes fails with
+  `the Window closed`.
+- A wait only reads, Headless. It does not renumber your Element Indexes,
+  and an Action can run while it waits.
+- A wait for something the Element cannot show, such as `value` on an
+  Element without `Value:`, fails at once.
+- In a browser Window with a Browser Connection, `text` waits in the Page,
+  and the Page waits are under "Act on a Page". An element wait there
+  takes the frame's Elements, not the Page's.
+
 ## When the user presses Esc
 
 The Esc stop is the user's way to take back control. While an Action or
@@ -965,6 +1035,11 @@ with code 130 and a message saying the user stopped it with the physical
 Escape key. During a Headed Action, or a Batch with a Headed step, the key
 never reaches the app. During a Headless Action it still reaches whatever
 app the user is working in, and it stops winuse all the same.
+
+The stop is for everyone: one press stops the Action that runs and every
+command waiting its turn behind it, whichever agent sent them. A waiting
+command says nothing was sent. A command sent after the press runs as
+usual, so check what the user wants before you send one.
 
 After exit 130, stop sending winuse commands for the task and leave the
 stopped Action as it is. Tell the user what you were doing and where the
@@ -1049,7 +1124,7 @@ close-app <app> [--force]           # --force ends what is still running: the on
 get-window-state <window> [--screenshot] [--skeleton | --root <element> [--depth N] [--interactive]] [--timeout <s>]
 find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --count] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
-click <window> <ref> [--count 1|2|3] [--button left|middle|right]
+click <window> <ref> [--count 1|2|3] [--button left|middle|right] [--post]
 set-value <window> <ref> <value|on|off|item name>
 perform-secondary-action <window> <ref> <action>   # Raise, Scroll Up/Down/Left/Right, Expand, Collapse, Toggle, Select
 type-text <window> [--post | --into <ref>] <text>
@@ -1057,7 +1132,7 @@ press-key <window> <key> [--post] [--force]
 select-text <window> <ref> <start> <length> | select-text <window> <ref> all
 invoke-menu <window> "<menu> > <item>"   # a classic menu bar command, Headless
 scroll <window> <ref> <up|down|left|right> [steps] | scroll <window> <ref> into-view
-scroll <window> @x,y <dx> <dy>      # Headless on a Page, else only with --headed
+scroll <window> @x,y <dx> <dy> [--post]   # Headless: the Page, or the Window's Element under the point; --post posts the wheel
 drag <window> @x,y @x,y             # --headed: left button, point to point
 drag <window> <element> <element|@x,y>   # a Page Element, Headless
 hover <window> @x,y                 # --headed: moves the pointer and leaves it there, to reveal tooltips
@@ -1069,6 +1144,8 @@ maximize-window <window>            # needs --headed: takes the foreground
 batch <window> [--timeout <s>] [--stop-on-error] <action> [args] [then <action> [args]] ...
 navigate <window> <url> [--wait load|domcontentloaded|none] | back | forward | reload <window>
 wait <window> selector <css> | text <text> | url <url> | load | download [--timeout <s>]
+wait <window> <ref> enabled|disabled|gone|value <v>|checked|unchecked|expanded|collapsed [--timeout <s>]
+wait window <app|title> [--gone] [--timeout <s>] | wait <ms>
 eval <window> <expression> | dialog <window> accept|dismiss [text]
 upload <window> [<element>] <file>...
 tab list <window> | tab new <window> [url] | tab switch <window> <tab> | tab close <window> <tab>

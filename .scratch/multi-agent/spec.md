@@ -44,11 +44,11 @@ agent-desktop and cua both serialize every input-producing action machine-wide. 
 | 02 | Agent identity on every request | S | done |
 | 03 | Window States per agent | S-M | done |
 | 04 | A cursor per agent, like cua | M | done (live e2e pending) |
-| 05 | Esc stops every agent | S | ready-for-agent |
+| 05 | Esc stops every agent | S | done |
 | 06 | Per-thread lanes and a desktop lane | M | ready-for-agent |
 | 07 | UIA worker pool with per-App affinity | M-L | ready-for-agent |
 | 08 | Polite real input | M | ready-for-agent |
-| 09 | Window identity check before writes | S | ready-for-agent |
+| 09 | Window identity check before writes | S | done |
 | 10 | Opt-in e2e for several agents | M | ready-for-agent |
 | 11 | Insertion caret after a Headless type-text or set-value (split from 04) | S-M | ready-for-agent |
 

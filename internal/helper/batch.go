@@ -127,6 +127,9 @@ func batch(commands map[string]Command, s Services) Command {
 			}
 			if postsHeaded(injected) {
 				e := postFlagsError(st.Kind)
+				if st.Kind == "click" || st.Kind == "scroll" {
+					e = postMouseFlagsError(st.Kind) // postclick.go
+				}
 				return "", Fail(fmt.Sprintf("batch: Action %d (%s): %s", i+1, st.Kind, e.Msg), e.Hint)
 			}
 			if e := blockedStep(st.Kind, injected); e != nil {

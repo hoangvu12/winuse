@@ -12,7 +12,9 @@ package helper
 // act) and print `ok` or a one-line failure with a recovery hint. Only
 // with `headed`: without it they are refused with nothing sent and the
 // --headed retry (headless-max ticket 21), except a scroll at a point of a
-// Page and the Page Element forms of drag and hover, which are Headless.
+// Page and the Page Element forms of drag and hover, which are Headless,
+// and a scroll at a point elsewhere, which scrolls the target Window's own
+// Element there through UI Automation (headless-max ticket 11).
 //
 // Signs and units follow Codex's scroll: positive scrollY scrolls down,
 // positive scrollX scrolls right, amounts are in wheel units (one notch
@@ -25,6 +27,7 @@ import (
 	"fmt"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
+	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
 )
 
@@ -56,6 +59,9 @@ func scroll(s Services) Command {
 			return "", Fail("scroll: "+err.Error(), scrollUsageHint)
 		}
 		if isElementScroll(a) {
+			if a.Post {
+				return "", Fail("scroll: --post scrolls at an @x,y point; an Element scrolls headless without it", scrollUsageHint)
+			}
 			return scrollElement(ctx, s, args, a)
 		}
 		if a.Direction != "" || a.Steps != nil {
@@ -70,11 +76,45 @@ func scroll(s Services) Command {
 		if abs(a.ScrollX) > maxScrollUnits || abs(a.ScrollY) > maxScrollUnits {
 			return "", Fail(fmt.Sprintf("scroll amounts must be within ±%d wheel units (one notch is 120)", maxScrollUnits), scrollUsageHint)
 		}
+		if a.Post {
+			// A posted wheel to the classic control there, opt-in
+			// (headless-max ticket 12, postclick.go).
+			return s.postScroll(ctx, a)
+		}
 		x, y, dx, dy := a.X, a.Y, a.ScrollX, a.ScrollY
 		// A point on a browser Window's Page wheels over the Browser
 		// Connection, Headless (pageactions.go).
 		if out, rerr, ok := s.pageScrollAt(ctx, a.Window, x, y, dx, dy); ok {
 			return out, rerr
+		}
+		if ha, pr, ok := s.pointActor(); ok && !a.Headed &&
+			wheelSteps(dx) <= uia.MaxScrollSteps && wheelSteps(dy) <= uia.MaxScrollSteps {
+			// Elsewhere the point scrolls the target Window's own Element
+			// there through UI Automation, Headless (headless-max ticket
+			// 11): its nearest scrollable container, three steps per wheel
+			// notch, vertical first.
+			return s.runAtPoint(ctx, a.Window, ha, pr, pointRun{
+				x: x, y: y, need: uia.NeedScroll, done: "scrolled",
+				retry: func(id string) string { return fmt.Sprintf("scroll %s %s %d %d", id, pointToken(x, y), dx, dy) },
+				run: headlessRun{
+					cmd:  "scroll",
+					verb: pointScrollVerb(dx, dy),
+					act: func(ctx context.Context, w win.WindowInfo, index int) error {
+						if dy != 0 {
+							if err := ha.ScrollElement(ctx, w.ID, index, wheelDirection(false, dy), wheelSteps(dy)); err != nil {
+								return err
+							}
+						}
+						if dx != 0 {
+							return ha.ScrollElement(ctx, w.ID, index, wheelDirection(true, dx), wheelSteps(dx))
+						}
+						return nil
+					},
+					refusal: func(err error, w win.WindowInfo, index int) *Error {
+						return elementError(err, w, index)
+					},
+				},
+			})
 		}
 		if !a.Headed {
 			return "", s.headedOnly(a.Window,

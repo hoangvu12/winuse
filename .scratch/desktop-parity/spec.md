@@ -45,7 +45,7 @@ Details are in each ticket's Comments.
 |---|---|---|---|---|
 | 01 | Clipboard commands | P1 | S | done |
 | 02 | Report Windows that an Action opened | P1 | S-M | done (live e2e run still to do) |
-| 03 | Desktop waits | P1 | M | ready-for-agent |
+| 03 | Desktop waits | P1 | M | done |
 | 04 | `find` and a region read | P1 | M-L | done (live e2e run still to do) |
 | 05 | Blocked dangerous combos with `--force` | P1 | S | done |
 | 06 | Modifiers on point clicks and wheel | P1 | S | ready-for-agent |
@@ -59,7 +59,7 @@ Details are in each ticket's Comments.
 | 14 | Caller-set timeouts | P2 | S | done |
 | 15 | `winuse skill` prints the embedded skill | P2 | S | done |
 | 16 | `status` | P2 | S | done |
-| 17 | Live re-resolution of `name:`/`id:` | P2 | M | ready-for-agent |
+| 17 | Live re-resolution of `name:`/`id:` | P2 | M | done (live e2e run still to do) |
 | 18 | Notifications | P3 | M | ready-for-agent |
 | 19 | Session traces with redaction | P3 | M-L | done |
 | 20 | Batch improvements | P3 | S-M | needs-info (per-step output, run past failures, `--stop-on-error` done; stdin batches wait on the format decision) |

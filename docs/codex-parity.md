@@ -28,7 +28,7 @@ different**; `--headed` restores Codex's behaviour for any Action.
 **No Headed Action without `--headed` (ADR 0013 rule 3, headless-max
 ticket 21).** Codex's activate-and-inject is winuse's Headed pipeline, and
 winuse runs it only when the agent passes `--headed`. An Action with no
-Headless or Posted route sent without it — `@x,y` forms outside a Page,
+Headless or Posted route sent without it — a point with no usable Element,
 double/triple and right/middle clicks outside a Page, drag, hover, Raise,
 `press-key` and `type-text` with no Headless route, and a `tab switch`
 whose Tab the tab strip cannot select (headless-max 05) — is refused with "nothing was sent" and the exact
@@ -131,7 +131,7 @@ the one frame (Codex composites several `zIndex` layers).
 |---|---|---|---|
 | `window` | the Window to click in | `<window>` | matched |
 | `element_index` | the Element Index from the last state | the Element Index, or `name:`/`id:` references resolved against the latest Window State | matched (extended) |
-| (delivery) | activates the Window and injects a real pointer click | an Element click (left, single) is **Headless**: the first pattern the Element offers (Invoke → Toggle → SelectionItem.Select → Expand/Collapse → LegacyIAccessible default action), Toggle/Select/Expand/Collapse read back; none offered fails with "nothing was sent" and the `--headed` hint, never a silent switch. with `--headed`, every click is Codex's real click; without it, `@x,y` and double/triple and right/middle clicks outside a Page are refused with nothing sent and the `--headed` retry (ticket 21) | intentionally different |
+| (delivery) | activates the Window and injects a real pointer click | an Element click (left, single) is **Headless**: the first pattern the Element offers (Invoke → Toggle → SelectionItem.Select → Expand/Collapse → LegacyIAccessible default action), Toggle/Select/Expand/Collapse read back; none offered fails with "nothing was sent" and the `--headed` hint, never a silent switch. with `--headed`, every click is Codex's real click; without it, a left single click at `@x,y` clicks the target Window's own Element under the point Headless and names it in the `ok` (headless-max ticket 11), and double/triple and right/middle clicks outside a Page are refused with nothing sent and the `--headed` retry (ticket 21); `--post` posts any click to the classic control there instead, best effort (ticket 12) | intentionally different |
 | `x`, `y` | window-relative **logical** pixels (the 175%-scaling offset bug) | `@x,y` in the latest screenshot's pixel space, mapped back to **physical** pixels, re-anchored to the Window's live bounds at action time | intentionally different |
 | `click_count` | 1 (single) or 2 (double); right double click is not supported | `--count 1|2|3`; non-left multi-clicks are refused with Codex's message | matched |
 | `mouse_button` | `left`/`right`/`middle`, aliases `l`/`r`/`m`; unknown → `unsupported mouse_button: <v>` | `--button left|middle|right` with the same `l`/`r`/`m` aliases and the same error | matched |
@@ -165,7 +165,7 @@ it and winuse's code refuses it (see cross-cutting).
 | Parameter | Codex | winuse `scroll` | Status |
 |---|---|---|---|
 | `window` | the Window scrolled | `<window>` | matched |
-| `x`, `y` | window-relative point to scroll at | `@x,y` in the latest screenshot's space, mapped like coordinate clicks; Headless on a Page, elsewhere the real wheel only with `--headed` (ticket 21) | intentionally different |
+| `x`, `y` | window-relative point to scroll at | `@x,y` in the latest screenshot's space, mapped like coordinate clicks; Headless on a Page; elsewhere the target Window's list or page under the point scrolls through UI Automation, three steps per notch up to 16 notches (ticket 11), `--post` posts the wheel to the classic control there (ticket 12), and the real wheel only with `--headed` (ticket 21) | intentionally different |
 | `scrollX`, `scrollY` | wheel amounts; positive down/right, one notch is 120; point-based, not element-based (Codex guidance: "do not pass element_index") | the same signs, the same notch size, the same point-based contract; a point over another window is refused, not scrolled | matched |
 | `screenshotId` | validated against that screenshot | latest-screenshot binding (as click) | intentionally different |
 
@@ -174,9 +174,9 @@ it and winuse's code refuses it (see cross-cutting).
 | Parameter | Codex | winuse `set-value` | Status |
 |---|---|---|---|
 | `window` | the Window holding the Element | `<window>` | matched |
-| `element_index` | the Element to write | the Element Index, a `name:`/`id:` reference, or `@x,y` (the Element UIA finds under the point of the latest screenshot) | matched (extended) |
+| `element_index` | the Element to write | the Element Index, a `name:`/`id:` reference, or `@x,y` (the target Window's own Element under the point of the latest screenshot, ticket 11) | matched (extended) |
 | `value` | the string to set | the value; numeric Elements (RangeValue) take it parsed as a number; a combo box or list with no writable value takes an item's name | matched |
-| (delivery) | activates the Window, focuses the Element, then writes | by Element Index or reference **Headless**: no activation and no focus (UIA SetFocus moves the desktop foreground), a text write read back live; `--headed` keeps Codex's activate-and-focus order; `@x,y` runs only with it and is refused with nothing sent without it (ticket 21) | intentionally different |
+| (delivery) | activates the Window, focuses the Element, then writes | by Element Index or reference **Headless**: no activation and no focus (UIA SetFocus moves the desktop foreground), a text write read back live; `--headed` keeps Codex's activate-and-focus order; `@x,y` is Headless on the Element under the point (ticket 11) | intentionally different |
 
 Non-settable Elements fail with Codex's `Cannot set a value for an
 element that is not settable` plus the click-and-type-text hint. A
@@ -224,7 +224,7 @@ rule.
 | `window` | the Window holding the Element | `<window>` | matched |
 | `element_index` | the Element to act on | the Element Index, a `name:`/`id:` reference, or `@x,y` (as set-value's) | matched (extended) |
 | `action` | case-insensitive; only `Raise`, `Scroll Up/Down/Left/Right`, `Expand`, `Collapse`; unknown → `unsupported secondary action: {action}; expected …` | the same set and the same error listing the expected names, **plus** the `Toggle` and `Select` extensions | matched (extended) |
-| (delivery) | activates the Window first | by Element Index or reference **Headless** (no activation), Toggle/Select/Expand/Collapse read back; `--headed` is Headed; Raise (a foreground operation) and `@x,y` run only with it and are refused with nothing sent without it (ticket 21) | intentionally different |
+| (delivery) | activates the Window first | by Element Index or reference **Headless** (no activation), Toggle/Select/Expand/Collapse read back; `--headed` is Headed; `@x,y` is Headless on the Element under the point (ticket 11); Raise (a foreground operation) runs only with `--headed` and is refused with nothing sent without it (ticket 21) | intentionally different |
 
 An action the Element does not offer fails listing the ones it does,
 probed live — so a changed Element says so.
@@ -285,7 +285,10 @@ The physical Escape key stops the running Action or Batch: a
 low-level keyboard hook ignores injected keys, swallows the physical
 press (the app never sees it), and the command exits **130** with the
 message that the user stopped winuse and a stop-and-ask hint. The latch
-never leaks into the next command (winuse has no turn concept).
+never leaks into the next command (winuse has no turn concept). With
+several agents (multi-agent 05, ADR 0014 Decision 5) one press also stops
+every command waiting for its turn, with "nothing was sent"; a command
+sent after the press runs.
 **matched** for Headed Actions and any Batch with a Headed step. In a
 Headless Action or an all-Headless Batch the press still stops winuse
 (exit 130) but passes through to the user's app — winuse holds neither
@@ -408,11 +411,17 @@ clipboard's Desktop commands — through one helper-wide action gate — one
 command controls the desktop at a time, and a request
 queued behind another Action until its own budget expired fails instead
 of acting late. Observation-only commands (list-windows, get-window,
-list-apps, the plain tree read, record-tree, launch-app) may answer
-concurrently; the UIA worker serializes everything that touches
+list-apps, the plain tree read, record-tree, launch-app, and the desktop
+waits, which only read) may answer concurrently; the UIA worker serializes everything that touches
 automation. **matched**.
 
 ### stale elements
+
+A Window ID that a new Window reused after the old one closed is refused
+before any Action, with nothing sent (multi-agent 09, ADR 0014: the
+helper records each Window ID's process, process start and class when it
+is listed or read, shared by every agent). Codex's Window IDs carry no
+such check. **extension**.
 
 An Element Index whose Element went away fails as stale, with the
 instruction to read the Window State again; references copied from an
@@ -420,7 +429,10 @@ older state go stale the same way. `name:`/`id:` references survive
 re-reads better — an extension. `find` and `get-window-state --root`
 (desktop-parity 04) add the Elements they print after the Window State's
 own indexes instead of renumbering, so the indexes the agent holds keep
-working until the next full read. **matched (extended)**.
+working until the next full read. A `name:`/`id:` reference the cached
+Window State cannot answer (a helper restart, a gone Element) is resolved
+in a fresh bounded read instead of failing (desktop-parity 17), and the
+output says so. **matched (extended)**.
 
 ### extensions beyond Codex
 
@@ -468,6 +480,11 @@ captures one without the foreground, like agent-desktop's
 `list-displays` and `screenshot --screen` (which winuse also accepts as
 an alias of `--display`); the display screenshot binds
 no `@x,y` points, which stay per Window. Codex captures Windows only.
+The desktop waits (desktop-parity 03) poll, like agent-desktop's `wait`:
+`wait window <app|title> [--gone]`, `wait <window> text` in a UI
+Automation tree, `wait <window> <ref> enabled|disabled|gone|value|
+checked|unchecked|expanded|collapsed` and `wait <ms>`, beside the Page
+waits; they only read, and never renumber Element Indexes.
 `maximize-window` (desktop-parity 11) maximizes a Window for real, like
 agent-desktop's `maximize`; Windows has no non-activating maximize, so it
 is the one Headed Window Action and is refused with nothing sent unless

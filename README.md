@@ -131,6 +131,7 @@ at all, and winuse says so.
 | `batch <window> [--timeout <s>] [--stop-on-error] ... then ...` | Runs several actions in one call and prints each one's output; a failed action does not stop the rest unless `--stop-on-error` |
 | `navigate`, `back`, `forward`, `reload` | Opens a URL or moves through a tab's history |
 | `wait`, `eval` | Waits for an element, text, URL, load or download, or runs JavaScript in the page |
+| `wait window`, `wait <window> <element> <state>`, `wait <ms>` | Waits for a Window to show or close, for text in any Window, for an Element to become enabled, disabled, gone, checked, expanded or reach a value, or pauses |
 | `dialog`, `upload` | Answers a JavaScript dialog, or gives files to a file input |
 | `tab list`, `tab new`, `tab switch`, `tab close` | Manages a browser window's tabs |
 | `clipboard-get`, `clipboard-set`, `clipboard-clear` | Reads, replaces or empties the clipboard: text, an image as a PNG file, or a list of files |
