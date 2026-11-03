@@ -352,3 +352,173 @@ func TestRequestCarriesTheBuild(t *testing.T) {
 		t.Errorf("request = %+v, want version %s build %s", req, version.Version, version.Build())
 	}
 }
+
+// busyErr is what the real dial returns for a pipe nothing listens on: a
+// stale helper still finishing its requests in flight.
+func busyErr() error { return context.DeadlineExceeded }
+
+// heldFor fakes the single-instance mutex: held for the first n checks.
+func heldFor(n int) func() bool {
+	var mu sync.Mutex
+	return func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		n--
+		return n >= 0
+	}
+}
+
+func TestCallWaitsForAStaleHelperToFinishItsRequests(t *testing.T) {
+	// The old helper answers stale, then stops listening while another
+	// Agent's Batch runs (its pipe busy), then holds the mutex a moment on
+	// its way out (desktop-parity ticket 25). The CLI spawns only once the
+	// mutex is free, instead of failing after spawnDialWait.
+	stale := &protocol.Response{OK: false, Stale: true, Err: "different build", Exit: 1}
+	script := &dialScript{steps: []dialStep{
+		{conn: respondingConn(stale)},
+		{err: busyErr()},     // waitPipeGone: busy, not gone; it returns
+		{err: busyErr()},     // dialOrStart: busy → wait
+		{err: busyErr()},     // still finishing
+		{err: notFoundErr()}, // pipe gone, mutex still held
+		{err: notFoundErr()}, // pipe gone, mutex free → spawn
+		{conn: respondingConn(&protocol.Response{OK: true, Out: "fresh"})},
+	}}
+	running := heldFor(1)
+	spawns := 0
+	client := testClient(script, &spawns, nil)
+	client.Running = running
+	client.Spawn = func() error {
+		if running() {
+			t.Error("spawned while the old helper held the mutex")
+		}
+		spawns++
+		return nil
+	}
+
+	resp, err := client.Call(context.Background(), testRequest())
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if !resp.OK || resp.Out != "fresh\n"+drainNote+restartNote {
+		t.Fatalf("response: %q", resp.Out)
+	}
+	if spawns != 1 || script.remaining() != 0 {
+		t.Errorf("spawns = %d, steps left = %d; want 1, 0", spawns, script.remaining())
+	}
+}
+
+func TestCallGivesUpWaitingForTheOldHelperAtTheBudget(t *testing.T) {
+	// The old helper's Batch outlasts this request's budget: the CLI says
+	// what it waited for, and never spawned a helper meanwhile.
+	script := &dialScript{}
+	for i := 0; i < 1000; i++ {
+		script.steps = append(script.steps, dialStep{err: busyErr()})
+	}
+	spawns := 0
+	client := testClient(script, &spawns, nil)
+	client.exitWait = 300 * time.Millisecond
+
+	start := time.Now()
+	_, err := client.Call(context.Background(), testRequest())
+	elapsed := time.Since(start)
+	want := "the old winuse helper was still finishing its requests in flight when this request's budget expired; nothing was sent"
+	if err == nil || err.Error() != want {
+		t.Fatalf("Call error = %v, want %q", err, want)
+	}
+	if elapsed < 300*time.Millisecond || elapsed > 3*time.Second {
+		t.Errorf("gave up after %s, want at the 300ms budget", elapsed)
+	}
+	if spawns != 0 {
+		t.Errorf("spawns = %d, want 0", spawns)
+	}
+	// --json reads it as a budget that ran out with nothing sent.
+	var ee *exitError
+	if !errors.As(err, &ee) || ee.hint == "" {
+		t.Fatalf("want an exitError with a hint, got %#v", err)
+	}
+	if code, _ := protocol.CodeFor(ee.msg, ee.hint, 1); code != protocol.CodeTimeout {
+		t.Errorf("code = %s, want %s", code, protocol.CodeTimeout)
+	}
+	if delivery, _ := protocol.DeliveryOf(ee.msg, ee.hint); delivery != protocol.DeliveryNotDelivered {
+		t.Errorf("delivery = %s, want %s", delivery, protocol.DeliveryNotDelivered)
+	}
+}
+
+func TestCallGivesUpOnAHelperThatNeverLetsGoOfTheMutex(t *testing.T) {
+	// No pipe, but the mutex stays held: the old helper is stuck on its way
+	// out. Spawning would only lose the mutex.
+	script := &dialScript{}
+	for i := 0; i < 1000; i++ {
+		script.steps = append(script.steps, dialStep{err: notFoundErr()})
+	}
+	spawns := 0
+	client := testClient(script, &spawns, nil)
+	client.Running = func() bool { return true }
+	client.exitWait = 200 * time.Millisecond
+
+	_, err := client.Call(context.Background(), testRequest())
+	if err == nil || !strings.Contains(err.Error(), "did not exit before this request's budget expired; nothing was sent") {
+		t.Fatalf("Call error = %v", err)
+	}
+	if spawns != 0 {
+		t.Errorf("spawns = %d, want 0", spawns)
+	}
+}
+
+func TestCallWaitsBrieflyForTheMutexWithoutANote(t *testing.T) {
+	// A helper that had nothing in flight only holds the mutex a moment
+	// after its pipe goes: the CLI waits for it, then starts one, and the
+	// answer carries no wait Note (a first start, or the idle-exit race).
+	script := &dialScript{steps: []dialStep{
+		{err: notFoundErr()}, // mutex held
+		{err: notFoundErr()}, // mutex free → spawn
+		{conn: respondingConn(&protocol.Response{OK: true, Out: "ok\n"})},
+	}}
+	spawns := 0
+	client := testClient(script, &spawns, nil)
+	client.Running = heldFor(1)
+
+	resp, err := client.Call(context.Background(), testRequest())
+	if err != nil || resp.Out != "ok\n" {
+		t.Fatalf("Call = %+v, %v; want ok without a note", resp, err)
+	}
+	if spawns != 1 {
+		t.Errorf("spawns = %d, want 1", spawns)
+	}
+}
+
+func TestCallUsesAHelperThatCameUpWhileItWaited(t *testing.T) {
+	// Another CLI started a helper while this one waited: use it, spawn
+	// nothing.
+	script := &dialScript{steps: []dialStep{
+		{err: busyErr()},
+		{err: notFoundErr()}, // mutex held (the new helper, starting)
+		{conn: respondingConn(&protocol.Response{OK: true, Out: "ok\n"})},
+	}}
+	spawns := 0
+	client := testClient(script, &spawns, nil)
+	client.Running = func() bool { return true }
+
+	resp, err := client.Call(context.Background(), testRequest())
+	if err != nil || resp.Out != "ok\n"+drainNote {
+		t.Fatalf("Call = %+v, %v", resp, err)
+	}
+	if spawns != 0 {
+		t.Errorf("spawns = %d, want 0", spawns)
+	}
+}
+
+func TestDialOrStartWaitsUpToTheBudgetItIsGiven(t *testing.T) {
+	// Without the test override, the wait runs to the request's budget,
+	// which Call passes in (protocol.Budget).
+	script := &dialScript{}
+	for i := 0; i < 1000; i++ {
+		script.steps = append(script.steps, dialStep{err: busyErr()})
+	}
+	spawns := 0
+	start := time.Now()
+	_, drained, err := testClient(script, &spawns, nil).dialOrStart(context.Background(), 250*time.Millisecond)
+	if elapsed := time.Since(start); err == nil || !drained || elapsed < 250*time.Millisecond || elapsed > 3*time.Second {
+		t.Fatalf("dialOrStart = drained %v, %v after %s; want a give-up at 250ms", drained, err, elapsed)
+	}
+}

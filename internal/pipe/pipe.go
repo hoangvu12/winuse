@@ -161,3 +161,19 @@ func AcquireSingleton(id win.Identity) (release func(), err error) {
 	}
 	return func() { windows.CloseHandle(h) }, nil
 }
+
+// SingletonHeld reports whether a helper holds the single-instance mutex:
+// one is running, starting, or finishing its requests on its way out. It
+// only opens the mutex, never takes it.
+func SingletonHeld(id win.Identity) bool {
+	name, err := windows.UTF16PtrFromString(MutexName(id))
+	if err != nil {
+		return false
+	}
+	h, err := windows.OpenMutex(windows.SYNCHRONIZE, false, name)
+	if err != nil {
+		return errors.Is(err, windows.ERROR_ACCESS_DENIED)
+	}
+	windows.CloseHandle(h)
+	return true
+}

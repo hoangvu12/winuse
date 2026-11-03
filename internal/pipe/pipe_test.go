@@ -217,14 +217,23 @@ func verifyServerRejectsForeignSID() error {
 
 func TestAcquireSingleton(t *testing.T) {
 	id := testIdentity(t)
+	if SingletonHeld(id) {
+		t.Fatal("SingletonHeld before any helper took the mutex")
+	}
 	release, err := AcquireSingleton(id)
 	if err != nil {
 		t.Fatalf("first AcquireSingleton: %v", err)
+	}
+	if !SingletonHeld(id) {
+		t.Fatal("SingletonHeld = false while the mutex is held")
 	}
 	if _, err := AcquireSingleton(id); !errors.Is(err, ErrAlreadyRunning) {
 		t.Fatalf("second AcquireSingleton: want ErrAlreadyRunning, got %v", err)
 	}
 	release()
+	if SingletonHeld(id) {
+		t.Fatal("SingletonHeld = true after the release")
+	}
 	// After release the mutex is gone: re-acquiring succeeds.
 	release2, err := AcquireSingleton(id)
 	if err != nil {
