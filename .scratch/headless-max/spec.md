@@ -1,4 +1,4 @@
-﻿Status: ready-for-agent (triaged by the user 2026-11-03; ADR 0013 accepted)
+Status: ready-for-agent (triaged by the user 2026-11-03; ADR 0013 accepted)
 
 # Headless max: every Action headless where Windows allows it
 
