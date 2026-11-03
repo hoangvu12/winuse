@@ -21,15 +21,15 @@ Limits stated in the output and the skill: no key events fire, the undo stack is
 
 **Blocked by:** none (uses 10's TextRange.Select)
 
-**Status:** ready-for-agent
+**Status:** done (the live e2e run is still to do)
 
-- [ ] Focused-Element lookup inside a background Window
-- [ ] Splice and read-back; caret placement after
-- [ ] Routing: after the classic-edit route, before Headed; Batch probe follows
-- [ ] `--into` leg: the splice on the named Element, after its classic-edit route and before its Headed/refusal (`internal/helper` type-into routing); Batch `headlessStep` follows
-- [ ] Offline tests: splice maths in UTF-16 (surrogate pairs), each refusal
-- [ ] Opt-in e2e: a WPF or WinUI text box (e.g. the fixture if it gains one, or Settings search), covered
-- [ ] SKILL.md
+- [ ] Focused-Element lookup inside a background Window: not built. Round 5 measured that no focused Element can be found in a background WPF or WinUI window, so plain `type-text` keeps hm-21's refusal, whose hint names `--into` (see Comments)
+- [x] Splice and read-back; caret placement after
+- [ ] Routing: after the classic-edit route, before Headed; Batch probe follows: plain type-text, not built (as above)
+- [x] `--into` leg: the splice on the named Element, after its classic-edit route and before its Headed/refusal (`internal/helper` type-into routing); Batch `headlessStep` follows
+- [x] Offline tests: splice maths in UTF-16 (surrogate pairs), each refusal
+- [ ] Opt-in e2e: a WPF or WinUI text box (e.g. the fixture if it gains one, or Settings search), covered: written and compiled against a WPF box the test starts through Windows PowerShell; not run live yet
+- [x] SKILL.md
 
 ## Comments
 
@@ -53,3 +53,21 @@ Implementation notes from the probe:
 - SetValue resets the caret to 0, so place it again after the splice.
 - Undo: WPF keeps one undo step; WinUI keeps none. Say so in the output.
 - Refuse IsPassword and Value.IsReadOnly before sending (a read-only SetValue fails with 0x80131509).
+
+### 2026-11-03: built (branch hm13-caret-typing)
+
+- `internal/uia/textsplice.go`: `Client.SpliceText(ctx, hwnd, index, text)` on the worker.
+  - Refusals before any write: no Text pattern, a password field (IsPassword), no Value pattern, a read-only Value, a Document control (rich text), a field whose Text-pattern text differs from its Value, and no selection.
+  - Offsets come from round 5's recipe: DocumentRange.Clone, then MoveEndpointByRange(End, selection endpoint), then GetText, counted in UTF-16 units.
+  - The write is `SetValue(prefix + text + suffix)` (pure `Splice16`), read back exactly; a failed read-back is a VerifyError, which means delivered.
+  - The caret is then placed: collapse, Move(Character, n), collapse again, Select, read it back. n is tried as the UTF-16 count, then as the rune count, because WPF counts an emoji as one character and WinUI counts UTF-16 units.
+  - A caret that cannot be placed is reported in the output, not failed.
+- Helper (`typeinto.go`): on an unheaded `--into`, after the Page and classic-edit routes and before the refusal, an Element with no classic edit control behind it and text with no control characters goes to `spliceInto`. That runs inside runHeadless: its refusals, the passive Esc scope, the Agent Cursor labelled `type`, and minimized Windows allowed, because SetValue was measured on minimized WPF and WinUI 3. The success output is `ok (set as the field's value at the caret: no key events fired, and the field's undo may not hold it)`.
+- The refusals go into `refusedBeforeCall`, so they say "nothing was sent", with the `--headed --into` retry (read-only points at another Element). Text with control characters keeps its own refusal. The Batch predicate needed no change: an unheaded `--into` was already Headless or nothing sent.
+- **Not built:** the plain type-text leg and its focused-Element lookup. Round 5 found no focused Element in background WPF or WinUI windows (no HasKeyboardFocus, and the app's own focus is empty), and the user's triage said plain type-text keeps today's behaviour when none is found. After hm-21 that behaviour is a refusal whose hint names `--into`; SKILL.md now tells agents to name a WinUI or WPF box with `--into`. Chromium-frame fields are left to ticket 20's real key events.
+- Rich text detection is the Document control type only; formatting attributes are not inspected.
+- Tests:
+  - `internal/uia/textsplice_test.go`: Splice16 with surrogate pairs, and the rune counts.
+  - `internal/helper/splice_test.go`: the route, its output and cursor; each refusal says nothing was sent; a failed write or read-back does not; the other routes run first.
+- E2e `TestTypeTextIntoAWPFBoxSplicesAtTheCaret` (`test/e2e/caret_typing_test.go`): a WPF TextBox the test starts through Windows PowerShell, shown without activation and covered. select-text puts the caret after "hello", then type-text --into adds "xy😀", which is read back from a file the box writes on every change. The next splice must follow the caret. Foreground and pointer unchanged, no banner. Written and compiled, not run: live runs are paused.
+

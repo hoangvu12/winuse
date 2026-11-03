@@ -621,7 +621,9 @@ func refusedBeforeCall(err error) bool {
 		errors.Is(err, uia.ErrToggleValue), errors.Is(err, uia.ErrToggleUnreadable), errors.As(err, &unavail),
 		errors.Is(err, uia.ErrNotScrollable), errors.Is(err, uia.ErrNoScrollItem), errors.Is(err, uia.ErrScrollSteps),
 		errors.Is(err, uia.ErrNoTextPattern), errors.Is(err, uia.ErrNoTextSelection), errors.Is(err, uia.ErrTextUnreadable),
-		errors.Is(err, uia.ErrTextRange), errors.Is(err, uia.ErrTextSpan):
+		errors.Is(err, uia.ErrTextRange), errors.Is(err, uia.ErrTextSpan),
+		errors.Is(err, uia.ErrSplicePassword), errors.Is(err, uia.ErrSpliceNoValue), errors.Is(err, uia.ErrSpliceRichText),
+		errors.Is(err, uia.ErrSpliceMismatch), errors.Is(err, uia.ErrSpliceNoCaret):
 		return true
 	}
 	return false
