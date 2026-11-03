@@ -238,18 +238,18 @@ func contextMenuRefusal(err error, w win.WindowInfo, index int, retry func(id st
 	return secondaryError(err, w, index)
 }
 
-// contextMenuOutput is the open's `ok`: how to go on, and the opened
+// contextMenuOutput is the open's `ok` and its notes: how to go on, and the opened
 // Windows as desktop-parity 02 notes them. A Chromium menu's edit items
 // act on the browser's focus, not on the right-clicked Element (round 5),
 // and the output says so.
 func contextMenuOutput(got contextMenuOpened, target win.WindowInfo) string {
 	id := got.menu.ID
 	var b strings.Builder
-	fmt.Fprintf(&b, "ok (the context menu opened: read it with winuse get-window-state %d, click an item, or close it with winuse press-key %d Escape", id, id)
+	fmt.Fprintf(&b, "ok\n%sthe context menu opened: read it with winuse get-window-state %d, click an item, or close it with winuse press-key %d Escape", notePrefix, id, id)
 	if got.menu.Class == win.ChromiumClass {
 		b.WriteString("; its edit items, such as Cut, Paste or Select all, act on the browser's focus, not on this Element")
 	}
-	b.WriteString(")\n")
+	b.WriteString("\n")
 	b.WriteString(formatOpened(got.opened, target, false))
 	return b.String()
 }
