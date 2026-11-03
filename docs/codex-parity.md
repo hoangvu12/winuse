@@ -227,7 +227,7 @@ from its clickable point, again only with `--headed`; and
 |---|---|---|---|
 | `window` | the Window holding the Element | `<window>` | matched |
 | `element_index` | the Element to act on | the Element Index, a `name:`/`id:` reference, or `@x,y` (as set-value's) | matched (extended) |
-| `action` | case-insensitive; only `Raise`, `Scroll Up/Down/Left/Right`, `Expand`, `Collapse`; unknown → `unsupported secondary action: {action}; expected …` | the same set and the same error listing the expected names, **plus** the `Toggle` and `Select` extensions | matched (extended) |
+| `action` | case-insensitive; only `Raise`, `Scroll Up/Down/Left/Right`, `Expand`, `Collapse`; unknown → `unsupported secondary action: {action}; expected …` | the same set and the same error listing the expected names, **plus** the `Toggle`, `Select` and `ContextMenu` extensions (ContextMenu, never listed on an Element, opens its right-click menu Headless and names the menu's Window; headless-max 09) | matched (extended) |
 | (delivery) | activates the Window first | by Element Index or reference **Headless** (no activation), Toggle/Select/Expand/Collapse read back; `--headed` is Headed; `@x,y` is Headless on the Element under the point (ticket 11); Raise (a foreground operation) runs only with `--headed` and is refused with nothing sent without it (ticket 21) | intentionally different |
 
 An action the Element does not offer fails listing the ones it does,
@@ -250,9 +250,10 @@ naming the dialog.
 Codex ships a per-turn `codex-computer-use.exe` driven over JSON-RPC by
 `@oai/sky` inside a JS REPL; winuse is a CLI plus a persistent
 background helper over a named pipe restricted to the user's SID,
-version-checked (a stale helper exits so upgrades never act through an
-old one; only the read-only `status` is answered across builds, naming
-both versions), idle-exiting after 5 minutes. The observable contract — one
+version- and build-checked (a stale helper exits so upgrades and
+rebuilds never act through an old one, after its requests in flight;
+only the read-only `status` is answered across builds, naming both
+versions, and both builds of one version: desktop-parity 25), idle-exiting after 5 minutes. The observable contract — one
 request at a time, `ok` or a one-line failure, no Window State echoed back
 — is preserved. After `click`, `perform-secondary-action` Expand or
 Select, `press-key`, `set-value` and a Batch, the `ok` (a Batch's step
@@ -385,7 +386,9 @@ different (roles, bounds)**.
 
 Codex offers Raise, Scroll Up/Down/Left/Right, Expand, Collapse —
 winuse offers exactly those plus the Toggle and Select extensions,
-rendered in the same style. **matched (extended)**.
+rendered in the same style. **matched (extended)**. The ContextMenu
+extension is performed but never listed (no UIA property says an
+Element has a context menu).
 
 ### key names
 
@@ -460,7 +463,10 @@ numbered line (`Action N (<action>): ...`), a failed step does not stop
 the rest, and the Batch then fails naming every failed step, the ones
 that may have taken effect marked uncertain; `--stop-on-error` stops at
 the first failure instead. `winuse batch -` reads the Batch from stdin,
-one step per line (agent-desktop's PR #439 reads its JSON there). Headless Actions bring two
+one step per line (agent-desktop's PR #439 reads its JSON there). Like
+agent-desktop's steps, each with its own target, a step may name its own
+Window (`in <window>`, desktop-parity 24), and `in new` acts in the Window
+the step before it opened; the Batch takes every step's lanes up front. Headless Actions bring two
 more: the global `--headed` flag (before or after the command, and on a
 Batch) that restores Codex's foreground, real-input behaviour for any
 Action, and the Agent Cursor — a presentation-only second cursor that
@@ -531,6 +537,19 @@ while open, named by Window ID. The taskbar reads Headless; a click,
 set-value or Secondary Action on any shell Element (an App's taskbar
 button activates its App, the others open flyouts) needs `--headed`, and
 the refusal of an App's button names `activate-window`. Escape closes the
-open tray overflow Headless. Like agent-desktop's shell surfaces,
-without its Windows-key accelerators.
+open tray overflow Headless. Like agent-desktop's shell surfaces;
+its Windows-key accelerators come as `--headed open-shell
+start|notifications|quick-settings|overflow` (desktop-parity 18), like
+its command that opens a system surface, refused with nothing sent without `--headed`
+(press-key still never sends the Windows key).
 Codex lists no shell surface. **extension**.
+`list-notifications`, `notification-action <n> <button>`,
+`notification-dismiss <n>` and `wait notification [--app] [--text]`
+(desktop-parity 18) read the showing toast banners through UI Automation
+and press a toast's button Headless, with agent-desktop's identity guard
+(the notification read again, refused with nothing sent when its App,
+title or text changed); the `ok` says when the press moved the
+foreground. agent-desktop reads the Notification Center, which does not
+open from UI Automation, so older notifications are read there after
+`--headed open-shell notifications`. Codex has no notification tool.
+**extension**.

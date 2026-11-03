@@ -63,11 +63,12 @@ headless (the default; your foreground, pointer and keyboard stay untouched):
   headless, and so are navigate, back, forward, reload, upload, dialog,
   wait and eval, which have no headed form. The clipboard commands,
   list-displays and screenshot --display are headless Desktop commands:
-  they name no Window and have no headed form.
+  they name no Window and have no headed form, and so are the
+  notification commands, which press a toast's own buttons.
 
 headed only with --headed: every other Action (double, right and middle
-  clicks, drag, hover, Raise, maximize-window, press-key and type-text
-  with no headless route, and a point with no usable Element) is refused
+  clicks, drag, hover, Raise, maximize-window, open-shell, press-key and
+  type-text with no headless route, and a point with no usable Element) is refused
   with "nothing was sent" and the exact --headed retry. activate-window always takes the foreground: that is
   what it is for.
 
@@ -205,8 +206,10 @@ const usageTail = `);
                                naming every failed Action, uncertain ones
                                marked; --stop-on-error stops at the first.
                                A Batch has 60 s; --timeout before the first
-                               Action gives it up to 300
-  batch -                      the same Batch read from stdin: the Window and
+                               Action gives it up to 300. An Action starting
+                               in <window> acts in that Window, and in new in
+                               the Window the Action before it opened
+  batch -                    the same Batch read from stdin: the Window and
                                the Batch flags on the first line, then one
                                Action per line with no then; double quotes
                                group words (\" is a quote inside them), and
@@ -379,6 +382,37 @@ const usageTail = `);
                                zoom, which belong to a Window's screenshot;
                                --screen <n> is the same (agent-desktop's
                                spelling)
+  list-notifications [--app <name>] [--text <text>]
+                               list the notifications the toast banners show
+                               now, one per line: its number, App, title,
+                               text and buttons; --app and --text keep the
+                               ones whose App, or title or text, hold that
+                               text. A banner shows about 5 s; older ones
+                               are in the Notification Center (open-shell
+                               notifications)
+  notification-action <n> <button>
+                               press a button of notification n from your
+                               latest list-notifications or wait
+                               notification, headless; refused with nothing
+                               sent when that notification no longer shows
+                               with the App, title and text it was listed
+                               with. The output says when the foreground
+                               moved (an App that is not running hands it
+                               to the shell)
+  notification-dismiss <n>    close notification n's banner the same way;
+                               Windows keeps it in the Notification Center
+  wait notification [--app <name>] [--text <text>]
+                               wait until a banner shows a matching
+                               notification and list it, numbered; takes
+                               --timeout like the other waits
+  open-shell start|notifications|quick-settings|overflow
+                               headed only: open Start (Control_L+Escape),
+                               the notification panel (Win+N), quick
+                               settings (Win+A) or the tray overflow (a
+                               click on the hidden-icons chevron) and print
+                               its line; read it with get-window-state.
+                               Without --headed nothing is sent; one open
+                               already is printed with nothing sent
   skill                       print the agent skill (SKILL.md) this binary
                                was built with; read it again after an upgrade
   skill install <dir>         write that SKILL.md to <dir>\winuse\SKILL.md, for
@@ -537,6 +571,14 @@ func runCommand(args []string) (code int) {
 		return clipboardSetCmd(args[1:])
 	case "clipboard-clear":
 		return clipboardClearCmd(args[1:])
+	case "list-notifications":
+		return listNotificationsCmd(args[1:]) // notifications.go, desktop-parity ticket 18
+	case "notification-action":
+		return notificationActionCmd(args[1:])
+	case "notification-dismiss":
+		return notificationDismissCmd(args[1:])
+	case "open-shell":
+		return openShellCmd(args[1:], headed) // desktop-parity tickets 09 and 18
 	case "skill":
 		return skillCmd(args[1:])
 	case "status":

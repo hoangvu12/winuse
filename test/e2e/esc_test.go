@@ -233,9 +233,10 @@ func TestInjectedEscDoesNotStopTheBatch(t *testing.T) {
 
 	// All the text was typed, and the injected key-down was delivered:
 	// the fixture saw the Escape (proof the hook passes injected keys
-	// through rather than swallowing or latching on them).
+	// through rather than swallowing or latching on them). It came
+	// mid-typing, so the typed keys after it are LastKey; the count shows it.
 	st := fix.waitState(t, 10*time.Second, func(s *fixture.State) bool { return s.Text == text })
-	if st.LastKey != "Escape" {
-		t.Errorf("lastKey = %q, want \"Escape\": the injected Esc key must reach the app", st.LastKey)
+	if st.EscapePresses != 1 {
+		t.Errorf("the fixture saw %d Escape presses, want 1: the injected Esc key must reach the app", st.EscapePresses)
 	}
 }

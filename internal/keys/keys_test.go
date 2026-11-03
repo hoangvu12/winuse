@@ -6,6 +6,7 @@ package keys
 // the three failure kinds. Pure parsing — no desktop is touched.
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -403,6 +404,22 @@ func TestModifier(t *testing.T) {
 		}
 		if got := chord[0].Modifier(); got != want {
 			t.Errorf("%s: Modifier = %v, want %v", name, got, want)
+		}
+	}
+}
+
+// ShellAccelerator is open-shell's Win+letter (desktop-parity 09 and 18):
+// the Windows key held with the letter, built and never parsed. press-key's
+// names keep refusing the Windows key.
+func TestShellAccelerator(t *testing.T) {
+	c := ShellAccelerator('N')
+	if c.String() != "Win+n" || len(c) != 2 || c[0].VK != 0x5B || !c[0].Extended || c[1].VK != 'N' {
+		t.Errorf("ShellAccelerator('N') = %+v", c)
+	}
+	for _, name := range []string{"Win+n", "Super_L+a", "Windows"} {
+		var ke *Error
+		if _, err := Parse(name); !errors.As(err, &ke) || ke.Kind != ErrWindowsKey {
+			t.Errorf("Parse(%q) = %v, want the Windows-key refusal", name, err)
 		}
 	}
 }

@@ -286,6 +286,12 @@ parsing are offline-tested in `internal/wstate`, `internal/uia`,
 `internal/helper` and `internal/cli`; these tests pin the live wiring
 only.
 
+Desktop-parity 24 (`multi_window_batch_test.go`):
+`TestBatchInNewActsInTheOpenedMessageBox` runs one Batch on the covered
+fixture that clicks "Message Box..." and then presses Return `in new`, the
+MessageBox the click opened: step 2 prints its Window ID, the box closes
+with ok, and the foreground stays on the cover.
+
 The ticket-12 tests (`esc_test.go`) cover the Esc stop.
 **`TestEscStopsTheLongBatch` is interactive — a human must be at the
 keyboard** (with `-v`, the run prints `PRESS THE PHYSICAL ESC KEY NOW`).
@@ -412,7 +418,7 @@ name Edit, then a screenshot. `click @x,y --count 2 --post` a few pixels
 into the Edit prints the posted output and selects the first word
 (EM_GETSEL from 0 to 5 or 6), and `click @x,y --button right --post` opens
 the Edit's context menu (a `#32768` Window of the fixture, closed with the
-fixture). The cover stays the foreground window and no banner shows. The
+fixture, and reported after the ok). The cover stays the foreground window and no banner shows. The
 posted wheel (`scroll @x,y --post`) is not run: the fixture has no classic
 list box.
 
@@ -434,11 +440,12 @@ the covered fixture's list, which is single-select, is refused with
 nothing sent and the exact `--headed` retry; the selection is unchanged
 and the cover keeps the foreground.
 `TestCtrlAndShiftClickSelectInAMultiSelectList` is the positive leg: the
-Classic Dialog's fruit list box (LBS_EXTENDEDSEL, its last control, so no
-other Element Index moves) takes `click name:Apple --modifiers ctrl`, then
+Classic Dialog's fruit list view (SysListView32 without LVS_SINGLESEL, its
+last control, so no other Element Index moves; a list box will not do, its
+UI Automation proxy reports no multi-select) takes `click name:Apple --modifiers ctrl`, then
 Cherry, then `--modifiers shift` on Elder (the range from Cherry) and Ctrl
 on Apple again (deselected), each Headless with the cover in front and no
-banner; the test reads the selection back with LB_GETSEL after each.
+banner; the test reads the selection back with LVM_GETITEMSTATE after each.
 
 Run only these tests:
 
@@ -987,6 +994,42 @@ activates the Window that was in the foreground before.
 set WINUSE_E2E=1
 set WINUSE_E2E_SHELL=1
 go test -tags e2e -v -run "TestShell" ./test/e2e
+```
+
+## Notifications and open-shell (desktop-parity 18)
+
+`test/e2e/notifications_test.go`. `TestListNotificationsOnlyReads` runs
+with the usual opt-in: `list-notifications` and a 1 s `wait
+notification` for a text no toast has, the foreground unchanged.
+
+The toast tests raise their own toasts (`internal/fixture/toast.go`,
+WinRT from Go) from Windows PowerShell's App User Model ID, as the probe
+did (an ID registered only under `HKCU\Software\Classes\AppUserModelId`
+cannot raise toasts: HRESULT 0x80070490), each in the group
+`winuse-e2e`. Cleanup removes that group alone from the Notification
+Center, so the user's own PowerShell notifications stay, and the levels of
+the PowerShell per-App settings key Windows adds, when they were not there
+before. They
+show toasts on the user's screen and skip unless `WINUSE_E2E_TOASTS=1`
+is set as well, and skip when the user's notifications are off (Settings
+> System > Notifications; writing ToastEnabled alone does not turn them
+on). `TestNotificationsPressAndDismissARaisedToast` waits for a toast,
+presses its Beta button with `notification-action` (the test process
+hears the activation) and dismisses a second one;
+`TestNotificationIdentityGuardRefusesAGoneToast` hides a listed toast and
+expects `notification-action` to refuse with nothing sent.
+
+`TestOpenShellRefusesWithoutHeaded` and
+`TestOpenShellOpensTheNotificationPanel` (Win+N, read, a `--headed`
+Escape) change the user's screen: they skip unless `WINUSE_E2E_SHELL=1`.
+On the laptop the second fails: the injected Win+N opened nothing (see
+the ticket), and open-shell says so.
+
+```
+set WINUSE_E2E=1
+set WINUSE_E2E_TOASTS=1
+set WINUSE_E2E_SHELL=1
+go test -tags e2e -v -run "TestNotification|TestListNotifications|TestOpenShell" ./test/e2e
 ```
 
 ## Several agents (multi-agent)

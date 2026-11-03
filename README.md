@@ -116,7 +116,7 @@ at all, and winuse says so.
 
 | Command | What it does |
 |---|---|
-| `list-windows`, `list-apps` | Lists open windows, and running and recently used apps. `list-windows --details` adds each window's position, size, process id and focused, minimized, maximized or admin state; `--app <name>` lists one app's windows; `--shell` adds the taskbar, and the tray overflow, Start and the Action Center while open |
+| `list-windows`, `list-apps` | Lists open windows, and running and recently used apps. `list-windows --details` adds each window's position, size, process id and focused, minimized, maximized or admin state; `--app <name>` lists one app's windows; `--shell` adds the taskbar, and the tray overflow, Start, the Action Center and a toast banner while open |
 | `launch-app <name> [--minimized] [--arg <a>]... [--cwd <dir>] [--env K=V]... [--timeout <s>]` | Starts an app without taking the foreground and prints its window |
 | `get-window-state <window> [--screenshot] [--timeout <s>]` | Prints a window's element tree, with an optional screenshot; `--timeout` gives a slow app's tree more time |
 | `click`, `set-value`, `perform-secondary-action` | Clicks, fills in, picks a list item, expands or toggles an element |
@@ -128,7 +128,7 @@ at all, and winuse says so.
 | `restore-window`, `minimize-window`, `move-window`, `resize-window`, `close-window` | Manages a window without bringing it to the front |
 | `--headed maximize-window` | Maximizes a window; it comes to the front, because Windows cannot maximize a window behind others |
 | `close-app <app> [--force]` | Closes every window of an app and waits for it to exit; `--force` ends it if it stays open |
-| `batch <window> [--timeout <s>] [--stop-on-error] ... then ...` | Runs several actions in one call and prints each one's output; a failed action does not stop the rest unless `--stop-on-error`; `batch -` reads it from stdin, one action per line |
+| `batch <window> [--timeout <s>] [--stop-on-error] ... then ...` | Runs several actions in one call and prints each one's output; a failed action does not stop the rest unless `--stop-on-error`; `batch -` reads it from stdin, one action per line; `in <window>` before an action runs it in another Window, `in new` in the one the action before opened |
 | `navigate`, `back`, `forward`, `reload` | Opens a URL or moves through a tab's history |
 | `wait`, `eval` | Waits for an element, text, URL, load or download, or runs JavaScript in the page |
 | `wait window`, `wait <window> <element> <state>`, `wait <ms>` | Waits for a Window to show or close, for text in any Window, for an Element to become enabled, disabled, gone, checked, expanded or reach a value, or pauses |
@@ -136,8 +136,10 @@ at all, and winuse says so.
 | `tab list`, `tab new`, `tab switch`, `tab close` | Manages a browser window's tabs |
 | `clipboard-get`, `clipboard-set`, `clipboard-clear` | Reads, replaces or empties the clipboard: text, an image as a PNG file, or a list of files |
 | `list-displays`, `screenshot --display <n>` | Lists the displays with their position, size and scale, or takes a screenshot of one |
+| `list-notifications`, `notification-action`, `notification-dismiss`, `wait notification` | Lists the notifications the toast banners show, presses a notification's button or closes it without the foreground (refused when the notification changed since it was listed), or waits for one |
+| `--headed open-shell start\|notifications\|quick-settings\|overflow` | Opens Start, the notification panel, quick settings or the hidden tray icons, the way a person would; refused with nothing sent without `--headed` |
 | `browser status`, `browser ext install`, `browser launch`, `browser clone`, `browser connect` | Connects to a browser and reports how |
-| `status` | Prints the versions, whether the helper runs, the lock state, integrity level, DPI awareness, browser connections and Windows build, without starting anything |
+| `status` | Prints the versions (and both builds when the helper is another build of this version), whether the helper runs, the lock state, integrity level, DPI awareness, browser connections and Windows build, without starting anything |
 | `--trace <file>`, `trace show <file>` | Records one JSON line per command (or set `WINUSE_TRACE`), with typed text, values, clipboard content and eval redacted unless `--trace-unredacted`, rolling over at 32 MiB; `trace show` prints a summary |
 
 [SKILL.md](skills/winuse/SKILL.md) is the full guide your agent loads.

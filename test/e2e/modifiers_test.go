@@ -5,9 +5,9 @@
 // Ctrl+click on one of its items has no Headless route: the multi-select
 // route reads the list and refuses with nothing sent and the exact
 // --headed retry, and the cover keeps the foreground. The Classic
-// Dialog's fruit list box is multi-select (LBS_EXTENDEDSEL): Ctrl+click
+// Dialog's fruit list view is multi-select (no LVS_SINGLESEL): Ctrl+click
 // and Shift+click select in it Headless, read back by the route and here
-// by LB_GETSEL. User-run only (see the package comment and
+// by LVM_GETITEMSTATE. User-run only (see the package comment and
 // test/e2e/README.md).
 
 package e2e
@@ -48,18 +48,18 @@ var (
 	procSendMessageE2E = user32.NewProc("SendMessageW")
 )
 
-// listSelection reads which items of the Classic Dialog's fruit list box
-// are selected (LB_GETSEL, read only).
+// listSelection reads which items of the Classic Dialog's fruit list view
+// are selected (LVM_GETITEMSTATE, read only).
 func listSelection(t *testing.T, dialog uint64) []string {
 	t.Helper()
-	const lbGetSel = 0x0187
+	const lvmGetItemState, lvisSelected = 0x102C, 0x0002
 	list, _, _ := procGetDlgItemE2E.Call(uintptr(dialog), fixture.ClassicListID)
 	if list == 0 {
-		t.Fatalf("the Classic Dialog has no list box %d", fixture.ClassicListID)
+		t.Fatalf("the Classic Dialog has no list view %d", fixture.ClassicListID)
 	}
 	var sel []string
 	for i, name := range fixture.ClassicFruits {
-		if r, _, _ := procSendMessageE2E.Call(list, lbGetSel, uintptr(i), 0); r != 0 && int32(r) > 0 {
+		if r, _, _ := procSendMessageE2E.Call(list, lvmGetItemState, uintptr(i), lvisSelected); r&lvisSelected != 0 {
 			sel = append(sel, name)
 		}
 	}

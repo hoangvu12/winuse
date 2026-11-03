@@ -82,7 +82,7 @@ is not, which is why ADR 0011 made Posted Keys opt-in.
 | Accelerator lookup for press-key | 1 | 06 | done |
 | Chords through attached key state, `--post` | 2 | 07 | done |
 | invoke-menu on classic menu bars | 1 | 08 | done |
-| ContextMenu Secondary Action | 1 | 09 | planned |
+| ContextMenu Secondary Action | 1 | 09 | done |
 | select-text | 1 | 10 | done |
 | Point forms resolve to an Element in the target Window | 1 | 11 | done |
 | Posted Clicks and `scroll @x,y --post` | 2 | 12 | done |

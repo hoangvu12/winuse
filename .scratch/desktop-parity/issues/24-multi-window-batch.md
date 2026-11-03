@@ -11,16 +11,58 @@ Today a Batch is `batch <window> <action> ... then ...`, one Window for all step
 
 **Blocked by:** 02 (for `in new`), 17 (for `name:` on unread Windows)
 
-**Status:** ready-for-agent (after 02 and 17)
+**Status:** done
 
-- [ ] Parser and protocol per-step Window
-- [ ] `in new`
-- [ ] Offline tests
-- [ ] Opt-in e2e: click a fixture button, then Return in the message box, in one Batch
-- [ ] SKILL.md Batch section
+- [x] Parser and protocol per-step Window
+- [x] `in new`
+- [x] Offline tests
+- [x] Opt-in e2e: click a fixture button, then Return in the message box, in one Batch
+- [x] SKILL.md Batch section
 
 ## Comments
 
 ### 2026-11-03: triage decision (user)
 
 Do it like agent-desktop (each step may name its own Window) with the `in <window>` syntax, plus winuse's `in new` (the Window the previous step opened, from 02).
+
+### 2026-11-03: done (worker, branch laptop/dp-24-multi-window-batch)
+
+- Syntax: a step may start `in <window>` (its own Window) or `in new` (the Window the step before it opened), on the command line after `then` and on a `batch -` line. `in` and `new` are case-insensitive like `then`; `in` later in a step is the step's own argument. Wire: `protocol.Step` gained `window` and `in_new`. Usage errors exit 2: the first step `in new`, an `in` with no Action, two `in`s.
+- Helper (`internal/helper/batch.go`):
+  - A step's own Window resolves before any step, with the Batch's, and gets the Window identity check (`reusedID`, split out of `checkWindow`). A Window that does not resolve, or a reused ID, fails the Batch before any step: `batch: Action N (<action>): <message>`.
+  - `in new` is refused before any step when it is the first step, names a Window too, or carries an Element Index or `@x,y` point. The new Window has no Window State or screenshot yet, so `name:`/`id:` (resolved live through 17), keys and Window Actions are what it takes.
+  - `in new` uses 02's diff per step: before the step ahead of it, the Batch snapshots that step's Window's App (`snapshotWindow`). After the step it looks at once, then every 50 ms for up to 2 s (`inNewWait`, `openedWithin`), and stops at the first new Window. A longer wait than 02's 300 ms settle, because the agent says a Window will open. Exactly one new Window is used. None, several (each listed with its ID and title), or a failed step before it fails the `in new` step with "nothing was sent", and the Batch runs on as dp-20 does.
+  - Output: a step in its own Window prints `Action N (<action> in <id>): ...`, or `(<action> in new)` when no new Window was found. The final report's uncertain-step hint names each such step's Window (`winuse get-window-state 101; winuse get-window-state 777`). The trace's step-line regex (`internal/cli/trace.go`) and the e2e one accept the `in` form.
+  - Esc scope: still one scope for the whole Batch, Headed if any step is. A named step is probed on its own Window. An `in new` step cannot be probed before its Window exists, so only its own `headed` (or `activate-window`) makes the Batch Headed (`inNewHeaded`). A step that turns out Headed at its turn arms its own swallowing scope, as dp-20's race note says.
+  - The opened/closed note and the foreground note still diff the Batch's Window's App once, around the whole Batch.
+- ma-06 lanes (`internal/helper/lanes.go`, `batchLanes`): a Batch still takes all its lanes up front, in the fixed order.
+  - Each step adds the lanes of its own Window: the thread lane, the Page lane for a Page step, and the desktop lane when Headed. A step's Window that does not resolve takes the desktop lane alone, and the Batch then fails before any step.
+  - An `in new` step's Window does not exist yet, so it takes the lanes of the step before it (the opener's UI thread), plus the desktop lane when it carries `headed`.
+  - At its turn, `onLanes` has put the held set in the context (`heldLanesKey`), and `lanesHeld` checks that the new Window needs no lane the Batch lacks. The desktop lane is left out of that check: a headed step took it up front, and an unheaded one with no Headless route is refused by its own command. A missing lane refuses the step with "nothing was sent" and the hint to send it alone or in a Batch on that Window. A lane is never taken mid-Batch, since that would break the deadlock-free order. A dialog or MessageBox runs on its owner's thread, so the common case passes.
+  - The lanes of a Batch sent with `headed` now classify each step with `headed` injected, as the Batch runs it. A Page click in a headed Batch therefore takes the desktop and thread lanes, not the Page lane.
+- Docs: SKILL.md Batches (one paragraph, plus the reference line; 54840 bytes), CONTEXT.md (Batch), README row, codex-parity extensions paragraph, the CLI usage text, test/e2e/README.md.
+- Tests: `internal/helper/batchwindows_test.go` covers a step in its own Window, an unresolved step Window failing before any step, `in new` acting in the opened dialog (with the Batch's note after), the `in new` refusals (nothing opened, two opened, the step before failed), the refusals before any step, a headed `in new` step arming the swallowing scope, lanes across Windows, a new Window on another thread refused, and the report naming each Window. cli: `TestParseBatchStepsInTheirOwnWindow`, `TestParseBatchScriptStepsInTheirOwnWindow`, `TestTraceRedactsAnEvalStepInItsOwnWindow`, and two usage-error cases. Opt-in e2e `TestBatchInNewActsInTheOpenedMessageBox` (`test/e2e/multi_window_batch_test.go`): one Batch clicks "Message Box..." on the covered fixture, then presses Return `in new`. Compiled, not run yet.
+
+### 2026-11-03: merged main (72a08a4: ma-07, ma-08)
+
+- No conflicts. ma-07's `withLaneSet`/`laneSetOf` (hung.go) already hands the held lanes to the command, so `lanesHeld` uses it and my own context key is gone.
+- ma-07's hung pre-check covers only the Batch's Window (the registry's). A step in its own Window, or `in new`, now gets the same check at its turn (`stepHung`; Page steps skipped), and a hung one fails with "nothing was sent" while the Batch runs on.
+- ma-08's give-back for a Headed Batch used the last Headed step's Window. With several Windows, the last step can close a dialog, and the foreground then falls back to its owner, which an earlier step acted in. The run now records every Headed step's Window (`politeRun.visited`), and a foreground on any of them is still the Batch's, so it is given back. A foreground elsewhere is the user's, as before.
+- Tests: `TestBatchStepInAHungWindowIsRefused`, `TestPoliteBatchGivesBackFromAnyOfItsWindows`. The four checks pass.
+
+### 2026-11-03: live run; merged main (71cc59d: dp-07 codes)
+
+- Live, on the laptop, under the live lock, one run at a time, fixture only. All three passed:
+  - `TestBatchInNewActsInTheOpenedMessageBox` (15.8 s)
+  - `TestBatchAgainstTheDialog` (10.4 s; `Note: window ... closed` came after the step lines)
+  - `TestBatchRunsPastAFailedStep` (6.6 s)
+  - Afterwards no winuse, fixture or e2e process was left running, and the lock was released.
+- dp-07's codes:
+  - Several of the new refusals would read wrongly through codes.go's rules, so they set `Error.Code` themselves:
+    - `in new` with an index or point is USAGE.
+    - "Action N failed, so no Window it opened is known" is NOT_FOUND.
+    - "opened no Window" is NOT_FOUND.
+    - "opened N Windows" is AMBIGUOUS_TARGET.
+  - The lane refusal is left to the rules and reads as USAGE (its `needs `): the agent must send that Action differently.
+  - `TestBatchInNewRefusalCodes` pins these codes.
+- The four checks pass after the merge.

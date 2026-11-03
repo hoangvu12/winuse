@@ -59,3 +59,8 @@ Adopt as opt-in `--post`. It now also covers `scroll @x,y --post` (posted WM_MOU
   - cli: the flags, `scrollRequest`, and the Batch steps.
 - e2e (vet only): `TestPostedClicksOnACoveredEdit` on the covered fixture's Classic Dialog name Edit. A posted double click must select the first word, and a posted right click must open a `#32768` context menu. The cover stays the foreground in both. The posted wheel has no e2e target, because the fixture has no classic list box.
 - Docs: CONTEXT.md (Posted Clicks), SKILL.md (a "Posted Clicks" subsection after Scroll, the right-click item of "What winuse cannot do headless", the fallback paragraph, the command reference), the usage text, codex-parity (the click and scroll rows), the ADR 0013 table (done), test/e2e/README.
+
+### 2026-11-03: live run (branch e2e-live-fixes-2)
+
+- `TestPostedClicksOnACoveredEdit` failed at the right click: no context menu. The point was right (the double click before it selected the first word). The trailing WM_CANCELMODE closed the menu: the right button's up opens the Edit's context menu in a TrackPopupMenu modal loop, which dispatches the queued WM_CANCELMODE, and DefWindowProc ends the menu. `clickMessages` now posts no WM_CANCELMODE after a right click (left and middle keep it).
+- The test now accepts the "Note: a new Window opened" line after the ok, since the context menu it opens is reported (desktop-parity 02). Passes live, the cover kept as the foreground.

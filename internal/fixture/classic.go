@@ -40,11 +40,15 @@ const (
 	classEdit   uint16 = 0x0081
 	classStatic uint16 = 0x0082
 	classCombo  uint16 = 0x0085
-	classList   uint16 = 0x0083
 
-	lbsNotify      = 0x0001
-	lbsExtendedSel = 0x0800
-	lbAddString    = 0x0180
+	// The Fruits list view (comctl32): LVS_LIST without LVS_SINGLESEL, so
+	// several items can be selected.
+	classListView      = "SysListView32"
+	lvsList            = 0x0003
+	lvsShowSelAlways   = 0x0008
+	lvmInsertItemW     = 0x104D
+	lvifText           = 0x0001
+	iccListviewClasses = 0x0001
 
 	idOK     = 1
 	idCancel = 2
@@ -78,13 +82,15 @@ type dlgItem struct {
 	style        uint32 // WS_CHILD and WS_VISIBLE are added
 	x, y, cx, cy int16
 	text         string
+	className    string // a registered class by name instead of class (classListView)
 }
 
 // dialogTemplate lays out a DLGTEMPLATE followed by its DLGITEMTEMPLATEs,
 // as UTF-16 words: the header (style, extended style, item count, position
 // and size, no menu, the predefined dialog class, the title, then the font
 // when style has DS_SETFONT) and each item DWORD-aligned (style, extended
-// style, position and size, ID, class ordinal, text, no creation data).
+// style, position and size, ID, class ordinal or name, text, no creation
+// data).
 // A Go []uint16 allocation is at least DWORD-aligned, so offsets that are
 // even in words are DWORD-aligned in memory.
 func dialogTemplate(style uint32, cx, cy int16, title, font string, pointSize uint16, items []dlgItem) []uint16 {
@@ -110,7 +116,11 @@ func dialogTemplate(style uint32, cx, cy int16, title, font string, pointSize ui
 		dword(it.style | wsChild | wsVisible)
 		dword(0)
 		b = append(b, uint16(it.x), uint16(it.y), uint16(it.cx), uint16(it.cy), it.id)
-		b = append(b, 0xFFFF, it.class)
+		if it.className != "" {
+			str(it.className)
+		} else {
+			b = append(b, 0xFFFF, it.class)
+		}
 		str(it.text)
 		b = append(b, 0) // no creation data
 	}
@@ -121,17 +131,37 @@ func dialogTemplate(style uint32, cx, cy int16, title, font string, pointSize ui
 // name Edit takes the focus when the dialog opens. The combo's height
 // includes its drop-down list.
 var classicItems = []dlgItem{
-	{classStatic, idStatic, 0, 7, 9, 44, 8, "Name:"},
-	{classEdit, ClassicEditID, wsBorder | wsTabStop | esAutoHScroll, 55, 7, 158, 14, ""},
-	{classStatic, idStatic, 0, 7, 29, 44, 8, "Password:"},
-	{classEdit, ClassicPasswordID, wsBorder | wsTabStop | esAutoHScroll | esPassword, 55, 27, 158, 14, ""},
-	{classStatic, idStatic, 0, 7, 50, 44, 8, "Color:"},
-	{classCombo, ClassicComboID, wsTabStop | wsVScroll | cbsDropDownList, 55, 48, 158, 70, ""},
-	{classButton, idOK, wsTabStop | bsDefPushButton, 109, 79, 50, 14, "OK"},
-	{classButton, idCancel, wsTabStop | bsPushButton, 163, 79, 50, 14, "Cancel"},
+	{classStatic, idStatic, 0, 7, 9, 44, 8, "Name:", ""},
+	{classEdit, ClassicEditID, wsBorder | wsTabStop | esAutoHScroll, 55, 7, 158, 14, "", ""},
+	{classStatic, idStatic, 0, 7, 29, 44, 8, "Password:", ""},
+	{classEdit, ClassicPasswordID, wsBorder | wsTabStop | esAutoHScroll | esPassword, 55, 27, 158, 14, "", ""},
+	{classStatic, idStatic, 0, 7, 50, 44, 8, "Color:", ""},
+	{classCombo, ClassicComboID, wsTabStop | wsVScroll | cbsDropDownList, 55, 48, 158, 70, "", ""},
+	{classButton, idOK, wsTabStop | bsDefPushButton, 109, 79, 50, 14, "OK", ""},
+	{classButton, idCancel, wsTabStop | bsPushButton, 163, 79, 50, 14, "Cancel", ""},
 	// Last, so the controls above keep their Element Indexes (ClassicListID).
-	{classStatic, idStatic, 0, 7, 100, 44, 8, "Fruits:"},
-	{classList, ClassicListID, wsBorder | wsTabStop | wsVScroll | lbsNotify | lbsExtendedSel, 55, 100, 158, 52, ""},
+	{classStatic, idStatic, 0, 7, 100, 44, 8, "Fruits:", ""},
+	{0, ClassicListID, wsBorder | wsTabStop | lvsList | lvsShowSelAlways, 55, 100, 158, 52, "", classListView},
+}
+
+// lvItem is LVITEMW (CommCtrl.h): the Fruits list view's items carry only
+// their text.
+type lvItem struct {
+	mask      uint32
+	item      int32
+	subItem   int32
+	state     uint32
+	stateMask uint32
+	text      *uint16
+	textMax   int32
+	image     int32
+	param     uintptr
+	indent    int32
+	groupID   int32
+	columns   uint32
+	puColumns uintptr
+	piColFmt  uintptr
+	group     int32
 }
 
 // classicTemplate is the Classic Dialog's template.
@@ -181,6 +211,9 @@ func (a *app) openClassic() {
 	a.state.ClassicComboDrops = 0
 	a.state.ClassicMenu = ""
 	a.state.ClassicMenuInits = 0
+	// The Fruits list view's class is comctl32's, registered here.
+	icc := struct{ size, icc uint32 }{8, iccListviewClasses}
+	procInitCommonControlsEx.Call(uintptr(unsafe.Pointer(&icc)))
 	tmpl := classicTemplate()
 	h, _, _ := procCreateDialogIndirectParamW.Call(a.instance, uintptr(unsafe.Pointer(&tmpl[0])), a.mainHwnd, a.classicProc, 0)
 	runtime.KeepAlive(tmpl)
@@ -219,9 +252,10 @@ func (a *app) dlgClassic(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			}
 		}
 		if list, _, _ := procGetDlgItem.Call(hwnd, ClassicListID); list != 0 {
-			for _, f := range ClassicFruits {
+			for i, f := range ClassicFruits {
 				p := utf16Ptr(f)
-				procSendMessageW.Call(list, lbAddString, 0, uintptr(unsafe.Pointer(p)))
+				item := lvItem{mask: lvifText, item: int32(i), text: p}
+				procSendMessageW.Call(list, lvmInsertItemW, 0, uintptr(unsafe.Pointer(&item)))
 				runtime.KeepAlive(p)
 			}
 		}

@@ -28,8 +28,8 @@ func KeepWindow(w WindowInfo) bool {
 	if w.ExStyle&wsExNoActivate != 0 && w.ExStyle&wsExAppWindow == 0 {
 		return false
 	}
-	if w.ShellWindow || w.OwnProcess {
-		return false
+	if w.ShellWindow || w.OwnProcess || w.Shell != "" {
+		return false // a shell surface is listed by --shell only (ADR 0015)
 	}
 	if !w.Minimized && (w.Bounds.Width() <= 0 || w.Bounds.Height() <= 0) {
 		return false

@@ -3,26 +3,32 @@ package win
 import "testing"
 
 // shellKind recognises the shell surfaces by class, and the CoreWindow
-// flyouts by their host process (desktop-parity 09).
+// flyouts by their host process (desktop-parity 09), the toast banner by
+// its caption too (desktop-parity 18).
 func TestShellKind(t *testing.T) {
 	cases := []struct {
-		class, exe, want string
+		class, exe, title, want string
 	}{
-		{"Shell_TrayWnd", `C:\Windows\explorer.exe`, ShellTaskbar},
-		{"Shell_SecondaryTrayWnd", `C:\Windows\explorer.exe`, ShellTaskbar},
-		{"TopLevelWindowForOverflowXamlIsland", `C:\Windows\explorer.exe`, ShellTrayOverflow},
-		{"NotifyIconOverflowWindow", `C:\Windows\explorer.exe`, ShellTrayOverflow},
-		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\StartMenuExperienceHost.exe`, ShellStart},
-		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\ShellExperienceHost_cw5n1h2txyewy\ShellExperienceHost.exe`, ShellActionCenter},
-		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\ShellHost.exe`, ShellActionCenter},
-		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\TextInputHost.exe`, ""},
-		{"Progman", `C:\Windows\explorer.exe`, ""}, // the desktop stays out
-		{"CabinetWClass", `C:\Windows\explorer.exe`, ""},
-		{"Notepad", `C:\Windows\notepad.exe`, ""},
+		{"Shell_TrayWnd", `C:\Windows\explorer.exe`, "", ShellTaskbar},
+		{"Shell_SecondaryTrayWnd", `C:\Windows\explorer.exe`, "", ShellTaskbar},
+		{"TopLevelWindowForOverflowXamlIsland", `C:\Windows\explorer.exe`, "", ShellTrayOverflow},
+		{"NotifyIconOverflowWindow", `C:\Windows\explorer.exe`, "", ShellTrayOverflow},
+		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\StartMenuExperienceHost.exe`, "", ShellStart},
+		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\ShellExperienceHost_cw5n1h2txyewy\ShellExperienceHost.exe`, "", ShellActionCenter},
+		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\ShellExperienceHost_cw5n1h2txyewy\ShellExperienceHost.exe`, "Notification Center", ShellActionCenter},
+		// The toast banner (desktop-parity 18): ShellExperienceHost's
+		// reused CoreWindow, told from the panel by its caption alone.
+		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\ShellExperienceHost_cw5n1h2txyewy\ShellExperienceHost.exe`, "New notification", ShellNotification},
+		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\ShellHost.exe`, "New notification", ShellActionCenter},
+		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\ShellHost.exe`, "", ShellActionCenter},
+		{"Windows.UI.Core.CoreWindow", `C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\TextInputHost.exe`, "", ""},
+		{"Progman", `C:\Windows\explorer.exe`, "", ""}, // the desktop stays out
+		{"CabinetWClass", `C:\Windows\explorer.exe`, "", ""},
+		{"Notepad", `C:\Windows\notepad.exe`, "", ""},
 	}
 	for _, c := range cases {
-		if got := shellKind(c.class, c.exe); got != c.want {
-			t.Errorf("shellKind(%q, %q) = %q, want %q", c.class, c.exe, got, c.want)
+		if got := shellKind(c.class, c.exe, c.title); got != c.want {
+			t.Errorf("shellKind(%q, %q, %q) = %q, want %q", c.class, c.exe, c.title, got, c.want)
 		}
 	}
 }
@@ -108,5 +114,35 @@ func TestShellKindOfRefusesInATestBinary(t *testing.T) {
 	}
 	if _, err := PostOverflowEscape(1); err == nil {
 		t.Error("PostOverflowEscape posted inside a test")
+	}
+}
+
+// The shell's immersive CoreWindows, which EnumWindows leaves out, join the
+// enumeration before it; other Apps' CoreWindows and the ones it already
+// has do not (desktop-parity 18).
+func TestWithShellCoreWindows(t *testing.T) {
+	shellHost := func(h uintptr) bool { return h == 10 || h == 11 || h == 3 }
+	got := withShellCoreWindows([]uintptr{1, 2, 3}, []uintptr{10, 20, 3, 11}, shellHost)
+	want := []uintptr{10, 11, 1, 2, 3}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+	if got := withShellCoreWindows([]uintptr{1}, []uintptr{20}, shellHost); len(got) != 1 {
+		t.Errorf("an App's CoreWindow joined: %v", got)
+	}
+}
+
+// An open Start or toast banner stays out of the plain listing.
+func TestKeepWindowDropsShellSurfaces(t *testing.T) {
+	b := Rect{0, 0, 100, 100}
+	for _, kind := range []string{ShellStart, ShellActionCenter, ShellNotification, ShellTrayOverflow} {
+		if KeepWindow(WindowInfo{Title: "x", Shell: kind, Visible: true, Bounds: b}) {
+			t.Errorf("KeepWindow kept an open %s", kind)
+		}
 	}
 }

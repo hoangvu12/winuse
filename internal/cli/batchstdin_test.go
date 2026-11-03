@@ -124,3 +124,15 @@ func TestBatchStdinUsageErrorExits2WithoutDialing(t *testing.T) {
 		t.Errorf("stderr = %q, want line 3 named and the usage", got)
 	}
 }
+
+func TestParseBatchScriptStepsInTheirOwnWindow(t *testing.T) {
+	// Desktop-parity 24: a stdin line takes `in <window>` and `in new` the
+	// same way.
+	window, steps, _, _, err := parseBatchScript("101\nclick name:Open\nin new press-key Return\nin 3412 click 2\n")
+	if err != nil {
+		t.Fatalf("parseBatchScript: %v", err)
+	}
+	if window != "101" || len(steps) != 3 || !steps[1].InNew || steps[2].Window != "3412" {
+		t.Errorf("parse = %q, %+v", window, steps)
+	}
+}

@@ -132,6 +132,13 @@ func click(s Services) Command {
 		}); ok {
 			return out, rerr
 		}
+		// An item of an open classic menu: its mnemonic or WM_COMMAND, never
+		// UIA Invoke (headless-max ticket 09, menuitem.go).
+		if mods.None() {
+			if out, rerr, ok := s.classicMenuClick(ctx, a, target, button, count); ok {
+				return out, rerr
+			}
+		}
 		if !mods.None() && !a.Headed {
 			// Ctrl+click or Shift+click on a multi-select list item, Headless;
 			// anything else with modifiers needs the real keys.
@@ -301,7 +308,9 @@ func (s Services) runAction(ctx context.Context, ref string, act func(ctx contex
 	}
 	ctx, polite, own := s.beginPolite(ctx, w)
 	defer func() {
-		s.releaseHeld()
+		if s.releaseHeld() > 0 {
+			s.flushInput() // the releases reach the target, not the Window given back
+		}
 		if !own {
 			return
 		}
@@ -337,8 +346,9 @@ func (s Services) runAction(ctx context.Context, ref string, act func(ctx contex
 		return "", stopErrorFor(s.Esc)
 	}
 	out, err := act(ctx, w)
-	// The drain: the injected input handled before anything is given
-	// back; then where winuse left the cursor.
+	// The drain: the injected input in the target's queue and handled
+	// before anything is given back; then where winuse left the cursor.
+	s.flushInput()
 	if s.SyncWindow != nil {
 		_ = s.SyncWindow(w.ID)
 	}

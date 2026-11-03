@@ -15,8 +15,10 @@
 // ignored.
 //
 // The Windows/Super/Meta family (Win, Windows, Meta, Command, Cmd, Super,
-// OS, each with _L/_R) is recognized only to be refused: winuse never
-// sends the Windows key (Codex's documented rule). Alt+F4, Alt+Tab and
+// OS, each with _L/_R) is recognized only to be refused: press-key never
+// sends the Windows key (Codex's documented rule). The one sender is
+// open-shell's fixed shell accelerators (ShellAccelerator, desktop-parity
+// 09 and 18), which no key name reaches. Alt+F4, Alt+Tab and
 // Ctrl+Shift+Escape parse, and Blocked names them so press-key can refuse
 // them unless forced.
 package keys
@@ -431,6 +433,17 @@ func holdsAll(c Chord, groups [][]uint16) bool {
 		}
 	}
 	return true
+}
+
+// vkLwin is the left Windows key, an extended key.
+const vkLwin = 0x5B
+
+// ShellAccelerator is the Windows key held with one letter (Win+N, Win+A),
+// the shell accelerator open-shell presses to open a shell surface
+// (desktop-parity 09 and 18). It is built here and never parsed: no key
+// name press-key accepts produces it. letter is 'A' to 'Z'.
+func ShellAccelerator(letter byte) Chord {
+	return Chord{{Name: "Win", VK: vkLwin, Extended: true}, {Name: strings.ToLower(string(letter)), VK: uint16(letter)}}
 }
 
 // Parse parses a key or `+`-separated chord in Codex's key naming: one or

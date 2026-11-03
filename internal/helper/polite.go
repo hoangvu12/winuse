@@ -21,12 +21,18 @@ package helper
 //     foreground is checked again for a moment. activate-window and
 //     maximize-window keep the foreground, and hover keeps the pointer:
 //     that is their point. A Batch saves once before its first step and
-//     gives back once after its last. When winuse keeps the foreground for
+//     gives back once after its last, from any Window a Headed step acted
+//     in (its steps can name several, desktop-parity 24). When winuse keeps the foreground for
 //     a menu it opened, or the foreground moved elsewhere, a Note says so.
 //   - After the activation, a WM_NULL round trip to the Window confirms
-//     its thread took it before any input goes in (else nothing is sent);
-//     after the Action, a second one drains the injected input before
-//     anything is given back.
+//     its thread took it before any input goes in (else nothing is sent).
+//   - After the Action, and after any release of held keys, the injected
+//     input is flushed before anything is given back: a sentinel key the
+//     Esc hook swallows (win.EscWatcher.FlushInput) proves every earlier
+//     event reached the target's queue, so moving the foreground cannot
+//     carry the target's keys into the user's Window (measured live: the
+//     tail of a long Headed type-text went astray without it). Then a
+//     second WM_NULL round trip.
 //   - Every exit path releases the keys and mouse buttons winuse still
 //     holds (win.ReleaseHeld).
 //   - Real user input during the Action stops it like Esc (the hook's
@@ -52,6 +58,8 @@ const (
 	politeCursorSlack  = 2                      // pixels: the cursor is still where winuse left it
 	politeRecheck      = 600 * time.Millisecond // how long a Chromium hand-back is watched
 	politeRecheckEvery = 100 * time.Millisecond
+	politeFlush        = 2 * time.Second        // how long the injected input may take to come through the hooks
+	politeFlushMiss    = 200 * time.Millisecond // the pause instead, when the flush cannot run
 )
 
 // politeState is what the Headed pipeline remembers across Actions: when
@@ -91,6 +99,7 @@ type politeRun struct {
 	headed         bool
 	keepForeground bool
 	keepPointer    bool
+	visited        []win.WindowInfo // a Batch's: every Headed step's Window, its steps in several (desktop-parity 24)
 }
 
 type politeKey struct{}
@@ -204,7 +213,13 @@ func (s Services) giveBack(r *politeRun) string {
 	if r.keepForeground || w.ShellWindow || d.foreground == 0 || d.foreground == w.ID || s.Foreground == nil || s.Activate == nil {
 		return ""
 	}
-	if fg := s.Foreground(); fg != w.ID {
+	fg := s.Foreground()
+	for _, v := range r.visited {
+		if fg != w.ID && fg == v.ID {
+			w = v // an earlier Headed step's Window of the Batch (desktop-parity 24): a dialog its last step closed
+		}
+	}
+	if fg != w.ID {
 		// The user, a flyout or Start moved the foreground meanwhile.
 		if fg == 0 || fg == d.foreground {
 			return ""
@@ -246,6 +261,7 @@ func near(a, b int32) bool { return a-b <= politeCursorSlack && b-a <= politeCur
 func (s Services) beginPolite(ctx context.Context, w win.WindowInfo) (context.Context, *politeRun, bool) {
 	if r := politeRunOf(ctx); r != nil {
 		r.target, r.headed = w, true
+		r.visited = append(r.visited, w)
 		return ctx, r, false
 	}
 	r := &politeRun{saved: s.saveDesk(), target: w, headed: true}
@@ -259,15 +275,38 @@ func (s Services) beginBatchPolite(ctx context.Context) (context.Context, *polit
 	return context.WithValue(ctx, politeKey{}, r), r
 }
 
-// releaseHeld releases what winuse still holds down and records the end
-// of its own input.
-func (s Services) releaseHeld() {
+// releaseHeld releases what winuse still holds down, records the end of
+// its own input, and returns how many keys and buttons it released.
+func (s Services) releaseHeld() int {
+	n := 0
 	if s.ReleaseHeld != nil {
-		if n, err := s.ReleaseHeld(); err != nil {
+		var err error
+		if n, err = s.ReleaseHeld(); err != nil {
 			log.Printf("releasing %d held keys and buttons: %v", n, err)
 		}
 	}
 	s.polite.ownInputEnded(s.Now())
+	return n
+}
+
+// inputFlusher is an Esc service that can flush the injected input
+// through its hook (*win.EscWatcher).
+type inputFlusher interface {
+	FlushInput(timeout time.Duration) error
+}
+
+// flushInput waits until the input winuse injected has reached its
+// target's queue (see the file comment). Without a hook to flush through
+// it pauses politeFlushMiss instead; the offline fakes have neither.
+func (s Services) flushInput() {
+	f, ok := s.Esc.(inputFlusher)
+	if !ok {
+		return
+	}
+	if err := f.FlushInput(politeFlush); err != nil {
+		log.Printf("flushing the injected input: %v", err)
+		s.sleep(politeFlushMiss)
+	}
 }
 
 // yieldStopMessage is the stop of a Headed Action the user took over by

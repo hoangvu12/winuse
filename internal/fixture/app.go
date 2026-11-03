@@ -759,6 +759,9 @@ func (a *app) onKeyDown(vk uint32) {
 		a.ctrlDown = true
 	}
 	a.state.LastKey = keyName(vk)
+	if vk == 0x1B {
+		a.state.EscapePresses++
+	}
 	// Control+A selects the focused edit's whole content (every real edit
 	// control does); typing then replaces it.
 	if a.ctrlDown && vk == vkAKey {

@@ -29,7 +29,10 @@ func TestClickMessagesPerButtonAndCount(t *testing.T) {
 		{"left single", MouseLeft, 1, []uint32{wmMouseMove, wmLButtonDown, wmLButtonUp, wmCancelMode}, mkLButton},
 		{"left double", MouseLeft, 2, []uint32{wmMouseMove, wmLButtonDown, wmLButtonUp, wmLButtonDbl, wmLButtonUp, wmCancelMode}, mkLButton},
 		{"left triple", MouseLeft, 3, []uint32{wmMouseMove, wmLButtonDown, wmLButtonUp, wmLButtonDbl, wmLButtonUp, wmLButtonDown, wmLButtonUp, wmCancelMode}, mkLButton},
-		{"right", MouseRight, 1, []uint32{wmMouseMove, wmRButtonDown, wmRButtonUp, wmCancelMode}, mkRButton},
+		// No WM_CANCELMODE after a right click: it would close the context
+		// menu the up opened.
+		{"right", MouseRight, 1, []uint32{wmMouseMove, wmRButtonDown, wmRButtonUp}, mkRButton},
+		{"right double", MouseRight, 2, []uint32{wmMouseMove, wmRButtonDown, wmRButtonUp, wmRButtonDbl, wmRButtonUp}, mkRButton},
 		{"middle", MouseMiddle, 1, []uint32{wmMouseMove, wmMButtonDown, wmMButtonUp, wmCancelMode}, mkMButton},
 	}
 	for _, tc := range cases {
@@ -39,7 +42,7 @@ func TestClickMessagesPerButtonAndCount(t *testing.T) {
 		}
 		for _, m := range msgs {
 			switch m.msg {
-			case wmLButtonDown, wmLButtonDbl, wmRButtonDown, wmMButtonDown:
+			case wmLButtonDown, wmLButtonDbl, wmRButtonDown, wmRButtonDbl, wmMButtonDown:
 				if m.wparam != tc.mk {
 					t.Errorf("%s: %#x carries wParam %#x, want the button's MK flag %#x", tc.name, m.msg, m.wparam, tc.mk)
 				}
