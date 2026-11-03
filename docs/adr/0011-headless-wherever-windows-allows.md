@@ -83,8 +83,8 @@ The user asked for everything to be as headless as possible.
   temporary WS_EX_NOACTIVATE and disabling the Window around the call
   did not), and giving the foreground back would need
   SetForegroundWindow, which winuse lacks the right to call and which
-  would fight the user. The output reports it as
-  `ok (the App brought itself to the foreground)`. Measured (headless-max
+  would fight the user. The output reports it after `ok` as
+  `Note: the App brought itself to the foreground`. Measured (headless-max
   ticket 02, 2026-11-03): on its first restore, an App that has not been
   the foreground since it started gets the foreground from Windows,
   charmap and winuse's own test fixture alike. An App started in the
