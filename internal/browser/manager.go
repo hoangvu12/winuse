@@ -184,9 +184,9 @@ func (m *Manager) WindowConnection(ctx context.Context, name string, pid uint32)
 		return c, nil
 	}
 	if app, ok := m.appEndpoint(pid); ok {
-		// PID is the Windows' process, the connection's key: a WebView2
-		// App's port belongs to its msedgewebview2.exe child (app.Owner).
-		return m.dial(ctx, Endpoint{Browser: app.Kind, Mode: ModeApp, WSURL: app.WSURL, Port: app.Port, PID: pid})
+		// Keyed by the Windows' process: a WebView2 App's port belongs to
+		// its msedgewebview2.exe child (app.Owner).
+		return m.dial(ctx, m.appDialEndpoint(app))
 	}
 	ep, err := m.sys.discoverFor(ctx, normalizeName(name), pid)
 	if err != nil {
@@ -208,13 +208,13 @@ func (m *Manager) live(want string) *Connection {
 }
 
 // open lists the held, still-open connections to want (every browser for
-// "", the Apps launched with --cdp left out: they are reached only through
-// their Windows), by browser and pid.
+// "", the Apps launched with --cdp or attached to left out: they are
+// reached only through their Windows), by browser and pid.
 func (m *Manager) open(want string) []*Connection {
 	m.mu.Lock()
 	var out []*Connection
 	for _, c := range m.conns {
-		if c.Client.Alive() && (c.Browser == want || want == "" && c.Mode != ModeApp) {
+		if c.Client.Alive() && (c.Browser == want || want == "" && c.Mode != ModeApp && c.Mode != ModeAttach) {
 			out = append(out, c)
 		}
 	}

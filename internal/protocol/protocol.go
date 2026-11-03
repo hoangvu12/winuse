@@ -69,6 +69,10 @@ var commandTimeouts = map[string]time.Duration{
 	// waits up to 15 s for it to reconnect.
 	"browser-ext-install": BrowserTimeout,
 	"browser-ext-status":  BrowserTimeout,
+	// The attach to a running Electron App (headless-max 15): the signal,
+	// the inspector's port and the shim's install.
+	"browser-attach": BrowserTimeout,
+	"browser-detach": BrowserTimeout,
 	// The tab commands (ticket 07) may dial the Browser Connection first,
 	// which can wait for the browser's approval prompt.
 	"tab-list":   BrowserTimeout,
@@ -203,6 +207,12 @@ type LaunchArgs struct {
 	Cwd       string   `json:"cwd,omitempty"`       // the working directory, absolute (the CLI resolves it)
 	Env       []string `json:"env,omitempty"`       // KEY=VALUE entries over the helper's environment
 	CDP       bool     `json:"cdp,omitempty"`       // an Electron or WebView2 App with a loopback debugging port (headless-max 15)
+}
+
+// AttachArgs are the arguments of browser attach and browser detach
+// (headless-max 15): a Window of the running Electron App.
+type AttachArgs struct {
+	Window string `json:"window"`
 }
 
 // BrowserArgs are the arguments of browser status, use, launch, connect

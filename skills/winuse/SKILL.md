@@ -649,6 +649,18 @@ foreground. If the browser takes it anyway, `launch` ends its line with
 covered, so it can stay behind the user's windows. When the job is done, `winuse browser stop [browser]`
 closes a browser winuse launched or cloned and keeps its profile.
 
+An Electron App that is already running (Slack, Discord, VS Code) can get
+a Browser Connection without a restart: `winuse browser attach <window>`
+opens the App's Node.js inspector and runs winuse's code inside the App.
+Always ask the user first, and attach only after they agree. It works on
+Electron Apps only. winuse refuses with nothing sent when the App turned
+its inspector off, as Discord does; the App then stays on UI Automation,
+or, if the user agrees to restart it, relaunch it with
+`launch-app <exe path> --cdp`. While attached, any program the user runs
+could reach the App's inspector too, so run `winuse browser detach
+<window>` when the job is done. It closes the inspector, and so does the
+helper when it exits.
+
 Through the extension, the browser shows a "started debugging this
 browser" bar. The user turns winuse off with Cancel on that bar or with the
 winuse toolbar icon, and commands then say so. Stop and tell the user.
@@ -909,6 +921,7 @@ browser status | launch | connect | stop [browser]
 browser use [browser|auto]          # pin a browser (it persists); auto removes the pin
 browser clone [browser] [--profile <folder>] [--fresh] [--close-source]
 browser ext install [browser|all] | browser ext status [browser]
+browser attach <window> | browser detach <window>   # a running Electron App; ask the user first
 clipboard-get [--format text|image|files] [--out <path>]
 clipboard-set <text> | --image <png> | --file <path>... | clipboard-clear
 list-displays | screenshot --display <n>
