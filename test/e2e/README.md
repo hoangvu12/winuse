@@ -404,6 +404,18 @@ fixture). The cover stays the foreground window and no banner shows. The
 posted wheel (`scroll @x,y --post`) is not run: the fixture has no classic
 list box.
 
+`TestChromiumMessagesOnACoveredBrowser` and
+`TestChromiumMessagesOnACoveredElectron` (`chromium_messages_test.go`,
+headless-max ticket 20): the first Chromium browser found, or the
+`WINUSE_E2E_ELECTRON` electron.exe (skipped without it), is started
+directly on the fixture page with no debugging port, so winuse has no
+Browser Connection to it (the Window State says the Page is read through
+UI Automation). With the browser covered, a double click on the page's
+input (window messages, no activation pair), `type-text`, `press-key
+Control_L+a` and a second `type-text` each print their window-messages
+`ok`, the Window State shows the input's value after each typing, and
+the cover stays the foreground window with no banner.
+
 Run only these tests:
 
 ```

@@ -148,6 +148,11 @@ func click(s Services) Command {
 				})
 			}
 			if !a.Headed {
+				// A Chromium or Electron Window: mouse messages at the point
+				// (headless-max ticket 20, chromium.go).
+				if out, rerr, ok := s.chromiumClick(ctx, a.Window, target, button, count); ok {
+					return out, rerr
+				}
 				return "", s.headedOnly(a.Window,
 					fmt.Sprintf("click at %s has no background route: a click at a point needs the real pointer", pointToken(x, y)),
 					retry,
@@ -184,6 +189,13 @@ func click(s Services) Command {
 		}
 		if s.Actions == nil {
 			return "", Fail("click is unavailable: no UIA client", "")
+		}
+		if !a.Headed && (count > 1 || button != win.MouseLeft) {
+			// A Chromium or Electron Window: mouse messages at the
+			// Element's centre (headless-max ticket 20, chromium.go).
+			if out, rerr, ok := s.chromiumClick(ctx, a.Window, target, button, count); ok {
+				return out, rerr
+			}
 		}
 		if !a.Headed {
 			return "", s.headedOnly(a.Window,

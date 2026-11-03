@@ -143,6 +143,15 @@ type Services struct {
 	PostClick    func(target uint64, cx, cy int32, button win.MouseButton, count int) (int, error)
 	PostWheel    func(target uint64, sx, sy, dx, dy int32) (int, error)
 
+	// The Chromium and Electron message route (headless-max ticket 20,
+	// chromium.go): text and one key inside the activation pair, clicks as
+	// mouse messages, all sent to the top-level Chrome_WidgetWin_1; each
+	// returns how many messages it sent. Nil values fall back to the real
+	// Win32 calls; tests fake them so offline tests never send.
+	ChromiumText  func(top uint64, text string, stopped func() bool) (int, error)
+	ChromiumKey   func(top uint64, k keys.Key) (int, error)
+	ChromiumClick func(top uint64, sx, sy int32, button win.MouseButton, count int) (int, error)
+
 	// The Esc stop (ticket 12): nil falls back to a no-op (no physical-Esc
 	// stopping); tests fake it with a latch they can press.
 	Esc EscWatch
@@ -602,6 +611,15 @@ func defaultServices(s Services) Services {
 	}
 	if s.PostWheel == nil {
 		s.PostWheel = win.PostWheel
+	}
+	if s.ChromiumText == nil {
+		s.ChromiumText = win.SendChromiumText
+	}
+	if s.ChromiumKey == nil {
+		s.ChromiumKey = win.SendChromiumKey
+	}
+	if s.ChromiumClick == nil {
+		s.ChromiumClick = win.SendChromiumClick
 	}
 	if s.Esc == nil {
 		s.Esc = noopEscWatch{}

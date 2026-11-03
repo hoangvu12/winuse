@@ -287,6 +287,9 @@ func (s Services) stepHeadless(ctx context.Context, kind string, args json.RawMe
 	if w != nil && s.pageStep(ctx, kind, args, *w) {
 		return true // a Page step (pageactions.go)
 	}
+	if chromiumStep(kind, args, w) {
+		return true // chromium.go: window messages, no foreground or banner
+	}
 	switch kind {
 	case "press-key", "type-text":
 		if w == nil {
