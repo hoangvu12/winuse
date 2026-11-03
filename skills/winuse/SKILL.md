@@ -274,10 +274,14 @@ An Element Reference takes one of four forms.
 - `id:<AutomationId>`, the value after `ID:`, as in
   `winuse click 101 id:okButton`.
 - `@x,y`, a point in the latest screenshot's pixels, as in
-  `winuse click 101 @412,88`. Click, scroll, drag and hover aim at the point
-  itself. set-value and perform-secondary-action act on the Element under
-  the point, so a Window with a sparse tree and a readable screenshot still
-  works.
+  `winuse click 101 @412,88`. A left click, `set-value`,
+  `perform-secondary-action` and `scroll` at a point act on the Window's
+  own Element under the point, Headless, even while another Window covers
+  it, and `ok` names that Element, as in
+  `ok (clicked element 5 button "Save" at @412,88)`. Check the name: if it
+  is not the Element you meant, read the Window State and name the Element
+  instead. Drag, hover and double, right or middle clicks aim at the point
+  itself, with `--headed`.
 
 Matching is exact and case-sensitive. A name or ID that matches several
 Elements fails and lists the candidates. Pick a more specific reference or
@@ -303,6 +307,13 @@ default:
 - With an Element Index, `name:` or `id:`: `click` with the left button and
   a single click, `set-value`, `perform-secondary-action` except Raise,
   `scroll`, and `select-text`, which has no Headed form.
+- At an `@x,y` point: the same `click`, `set-value`,
+  `perform-secondary-action` and `scroll`, on the Element under the point.
+  winuse picks the smallest Element there, or the nearest one around it
+  that can take the Action. A point on nothing but the Window itself, on a
+  canvas or other surface that offers nothing, or on two overlapping
+  Elements that act differently is refused with nothing sent. A scroll at a
+  point scrolls the list or page under it, three steps per wheel notch.
 - `invoke-menu`, a command of a classic menu bar, which has no Headed
   form either.
 - Every Window Action but one: `restore-window`, `minimize-window`,
@@ -318,8 +329,8 @@ default:
 Every other Action is a Headed Action, and it runs only when you pass
 `--headed`. winuse then brings the Window to the foreground, uses the real
 pointer and keyboard, and frames the Window with a banner telling the user
-that winuse is in control and Esc stops it. Headed covers every `@x,y` form
-outside a Page, `--count 2|3`, `--button right|middle`, `drag`, `hover`,
+that winuse is in control and Esc stops it. Headed covers a point that
+names no usable Element, `--count 2|3`, `--button right|middle`, `drag`, `hover`,
 `maximize-window`, Raise, and `press-key` and `type-text` anywhere the
 routes below do not reach. Sent without `--headed`, these are refused: the
 line says why there is no background route and ends in `nothing was sent`,
@@ -374,7 +385,8 @@ Pick the Headless way whenever one does the job.
   opening the menu.
 - Open other menus, trees and combo boxes with a Headless click or
   `perform-secondary-action <ref> Expand`.
-- Scroll by Element rather than at an `@x,y` point.
+- Name the Element rather than an `@x,y` point when the tree has it: the
+  point form works, but the Element Index cannot land on a neighbour.
 - Show, hide, place and close Windows with the Window Actions rather than
   `activate-window`.
 - For a key or text with no Headless route, weigh Posted Keys, which are
@@ -592,8 +604,13 @@ redirect. When the Window State shows a menu bar, try `invoke-menu` first.
 ```
 winuse scroll <window> <ref> <up|down|left|right> [steps]   # steps 1 to 50, default 3
 winuse scroll <window> <ref> into-view
-winuse --headed scroll <window> @x,y <dx> <dy>   # the real wheel; 120 per notch, positive dy down, positive dx right
+winuse scroll <window> @x,y <dx> <dy>    # 120 per notch, positive dy down, positive dx right
 ```
+
+At a point, winuse scrolls the list or page under it Headless, three
+steps per notch, up to 16 notches per axis, and `ok` names the Element.
+A larger amount is refused with nothing sent; split it, or pass
+`--headed` to turn the real wheel at the point.
 
 The Element forms are Headless and take an Element Index, `name:` or `id:`.
 Name any Element inside the list or page; winuse scrolls the nearest
@@ -1024,7 +1041,7 @@ press-key <window> <key> [--post] [--force]
 select-text <window> <ref> <start> <length> | select-text <window> <ref> all
 invoke-menu <window> "<menu> > <item>"   # a classic menu bar command, Headless
 scroll <window> <ref> <up|down|left|right> [steps] | scroll <window> <ref> into-view
-scroll <window> @x,y <dx> <dy>      # Headless on a Page, else only with --headed
+scroll <window> @x,y <dx> <dy>      # Headless: the Page, or the Window's Element under the point
 drag <window> @x,y @x,y             # --headed: left button, point to point
 drag <window> <element> <element|@x,y>   # a Page Element, Headless
 hover <window> @x,y                 # --headed: moves the pointer and leaves it there, to reveal tooltips

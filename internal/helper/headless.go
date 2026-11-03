@@ -298,6 +298,9 @@ func (s Services) stepHeadless(ctx context.Context, kind string, args json.RawMe
 	case "invoke-menu":
 		return headlessStep(kind, args, nil) // the menu route needs no element side
 	}
+	if _, _, ok := s.pointActor(); ok && pointStep(kind, args) {
+		return true // pointroute.go: Headless, or refused with nothing sent
+	}
 	_, ok := s.headless(kind, args)
 	return ok
 }

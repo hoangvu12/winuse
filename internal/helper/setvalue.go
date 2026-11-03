@@ -70,14 +70,13 @@ type ElementActor interface {
 // pattern without focusing it (UIA SetFocus moves the desktop foreground,
 // agent-desktop A3-4) and a Value write is read back. Headed (`headed`):
 // the shared Action pipeline, then the Element's value is written through
-// its value pattern (focused first, Codex's set_value order). The @x,y
-// form has no other route: without `headed` it is refused with nothing
-// sent and the --headed retry (headless-max ticket 21). A name:/id: reference (ticket 11) resolves
-// against the Window's latest Window State to the Element Index to set;
-// an @x,y reference (finding 8) resolves through the Window's latest
-// screenshot to the screen point, and the Element the UIA worker finds
-// under it is set — so a Window whose tree is poor but whose screenshot
-// is readable can still be filled by coordinates.
+// its value pattern (focused first, Codex's set_value order). A name:/id:
+// reference (ticket 11) resolves against the Window's latest Window State
+// to the Element Index to set. An @x,y reference resolves through the
+// Window's latest screenshot to the screen point, then to the target
+// Window's own Element there, which is set Headless (headless-max ticket
+// 11; pointroute.go); with `headed`, the Element the UIA worker finds under
+// the point is set the v1 way (finding 8).
 func setValue(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.SetValueArgs
@@ -104,6 +103,23 @@ func setValue(s Services) Command {
 					return ha.SetValueHeadless(ctx, w.ID, index, a.Value)
 				},
 				refusal: valueError,
+			})
+		}
+		if ha, pr, ok := s.pointActor(); ok && target.point != nil && !a.Headed {
+			// The @x,y form sets the target Window's own Element at the
+			// point, Headless (headless-max ticket 11).
+			x, y := target.point.X, target.point.Y
+			return s.runAtPoint(ctx, a.Window, ha, pr, pointRun{
+				x: x, y: y, need: uia.NeedValue, done: "set the value of",
+				retry: func(id string) string { return "set-value " + id + " " + pointToken(x, y) + " <value>" },
+				run: headlessRun{
+					cmd:  "set-value",
+					verb: "set value",
+					act: func(ctx context.Context, w win.WindowInfo, index int) error {
+						return ha.SetValueHeadless(ctx, w.ID, index, a.Value)
+					},
+					refusal: valueError,
+				},
 			})
 		}
 		actor, ok := s.Actions.(ElementActor)
@@ -157,10 +173,11 @@ func setValue(s Services) Command {
 // before the pipeline runs, then the Element's own Secondary Actions are
 // probed live and the requested one is performed through its pattern —
 // Headless (ADR 0010) on an Element Index or reference, with Toggle,
-// Select, Expand and Collapse read back; Headed with `headed`. Raise (it
-// moves the foreground by definition) and @x,y have no other route:
-// without `headed` they are refused with nothing sent and the --headed
-// retry (headless-max ticket 21). A
+// Select, Expand and Collapse read back; Headed with `headed`. At @x,y the
+// point resolves to the target Window's own Element and runs the same
+// Headless route (headless-max ticket 11). Raise (it moves the foreground
+// by definition) has no other route: without `headed` it is refused with
+// nothing sent and the --headed retry (headless-max ticket 21). A
 // name:/id: reference (ticket 11) resolves against the Window's latest
 // Window State to the Element Index to act on; an @x,y reference
 // (finding 8) acts on the Element the UIA worker finds under the mapped
@@ -198,6 +215,25 @@ func performSecondaryAction(s Services) Command {
 					return ha.PerformSecondaryActionHeadless(ctx, w.ID, index, action)
 				},
 				refusal: secondaryError,
+			})
+		}
+		if ha, pr, ok := s.pointActor(); ok && target.point != nil && !a.Headed && action != "Raise" {
+			// The @x,y form performs the action on the target Window's own
+			// Element at the point, Headless (headless-max ticket 11).
+			x, y := target.point.X, target.point.Y
+			return s.runAtPoint(ctx, a.Window, ha, pr, pointRun{
+				x: x, y: y, need: uia.NeedAction, action: action, done: "performed " + action + " on",
+				retry: func(id string) string {
+					return "perform-secondary-action " + id + " " + pointToken(x, y) + " " + secondaryToken(action)
+				},
+				run: headlessRun{
+					cmd:  "perform-secondary-action",
+					verb: strings.ToLower(action),
+					act: func(ctx context.Context, w win.WindowInfo, index int) error {
+						return ha.PerformSecondaryActionHeadless(ctx, w.ID, index, action)
+					},
+					refusal: secondaryError,
+				},
 			})
 		}
 		actor, ok := s.Actions.(ElementActor)
