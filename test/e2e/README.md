@@ -308,10 +308,11 @@ Escape key plus the stop-and-ask hint; the typing aborted as a proper
 prefix of the long text; the fixture's `lastKey` is not `Escape` (the
 hook swallowed the key — the app must not act on the stop key); and the
 in-control overlay is gone. `TestInjectedEscDoesNotStopTheBatch` is
-self-contained: while a Batch types, a concurrent `--headed press-key
-Escape` injects the key (Escape on the fixture's main window, not a
-classic dialog, has no Headless route) — it must reach the app (the fixture records the
-key-down) without stopping the Batch, which still prints each step's `ok`. The
+self-contained: while a Batch types, the test injects Escape with its own
+SendInput (a concurrent winuse `--headed press-key` would wait for the
+desktop lane the Batch holds and be refused, ADR 0014 Decision 6) — it
+must reach the app (the fixture records the key-down) without stopping the
+Batch, which still prints each step's `ok`. The
 hook's decision table (injected filtering, swallow pairing, the armed
 scope), the abort checkpoints and the exit-130 mapping are
 offline-tested in `internal/win`, `internal/apps`, `internal/helper`;
@@ -437,8 +438,13 @@ the cover stays the foreground window with no banner.
 desktop-parity ticket 06): `click <item> --modifiers ctrl` on an item of
 the covered fixture's list, which is single-select, is refused with
 nothing sent and the exact `--headed` retry; the selection is unchanged
-and the cover keeps the foreground. The positive multi-select leg needs a
-multi-select list in the fixture and is not run.
+and the cover keeps the foreground.
+`TestCtrlAndShiftClickSelectInAMultiSelectList` is the positive leg: the
+Classic Dialog's fruit list box (LBS_EXTENDEDSEL, its last control, so no
+other Element Index moves) takes `click name:Apple --modifiers ctrl`, then
+Cherry, then `--modifiers shift` on Elder (the range from Cherry) and Ctrl
+on Apple again (deselected), each Headless with the cover in front and no
+banner; the test reads the selection back with LB_GETSEL after each.
 
 Run only these tests:
 

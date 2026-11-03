@@ -194,7 +194,7 @@ const pointBatch = 32
 func (c *Client) ElementAtPoint(ctx context.Context, hwnd uint64, x, y int32, need PointNeed, action string) (PointHit, error) {
 	var hit PointHit
 	var jobErr error
-	err := c.Run(ctx, func(w *worker, _ *run) {
+	err := c.RunFor(ctx, hwnd, func(w *worker, _ *run) {
 		who := storeAgent(ctx)
 		elems, elements, ok := c.store.elements(who, hwnd)
 		if !ok {

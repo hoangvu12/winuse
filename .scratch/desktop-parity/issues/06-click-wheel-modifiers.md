@@ -63,3 +63,9 @@ AddToSelection read back correctly, Headless and covered, on WPF ListBox (Extend
   - helper: Ctrl and Shift to MultiSelect, the not-multi-select refusal with its retry, the refusals per form, the Headed hold around the click and its release after a failed click, posted Ctrl and refused Alt, and Ctrl+wheel refused and held under `--headed`.
 - e2e (vet only): `TestCtrlClickOnASingleSelectListIsRefused`. The fixture's list reports CanSelectMultiple false, so the ticket's "Ctrl+click two fixture list items" cannot pass on it. The positive leg needs a multi-select list in the fixture (a follow-up; probes round 4 section 6 measured AddToSelection on WPF, SysListView32 and WinUI 3).
 - Docs: the SKILL.md command reference (two lines), codex-parity (a modifiers row, extension), usage text, test/e2e/README, spec row.
+
+### 2026-11-03: the positive e2e leg (branch e2e-fixes)
+
+- The fixture's Classic Dialog gained a multi-select list box (`fixture.ClassicListID`, LBS_EXTENDEDSEL, items `fixture.ClassicFruits`) as its last control, with a "Fruits:" label, so no earlier Element Index moves; the dialog grew to 158 dialog units high.
+- `TestCtrlAndShiftClickSelectInAMultiSelectList`: Ctrl+click Apple, Ctrl+click Cherry, Shift+click Elder (Cherry to Elder), Ctrl+click Apple again (deselected), covered, with the selection read back by LB_GETSEL. `TestCtrlClickOnASingleSelectListIsRefused` stays.
+- Not measured yet: that UI Automation's Win32 ListBox proxy reports CanSelectMultiple and implements AddToSelection for LBS_EXTENDEDSEL. If the live run says no, switch the control to a SysListView32 without LVS_SINGLESEL (measured in probes round 4).

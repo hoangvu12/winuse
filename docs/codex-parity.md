@@ -420,9 +420,11 @@ so Batches cannot deadlock. A request waits for its lanes up to 12 s,
 clamped by its own budget, then fails with nothing sent, naming the agent
 that holds the lane. Observation-only commands (list-windows, get-window,
 list-apps, the plain tree read, find, record-tree, launch-app, and the
-desktop waits) take no lane; the UIA worker still serializes everything
-that touches automation until multi-agent 07's pool. **matched** for one
-agent at a time; several agents at once is an **extension**.
+desktop waits) take no lane. UI Automation runs on a pool of workers,
+each App bound to one (multi-agent 07, ADR 0009's amendment), so a hung
+App stalls only its own calls, and an Action on a hung App is refused with
+nothing sent. **matched** for one agent at a time; several agents at once
+is an **extension**.
 
 ### stale elements
 

@@ -46,9 +46,18 @@ type worker struct {
 // command.
 var ErrWorkerGone = errors.New("the UIA worker is winding down after being abandoned; retry the command")
 
+// workerInit serializes the workers' start-up: the first UI Automation
+// call is not re-entrant across threads (multi-agent ticket 07's
+// research), so each pool worker initialises COM and creates its
+// IUIAutomation2 alone, and takes work only after that.
+var workerInit sync.Mutex
+
 // startWorker starts a fresh worker thread. It returns only after the
-// thread has initialised COM and created IUIAutomation2 (or failed).
+// thread has initialised COM and created IUIAutomation2 (or failed), one
+// worker at a time (workerInit).
 func startWorker() (*worker, error) {
+	workerInit.Lock()
+	defer workerInit.Unlock()
 	w := &worker{jobs: make(chan func()), stop: make(chan struct{}), exited: make(chan struct{})}
 	ready := make(chan error, 1)
 	go func() {
@@ -175,179 +184,6 @@ func (w *worker) close() {
 	if !w.closed {
 		w.closed = true
 		close(w.stop)
-	}
-}
-
-// Client is the helper's UI Automation client: it owns the current worker
-// thread and the live-Element store. All COM work goes through Run, which
-// sends one job to the worker and waits for it under the request's context.
-//
-// A worker wedged past the request's budget (a provider ignoring even the
-// UIA timeouts) is abandoned — its thread is leaked, never killed — and the
-// next job starts a fresh worker (uia-go notes §5: the belt-and-braces
-// layer on top of the walk's own limits).
-type Client struct {
-	mu      sync.Mutex
-	w       *worker
-	closed  bool
-	factory func() (*worker, error) // startWorker; faked in tests
-	store   *store
-	thin    *thinWindows // Windows whose settle ran out thin (retry.go); nil remembers nothing
-}
-
-// New creates a client. The worker thread starts lazily on first use, so a
-// helper that only ever lists windows never initialises COM.
-func New() *Client {
-	return &Client{factory: startWorker, store: newStore(addRef, release), thin: newThinWindows()}
-}
-
-// Close releases the worker and the stored live Elements. Best effort: a
-// wedged worker is leaked rather than waited on; the process exit reclaims
-// it.
-func (c *Client) Close() {
-	c.mu.Lock()
-	w := c.w
-	c.w = nil
-	c.closed = true
-	c.mu.Unlock()
-	if w == nil {
-		return
-	}
-	// Release stored elements on a COM thread (Release on MTA objects from
-	// an uninitialized thread is not allowed). Delivery is bounded: a
-	// worker still busy past the bound is wedged, and it is leaked with
-	// whatever elements remain rather than hanging the shutdown.
-	delivered := make(chan struct{})
-	go func() {
-		if w.send(func() { c.store.releaseAll() }) {
-			close(delivered)
-		}
-	}()
-	select {
-	case <-delivered:
-	case <-w.exited:
-	case <-time.After(2 * time.Second):
-	}
-	w.close()
-	select {
-	case <-w.exited:
-	case <-time.After(2 * time.Second):
-		// Worker wedged: leak it; the process exit reclaims it.
-	}
-}
-
-// ensureWorker returns the current worker, starting one if needed.
-func (c *Client) ensureWorker() (*worker, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed {
-		return nil, errors.New("the UIA client is closed")
-	}
-	if c.w == nil {
-		w, err := c.factory()
-		if err != nil {
-			return nil, err
-		}
-		c.w = w
-	}
-	return c.w, nil
-}
-
-// abandon gives up on w: it is detached so the next Run starts a
-// replacement, and stop is closed so the thread winds down after its
-// current job (or is leaked if that job never returns; the abandoned
-// job's results are discarded).
-func (c *Client) abandon(w *worker) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.w == w {
-		c.w = nil
-		w.close()
-	}
-}
-
-// run tracks one Run: whether the worker it ran on was abandoned while
-// the job was still in flight. A job that completes after its run was
-// abandoned — a wedged provider call eventually returning on a worker
-// already winding down — must not install its results anywhere shared:
-// Run marks the run before abandoning, and the job's tail checks it under
-// the same mutex (finding 5 of the review).
-type run struct {
-	mu        sync.Mutex
-	abandoned bool
-}
-
-// wasAbandoned reports whether Run gave up on this run's worker. It is
-// read on the worker thread together with the decision that depends on
-// it, under mu, so the flag cannot flip between the check and the
-// decision.
-func (r *run) wasAbandoned() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.abandoned
-}
-
-// markAbandoned is called by Run before it abandons the worker — never
-// after a job that already finished keeps its results.
-func (r *run) markAbandoned() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.abandoned = true
-}
-
-// Run executes job on the worker's COM thread, bounded by ctx. A job that
-// does not finish before ctx expires abandons the worker (its result is
-// discarded) and returns ctx's error — the run is marked abandoned first,
-// so a job still executing on the abandoned worker refuses to install its
-// results anywhere shared. A worker already winding down (an earlier
-// abandon) answers ErrWorkerGone: the next Run starts a replacement, so
-// the caller can retry.
-func (c *Client) Run(ctx context.Context, job func(w *worker, r *run)) error {
-	w, err := c.ensureWorker()
-	if err != nil {
-		return err
-	}
-	r := &run{}
-	done := make(chan struct{})
-	var perr error
-	j := func() {
-		defer close(done)
-		defer func() {
-			if r := recover(); r != nil {
-				perr = fmt.Errorf("the UIA worker crashed: %v", r)
-				c.abandon(w) // its COM state is suspect; replace it
-			}
-		}()
-		job(w, r)
-	}
-	delivered, serr := w.sendCtx(ctx, j)
-	if !delivered {
-		if errors.Is(serr, ErrWorkerGone) || isWaitPoll(ctx) {
-			return serr // a wait's poll gives up without abandoning (WithWaitPoll)
-		}
-		// ctx expired while waiting for the worker (another request's job
-		// holds it): give up on the worker, like a job that overruns.
-		c.abandon(w)
-		return serr
-	}
-	select {
-	case <-done:
-		return perr
-	case <-ctx.Done():
-		// The job may have finished in the same instant the deadline fired;
-		// its result wins over the timeout (the server delivers output
-		// produced past the budget).
-		select {
-		case <-done:
-			return perr
-		default:
-		}
-		if isWaitPoll(ctx) {
-			return ctx.Err() // left to finish: a poll installs nothing (WithWaitPoll)
-		}
-		r.markAbandoned()
-		c.abandon(w)
-		return ctx.Err()
 	}
 }
 

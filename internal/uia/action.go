@@ -59,7 +59,7 @@ type rect struct{ Left, Top, Right, Bottom int32 }
 func (c *Client) ElementPoint(ctx context.Context, hwnd uint64, index int) (Point, error) {
 	var pt Point
 	var jobErr error
-	err := c.Run(ctx, func(w *worker, _ *run) {
+	err := c.RunFor(ctx, hwnd, func(w *worker, _ *run) {
 		el, lerr := c.lookup(ctx, hwnd, index)
 		if lerr != nil {
 			jobErr = lerr

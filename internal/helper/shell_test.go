@@ -237,6 +237,11 @@ func TestShellKeysNeedHeaded(t *testing.T) {
 	if !strings.Contains(out, `Note: the foreground moved to 900 Windows Explorer "Taskbar"`) {
 		t.Errorf("output misses the foreground note:\n%s", out)
 	}
+	// A shell surface keeps the foreground (polite real input, multi-agent
+	// ticket 08): giving it back would close Start.
+	if s.fg != 900 {
+		t.Errorf("foreground %d after --headed press-key on the taskbar, want it kept on 900", s.fg)
+	}
 }
 
 func TestShellFlyoutButtonsRefuseHeadless(t *testing.T) {

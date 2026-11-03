@@ -85,7 +85,7 @@ func selectTab(steps tabSteps, pick func(names []string) (int, error)) error {
 // a Select that does not read back selected a *VerifyError.
 func (c *Client) SelectTab(ctx context.Context, hwnd uint64, pick func(names []string) (int, error)) error {
 	var jobErr error
-	err := c.Run(ctx, func(w *worker, _ *run) {
+	err := c.RunFor(ctx, hwnd, func(w *worker, _ *run) {
 		if w.thread == nil {
 			jobErr = ErrNoTabStrip // fake workers carry no COM thread
 			return

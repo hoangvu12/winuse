@@ -183,7 +183,7 @@ const propName = 30005
 // Window State, on the UIA worker (the shared shape of every element job).
 func (c *Client) onElement(ctx context.Context, hwnd uint64, index int, act func(th *thread, el comPtr) error) error {
 	var jobErr error
-	err := c.Run(ctx, func(w *worker, _ *run) {
+	err := c.RunFor(ctx, hwnd, func(w *worker, _ *run) {
 		el, lerr := c.lookup(ctx, hwnd, index)
 		if lerr != nil {
 			jobErr = lerr
