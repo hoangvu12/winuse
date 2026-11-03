@@ -11,6 +11,8 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"github.com/hoangvu12/winuse/internal/linebreak"
 )
 
 // propHasKeyboardFocus is UIA_HasKeyboardFocusPropertyId.
@@ -74,13 +76,13 @@ const (
 // final: TypedUnverified. A value that never shows the text is
 // TypedMissing.
 func VerifyTyped(text string, read func() (string, bool, error), sleep func(time.Duration)) TypedVerdict {
-	want := strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
+	want := linebreak.Normalize(text)
 	for waited := time.Duration(0); ; waited += typedInterval {
 		value, found, err := read()
 		if err != nil || !found {
 			return TypedUnverified
 		}
-		got := strings.ReplaceAll(strings.ReplaceAll(value, "\r\n", "\n"), "\r", "\n")
+		got := linebreak.Normalize(value)
 		if strings.Contains(got, want) {
 			return TypedShown
 		}

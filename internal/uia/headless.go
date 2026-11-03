@@ -24,6 +24,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/hoangvu12/winuse/internal/linebreak"
 )
 
 // ErrNoClickRoute is a Headless click on an Element that offers none of
@@ -118,14 +120,24 @@ func (c *Client) HeadlessClick(ctx context.Context, hwnd uint64, index int) (str
 // SetValueHeadless writes value like SetValue but without focusing the
 // Element first (UIA SetFocus moves the desktop foreground), then reads a
 // Value-pattern write back (setToggle verifies a toggle write itself, and
-// selectItem the item it picks in a combo or list).
+// selectItem the item it picks in a combo or list). An item whose Value
+// is its name (File Explorer's files) may be rebuilt by the write and
+// read "" afterwards: renamed.go finds it under its new name instead.
 func (c *Client) SetValueHeadless(ctx context.Context, hwnd uint64, index int, value string) error {
 	return c.onElement(ctx, hwnd, index, func(th *thread, el comPtr) error {
+		parent := th.parentOf(el)
+		if parent != nil {
+			defer release(parent)
+		}
 		selected, err := th.writeValue(el, value, false)
 		if err != nil || selected {
 			return err
 		}
-		return verifyValue(el, value)
+		err = verifyValue(el, value)
+		if readEmpty(err) && parent != nil && th.childNamed(parent, value) {
+			return nil
+		}
+		return err
 	})
 }
 
@@ -434,7 +446,7 @@ func verifyValue(el comPtr, value string) error {
 		if secret {
 			return now == value, ""
 		}
-		return now == value, fmt.Sprintf("%q", now)
+		return linebreak.Same(now, value), fmt.Sprintf("%q", now)
 	})
 }
 

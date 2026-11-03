@@ -222,6 +222,20 @@ func TestValueMatchesNeverShowsAPassword(t *testing.T) {
 	}
 }
 
+// A text area stores the value's CRLF line breaks as LF (headless-max
+// 24): the same text, not a mismatch. Other differences still are.
+func TestValueMatchesIgnoresLineBreakForms(t *testing.T) {
+	if err := ValueMatches(Field{Kind: "textarea"}, "one\r\ntwo", "one\ntwo"); err != nil {
+		t.Errorf("CRLF read back as LF: %v", err)
+	}
+	if err := ValueMatches(Field{Kind: "editable"}, "one\rtwo", "one\ntwo\n"); err != nil {
+		t.Errorf("editable CR read back as LF: %v", err)
+	}
+	if err := ValueMatches(Field{Kind: "textarea"}, "one\r\ntwo", "one two"); err == nil {
+		t.Error("a missing line break matched")
+	}
+}
+
 func TestFieldRefusal(t *testing.T) {
 	if (Field{Kind: "text"}).Refusal() != nil {
 		t.Error("a text field takes a value")
