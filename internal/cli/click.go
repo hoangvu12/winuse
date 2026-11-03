@@ -16,12 +16,17 @@ import (
 )
 
 // clickUsage is the click command's usage line.
-const clickUsage = "usage: winuse click <window> <element index | name:<text> | id:<id> | @x,y> [--count 1|2|3] [--button left|middle|right]"
+const clickUsage = "usage: winuse click <window> <element index | name:<text> | id:<id> | @x,y> [--count 1|2|3] [--button left|middle|right] [--post]"
+
+// errPostHeadedClick is the usage error for --post together with --headed
+// on click and scroll (headless-max ticket 12).
+var errPostHeadedClick = errors.New("--post and --headed cannot be combined: --post posts the mouse messages to the Window's control without the foreground, --headed uses the real pointer in the foreground")
 
 // clickOptions carries click's flags.
 type clickOptions struct {
 	count  int    // --count: 1, 2 (double) or 3 (triple)
 	button string // --button: left, middle or right (canonicalized by the helper)
+	post   bool   // --post: post the mouse messages to the classic control there (headless-max ticket 12)
 }
 
 // clickTarget is the Element Reference to click: an Element Index, a
@@ -62,7 +67,7 @@ func parseClickArgs(args []string) (window string, target clickTarget, o clickOp
 }
 
 // parseClickFlags parses click's flags (--count/-c, --button/-b, anywhere,
-// separate or =joined values) and returns the positional arguments in
+// separate or =joined values, and --post) and returns the positional arguments in
 // order. Both the standalone click (two positionals: the Window and the
 // target) and a batch's click step (one positional: the target) parse
 // through it.
@@ -111,6 +116,11 @@ func parseClickFlags(args []string) (pos []string, o clickOptions, err error) {
 				value = args[i]
 			}
 			o.button = value
+		case "post":
+			if hasValue {
+				return pos, o, errors.New("--post takes no value")
+			}
+			o.post = true
 		default:
 			return pos, o, fmt.Errorf("unknown flag %s", a)
 		}
@@ -146,9 +156,14 @@ func isNegativeNumber(s string) bool {
 // a Window (by Element Index, or by a name:/id: reference resolved
 // against the Window's latest Window State), or at a coordinate of its
 // latest screenshot. A left single click on an Element is Headless unless
-// headed (the global --headed flag, ADR 0010).
+// headed (the global --headed flag, ADR 0010). --post posts the click to
+// the classic control there instead (headless-max ticket 12); it does not
+// combine with --headed.
 func clickCmd(args []string, headed bool) int {
 	window, target, opts, err := parseClickArgs(args)
+	if err == nil && opts.post && headed {
+		err = errPostHeadedClick
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, clickUsage)
 		return 2
@@ -161,6 +176,7 @@ func clickCmd(args []string, headed bool) int {
 		ClickCount:   opts.count,
 		MouseButton:  opts.button,
 		Headed:       headed,
+		Post:         opts.post,
 	}); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)

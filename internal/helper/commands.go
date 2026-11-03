@@ -52,6 +52,7 @@ func listWindows(s Services) Command {
 		if err != nil {
 			return "", Fail("enumerating windows: "+err.Error(), "")
 		}
+		s.sawWindows(ws) // identity.go: what each listed Window ID names
 		if app := strings.TrimSpace(a.App); app != "" {
 			ws = win.WindowsOfApp(ws, app)
 			if len(ws) == 0 {
