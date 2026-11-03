@@ -131,7 +131,9 @@ func takesHeaded(kind string) bool {
 // Raise Secondary Action; `scroll` on an Element Index or reference with a
 // direction or into-view (headless-parity spec, "Element scroll");
 // `select-text` on an Element Index or reference with a valid span, which
-// has no headed form (headless-max ticket 10); never with `headed: true`.
+// has no headed form (headless-max ticket 10); `invoke-menu` with a valid
+// path, which has no headed form either (headless-max ticket 08); never
+// with `headed: true`.
 // `@x,y` is never
 // Headless: a screen point names whatever is topmost there, which for a
 // covered Window is another Window's Element. Arguments that do not
@@ -218,6 +220,10 @@ func headlessStep(kind string, args json.RawMessage, route *win.KeyTarget) bool 
 		// Always Headless: there is no headed form (selecttext.go).
 		var a protocol.SelectTextArgs
 		return json.Unmarshal(args, &a) == nil && headlessSelectText(a)
+	case "invoke-menu":
+		// Always Headless: there is no headed form (invokemenu.go).
+		var a protocol.InvokeMenuArgs
+		return json.Unmarshal(args, &a) == nil && headlessInvokeMenu(a)
 	}
 	return false
 }
@@ -275,6 +281,8 @@ func (s Services) stepHeadless(kind string, args json.RawMessage, w *win.WindowI
 		return headlessStep(kind, args, s.keyRoute(args, *w))
 	case "tab-new", "tab-close", "tab-switch":
 		return s.tabStepHeadless(kind, w) // tabs.go: tab-switch is Headless only through the extension
+	case "invoke-menu":
+		return headlessStep(kind, args, nil) // the menu route needs no element side
 	}
 	_, ok := s.headless(kind, args)
 	return ok

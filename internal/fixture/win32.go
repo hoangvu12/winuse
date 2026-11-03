@@ -61,6 +61,12 @@ var (
 	procMessageBoxW                = user32.NewProc("MessageBoxW")
 	procSetWindowPos               = user32.NewProc("SetWindowPos")
 
+	procCreateMenu      = user32.NewProc("CreateMenu")
+	procCreatePopupMenu = user32.NewProc("CreatePopupMenu")
+	procAppendMenuW     = user32.NewProc("AppendMenuW")
+	procSetMenu         = user32.NewProc("SetMenu")
+	procEnableMenuItem  = user32.NewProc("EnableMenuItem")
+
 	procCreateSolidBrush = gdi32.NewProc("CreateSolidBrush")
 	procCreatePen        = gdi32.NewProc("CreatePen")
 	procCreateFontW      = gdi32.NewProc("CreateFontW")

@@ -395,7 +395,10 @@ winuse's own captures. `select-text` selects a span of a field's text, or
 all of it, with no keys and no foreground (a classic edit control's
 EM_SETSEL, a UI Automation Text pattern, or a Page field through the
 Browser Connection), read back; Codex selects text only with real keys
-or a drag. `list-windows --details` and `--app` add a Window's frame,
+or a drag. `invoke-menu` runs a classic (HMENU) menu bar command by its
+path, such as "File > Save As...", with no menu opened and no foreground:
+it reads the menu, refuses a greyed item, and posts the item's
+WM_COMMAND; Codex opens menus with real clicks. `list-windows --details` and `--app` add a Window's frame,
 pid and state flags and an App filter to Codex's plain listing. `status`
 prints the winuse and helper versions, the helper's uptime, the desktop's
 lock state, the integrity level, DPI awareness, the Browser Connections

@@ -26,6 +26,7 @@ type app struct {
 
 	classicHwnd uintptr // the open Classic Dialog, 0 when closed (classic.go)
 	classicProc uintptr // its dialog procedure callback
+	classicEdit uintptr // its menu bar's Edit submenu, 0 while closed (classic.go)
 
 	uia *uiaProviders
 

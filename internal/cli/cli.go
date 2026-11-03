@@ -30,8 +30,8 @@ global options:
 
 headless (the default; your foreground, pointer and keyboard stay untouched):
   click (left, single), set-value, perform-secondary-action (except Raise)
-  and scroll on an element index, name: or id:; select-text, which has no
-  headed form; press-key Return or Escape
+  and scroll on an element index, name: or id:; select-text and
+  invoke-menu, which have no headed form; press-key Return or Escape
   on a classic dialog; type-text into a focused classic edit control, or
   with --into into a classic edit control or Page field it names, for
   text with no newline, tab or other control character; screenshots from
@@ -143,6 +143,12 @@ const usageTail = `);
                                mouse: length characters (UTF-16 units) from
                                start, counting from 0, or all of it; a
                                type-text afterwards replaces the selection
+  invoke-menu <window> "<menu> > <item>"
+                               run a command of a classic (Win32) menu bar
+                               without opening the menu, such as
+                               "File > Save As..."; names match without case,
+                               & and the shortcut; a greyed item is refused
+                               with nothing sent
   drag <window> @x,y @x,y     drag the pointer from one point to another,
                                both in the Window's latest screenshot's pixels;
                                drag <window> <element> <element | @x,y> drags
@@ -334,6 +340,8 @@ func Main(args []string) int {
 		return scrollCmd(args[1:], headed)
 	case "select-text":
 		return selectTextCmd(args[1:])
+	case "invoke-menu":
+		return invokeMenuCmd(args[1:])
 	case "drag":
 		return dragCmd(args[1:])
 	case "hover":

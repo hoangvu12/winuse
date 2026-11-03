@@ -116,6 +116,11 @@ type keyRun struct {
 	act    func() error
 	// posted marks Posted Keys: the posted output instead of `ok`.
 	posted bool
+	// prepare, when set, runs after the refusals and before the cursor's
+	// travel: it fills in the label, the target and the act from the live
+	// Window, or refuses with an Error that says nothing was sent
+	// (invoke-menu reads the menu there, invokemenu.go).
+	prepare func(run *keyRun) *Error
 }
 
 // notSentError marks a keyboard route's failure raised before anything
@@ -131,12 +136,18 @@ func (e *notSentError) Unwrap() error { return e.err }
 
 // runKeyHeadless is the Headless keyboard pipeline on a resolved Window:
 // runHeadless's refusals (locked desktop, administrator Window, Ready),
-// then, inside a passive Esc scope, the Agent Cursor's travel to the
+// the run's prepare step when it has one, then, inside a passive Esc
+// scope, the Agent Cursor's travel to the
 // target, the act, and the ripple on a delivered Action. No activation,
 // no banner, no SendInput. The Esc checkpoints match runHeadless's.
 func (s Services) runKeyHeadless(ctx context.Context, w win.WindowInfo, run keyRun) (string, *Error) {
 	if rerr := s.headlessRefusals(w, adminMessageHint); rerr != nil {
 		return "", rerr
+	}
+	if run.prepare != nil {
+		if perr := run.prepare(&run); perr != nil {
+			return "", perr
+		}
 	}
 	esc := s.Esc
 	if esc == nil {

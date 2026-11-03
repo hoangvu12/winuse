@@ -190,6 +190,8 @@ default:
 - With an Element Index, `name:` or `id:`: `click` with the left button and
   a single click, `set-value`, `perform-secondary-action` except Raise,
   `scroll`, and `select-text`, which has no Headed form.
+- `invoke-menu`, a command of a classic menu bar, which has no Headed
+  form either.
 - Every Window Action: `restore-window`, `minimize-window`, `move-window`,
   `resize-window` and `close-window`.
 - `press-key` Return or Escape on a classic dialog, `type-text` into a
@@ -242,7 +244,9 @@ Pick the Headless way whenever one does the job.
   combo box or list item by name with `set-value`, rather than a click and
   `type-text`, a click that flips it, or clicks that open a list.
 - Confirm or cancel a dialog with a Headless click on its button by `name:`.
-- Open menus, trees and combo boxes with a Headless click or
+- Run a command of a classic menu bar with `invoke-menu` rather than
+  opening the menu.
+- Open other menus, trees and combo boxes with a Headless click or
   `perform-secondary-action <ref> Expand`.
 - Scroll by Element rather than at an `@x,y` point.
 - Show, hide, place and close Windows with the Window Actions rather than
@@ -412,6 +416,33 @@ effort.
 
 Use `--post` for a single key or plain text on a Window with no Headless
 route, when the user's foreground matters more than certainty.
+
+## Run a menu command
+
+```
+winuse invoke-menu <window> "File > Save As..."
+```
+
+`invoke-menu` runs a command of a classic Win32 menu bar without opening
+the menu: the menus of older Windows tools, of Win32 and MFC Apps and of
+their dialogs. It is always Headless. Name one item per level, separated
+by `>`, and quote the path, because PowerShell reads a bare `>` as a
+redirect. When the Window State shows a menu bar, try `invoke-menu` first.
+
+- Names match without case, `&` markers or the shortcut, and a trailing
+  `...` is optional, so `"file > save as"` finds `Save &As...`.
+- winuse lets the App update the menu as opening it would, then checks the
+  item. A greyed item, a name that matches no item or several, a path that
+  ends at a submenu, and a Window with no classic menu bar are refused
+  with nothing sent. A classic submenu's items are missing from the
+  Window State, so read them from the failure, which lists the items at
+  that level.
+- `ok` means the command was sent. Read the Window State to see its
+  effect. A command that opens a dialog opens a new Window; find it with
+  `list-windows`.
+- WinUI, WPF, WinForms, Office ribbons and browsers draw their own menus,
+  and `invoke-menu` refuses them. Click their menu Elements by `name:`
+  instead.
 
 ## Scroll
 
@@ -734,6 +765,7 @@ perform-secondary-action <window> <ref> <action>   # Raise, Scroll Up/Down/Left/
 type-text <window> [--post | --into <ref>] <text>
 press-key <window> <key> [--post] [--force]
 select-text <window> <ref> <start> <length> | select-text <window> <ref> all
+invoke-menu <window> "<menu> > <item>"   # a classic menu bar command, Headless
 scroll <window> <ref> <up|down|left|right> [steps] | scroll <window> <ref> into-view
 scroll <window> @x,y <dx> <dy>
 drag <window> @x,y @x,y             # left button, point to point

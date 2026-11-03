@@ -40,7 +40,7 @@ Close every gap that has a route, and say plainly where none exists.
 | 05 | Headless tab switch on launched browsers | S | ready-for-agent |
 | 06 | Accelerator lookup route for press-key | S | ready-for-agent (low priority) |
 | 07 | Chords through attached key state (opt-in) | M | ready-for-agent |
-| 08 | invoke-menu for classic menu bars | M | ready-for-agent |
+| 08 | invoke-menu for classic menu bars | M | done (live e2e pending) |
 | 09 | ContextMenu Secondary Action | M | ready-for-agent |
 | 10 | select-text | S | done |
 | 11 | Point forms resolve to an Element in the target Window | M | ready-for-agent |
@@ -54,7 +54,7 @@ Close every gap that has a route, and say plainly where none exists.
 | 19 | Headless typing into a covered Windows 11 Notepad | S-M | done |
 | 20 | Background typing, keys and clicks for Chromium and Electron without CDP | M | ready-for-agent |
 
-20 tickets: 10 S, 1 S-M, 8 M (one spike), 1 L. Done: 02, 04, 10, 18, 19.
+20 tickets: 10 S, 1 S-M, 8 M (one spike), 1 L. Done: 02, 04, 08, 10, 18, 19.
 
 ## Impossible headless (stays a refusal with a `--headed` hint)
 

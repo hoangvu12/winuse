@@ -64,6 +64,24 @@ const (
 	ClassicEditID     = 1001
 	ClassicPasswordID = 1002
 	ClassicComboID    = 1003
+
+	// The Classic Dialog's menu bar (headless-max ticket 08), a real HMENU:
+	//
+	//	&File > &Fill Name
+	//	&Edit > Select &All<tab>Ctrl+A, &Clear Name, &Locked
+	//
+	// Fill Name sets the name Edit to ClassicFillText; Select All selects
+	// all of its text (EM_SETSEL), so a type-text afterwards replaces it;
+	// Clear Name empties it. Clear Name is greyed when the menu is built
+	// and enabled only in WM_INITMENUPOPUP while the name Edit holds text,
+	// the way MFC Apps update their items lazily. Locked is always greyed.
+	// The state file records the last command (ClassicMenu) and counts the
+	// WM_INITMENUPOPUP messages (ClassicMenuInits).
+	ClassicMenuFillID      = 40001
+	ClassicMenuSelectAllID = 40002
+	ClassicMenuClearID     = 40003
+	ClassicMenuLockedID    = 40004
+	ClassicFillText        = "filled from the menu"
 )
 
 // ClassicColors are the Classic Dialog combo's items, in order. "Blue" and

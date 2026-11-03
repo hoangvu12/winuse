@@ -416,6 +416,14 @@ type SelectTextArgs struct {
 	All          bool   `json:"all,omitempty"` // select the whole text (Start and Length stay 0)
 }
 
+// InvokeMenuArgs are invoke-menu's arguments (headless-max ticket 08):
+// the path of a classic menu bar command, one item name per level, such as
+// ["File", "Save As..."]. Always Headless: there is no headed form.
+type InvokeMenuArgs struct {
+	Window string   `json:"window"` // Window ID, or an App name when that App has exactly one Window
+	Path   []string `json:"path"`   // the item names from the menu bar down to the command
+}
+
 // BatchArgs are batch's arguments (ticket 11): several Actions on one
 // Window in a single call, run in order, stopping at the first failure.
 type BatchArgs struct {
@@ -451,6 +459,8 @@ var BatchStepKinds = append(append([]string{
 	// Headless-max ticket 10: select-text, so a Batch can select a word
 	// and type its replacement.
 	"select-text",
+	// Headless-max ticket 08: invoke-menu.
+	"invoke-menu",
 )
 
 // Response is the helper's answer.

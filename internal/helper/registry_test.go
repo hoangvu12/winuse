@@ -14,7 +14,7 @@ func TestRegistryHasEveryCLICommand(t *testing.T) {
 	for _, name := range append([]string{
 		"list-windows", "list-apps", "launch-app", "get-window-state", "record-tree",
 		"zoom", "click", "activate-window", "type-text", "press-key",
-		"set-value", "perform-secondary-action", "batch", "scroll", "drag", "hover",
+		"set-value", "perform-secondary-action", "batch", "scroll", "select-text", "invoke-menu", "drag", "hover",
 		"restore-window", "minimize-window", "move-window", "resize-window", "close-window",
 		"browser-status", "browser-use", "browser-launch", "browser-clone", "browser-connect", "browser-stop",
 		"browser-ext-install", "browser-ext-status",

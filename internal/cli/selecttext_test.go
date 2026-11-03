@@ -109,7 +109,7 @@ func TestSelectTextUsageErrorsExit2WithoutDialing(t *testing.T) {
 func TestUsageListsSelectText(t *testing.T) {
 	for _, want := range []string{
 		"select-text <window> <element index | name: | id:> <start> <length> | all",
-		"select-text, which has no\n  headed form",
+		"select-text and\n  invoke-menu, which have no headed form",
 	} {
 		if !strings.Contains(Usage, want) {
 			t.Errorf("usage text missing %q", want)

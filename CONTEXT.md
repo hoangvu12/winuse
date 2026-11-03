@@ -49,7 +49,7 @@ _Avoid_: Element ID, ref
 ### Operation
 
 **Action**:
-A single operation the agent performs on a Window: click, set value, secondary action, scroll, drag, hover, press key, type text, select text, or a Window Action.
+A single operation the agent performs on a Window: click, set value, secondary action, scroll, drag, hover, press key, type text, select text, invoke a menu command, or a Window Action.
 _Avoid_: Command, step, tool call
 
 **Window Action**:
@@ -69,7 +69,7 @@ Several Actions sent in one call and run in order, stopping at the first one tha
 _Avoid_: Script, macro, sequence
 
 **Headless Action**:
-An Action that winuse can deliver reliably without the foreground: no foreground change, no pointer, no real keys, no banner. Every Window Action is always Headless, and so is selecting text in a field. These are Headless unless the agent asks for Headed: a click on an Element (left button, single), a set value, every Secondary Action except Raise, scrolling an Element, Return or Escape on a classic dialog, and typing into a classic edit box that has the focus or that the agent names as the Element to type into. Actions on a Page Element through a Browser Connection are Headless too, whatever the button or click count, and so are keys and typing while the Page has the focus and scrolling at a point of the Page. The Actions on a Tab's Page as a whole (navigate, back, forward, reload, upload, dialog, wait and eval) are always Headless.
+An Action that winuse can deliver reliably without the foreground: no foreground change, no pointer, no real keys, no banner. Every Window Action is always Headless, and so are selecting text in a field and running a command of a classic menu bar. These are Headless unless the agent asks for Headed: a click on an Element (left button, single), a set value, every Secondary Action except Raise, scrolling an Element, Return or Escape on a classic dialog, and typing into a classic edit box that has the focus or that the agent names as the Element to type into. Actions on a Page Element through a Browser Connection are Headless too, whatever the button or click count, and so are keys and typing while the Page has the focus and scrolling at a point of the Page. The Actions on a Tab's Page as a whole (navigate, back, forward, reload, upload, dialog, wait and eval) are always Headless.
 _Avoid_: Background action, silent action, pattern action
 
 **Headed Action**:
