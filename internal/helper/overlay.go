@@ -7,6 +7,7 @@ package helper
 // shared with ticket 12's Esc hook); this file is the wiring.
 
 import (
+	"github.com/hoangvu12/winuse/internal/agent"
 	"log"
 	"sync"
 
@@ -173,4 +174,35 @@ func hideDuringCapture(o Overlay, c Cursor, methods []shot.Method) []shot.Method
 		}
 	}
 	return methods
+}
+
+// agentBanner is the indicator's optional side that names the agent it
+// is in control for (multi-agent 06): *win.Overlay.
+type agentBanner interface {
+	SetAgent(label string) error
+}
+
+// SetAgent forwards to the wrapped indicator when it names agents.
+func (o *bracketOverlay) SetAgent(label string) error {
+	if b, ok := o.inner.(agentBanner); ok {
+		return b.SetAgent(label)
+	}
+	return nil
+}
+
+// setOverlayAgent makes the banner name the agent that holds the desktop
+// lane; the default agent (one agent, no identity) is not named. Best
+// effort, like showOverlay.
+func (s Services) setOverlayAgent(who agent.Identity) {
+	b, ok := s.Overlay.(agentBanner)
+	if !ok {
+		return
+	}
+	label := who.Label
+	if who.ID == agent.DefaultID {
+		label = ""
+	}
+	if err := b.SetAgent(label); err != nil {
+		log.Printf("naming the agent on the in-control overlay: %v", err)
+	}
 }

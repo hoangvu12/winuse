@@ -91,9 +91,12 @@ func (s Services) watchForeground(name string, cmd Command) Command {
 			return cmd(ctx, args)
 		}
 		fgBefore := s.Foreground()
+		desktopBefore := s.desktopUses()
 		w := &fgWatch{}
 		out, err := cmd(context.WithValue(ctx, fgWatchKey{}, w), args)
-		if err != nil || w.wasHeaded() {
+		if err != nil || w.wasHeaded() || s.desktopUses() != desktopBefore {
+			// Another agent's Headed Action ran meanwhile (lanes.go): the
+			// foreground may be its doing, not the App's.
 			return out, err
 		}
 		took := s.tookForeground(pid, fgBefore)
