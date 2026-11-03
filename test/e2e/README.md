@@ -1220,6 +1220,12 @@ Headed tests take it, and give it back.
   `type-text --post --interval-ms 200` of ten characters holds fixture A's
   UI-thread lane for about 2 s; beta's click on fixture B finishes within
   1.5 s, and gamma's click on A waits its turn.
+- `TestHeadedRightClickKeepsALateExplorerMenu` (`explorer_menu_test.go`,
+  ticket 12): an Explorer Window of the test's own on a temp folder,
+  covered. The first right click on its file opens a context menu that
+  shows 1.35-1.65 s after the `ok`; polite input waits for it, so the
+  `ok` notes the new Window and that the foreground stays, and the menu
+  is still open. The test closes the menu and the Window.
 - `TestHungAppStallsOnlyItsOwnWorker` (`hung_app_test.go`, ticket 07):
   fixture A runs with `-hang-on-click 15000`, which stops its UI thread
   after Click Me. While it hangs, beta's click on fixture B lands within

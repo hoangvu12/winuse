@@ -192,6 +192,9 @@ func click(s Services) Command {
 				if serr != nil {
 					return "", serr
 				}
+				if button == win.MouseRight {
+					expectMenuHere(ctx) // polite.go: its menu may show late
+				}
 				if err := s.heldInput(mods, func() error { return s.Click(w.ID, int32(pt.X), int32(pt.Y), button, count) }); err != nil {
 					return "", inputError(err)
 				}
@@ -239,6 +242,9 @@ func click(s Services) Command {
 			pt, err := s.Actions.ElementPoint(ctx, w.ID, index)
 			if err != nil {
 				return "", elementError(err, w, index)
+			}
+			if button == win.MouseRight {
+				expectMenuHere(ctx) // polite.go: its menu may show late
 			}
 			if err := s.heldInput(mods, func() error { return s.Click(w.ID, pt.X, pt.Y, button, count) }); err != nil {
 				return "", inputError(err)

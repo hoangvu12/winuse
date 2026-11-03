@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hoangvu12/winuse/internal/keys"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
@@ -398,5 +399,75 @@ func TestPoliteFlushesBeforeGivingBack(t *testing.T) {
 	steps = spy.recorded()
 	if r := last("release"); r < 0 || r+1 >= len(steps) || steps[r+1] != "flush" {
 		t.Errorf("steps %v: want a flush right after the release", steps)
+	}
+}
+
+// A context menu that shows after the Action (multi-agent 12: a Windows 11
+// File Explorer item's first menu, 1.35-1.65 s after the right click's ok,
+// measured live) keeps the foreground: a Headed right click waits for it
+// before giving the foreground back.
+func TestPoliteWaitsForALateContextMenu(t *testing.T) {
+	spy, d := politeSpy()
+	clicked := time.Time{}
+	click := spy.svc.Click
+	spy.svc.Click = func(target uint64, x, y int32, b win.MouseButton, n int) error {
+		clicked = d.clock
+		return click(target, x, y, b, n)
+	}
+	all := spy.svc.AllWindows
+	spy.svc.AllWindows = func() ([]win.WindowInfo, error) {
+		ws, err := all()
+		if !clicked.IsZero() && d.clock.Sub(clicked) >= 1500*time.Millisecond {
+			ws = append(ws, win.WindowInfo{ID: 640, PID: 7, Class: "#32768"}) // the menu shows late
+		}
+		return ws, err
+	}
+	out, e := runCommand(t, CommandsWith(spy.svc), "click", headedArgs(clickArgs("101", 2, 1, "right")))
+	if want := "ok\nNote: the foreground stays on window 101: the Action left a menu or Window of its App open\n"; e != nil || out != want {
+		t.Errorf("a right click whose menu shows late: %q, %+v, want %q", out, e, want)
+	}
+	if d.fg != 101 {
+		t.Errorf("foreground %d, want 101 kept for the menu", d.fg)
+	}
+}
+
+// A right click that opens no menu gives the foreground back after the
+// wait; a left click does not wait at all.
+func TestPoliteMenuWaitOnlyForContextMenus(t *testing.T) {
+	for _, c := range []struct {
+		button  string
+		atMost  time.Duration
+		atLeast time.Duration
+	}{
+		{"right", politeMenuWait + time.Second, politeMenuWait},
+		{"left", time.Second, 0},
+	} {
+		spy, d := politeSpy()
+		start := d.clock
+		out, e := runCommand(t, CommandsWith(spy.svc), "click", headedArgs(clickArgs("101", 2, 1, c.button)))
+		if e != nil || out != "ok\n" || d.fg != 500 {
+			t.Errorf("%s click with no menu: %q, %+v, foreground %d; want ok and 500 given back", c.button, out, e, d.fg)
+		}
+		if took := d.clock.Sub(start); took < c.atLeast || took > c.atMost {
+			t.Errorf("%s click: the give-back waited %s, want between %s and %s", c.button, took, c.atLeast, c.atMost)
+		}
+	}
+}
+
+func TestOpensContextMenu(t *testing.T) {
+	for _, c := range []struct {
+		key  string
+		want bool
+	}{
+		{"Menu", true}, {"Shift_L+F10", true}, {"Shift_R+F10", true},
+		{"F10", false}, {"Control_L+F10", false}, {"Return", false}, {"Shift_L+F9", false},
+	} {
+		chord, err := keys.Parse(c.key)
+		if err != nil {
+			t.Fatalf("%s: %v", c.key, err)
+		}
+		if got := opensContextMenu(chord); got != c.want {
+			t.Errorf("%s: %v, want %v", c.key, got, c.want)
+		}
 	}
 }
