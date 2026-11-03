@@ -298,6 +298,9 @@ func (s Services) stepHeadless(ctx context.Context, kind string, args json.RawMe
 		if kind == "press-key" && overflowEscapeStep(args, *w) {
 			return true // Escape on the tray overflow (shell.go)
 		}
+		if kind == "press-key" && menuEscapeStep(args, *w) {
+			return true // Escape on an open menu (contextmenu.go)
+		}
 		return headlessStep(kind, args, s.keyRoute(args, *w))
 	case "tab-new", "tab-close", "tab-switch":
 		return s.tabStepHeadless(kind, args, w) // tabs.go: a headed tab-switch is Headless only through the extension

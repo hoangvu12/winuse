@@ -67,7 +67,9 @@ func reportsOpened(name string, args json.RawMessage) bool {
 			return false
 		}
 		action, ok := uia.CanonicalSecondaryAction(a.Action)
-		return ok && (action == "Expand" || action == "Select")
+		// A Headless ContextMenu reports its menu itself (contextmenu.go);
+		// the Headed one, a right click, through the diff.
+		return ok && (action == "Expand" || action == "Select" || (action == uia.ContextMenuAction && a.Headed))
 	}
 	return false
 }
@@ -164,6 +166,16 @@ func (s Services) snapshotOpened(args json.RawMessage) (openedBefore, bool) {
 	w, rerr := resolveWindow(s, a.Window)
 	if rerr != nil {
 		return openedBefore{}, false // the Action fails on it anyway
+	}
+	return s.snapshotOf(w)
+}
+
+// snapshotOf takes the snapshot before an Action on a resolved Window
+// (the ContextMenu Secondary Action reads its menu back through it,
+// contextmenu.go); false when there is none to compare with.
+func (s Services) snapshotOf(w win.WindowInfo) (openedBefore, bool) {
+	if s.Surfaces == nil {
+		return openedBefore{}, false
 	}
 	all, err := s.Surfaces()
 	if err != nil {

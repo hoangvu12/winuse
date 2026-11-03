@@ -123,6 +123,22 @@ type Services struct {
 	MenuItemRect  func(hwnd uint64, pos int) (win.Rect, bool) // GetMenuItemRect of a menu bar item
 	MenuCommand   func(hwnd uint64, id uint16) error          // PostMessage(WM_COMMAND, MAKEWPARAM(id, 0))
 
+	// The ContextMenu Secondary Action (headless-max ticket 09,
+	// contextmenu.go): PostContextMenu opens a classic control's menu,
+	// PopupMenu and MenuOwner read an open `#32768` (with ReadMenu above),
+	// PostMenuKey posts an item's mnemonic to it, CancelMenu closes it
+	// through its owner, and PostMenuEscape closes a menu with Escape.
+	// Menus holds the menu each Agent's own Action opened, for the close
+	// on its next Action elsewhere (defaultServices creates it). Nil
+	// values fall back to the real calls; tests fake them.
+	PostContextMenu func(control uint64) error               // PostMessage(WM_CONTEXTMENU, control, -1)
+	PopupMenu       func(menu uint64) uint64                 // SendMessageTimeout(MN_GETHMENU): 0 when unreadable
+	MenuOwner       func(menu uint64) uint64                 // GetGUIThreadInfo hwndMenuOwner: 0 outside menu mode
+	PostMenuKey     func(menu uint64, key rune) (int, error) // WM_KEYDOWN, WM_KEYUP of a mnemonic
+	CancelMenu      func(owner uint64) error                 // SendMessageTimeout(WM_CANCELMODE)
+	PostMenuEscape  func(menu uint64) (int, error)           // Escape to the menu, or a PopupHost's input windows
+	Menus           *agentMenus
+
 	// Posted Keys (ADR 0011, Decision 5; keyroute.go): press-key and
 	// type-text with `post`. Each returns how many messages it posted, so
 	// a failure can tell "nothing was sent" from a partial post. Nil values
@@ -402,7 +418,7 @@ func CommandsWith(s Services) map[string]Command {
 		case !observationOnlyCommand(name):
 			// The Window identity check runs once the command holds the
 			// gate, before anything else looks at the Window (identity.go).
-			cmd = s.laned(name, s.checkWindow(s.reportAfter(name, cmd)))
+			cmd = s.laned(name, s.checkWindow(s.closeLeftMenu(name, s.reportAfter(name, cmd))))
 		default:
 			cmd = s.recordReads(name, cmd) // identity.go: what a read Window ID names
 		}
@@ -599,6 +615,27 @@ func defaultServices(s Services) Services {
 	}
 	if s.MenuCommand == nil {
 		s.MenuCommand = win.PostMenuCommand
+	}
+	if s.PostContextMenu == nil {
+		s.PostContextMenu = win.PostContextMenu
+	}
+	if s.PopupMenu == nil {
+		s.PopupMenu = win.PopupMenu
+	}
+	if s.MenuOwner == nil {
+		s.MenuOwner = win.MenuOwner
+	}
+	if s.PostMenuKey == nil {
+		s.PostMenuKey = win.PostMenuKey
+	}
+	if s.CancelMenu == nil {
+		s.CancelMenu = win.CancelMenu
+	}
+	if s.PostMenuEscape == nil {
+		s.PostMenuEscape = win.PostMenuEscape
+	}
+	if s.Menus == nil {
+		s.Menus = newAgentMenus()
 	}
 	if s.PostKeys == nil {
 		s.PostKeys = win.PostKeys

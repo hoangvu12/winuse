@@ -132,6 +132,13 @@ func click(s Services) Command {
 		}); ok {
 			return out, rerr
 		}
+		// An item of an open classic menu: its mnemonic or WM_COMMAND, never
+		// UIA Invoke (headless-max ticket 09, menuitem.go).
+		if mods.None() {
+			if out, rerr, ok := s.classicMenuClick(ctx, a, target, button, count); ok {
+				return out, rerr
+			}
+		}
 		if !mods.None() && !a.Headed {
 			// Ctrl+click or Shift+click on a multi-select list item, Headless;
 			// anything else with modifiers needs the real keys.

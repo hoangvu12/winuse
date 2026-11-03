@@ -320,7 +320,7 @@ func TestPerformSecondaryActionValidation(t *testing.T) {
 		{"negative element index", secondaryArgs("101", -1, "Expand"), "perform-secondary-action: the element index must be a non-negative integer"},
 		{"missing action", secondaryArgs("101", 1, ""), "perform-secondary-action: an action is required"},
 		{"unknown action lists the expected set", secondaryArgs("101", 1, "Fly"),
-			"unsupported secondary action: Fly; expected Raise, Scroll Up, Scroll Down, Scroll Left, Scroll Right, Expand, Collapse, Toggle, or Select"},
+			"unsupported secondary action: Fly; expected Raise, Scroll Up, Scroll Down, Scroll Left, Scroll Right, Expand, Collapse, Toggle, Select, or ContextMenu"},
 		{"case does not make an unknown action known", secondaryArgs("101", 1, "invoke"),
 			"unsupported secondary action: invoke; expected"},
 	}
