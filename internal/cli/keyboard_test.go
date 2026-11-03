@@ -108,13 +108,13 @@ func TestKeyboardUsageErrorsExit2WithoutDialing(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"type-text with no arguments", []string{"type-text"}, "usage: winuse type-text <window> [--post | --into <element>] <text>"},
-		{"type-text with only a window", []string{"type-text", "101"}, "usage: winuse type-text <window> [--post | --into <element>] <text>"},
+		{"type-text with no arguments", []string{"type-text"}, "usage: winuse type-text <window> [--post | --into <element>] [--interval-ms <n>] <text>"},
+		{"type-text with only a window", []string{"type-text", "101"}, "usage: winuse type-text <window> [--post | --into <element>] [--interval-ms <n>] <text>"},
 		{"press-key with no arguments", []string{"press-key"}, "usage: winuse press-key <window> <key> [--post]"},
 		{"press-key with only a window", []string{"press-key", "101"}, "usage: winuse press-key <window> <key> [--post]"},
 		// Posted Keys (ticket 07): --post needs text or a key, and never
 		// combines with --headed.
-		{"type-text --post with no text", []string{"type-text", "101", "--post"}, "usage: winuse type-text <window> [--post | --into <element>] <text>"},
+		{"type-text --post with no text", []string{"type-text", "101", "--post"}, "usage: winuse type-text <window> [--post | --into <element>] [--interval-ms <n>] <text>"},
 		{"press-key --post with no key", []string{"press-key", "101", "--post"}, "usage: winuse press-key <window> <key> [--post]"},
 		{"press-key --post --headed", []string{"press-key", "101", "Return", "--post", "--headed"}, "--post and --headed cannot be combined"},
 		{"--headed press-key --post", []string{"--headed", "press-key", "101", "--post", "Return"}, "--post and --headed cannot be combined"},
@@ -337,7 +337,7 @@ func TestForceReachesPressKeyRequests(t *testing.T) {
 }
 
 func TestUsageMentionsPost(t *testing.T) {
-	for _, want := range []string{"type-text <window> [--post | --into <element index | name: | id:>] <text>", "press-key <window> <key> [--post] [--force]", "posted", "Alt+F4, Alt+Tab, Ctrl+Shift+Escape"} {
+	for _, want := range []string{"type-text <window> [--post | --into <element index | name: | id:>] [--interval-ms <n>] <text>", "press-key <window> <key> [--post] [--force]", "posted", "Alt+F4, Alt+Tab, Ctrl+Shift+Escape"} {
 		if !strings.Contains(Usage, want) {
 			t.Errorf("usage text missing %q", want)
 		}

@@ -347,6 +347,12 @@ between it and its cover in the z-order, none topmost. Then the covers are
 minimized for five seconds: look for two cursors in two colours with
 `alpha: click` and `beta: click` in their pills (the cursors are excluded
 from captures, so the test cannot check that itself).
+`TestTheInsertionCaretShowsAfterASplice` (`insertion_caret_test.go`,
+multi-agent ticket 11) **needs Windows PowerShell**: on the test's own
+WPF TextBox, left uncovered, `type-text --into id:box XY` after the caret
+is put after "hello" must leave a caret bar among the cursor windows (a
+few pixels wide, a line high) within its showing; the log says where, for
+the user to check it stands right after "helloXY".
 
 Since Element clicks are Headless by default, the tests that rely on a
 real-pointer click pass `--headed`: the Batches that click the text field
@@ -408,6 +414,18 @@ the Edit's context menu (a `#32768` Window of the fixture, closed with the
 fixture). The cover stays the foreground window and no banner shows. The
 posted wheel (`scroll @x,y --post`) is not run: the fixture has no classic
 list box.
+
+`TestChromiumMessagesOnACoveredBrowser` and
+`TestChromiumMessagesOnACoveredElectron` (`chromium_messages_test.go`,
+headless-max ticket 20): the first Chromium browser found, or the
+`WINUSE_E2E_ELECTRON` electron.exe (skipped without it), is started
+directly on the fixture page with no debugging port, so winuse has no
+Browser Connection to it (the Window State says the Page is read through
+UI Automation). With the browser covered, a double click on the page's
+input (window messages, no activation pair), `type-text`, `press-key
+Control_L+a` and a second `type-text` each print their window-messages
+`ok`, the Window State shows the input's value after each typing, and
+the cover stays the foreground window with no banner.
 
 Run only these tests:
 
@@ -936,4 +954,24 @@ set WINUSE_E2E=1
 set WINUSE_E2E_ELECTRON=C:\electron-dist\electron-vX.Y.Z-win32-x64\electron.exe
 set WINUSE_E2E_WEBVIEW2=C:\path\to\WebView2App.exe
 go test -tags e2e -v -timeout 5m -run "TestLaunchAppCDP|TestAttachToRunningElectron" ./test/e2e
+```
+
+## Shell surfaces (desktop-parity 09)
+
+`test/e2e/shell_test.go` runs against the user's own taskbar: there is no
+fixture shell. `TestShellReadsTheTaskbar` only reads (`list-windows
+--shell`, the taskbar's Window State, the foreground unchanged) and runs
+with the usual opt-in. The other two act on the shell and skip unless
+`WINUSE_E2E_SHELL=1` is set as well, only when the user agreed:
+`TestShellRefusesWithoutHeaded` checks that Start's button and
+Control_L+Escape are refused without `--headed` (a regression would open
+Start), and `TestShellOpensAndClosesTheTrayOverflow` opens the tray
+overflow with a `--headed` click on the hidden-icons chevron (it takes
+the foreground), reads its icons, closes it with the Headless Escape, and
+activates the Window that was in the foreground before.
+
+```
+set WINUSE_E2E=1
+set WINUSE_E2E_SHELL=1
+go test -tags e2e -v -run "TestShell" ./test/e2e
 ```

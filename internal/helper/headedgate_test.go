@@ -78,6 +78,12 @@ func TestEveryHeadedOnlyPathIsRefusedWithItsRetry(t *testing.T) {
 			"drag 101 @1,2 @30,40", ""},
 		{"hover @x,y", "hover", protocol.HoverArgs{Window: "101", X: 9, Y: 10},
 			"hover 101 @9,10", ""},
+		{"hover on an Element", "hover", protocol.HoverArgs{Window: "101", ElementIndex: &two},
+			"hover 101 2", ""},
+		{"drag between Elements", "drag", protocol.DragArgs{Window: "101", FromIndex: &two, ToRef: "name:Save As", DropDelayMS: 300},
+			`drag 101 2 "name:Save As" --drop-delay 300`, ""},
+		{"drag from an Element to a point", "drag", protocol.DragArgs{Window: "101", FromRef: "id:card", ToX: 5, ToY: 6},
+			"drag 101 id:card @5,6", ""},
 	}
 	for _, tc := range cases {
 		spy := newActorSpy()

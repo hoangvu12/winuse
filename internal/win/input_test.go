@@ -8,6 +8,7 @@ package win
 import (
 	"errors"
 	"testing"
+	"time"
 	"unsafe"
 )
 
@@ -290,5 +291,23 @@ func TestDragStepsStopBeforeAnyInput(t *testing.T) {
 	err := dragSteps(0, 0, 100, 100, func() bool { return true })
 	if !errors.Is(err, ErrEscStopped) {
 		t.Fatalf("dragSteps = %v, want ErrEscStopped", err)
+	}
+}
+
+// TestDropWaitHoldsAndStops pins --drop-delay's wait (desktop-parity 13):
+// it lasts the delay, none is no wait, and the checkpoint stops it.
+func TestDropWaitHoldsAndStops(t *testing.T) {
+	start := time.Now()
+	if err := dropWait(30*time.Millisecond, func() bool { return false }); err != nil {
+		t.Fatalf("dropWait = %v", err)
+	}
+	if took := time.Since(start); took < 30*time.Millisecond {
+		t.Errorf("dropWait took %s, want at least 30ms", took)
+	}
+	if err := dropWait(0, func() bool { return true }); err != nil {
+		t.Errorf("no delay: dropWait = %v, want nil", err)
+	}
+	if err := dropWait(time.Second, func() bool { return true }); !errors.Is(err, ErrEscStopped) {
+		t.Errorf("stopped: dropWait = %v, want ErrEscStopped", err)
 	}
 }

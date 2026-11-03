@@ -300,6 +300,9 @@ type cursorFrame struct {
 	OutlineRect Rect
 	OutlineOp   float64
 	OutlinePop  float64 // the outline's scale about the element's centre
+	Caret       bool    // the insertion caret (cursor_caret.go)
+	CaretBar    Rect
+	CaretOp     float64
 }
 
 // cursorModel is the Agent Cursor's state, advanced by the clock. It is
@@ -320,6 +323,10 @@ type cursorModel struct {
 	outline      bool
 	outlineRect  Rect
 	outlineStart time.Time
+
+	caret      bool // the insertion caret (cursor_caret.go)
+	caretBar   Rect
+	caretStart time.Time
 
 	fading    bool
 	fadeStart time.Time
@@ -441,6 +448,14 @@ func (m *cursorModel) advance(now time.Time) cursorFrame {
 			f.OutlinePop = outlinePop(el)
 		}
 	}
+	if m.caret {
+		el := now.Sub(m.caretStart)
+		if el >= cursorCaretDuration {
+			m.caret = false
+		} else {
+			f.Caret, f.CaretBar, f.CaretOp = true, m.caretBar, caretOpacity(el)
+		}
+	}
 	if m.idleDue(now) {
 		m.fading = true
 		m.fadeStart = m.lastActive.Add(cursorIdleDelay)
@@ -470,7 +485,7 @@ func (m *cursorModel) idleDue(now time.Time) bool {
 
 // animating reports whether frames must keep coming at the frame rate.
 func (m *cursorModel) animating() bool {
-	return m.travel || m.ripple || m.outline || m.fading || m.labelPending || m.labelRevealing
+	return m.travel || m.ripple || m.outline || m.caret || m.fading || m.labelPending || m.labelRevealing
 }
 
 // nextWake is when the controller's timer should fire next: a frame

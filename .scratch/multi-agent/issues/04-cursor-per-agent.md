@@ -15,7 +15,7 @@
 
 - [x] Cursor manager keyed by agent; per-agent window, colour and label
 - [x] Z-order placement above the target; idle fade; hide on eviction
-- [ ] desktop-parity 21's caret and options: the options are done (WINUSE_AGENT as the label, WINUSE_CURSOR_COLOR); the caret moved to `11-insertion-caret.md`
+- [x] desktop-parity 21's caret and options: the options are done (WINUSE_AGENT as the label, WINUSE_CURSOR_COLOR); the caret landed with `11-insertion-caret.md`
 - [x] Offline tests: colour assignment, option parsing, placement decision against a faked z-order
 - [ ] Opt-in e2e: two agents' cursors visible on two covered fixtures; the user's cover stays above them (visual check by the user). Written and compiled; not run live yet.
 

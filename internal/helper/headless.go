@@ -287,10 +287,16 @@ func (s Services) stepHeadless(ctx context.Context, kind string, args json.RawMe
 	if w != nil && s.pageStep(ctx, kind, args, *w) {
 		return true // a Page step (pageactions.go)
 	}
+	if chromiumStep(kind, args, w) {
+		return true // chromium.go: window messages, no foreground or banner
+	}
 	switch kind {
 	case "press-key", "type-text":
 		if w == nil {
 			return false
+		}
+		if kind == "press-key" && overflowEscapeStep(args, *w) {
+			return true // Escape on the tray overflow (shell.go)
 		}
 		return headlessStep(kind, args, s.keyRoute(args, *w))
 	case "tab-new", "tab-close", "tab-switch":
@@ -366,6 +372,9 @@ func (s Services) runHeadless(ctx context.Context, ref string, actor HeadlessAct
 	index, rerr := run.target.resolve(ctx, s, w)
 	if rerr != nil {
 		return "", nothingSent(rerr)
+	}
+	if rerr := s.shellElementRefusal(ctx, w, index, run); rerr != nil {
+		return "", rerr // an Element of a shell surface (shell.go)
 	}
 	var rect win.Rect
 	var shown bool

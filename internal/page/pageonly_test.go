@@ -267,7 +267,7 @@ func TestDragPlainAndHTML5(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	kind, err := in.Drag(context.Background(), Point{0, 0}, Point{100, 0})
+	kind, err := in.Drag(context.Background(), Point{0, 0}, Point{100, 0}, 0)
 	if err != nil || kind != DragMouse {
 		t.Fatalf("plain drag %v %v", kind, err)
 	}
@@ -298,7 +298,7 @@ func TestDragPlainAndHTML5(t *testing.T) {
 	})
 	in2, _ := NewInput(context.Background(), f2.c, "S", nil)
 	defer in2.Close()
-	kind, err = in2.Drag(context.Background(), Point{0, 0}, Point{100, 50})
+	kind, err = in2.Drag(context.Background(), Point{0, 0}, Point{100, 50}, 0)
 	if err != nil || kind != DragHTML5 {
 		t.Fatalf("html5 drag %v %v (%v)", kind, err, f2.events())
 	}
@@ -307,6 +307,56 @@ func TestDragPlainAndHTML5(t *testing.T) {
 	want := []string{"dispatchDragEvent dragEnter 100,50", "dispatchDragEvent dragOver 100,50", "dispatchDragEvent drop 100,50", "dispatchMouseEvent mouseReleased 100,50"}
 	if !reflect.DeepEqual(tail, want) {
 		t.Errorf("html5 tail %v", ev)
+	}
+}
+
+// TestDragHoldsForTheDropDelay: --drop-delay (desktop-parity 13) holds a
+// plain drag between its last move and the release, and an HTML5 drag
+// between dragOver and drop.
+func TestDragHoldsForTheDropDelay(t *testing.T) {
+	old := dragPace
+	dragPace = 0
+	t.Cleanup(func() { dragPace = old })
+	const drop = 120 * time.Millisecond
+
+	for _, html5 := range []bool{false, true} {
+		f := newFakeTab(t)
+		var mu sync.Mutex
+		at := map[string]time.Time{}
+		moves := 0
+		stamp := func(c *cdptest.Conn, m cdptest.Message) (any, error) {
+			var p map[string]any
+			json.Unmarshal(m.Params, &p)
+			mu.Lock()
+			defer mu.Unlock()
+			at[fmt.Sprint(p["type"])] = time.Now()
+			if p["type"] == "mouseMoved" && p["buttons"] == 1.0 {
+				if moves++; html5 && moves == 3 {
+					c.Event(m.SessionID, "Input.dragIntercepted", map[string]any{"data": map[string]any{"items": []any{}, "dragOperationsMask": 1}})
+				}
+			}
+			return nil, nil
+		}
+		f.srv.Handle("Input.dispatchMouseEvent", stamp)
+		f.srv.Handle("Input.dispatchDragEvent", stamp)
+		in, err := NewInput(context.Background(), f.c, "S", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		kind, err := in.Drag(context.Background(), Point{0, 0}, Point{100, 0}, drop)
+		in.Close()
+		if err != nil || (kind == DragHTML5) != html5 {
+			t.Fatalf("html5 %v: drag %v %v", html5, kind, err)
+		}
+		mu.Lock()
+		before, after := at["mouseMoved"], at["mouseReleased"]
+		if html5 {
+			before, after = at["dragOver"], at["drop"]
+		}
+		mu.Unlock()
+		if gap := after.Sub(before); gap < drop {
+			t.Errorf("html5 %v: held %s before the drop, want at least %s", html5, gap, drop)
+		}
 	}
 }
 

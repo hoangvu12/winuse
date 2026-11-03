@@ -122,8 +122,8 @@ func TestStatusNeverWaitsBehindAnAction(t *testing.T) {
 		t.Fatal("status is serialized on the action gate")
 	}
 	s := statusServices(&heldFakeBrowsers{})
-	s.actionGate = make(chan struct{}, 1)
-	s.actionGate <- struct{}{} // an Action holds the desktop
+	s.lanes = newLaneManager()
+	s.lanes.lane(desktopLane) <- struct{}{} // an Action holds the desktop
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	if _, err := CommandsWith(s)[StatusCommand](ctx, nil); err != nil {

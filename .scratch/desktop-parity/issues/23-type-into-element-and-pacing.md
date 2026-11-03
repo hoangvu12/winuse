@@ -16,14 +16,14 @@ Routes for `--into`, most headless first:
 
 **Blocked by:** none
 
-**Status:** ready-for-agent (the `--into` legs for Page Elements and classic edit controls landed 2026-11-03; the Text-pattern leg moved to headless-max 13; left: `--interval-ms`)
+**Status:** done
 
 - [x] `--into` in CLI, protocol, Batch
-- [ ] `--interval-ms` in CLI, protocol, Batch
+- [x] `--interval-ms` in CLI, protocol, Batch
 - [x] Routing by Element origin and kind (Page, classic edit, Headed/refusal)
 - [x] ~~Routing: the Text-pattern leg~~ moved to headless-max 13
 - [x] Offline tests: each route, the refusal
-- [ ] Offline tests: the interval note
+- [x] Offline tests: the interval note
 - [x] Opt-in e2e: fixture edit box by ID, covered (`TestHeadlessTypeTextIntoElement`)
 - [x] SKILL.md typing section
 
@@ -76,3 +76,14 @@ and stays ready-for-agent.
 ### 2026-11-03: triage decision (user)
 
 Kept: `--interval-ms` is what is left.
+
+### 2026-11-03: `--interval-ms` landed (branch dp23-interval)
+
+- CLI: `type-text <window> [--post | --into <ref>] [--interval-ms <n>] <text>`. The flag sits among the leading flags in either order, at most once each, and the same holds in a Batch step. The value must be 0 to 1000; a missing or bad value is a usage error. After the flags, a flag's spelling is text, as before.
+- Protocol: `TypeTextArgs.IntervalMS` (`interval_ms`). The helper checks the range again and refuses with nothing touched.
+- Helper (`interval.go`): the routes that type key by key are paced, one piece at a time with `Services.Sleep` between pieces. A piece is a rune, and a `\r\n` pair stays one piece. The paced routes are Headed type-text, `--into --headed`, and Posted type-text, which keeps the count of messages posted for its partial-failure wording. A stop (Esc, or the request's deadline) between pieces ends the typing as the batches did.
+- The Headless routes (the classic edit insert, `--into`'s classic and caret-splice routes, and the Page) put the text in at once. Their `ok` gains "--interval-ms does not apply: this route puts the text in at once", joined to any note they already print.
+- Not paced: press-key (one key) and the Page's typing, which goes through CDP in one call.
+- Tests: `internal/helper/interval_test.go` (pieces, the pause and stop, Headed and Posted pacing, the Headless note, the range refusal) and `internal/cli/interval_test.go` (flag orders, text after the flags, errors, the Batch step). No e2e: the pacing is timing only, and the routes it paces have e2e already.
+- SKILL.md: the typing section and the command reference.
+

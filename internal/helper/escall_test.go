@@ -51,7 +51,7 @@ func (e *genEsc) waitingFor(n int32, t *testing.T) {
 
 func TestEscStopsRunningAndWaitingRequests(t *testing.T) {
 	esc := &genEsc{}
-	s := Services{actionGate: make(chan struct{}, 1), Esc: esc}
+	s := Services{lanes: newLaneManager(), Esc: esc}
 
 	started, release := make(chan struct{}), make(chan struct{})
 	running := s.serialized(func(ctx context.Context, args json.RawMessage) (string, *Error) {
@@ -118,12 +118,12 @@ func TestEscStopsRunningAndWaitingRequests(t *testing.T) {
 // Without the waiting side (the fakes, the no-op), a waiting request keeps
 // today's behaviour: it waits, and its budget can run out.
 func TestWaitingWithoutTheWaitingSide(t *testing.T) {
-	s := Services{actionGate: make(chan struct{}, 1), Esc: &scopeEsc{}}
-	s.actionGate <- struct{}{} // another Action holds the turn
+	s := Services{lanes: newLaneManager(), Esc: &scopeEsc{}}
+	s.lanes.lane(desktopLane) <- struct{}{} // another Action holds the turn
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 	_, err := s.serialized(func(context.Context, json.RawMessage) (string, *Error) { return okOutput, nil })(ctx, nil)
-	if err == nil || !strings.Contains(err.Msg, "another winuse Action was still running") {
+	if err == nil || err.Msg != "another agent is using the desktop; nothing was sent" {
 		t.Errorf("queued out: %+v", err)
 	}
 }

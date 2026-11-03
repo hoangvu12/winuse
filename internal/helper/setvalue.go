@@ -100,7 +100,11 @@ func setValue(s Services) Command {
 				target:    target,
 				minimized: true,
 				act: func(ctx context.Context, w win.WindowInfo, index int) error {
-					return ha.SetValueHeadless(ctx, w.ID, index, a.Value)
+					if err := ha.SetValueHeadless(ctx, w.ID, index, a.Value); err != nil {
+						return err
+					}
+					s.showCaret(ctx, w, index)
+					return nil
 				},
 				refusal: valueError,
 			})
@@ -116,7 +120,11 @@ func setValue(s Services) Command {
 					cmd:  "set-value",
 					verb: "set value",
 					act: func(ctx context.Context, w win.WindowInfo, index int) error {
-						return ha.SetValueHeadless(ctx, w.ID, index, a.Value)
+						if err := ha.SetValueHeadless(ctx, w.ID, index, a.Value); err != nil {
+							return err
+						}
+						s.showCaret(ctx, w, index)
+						return nil
 					},
 					refusal: valueError,
 				},

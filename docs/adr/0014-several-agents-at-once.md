@@ -8,9 +8,12 @@ request, has landed (multi-agent ticket 02), and so have Decision 2, the
 Window States and screenshot mappings per Agent (ticket 03), Decision
 4, a cursor per Agent (ticket 04), and Decision 5, Esc stops every agent
 (ticket 05: the running Action and every request waiting for its turn),
-and the Window identity check (ticket 09: a reused Window ID is refused
-before any Action). The rest is planned, and winuse still
-serves one Action at a time. It reverses the desktop-parity
+the Window identity check (ticket 09: a reused Window ID is refused
+before any Action), and Decisions 1, 6 and 7, the lanes (ticket 06: a lane
+per UI thread, per browser Window's Page and one desktop lane, waited for
+up to 12 s). The UIA worker pool (ticket 07) and polite real input
+(ticket 08) are planned; until ticket 07 lands, every UIA call still runs
+on the one UIA thread. It reverses the desktop-parity
 spec's "not adopted: multi-agent cursors and agent ids"
 (`.scratch/desktop-parity/spec.md:88`), the headless spec's out-of-scope
 "Per-agent cursors and a machine-wide input lease"
@@ -112,5 +115,13 @@ State a reference came from.
   the wait, and an Esc stops the wait.
 - More memory per Window State: each agent's states are dropped when it
   is idle past the helper's idle period, and the total is capped.
-- docs/codex-parity.md's "one request at a time" row changes when the
-  lanes land (ticket 06), not before.
+- docs/codex-parity.md's "one request at a time" row was reworded when
+  the lanes landed (ticket 06).
+- A Page lane is keyed by the browser Window, whose one active Tab its
+  Page Actions act on; two agents in one browser Window take turns.
+- The Window identity records (ticket 09) are shared by every agent: when
+  another agent lists or reads a Window that took over a closed Window's
+  ID first, an agent still holding the old ID passes the check and acts
+  on the new Window. Per-agent records would close that gap at the cost of
+  each agent listing again after every reuse; the shared design was
+  chosen.

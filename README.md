@@ -116,7 +116,7 @@ at all, and winuse says so.
 
 | Command | What it does |
 |---|---|
-| `list-windows`, `list-apps` | Lists open windows, and running and recently used apps. `list-windows --details` adds each window's position, size, process id and focused, minimized, maximized or admin state; `--app <name>` lists one app's windows |
+| `list-windows`, `list-apps` | Lists open windows, and running and recently used apps. `list-windows --details` adds each window's position, size, process id and focused, minimized, maximized or admin state; `--app <name>` lists one app's windows; `--shell` adds the taskbar, and the tray overflow, Start and the Action Center while open |
 | `launch-app <name> [--minimized] [--arg <a>]... [--cwd <dir>] [--env K=V]... [--timeout <s>]` | Starts an app without taking the foreground and prints its window |
 | `get-window-state <window> [--screenshot] [--timeout <s>]` | Prints a window's element tree, with an optional screenshot; `--timeout` gives a slow app's tree more time |
 | `click`, `set-value`, `perform-secondary-action` | Clicks, fills in, picks a list item, expands or toggles an element |
@@ -124,7 +124,7 @@ at all, and winuse says so.
 | `select-text` | Selects text in a field without keys or the mouse |
 | `invoke-menu` | Runs a command of a classic menu bar, such as `"File > Save As..."`, without opening the menu |
 | `scroll` | Scrolls an element by steps or into view, or scrolls at a point |
-| `drag`, `hover`, `zoom` | Drags or hovers at a point or on a page element, or saves a close-up of a screenshot |
+| `drag`, `hover`, `zoom` | Drags or hovers at a point or on an element, or saves a close-up of a screenshot |
 | `restore-window`, `minimize-window`, `move-window`, `resize-window`, `close-window` | Manages a window without bringing it to the front |
 | `--headed maximize-window` | Maximizes a window; it comes to the front, because Windows cannot maximize a window behind others |
 | `close-app <app> [--force]` | Closes every window of an app and waits for it to exit; `--force` ends it if it stays open |

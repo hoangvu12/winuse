@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
@@ -26,14 +27,18 @@ import (
 // postFlag is the Posted Keys option's spelling; forceFlag sends a Blocked
 // Combo press-key otherwise refuses; intoFlag aims type-text at an Element.
 const (
-	postFlag  = "--post"
-	forceFlag = "--force"
-	intoFlag  = "--into"
+	postFlag     = "--post"
+	forceFlag    = "--force"
+	intoFlag     = "--into"
+	intervalFlag = "--interval-ms" // a pause between typed characters (desktop-parity ticket 23)
 )
+
+// maxIntervalMS bounds --interval-ms, as the helper does.
+const maxIntervalMS = 1000
 
 // The keyboard commands' usage lines.
 const (
-	typeTextUsage = "usage: winuse type-text <window> [--post | --into <element>] <text>"
+	typeTextUsage = "usage: winuse type-text <window> [--post | --into <element>] [--interval-ms <n>] <text>"
 	pressKeyUsage = "usage: winuse press-key <window> <key> [--post] [--force]"
 )
 
@@ -59,24 +64,45 @@ func parsePressKeyArgs(args []string) (window, key string, err error) {
 	return args[0], strings.Join(args[1:], " "), nil
 }
 
-// typeTextFlags takes type-text's one flag from the front of its text
+// typeTextFlags takes type-text's flags from the front of its text
 // arguments (right after the Window, or first in a Batch step): --post,
 // or --into and the Element Reference after it (desktop-parity ticket
-// 23). Anything later is text, flag-looking or not.
+// 23), and --interval-ms and its milliseconds, before or after either.
+// Each comes at most once; anything after them is text, flag-looking or
+// not.
 func typeTextFlags(rest []string) (a protocol.TypeTextArgs, text []string, err error) {
-	switch {
-	case len(rest) > 0 && rest[0] == postFlag:
-		a.Post = true
-		return a, rest[1:], nil
-	case len(rest) > 0 && rest[0] == intoFlag:
-		if len(rest) < 2 {
-			return a, nil, errors.New("--into takes an element index, name:<text> or id:<id> reference, then the text")
+	routed, paced := false, false
+	for len(rest) > 0 {
+		switch {
+		case rest[0] == postFlag && !routed:
+			a.Post, routed = true, true
+			rest = rest[1:]
+		case rest[0] == intoFlag && !routed:
+			if len(rest) < 2 {
+				return a, nil, errors.New("--into takes an element index, name:<text> or id:<id> reference, then the text")
+			}
+			if isPointToken(rest[1]) {
+				return a, nil, errors.New("--into takes an element index or name:/id: reference, not @x,y coordinates")
+			}
+			a.IntoIndex, a.IntoRef, err = parseElementRefToken(rest[1])
+			if err != nil {
+				return a, nil, err
+			}
+			routed = true
+			rest = rest[2:]
+		case rest[0] == intervalFlag && !paced:
+			if len(rest) < 2 {
+				return a, nil, fmt.Errorf("--interval-ms takes milliseconds from 0 to %d, then the text", maxIntervalMS)
+			}
+			n, perr := strconv.Atoi(rest[1])
+			if perr != nil || n < 0 || n > maxIntervalMS {
+				return a, nil, fmt.Errorf("--interval-ms takes milliseconds from 0 to %d, got %q", maxIntervalMS, rest[1])
+			}
+			a.IntervalMS, paced = n, true
+			rest = rest[2:]
+		default:
+			return a, rest, nil
 		}
-		if isPointToken(rest[1]) {
-			return a, nil, errors.New("--into takes an element index or name:/id: reference, not @x,y coordinates")
-		}
-		a.IntoIndex, a.IntoRef, err = parseElementRefToken(rest[1])
-		return a, rest[2:], err
 	}
 	return a, rest, nil
 }

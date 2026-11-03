@@ -43,8 +43,9 @@ type WindowInfo struct {
 	Cloaked   bool // DWM cloaked (suspended UWP, other virtual desktop, …)
 	Minimized bool // IsIconic
 
-	ShellWindow bool // desktop / taskbar surface
-	OwnProcess  bool // a window of a winuse process (the overlay; fixtures stay listed)
+	ShellWindow bool   // desktop / taskbar surface
+	Shell       string // the shell surface `list-windows --shell` lists (ShellTaskbar, ...; shell.go), "" for any other window
+	OwnProcess  bool   // a window of a winuse process (the overlay; fixtures stay listed)
 }
 
 // WindowStyle and extended-style flags used by the filter.
@@ -62,7 +63,9 @@ const (
 )
 
 // shellClasses are window classes of shell surfaces that are "visible" but
-// are not Windows a person works in.
+// are not Windows a person works in. list-windows drops them;
+// `list-windows --shell` lists the taskbars again, with the other shell
+// surfaces (shell.go, ADR 0015).
 var shellClasses = map[string]bool{
 	"Progman":                true, // desktop
 	"WorkerW":                true, // desktop behind wallpaper
@@ -184,6 +187,7 @@ func collectOne(hwnd windows.HWND, shell windows.HWND, selfExe string, apps *app
 		w.ExePath, _ = exePath(pid)
 		w.App = apps.Name(w.ExePath)
 	}
+	w.Shell = shellKind(w.Class, w.ExePath)
 	// The caption is read once the process is known: a window of this
 	// process takes the no-message read (windowTitle).
 	w.Title = windowTitle(hwnd, w.PID)

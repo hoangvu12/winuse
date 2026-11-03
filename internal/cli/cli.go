@@ -68,13 +68,16 @@ headed only with --headed: every other Action (double, right and middle
   what it is for.
 
 commands:
-  list-windows [--details] [--app <name>]
+  list-windows [--details] [--app <name>] [--shell]
                                list visible Windows: Window ID, App and title;
                                --details adds a column before the title with the
                                visible frame "x,y WxH" (what move-window and
                                resize-window take), "pid N" and the flags focused,
                                minimized, maximized and admin; --app lists one
-                               App's Windows (App name or executable name)
+                               App's Windows (App name or executable name);
+                               --shell adds the shell surfaces: the taskbar, and
+                               the tray overflow, Start and the Action Center
+                               while open, read and acted on by Window ID
   get-window <window>         print one Window's line (Window ID, App and title),
                                resolved by Window ID or an unambiguous App name
   list-apps                   list running and recently used Apps, with their Windows
@@ -135,7 +138,7 @@ commands:
                                --post (post the click to the classic
                                control there without the foreground: best
                                effort, the app may ignore it)
-  type-text <window> [--post | --into <element index | name: | id:>] <text>
+  type-text <window> [--post | --into <element index | name: | id:>] [--interval-ms <n>] <text>
                                type Unicode text into the Window's focused
                                Element (headless into a classic edit control
                                such as Notepad's or a Win32 dialog's).
@@ -148,7 +151,11 @@ commands:
                                covered Notepad's editor too) or a Page
                                field; any other Element only with --headed
                                (click it, then type), otherwise refused with
-                               nothing sent
+                               nothing sent. --interval-ms, also right after
+                               the Window, pauses that many milliseconds
+                               (0 to 1000) between characters when the text
+                               is typed key by key (--headed, --post), for
+                               Apps that drop fast input
   press-key <window> <key> [--post] [--force]
                                press a key or key combination by Codex's key
                                names, e.g. Return, Tab, Control_L+a, Numpad_0
@@ -218,11 +225,16 @@ const usageTail = `);
   drag <window> @x,y @x,y     drag the pointer from one point to another,
                                both in the Window's latest screenshot's pixels;
                                drag <window> <element> <element | @x,y> drags
-                               a Page Element headless
+                               a Page Element headless, and any other Element
+                               from its clickable point with --headed;
+                               --drop-delay <ms> holds at the end before the
+                               drop
   hover <window> @x,y         move the pointer to a point of the Window's
                                latest screenshot and leave it there (reveals
                                hover-only UI and tooltips); hover <window>
-                               <element> hovers a Page Element headless
+                               <element> hovers a Page Element headless, and
+                               any other Element at its clickable point with
+                               --headed
   activate-window <window>    bring a Window to the foreground
   restore-window <window>     restore a minimized or maximized Window to its
                                normal size without activating it (the output
@@ -512,12 +524,14 @@ func Main(args []string) (code int) {
 	}
 }
 
-const listWindowsUsage = "usage: winuse list-windows [--details] [--app <name>]"
+const listWindowsUsage = "usage: winuse list-windows [--details] [--app <name>] [--shell]"
 
 // listWindowsCmd prints one line per visible Window:
 // "<Window ID>\t<App>\t<title>". --details adds the details column before
-// the title; --app keeps one App's Windows (desktop-parity 22). Without
-// flags the request carries no arguments, Codex's list_windows.
+// the title; --app keeps one App's Windows (desktop-parity 22); --shell
+// adds the shell surfaces: the taskbar, and the tray overflow, Start and
+// the Action Center while open (desktop-parity 09). Without flags the
+// request carries no arguments, Codex's list_windows.
 func listWindowsCmd(args []string) int {
 	a, err := parseListWindowsArgs(args)
 	if err != nil {
@@ -537,7 +551,7 @@ func listWindowsCmd(args []string) int {
 }
 
 // parseListWindowsArgs parses list-windows's flags: --details, and
-// --app <name> or --app=<name>.
+// --app <name> or --app=<name>, and --shell.
 func parseListWindowsArgs(args []string) (protocol.ListWindowsArgs, error) {
 	var a protocol.ListWindowsArgs
 	for i := 0; i < len(args); i++ {
@@ -545,6 +559,8 @@ func parseListWindowsArgs(args []string) (protocol.ListWindowsArgs, error) {
 		switch {
 		case arg == "--details":
 			a.Details = true
+		case arg == "--shell":
+			a.Shell = true
 		case arg == "--app" || strings.HasPrefix(arg, "--app="):
 			if a.App != "" {
 				return protocol.ListWindowsArgs{}, errors.New("--app is given twice")

@@ -78,12 +78,23 @@ name ahead of the action, such as `reviewer: click "Save"`. To choose the
 colour, set `WINUSE_CURSOR_COLOR` to a hex colour such as `#FF8A3D` on
 every command, next to `WINUSE_AGENT`.
 
+Agents working in Windows of different Apps run at the same time.
+Windows of one App that share a UI thread take turns, as all of one
+Chrome's or Explorer's Windows do, and so do two agents in one Window.
+Page Actions in two browser Windows run at once. A Headed Action holds the
+whole desktop, and its banner names the agent: another agent's Headed
+Action waits for it. A command that has waited about 12 seconds, or most
+of its budget, is refused with nothing sent and names the agent it waited
+for, such as `agent reviewer is using window 101`. Retry when that agent is
+done, or work in another App's Window meanwhile. Reads never wait.
+
 ## Find the Window
 
 ```
 winuse list-windows                 # one line per Window: <Window ID>  <App>  <title>
 winuse list-windows --details       # adds <x,y WxH pid N flags> before the title
 winuse list-windows --app <name>    # only that App's Windows (with or without --details)
+winuse list-windows --shell         # adds the taskbar and the open shell flyouts (see below)
 winuse get-window <window>          # re-resolve one Window and print its line
 winuse list-apps                    # running and recent Apps, with their Windows
 winuse launch-app <name|exe path>   # start an App and print the Window it opened
@@ -152,7 +163,34 @@ A dialog such as Save As, a file picker or a message box is its own Window
 of the same App. Target it directly. An Action that opens one names it in a
 note after its `ok` (see "Read the result"). If a dialog you expect is
 missing from the Window State, look for it in `list-windows`. Listings
-already leave out hidden, cloaked and tool windows.
+already leave out hidden, cloaked and tool windows, and the shell.
+
+### The taskbar and the shell
+
+`--shell` adds the shell's own surfaces to the listing. The taskbar's line
+is titled `Taskbar`. Name a shell surface by its Window ID only, never by
+its App (Windows Explorer). `get-window-state` reads the taskbar Headless:
+Start, Search, the notification area (every one of its buttons has the ID
+`SystemTrayIcon`: the hidden-icons chevron, the clock, network, volume,
+battery, Show Desktop) and one button per running App.
+
+- Clicking a running App's taskbar button activates that App: it comes
+  to the front (one already in front may minimize instead), which takes
+  the user's foreground. So it is refused without `--headed`, with nothing
+  sent. To bring an App forward, use `winuse activate-window <window>`
+  with the Window from `list-windows`; the refusal names it.
+- Every other click, `set-value` or Secondary Action on a shell Element
+  is refused without `--headed` too: Start, Search and the notification
+  area's buttons open flyouts, and the tray icons in the overflow and the
+  items of an open Start or Action Center may activate an App. With
+  `--headed` they change the user's screen, so tell the user first. A note
+  after a `--headed` Action's `ok` says where the foreground went.
+  `winuse --headed press-key <taskbar> Control_L+Escape` opens Start.
+  `winuse --headed click <taskbar> <chevron>` opens the hidden icons; the
+  output names the overflow's Window ID, and the overflow keeps the
+  foreground.
+- `winuse press-key <overflow> Escape` closes the open overflow Headless.
+  The foreground then stays on the taskbar, not back on the user's Window.
 
 ## Read the Window State
 
@@ -336,7 +374,8 @@ Every other Action is a Headed Action, and it runs only when you pass
 `--headed`. winuse then brings the Window to the foreground, uses the real
 pointer and keyboard, and frames the Window with a banner telling the user
 that winuse is in control and Esc stops it. Headed covers a point that
-names no usable Element, `--count 2|3`, `--button right|middle`, `drag`, `hover`,
+names no usable Element, `--count 2|3` and `--button right|middle` outside
+a Chromium or Electron Window (there they go as window messages), `drag`, `hover`,
 `maximize-window`, Raise, and `press-key` and `type-text` anywhere the
 routes below do not reach. Sent without `--headed`, these are refused: the
 line says why there is no background route and ends in `nothing was sent`,
@@ -406,7 +445,11 @@ from the start. Each one needs `--headed` (or `--post`, where it fits);
 without it the command is refused with nothing sent.
 
 - Hover and drag in a desktop App. Only a Page with a Browser Connection
-  takes them Headless.
+  takes them Headless. With `--headed` they take an Element as well as
+  `@x,y`: `winuse --headed drag 101 id:card id:done` drags from the
+  Element's clickable point to the other's, and `--drop-delay <ms>` holds
+  the drag at its end before the drop, for a target that needs hover
+  time.
 - A minimized browser, Electron App or Store app. Run `restore-window`
   first. A Store app such as Calculator has no UI at all while minimized
   and comes to the front when restored, so tell the user before you
@@ -417,11 +460,12 @@ without it the command is refused with nothing sent.
 - A right-click menu in a desktop App, such as a WPF App's.
   `click --button right` needs `--headed`, or `--post` on a classic
   control (see "Posted Clicks").
-- The taskbar, with its hidden icons and the clock's calendar and
-  notification panel. winuse lists no taskbar Window, the hidden-icons
-  overflow takes the foreground when it opens, and the panel opens only
-  for a real click. Reach the setting through its App, such as Settings,
-  or ask the user.
+- Opening the shell: Start, the taskbar's hidden icons, and the clock's
+  calendar and notification panel. The hidden-icons overflow takes the
+  foreground when it opens, and the panel does not open from UI
+  Automation at all. Clicking anything on the taskbar or in the overflow
+  needs `--headed` too; reading them stays Headless (see "The taskbar and
+  the shell").
 - Games, canvases and Apps that read raw input. They expose no Elements
   and ignore posted keys, so work with `--headed` from a screenshot with
   `@x,y` points.
@@ -490,13 +534,21 @@ winuse picks the route from the live Window before it sends anything.
   typing, and winuse checks the length afterwards.
 - In a browser Window with a Browser Connection, both go to the Page
   Headless while a Page Element has the focus.
+- In a Chromium browser or Electron App Window otherwise (no Browser
+  Connection, or the focus outside the Page), both go to the Window as
+  window messages, without the foreground: `ok (typed as window messages;
+  ...)`. The page sees a focus and blur around each step. Typed text is
+  read back from the focused field where it has a value; otherwise the
+  output says it was not verified, so read the Window State. Click into
+  the field first with `click <window> <ref> --count 2`, which goes as
+  window messages too. A minimized Window, and a browser the user is
+  working in, are refused with nothing sent. WebView2 is not covered.
 - Everywhere else both need `--headed`, which takes the foreground and
-  types into whatever has keyboard focus. That includes WinUI, WPF,
-  Electron and browser Windows without a Browser Connection. Without the
-  flag they are refused with nothing sent, and the hint names the
-  `--headed` command, `--into` for text and `--post` for text, a key or a
-  chord. For a WinUI or WPF text box, name it with `--into`:
-  that is Headless.
+  types into whatever has keyboard focus. That includes WinUI and WPF.
+  Without the flag they are refused with nothing sent, and the hint names
+  the `--headed` command, `--into` for text and `--post` for text, a key
+  or a chord. For a WinUI or WPF text box, name it with `--into`: that is
+  Headless.
 
 A Headless route prints `ok`; a refusal means nothing was typed, so pick
 the next step from its hint. Before a Headed type, check the
@@ -593,6 +645,12 @@ effort.
 
 Use `--post` for a key, a chord or plain text on a Window with no Headless
 route, when the user's foreground matters more than certainty.
+
+Some Apps drop characters typed fast. `type-text <window> --interval-ms 50
+<text>` pauses that many milliseconds (0 to 1000) between characters
+when the text goes key by key, with `--headed` or `--post`; it sits with
+`--post` or `--into` right after the Window. A route that puts the text in
+at once ignores it, and its `ok` says so.
 
 ## Run a menu command
 
@@ -879,78 +937,34 @@ so use `close-window` to close the Window.
 
 ## Batches
 
-A Batch runs a routine sequence on one Window in one call. It runs the
-Actions in order and prints each one's output on its own line, numbered.
+A Batch runs a routine sequence on one Window in one call. Batch only
+sequences you understand well. Each step's output prints as
+`Action N (<action>): ...`, more lines indented, then `Note:` lines for
+the whole Batch.
 
 ```
-winuse --headed batch 101 click id:field then type-text hello world then press-key Return then click name:OK
+winuse --headed batch 101 click id:field then type-text hello world then press-key Return
 ```
 
-```
-Action 1 (click): ok
-Action 2 (type-text): ok
-Action 3 (press-key): ok
-Action 4 (click): ok
-Note: window 101 closed
-```
+Steps take the standalone arguments without the Window. A `then` argument
+starts a new step, so quote text containing it. `winuse batch -` reads
+stdin: the Window and Batch flags on line 1, then one step per line, no
+`then`; `"` groups words, `\"` is a quote, blank and `#` lines are
+skipped. A malformed Batch or an unknown Window sends nothing. A Batch has
+60 s; `--timeout <s>` (up to 300) after the Window widens it (a later one
+is a `wait` step's).
 
-A step's output starts after `Action N (<action>): `, and any further lines
-of it are indented two spaces, so `eval` results, `tab list` and the Tab
-id from `tab new` come back in the Batch. The `Note:` lines at the left
-margin come after all the steps and cover the whole Batch (see "Read the
-result").
+A failed step's line reads `failed: <message>` with its hint, and the
+Batch runs on, then exits 1 naming every failed step and marking
+`uncertain` those that may have taken effect: read the Window State
+before repeating one, and retry only failed steps. `--stop-on-error` after
+the Window stops at the first failure (`batch stopped at Action N`), as
+Esc and a spent budget always do.
 
-A failed step does not stop the Batch. Its line reads
-`Action N (<action>): failed: <message>` with its `hint:` indented under
-it, and the next step runs. After the last step the Batch fails with exit
-1 and one line naming every failed step:
-
-```
-Action 1 (click): ok
-Action 2 (press-key): failed: press-key Control_L+a has no background route in window 101: ...; nothing was sent
-  hint: pass --headed to do it with the real pointer and keyboard, ...: winuse --headed press-key 101 Control_L+a
-Action 3 (click): ok
-batch: 1 of 3 Actions failed: Action 2 (press-key)
-hint: each failed Action's line in the output names its cause and hint; the other Actions took effect
-```
-
-A step whose failure says `may have taken effect` or `do not repeat it` is
-marked `uncertain` in that line, as in `Action 2 (set-value, uncertain)`,
-and the hint names it. Read the Window State before you repeat an uncertain
-step, because it may have acted. Retry only the failed steps, after you
-fix their cause, and never resend the whole Batch: the other steps took
-effect.
-
-Put `--stop-on-error` right after the Window, before the first Action, when
-a later step only makes sense after the earlier ones succeed, such as typing
-into a field a click must focus first. The first failure then stops the
-Batch with `batch stopped at Action N (<action>): <message>` and that step's
-hint; the steps before it printed their lines and took effect, and the steps
-after it did not run. An Esc stop or a spent budget always stops a Batch
-this way.
-
-Each step takes the same arguments as the standalone command, without the
-Window, including `--post` on `press-key` and `type-text`. A separate `then`
-argument, in any case, always starts a new step, so quote text that contains
-the word as one argument. winuse refuses a malformed Batch, or a Window that
-does not resolve, before it sends anything. Batch only sequences you
-understand well, and go back to one Action at a time when anything is
-uncertain. A Batch has 60 seconds in all; for a long one, put
-`--timeout <seconds>` (up to 300) right after the Window, before the first
-Action. A `--timeout` later on the line belongs to a `wait` step, and the
-Batch's budget bounds that wait.
-
-Without `--headed`, a Batch runs Headless, with no banner, and a step with
-no Headless route, such as `type-text` outside a classic edit box, is
-refused at its turn with nothing sent for that step. `--headed` makes every
-step Headed under one banner and the Headed Esc stop. That is why the
-example needs it: without it, the click would not move focus to the field,
-the typing would be refused, and the steps after it would still run. Steps
-that depend on each other like that need `--headed`, and `--stop-on-error`
-when a failed step must stop the rest.
-
-The Page commands and `tab list`, `tab new`, `tab close` and `tab switch`
-are Batch steps too.
+Without `--headed` a Batch is Headless, with no banner, and a step with no
+Headless route is refused with nothing sent; the example needs `--headed`
+for the click to focus the field. Use `--stop-on-error` when steps depend
+on each other. Page and tab commands are steps too.
 
 ## Read the result
 
@@ -984,8 +998,7 @@ unknown, read the Window State, and decide from it.
 
 After `click`, `perform-secondary-action` Expand or Select, `press-key`,
 `set-value` and a Batch, winuse watches the App's Windows for a moment and
-adds a line after `ok` (after a Batch's step lines, failed steps included)
-for each change:
+adds a line after `ok` for each change:
 
 - `Note: a new Window opened: <id> <App> "<title>"` for a dialog, menu or
   popup the Action opened. Read that Window next with
@@ -1126,7 +1139,7 @@ Run `winuse` with no arguments for the full usage text.
 ```
 winuse [--headed] <command> [arguments]
 
-list-windows [--details] [--app <name>]
+list-windows [--details] [--app <name>] [--shell]
 list-apps | get-window <window>
 launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <s>]
 close-app <app> [--force]           # --force ends what is still running: the only command that ends a process
@@ -1136,21 +1149,21 @@ zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right] [--post]
 set-value <window> <ref> <value|on|off|item name>
 perform-secondary-action <window> <ref> <action>   # Raise, Scroll Up/Down/Left/Right, Expand, Collapse, Toggle, Select
-type-text <window> [--post | --into <ref>] <text>
+type-text <window> [--post | --into <ref>] [--interval-ms <n>] <text>
 press-key <window> <key> [--post] [--force]
 select-text <window> <ref> <start> <length> | select-text <window> <ref> all
 invoke-menu <window> "<menu> > <item>"   # a classic menu bar command, Headless
 scroll <window> <ref> <up|down|left|right> [steps] | scroll <window> <ref> into-view
 scroll <window> @x,y <dx> <dy> [--post]   # Headless: the Page, or the Window's Element under the point; --post posts the wheel
-drag <window> @x,y @x,y             # --headed: left button, point to point
-drag <window> <element> <element|@x,y>   # a Page Element, Headless
+drag <window> @x,y @x,y [--drop-delay <ms>]   # --headed: left button, point to point
+drag <window> <element> <element|@x,y> [--drop-delay <ms>]   # a Page Element Headless; other Elements --headed
 hover <window> @x,y                 # --headed: moves the pointer and leaves it there, to reveal tooltips
-hover <window> <element>            # a Page Element, Headless
+hover <window> <element>            # a Page Element Headless; other Elements --headed, at the clickable point
 activate-window <window>            # takes the foreground, no flag needed
 restore-window <window> | minimize-window <window> | close-window <window>
 move-window <window> <x> <y> | resize-window <window> <width> <height>
 maximize-window <window>            # needs --headed: takes the foreground
-batch <window> [--timeout <s>] [--stop-on-error] <action> [args] [then <action> [args]] ...
+batch <window>|- [--timeout <s>] [--stop-on-error] <action> [args] [then ...]
 navigate <window> <url> [--wait load|domcontentloaded|none] | back | forward | reload <window>
 wait <window> selector <css> | text <text> | url <url> | load | download [--timeout <s>]
 wait <window> <ref> enabled|disabled|gone|value <v>|checked|unchecked|expanded|collapsed [--timeout <s>]

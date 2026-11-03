@@ -87,11 +87,11 @@ func (s Services) desktopWait(a protocol.WaitArgs) bool {
 	return false
 }
 
-// waitGated is wait in the serialized registry: a Page wait runs on the
-// action gate as before, a desktop wait skips it (it only reads). A Batch
-// dispatches to the raw wait, inside its own gate.
+// waitGated is wait in the registry: a Page wait runs on its Page's lane
+// (lanes.go), a desktop wait takes none (it only reads). A Batch
+// dispatches to the raw wait, inside its own lanes.
 func (s Services) waitGated(cmd Command) Command {
-	paged := s.serialized(cmd)
+	paged := s.laned("wait", cmd)
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.WaitArgs
 		if json.Unmarshal(args, &a) == nil && s.desktopWait(a) {

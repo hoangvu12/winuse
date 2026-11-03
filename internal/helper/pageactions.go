@@ -874,6 +874,22 @@ func (s Services) pageStep(ctx context.Context, kind string, args json.RawMessag
 		defer cancel()
 		_, _, ok := s.pagePoint(ctx, w, a.X, a.Y)
 		return ok
+	case "hover":
+		// Desktop-parity 13: a UIA Element form is Headed. The Page form
+		// ignores headed.
+		var a protocol.HoverArgs
+		if json.Unmarshal(args, &a) != nil || !elementForm(a.ElementIndex, a.Ref, nil) {
+			return false
+		}
+		_, _, _, ok := s.pageRoute(ctx, ref, elementTarget{index: a.ElementIndex, ref: a.Ref})
+		return ok
+	case "drag":
+		var a protocol.DragArgs
+		if json.Unmarshal(args, &a) != nil || !elementForm(a.FromIndex, a.FromRef, nil) {
+			return false
+		}
+		_, _, _, ok := s.pageRoute(ctx, ref, elementTarget{index: a.FromIndex, ref: a.FromRef})
+		return ok
 	case "press-key", "type-text":
 		var f struct {
 			Headed bool `json:"headed"`

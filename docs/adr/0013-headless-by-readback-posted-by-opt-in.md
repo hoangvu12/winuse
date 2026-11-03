@@ -89,7 +89,7 @@ is not, which is why ADR 0011 made Posted Keys opt-in.
 | Caret-aware typing into Text-pattern fields | 1 | 13 | done (`--into` only; see the ticket) |
 | Headless Actions on minimized Windows | 1 | 14 | done |
 | Electron and WebView2 Browser Connections at launch; attach to a running Electron | 1 | 15 | done |
-| Typing, keys and clicks into Chromium and Electron without CDP | 7 | 20 | planned |
+| Typing, keys and clicks into Chromium and Electron without CDP | 7 | 20 | done |
 | No Headed Action without `--headed` | 3 | 21 | done |
 
 ## Reversals

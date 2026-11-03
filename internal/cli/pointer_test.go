@@ -5,6 +5,7 @@ package cli
 // errors. None of these dial the helper, so no desktop is touched.
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -256,5 +257,61 @@ func TestUsageMentionsPointerCommands(t *testing.T) {
 		if !strings.Contains(Usage, cmd) {
 			t.Errorf("usage text missing %q", cmd)
 		}
+	}
+}
+
+// TestDragAndHoverTakeElementsAndADropDelay: desktop-parity 13. Both
+// commands take any Element (the helper routes a Page Element Headless and
+// a UIA Element Headed), and drag takes --drop-delay <ms> anywhere, also
+// as a Batch step.
+func TestDragAndHoverTakeElementsAndADropDelay(t *testing.T) {
+	cases := []struct {
+		args []string
+		want protocol.DragArgs
+	}{
+		{[]string{"101", "@1,2", "@3,4", "--drop-delay", "300"},
+			protocol.DragArgs{Window: "101", FromX: 1, FromY: 2, ToX: 3, ToY: 4, DropDelayMS: 300, Headed: true}},
+		{[]string{"101", "3", "--drop-delay=50", "id:target"},
+			protocol.DragArgs{Window: "101", FromIndex: intPtr(3), ToRef: "id:target", DropDelayMS: 50, Headed: true}},
+		{[]string{"101", "name:Card", "@40,50"},
+			protocol.DragArgs{Window: "101", FromRef: "name:Card", ToX: 40, ToY: 50, Headed: true}},
+	}
+	for _, c := range cases {
+		got, err := dragRequest(c.args, true)
+		if err != nil || !reflect.DeepEqual(got, c.want) {
+			t.Errorf("dragRequest(%q) = %+v, %v; want %+v", c.args, got, err, c.want)
+		}
+	}
+	for _, bad := range [][]string{
+		{"101", "3", "5", "--drop-delay"},
+		{"101", "3", "5", "--drop-delay", "soon"},
+		{"101", "3", "5", "--drop-delay=1.5"},
+	} {
+		if _, err := dragRequest(bad, true); err == nil || !strings.Contains(err.Error(), "--drop-delay needs a value in milliseconds") {
+			t.Errorf("dragRequest(%q) = %v, want the --drop-delay usage error", bad, err)
+		}
+	}
+	if h, err := hoverRequest([]string{"101", "id:canvas"}, true); err != nil || h.Ref != "id:canvas" || !h.Headed {
+		t.Errorf("hover on an Element = %+v, %v", h, err)
+	}
+
+	steps := map[string]any{
+		"drag @1,2 @3,4 --drop-delay 20": protocol.DragArgs{FromX: 1, FromY: 2, ToX: 3, ToY: 4, DropDelayMS: 20},
+		"drag 3 5 --drop-delay=400":      protocol.DragArgs{FromIndex: intPtr(3), ToIndex: intPtr(5), DropDelayMS: 400},
+		"hover id:canvas":                protocol.HoverArgs{Ref: "id:canvas"},
+	}
+	for line, want := range steps {
+		step, err := parseBatchStep(strings.Fields(line))
+		if err != nil {
+			t.Errorf("batch step %q: %v", line, err)
+			continue
+		}
+		got := reflect.New(reflect.TypeOf(want))
+		if err := json.Unmarshal(step.Args, got.Interface()); err != nil || !reflect.DeepEqual(got.Elem().Interface(), want) {
+			t.Errorf("batch step %q = %s, want %+v", line, step.Args, want)
+		}
+	}
+	if _, err := parseBatchStep([]string{"drag", "3", "5", "--drop-delay"}); err == nil {
+		t.Error("a batch drag with --drop-delay and no value was accepted")
 	}
 }

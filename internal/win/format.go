@@ -12,7 +12,8 @@ import (
 //
 // in the given order (z-order, topmost first). Tab-separated so a harness
 // can split lines unambiguously (split on "\t" with limit 3: the title may
-// contain anything). Empty output means no visible Window.
+// contain anything). Empty output means no visible Window. The untitled
+// taskbar of `list-windows --shell` is titled "Taskbar" (ListedTitle).
 func FormatWindows(ws []WindowInfo) string {
 	var b strings.Builder
 	for _, w := range ws {
@@ -20,7 +21,7 @@ func FormatWindows(ws []WindowInfo) string {
 		b.WriteByte('\t')
 		b.WriteString(w.App)
 		b.WriteByte('\t')
-		b.WriteString(w.Title)
+		b.WriteString(ListedTitle(w))
 		b.WriteByte('\n')
 	}
 	return b.String()
@@ -69,7 +70,7 @@ func FormatWindowsDetailed(ws []WindowInfo, d []WindowDetails) string {
 			b.WriteString(" admin")
 		}
 		b.WriteByte('\t')
-		b.WriteString(w.Title)
+		b.WriteString(ListedTitle(w))
 		b.WriteByte('\n')
 	}
 	return b.String()
