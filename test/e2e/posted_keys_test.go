@@ -14,7 +14,6 @@
 package e2e
 
 import (
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -131,16 +130,10 @@ func TestPostedReturnIntoCoveredChromeAddressBar(t *testing.T) {
 		t.Skip("Chrome is not installed in a standard location")
 	}
 
-	// An isolated profile (see chromium_test.go): a fresh browser process
+	// An isolated profile (startIsolatedBrowser): a fresh browser process
 	// whatever the user's own Chrome is doing. about:blank puts the focus
 	// in the address bar, as a new tab does.
-	profile := t.TempDir()
-	cmd := exec.Command(chrome.exe, "--user-data-dir="+profile, "--no-first-run", "--no-default-browser-check", "--new-window", "about:blank")
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("starting %s: %v", chrome.exe, err)
-	}
-	pid := uint32(cmd.Process.Pid)
-	defer terminatePID(t, pid)
+	pid := startIsolatedBrowser(t, chrome.exe, "--new-window", "about:blank")
 
 	id := findWindowOf(t, pid, "Chrome_WidgetWin_1", "", 30*time.Second)
 	window := strconv.FormatUint(id, 10)

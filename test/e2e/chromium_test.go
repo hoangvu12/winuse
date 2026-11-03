@@ -13,6 +13,7 @@
 package e2e
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +22,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 // chromiumPageTitle is the fixture page's <title>: the browser Window's
@@ -70,6 +73,85 @@ func findChromiumBrowsers() []chromiumBrowser {
 	return browsers
 }
 
+// startIsolatedBrowser starts a Chromium browser the way every e2e test
+// that starts one itself must: on a throwaway profile in a temp dir, so the
+// run never touches the user's real profile (the Task Suite's scratch rule)
+// and, a separate user-data-dir being a separate browser process, the launch
+// is never handed to the user's running Edge or Chrome. Edge signs a fresh
+// profile in to the Windows account on its own (the msImplicitSignin
+// feature), turns on sync of that account's data and puts a modal "Sync
+// your profile" dialog over the page (the 0693039 live run on the laptop),
+// so implicit sign-in and sync are off. args are added flags and the URL; a
+// --disable-features among them joins the one switch, and a profile flag is
+// refused. It returns the browser's pid; a cleanup terminates it.
+func startIsolatedBrowser(t *testing.T, exe string, args ...string) uint32 {
+	t.Helper()
+	features := []string{"msImplicitSignin"}
+	var rest []string
+	for _, a := range args {
+		if f, ok := strings.CutPrefix(a, "--disable-features="); ok {
+			features = append(features, strings.Split(f, ",")...)
+			continue
+		}
+		if strings.HasPrefix(a, "--user-data-dir") || strings.HasPrefix(a, "--profile-directory") {
+			t.Fatalf("startIsolatedBrowser picks the profile itself; got %q", a)
+		}
+		rest = append(rest, a)
+	}
+	flags := append([]string{
+		"--user-data-dir=" + t.TempDir(),
+		"--no-first-run",
+		"--no-default-browser-check",
+		"--disable-sync",
+		"--disable-features=" + strings.Join(features, ","),
+	}, rest...)
+	cmd := exec.Command(exe, flags...)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("starting %s: %v", exe, err)
+	}
+	pid := uint32(cmd.Process.Pid)
+	// Cleanup order: kill the browser, then the temp profile (registered
+	// first, so removed after).
+	t.Cleanup(func() {
+		if pidAlive(pid) {
+			terminatePID(t, pid)
+		}
+	})
+	return pid
+}
+
+// findIsolatedWindow waits for a visible browser Window of the process pid
+// (startIsolatedBrowser) whose title contains title. A Window with that
+// title in any other process never counts: had the launch been handed to
+// another browser, the test fails here, before anything acts on it.
+func findIsolatedWindow(t *testing.T, pid uint32, title string, timeout time.Duration) uint64 {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var others []string
+	for time.Now().Before(deadline) {
+		all, err := win.Collect()
+		if err != nil {
+			t.Fatalf("enumerating windows: %v", err)
+		}
+		others = others[:0]
+		for _, w := range all {
+			if !w.Visible || w.Class != win.ChromiumClass || !strings.Contains(w.Title, title) {
+				continue
+			}
+			if w.PID == pid {
+				return w.ID
+			}
+			others = append(others, fmt.Sprintf("%d %q (pid %d)", w.ID, w.Title, w.PID))
+		}
+		if !pidAlive(pid) {
+			t.Fatalf("the browser this test started (pid %d) exited before showing %q; Windows with that title in other processes: %v. Nothing was acted on", pid, title, others)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("no Window titled %q of the browser this test started (pid %d) appeared within %s; Windows with that title in other processes: %v", title, pid, timeout, others)
+	return 0
+}
+
 // TestChromiumWebContentInWindowState runs the Chromium fixture page through
 // every installed Chromium browser: the Window State of the browser Window
 // must expose the page's web content Elements. If accessibility has not
@@ -100,11 +182,6 @@ func chromiumWebContentInWindowState(t *testing.T, b chromiumBrowser) {
 	// management only: no input, no windows.
 	killHelper(t)
 
-	// An isolated profile in a temp dir: the run must not touch the user's
-	// real browser profile (the Task Suite's scratch rule, applied early),
-	// and a separate user-data-dir guarantees a fresh browser process even
-	// when the user's own Edge/Chrome is running.
-	profile := t.TempDir()
 	page, err := filepath.Abs("testdata/chromium-fixture.html")
 	if err != nil {
 		t.Fatalf("resolving the fixture page: %v", err)
@@ -114,22 +191,8 @@ func chromiumWebContentInWindowState(t *testing.T, b chromiumBrowser) {
 	}
 	url := "file:///" + strings.ReplaceAll(filepath.ToSlash(page), " ", "%20")
 
-	cmd := exec.Command(b.exe,
-		"--user-data-dir="+profile,
-		"--no-first-run",
-		"--no-default-browser-check",
-		"--new-window", url,
-	)
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("starting %s: %v", b.exe, err)
-	}
-	// Cleanup order: kill the browser, then the temp profile (removed by
-	// the test framework after this test's defers).
-	defer terminatePID(t, uint32(cmd.Process.Pid))
-
-	// Wait for the page's Window: poll list-windows (a read-only command)
-	// until the fixture page's title shows up.
-	windowID := findWindowByTitle(t, chromiumPageTitle, 30*time.Second)
+	pid := startIsolatedBrowser(t, b.exe, "--new-window", url)
+	windowID := findIsolatedWindow(t, pid, chromiumPageTitle, 30*time.Second)
 
 	stdout, stderr, exit := runGetWindowState(t, strconv.FormatUint(windowID, 10))
 	if exit != 0 {

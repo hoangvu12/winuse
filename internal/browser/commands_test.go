@@ -54,7 +54,7 @@ func TestLaunchStartsAWinuseProfileAndConnects(t *testing.T) {
 	if len(starts) != 1 || starts[0].path != path {
 		t.Fatalf("starts = %+v", starts)
 	}
-	wantArgs := []string{"--remote-debugging-port=" + strconv.Itoa(s.Port()), "--user-data-dir=" + dir, "--no-first-run", "--no-default-browser-check", "--disable-features=CalculateNativeWinOcclusion"}
+	wantArgs := []string{"--remote-debugging-port=" + strconv.Itoa(s.Port()), "--user-data-dir=" + dir, "--no-first-run", "--no-default-browser-check", "--disable-features=CalculateNativeWinOcclusion,msImplicitSignin"}
 	if !slices.Equal(starts[0].args, wantArgs) {
 		t.Errorf("args = %q, want %q", starts[0].args, wantArgs)
 	}
@@ -114,8 +114,10 @@ func TestLaunchReportsTheForeground(t *testing.T) {
 	}
 }
 
+// TestLaunchArgsTurnOffNativeOcclusion: one --disable-features switch
+// carries both the occlusion tracking and Edge's implicit sign-in.
 func TestLaunchArgsTurnOffNativeOcclusion(t *testing.T) {
-	const flag = "--disable-features=CalculateNativeWinOcclusion"
+	const flag = "--disable-features=CalculateNativeWinOcclusion,msImplicitSignin"
 	for _, args := range [][]string{launchArgs(9222, `C:\p`), cloneArgs(9222, `C:\p`, "Default", true)} {
 		n := 0
 		for _, a := range args {
@@ -349,7 +351,7 @@ func TestCloneCopiesTheProfileAndLaunchesIt(t *testing.T) {
 		t.Error("another profile was copied")
 	}
 	args := f.startCalls()[0].args
-	if !slices.Contains(args, "--profile-directory=Default") || !slices.Contains(args, "--user-data-dir="+clone) || slices.Contains(args, "--restore-last-session") || !slices.Contains(args, "--disable-features=CalculateNativeWinOcclusion") {
+	if !slices.Contains(args, "--profile-directory=Default") || !slices.Contains(args, "--user-data-dir="+clone) || slices.Contains(args, "--restore-last-session") || !slices.Contains(args, "--disable-features=CalculateNativeWinOcclusion,msImplicitSignin") {
 		t.Errorf("args = %q", args)
 	}
 }

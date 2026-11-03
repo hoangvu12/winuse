@@ -17,7 +17,6 @@
 package e2e
 
 import (
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -165,14 +164,10 @@ func TestContextMenuOnACoveredBrowserPage(t *testing.T) {
 		t.Fatalf("resolving the fixture page: %v", err)
 	}
 	url := "file:///" + strings.ReplaceAll(filepath.ToSlash(page), " ", "%20")
-	cmd := exec.Command(browsers[0].exe, "--user-data-dir="+t.TempDir(), "--no-first-run", "--no-default-browser-check", "--new-window",
-		"--disable-features=CalculateNativeWinOcclusion", url)
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("starting %s: %v", browsers[0].exe, err)
-	}
-	defer terminatePID(t, uint32(cmd.Process.Pid)) // closes any menu left open
+	// The cleanup's terminate closes any menu left open.
+	pid := startIsolatedBrowser(t, browsers[0].exe, "--new-window", "--disable-features=CalculateNativeWinOcclusion", url)
 
-	window := strconv.FormatUint(findWindowByTitle(t, chromiumPageTitle, 30*time.Second), 10)
+	window := strconv.FormatUint(findIsolatedWindow(t, pid, chromiumPageTitle, 30*time.Second), 10)
 	cover := coverWindow(t, window)
 	state, stderr, exit := runAsMenuAgent(t, "get-window-state", window)
 	if exit != 0 {

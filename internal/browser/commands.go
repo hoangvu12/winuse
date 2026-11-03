@@ -112,13 +112,20 @@ func (m *Manager) Use(ctx context.Context, name string) (string, error) {
 // settled in about 0.1 s with CalculateNativeWinOcclusion off. The Page
 // goes through CDP, but the frame (tab strip, address bar, dialogs) and the
 // UIA fallback still need the tree.
+//
+// msImplicitSignin is off too: Edge signs a new profile in to the Windows
+// account on its own, turns on sync of that account's data, and puts a
+// modal "Sync your profile" dialog over the page (the laptop's live run,
+// 2026-11-03), so winuse's profile would hold the user's synced data and
+// the Page would sit behind the dialog. The user can still sign in by
+// hand. Chrome ignores the unknown feature name.
 func launchArgs(port int, userDataDir string) []string {
 	return disableFeatures([]string{
 		"--remote-debugging-port=" + strconv.Itoa(port),
 		"--user-data-dir=" + userDataDir,
 		"--no-first-run",
 		"--no-default-browser-check",
-	}, "CalculateNativeWinOcclusion")
+	}, "CalculateNativeWinOcclusion", "msImplicitSignin")
 }
 
 // disableFeatures adds features to the --disable-features switch in args,

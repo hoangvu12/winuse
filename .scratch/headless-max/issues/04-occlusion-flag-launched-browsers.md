@@ -32,3 +32,7 @@ Chromium marks covered windows occluded through its native occlusion tracker (`u
 - Not reproduced: two diagnostic cold launches through `winuse browser launch` (kept profile), and two with plain Chrome on fresh temp profiles, each logged every window of the process for 10 to 12 s. Each showed one listed Window that never changed. No winuse-side cause was found, and `browser launch` reports no Window ID.
 - Test fix: new `launchedBrowserWindow` (browser_pages_test.go) waits for the one Window of the process that winuse lists and returns it once it has been unchanged for 500 ms. Both tests use it, and they pick the Window again on each navigate retry. The cover now goes up once the Window is steady, about half a second after it appears, not at its first frame.
 - Live, 2026-11-03: this test passed (frame and Page 1.91 s after the navigation), and `TestBrowserPages/chrome` passed 8 of 8.
+
+### 2026-11-03: implicit sign-in off in the launch flags
+
+- `launchArgs` now disables `msImplicitSignin` too, in the same `--disable-features` switch: Edge signed winuse's fresh launch profile in to the Windows account, with a modal "Sync your profile" dialog over the Page. That failed this test's edge leg at 0693039. Details: `.scratch/browser-merge/issues/09-opt-in-e2e.md`, 2026-11-03.

@@ -140,9 +140,13 @@ func runBrowserPages(t *testing.T, sys *browser.System, b browser.Browser, srv *
 // TestBrowserPagesExtension runs a short subset through the winuse
 // extension in the user's real Chrome and Edge, in a background tab the
 // test opens and closes. It skips a browser whose extension is not
-// connected, with a log line saying how to connect it.
+// connected, with a log line saying how to connect it. It acts in the
+// user's own browser, so it skips unless WINUSE_E2E_USER_BROWSER=1.
 func TestBrowserPagesExtension(t *testing.T) {
 	optIn(t)
+	if !userBrowserOptIn() {
+		t.Skip("opens a tab in the user's own Chrome and Edge: set WINUSE_E2E_USER_BROWSER=1 only when the user agreed to it")
+	}
 	if err := win.SetPerMonitorV2DPIAwareness(); err != nil {
 		t.Logf("per-monitor DPI awareness failed (bounds may be scaled): %v", err)
 	}
