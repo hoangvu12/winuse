@@ -74,7 +74,7 @@ func scroll(s Services) Command {
 			return out, rerr
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-			pt, serr := shotPoint(s, w, x, y, "scroll")
+			pt, serr := shotPoint(ctx, s, w, x, y, "scroll")
 			if serr != nil {
 				return "", serr
 			}
@@ -105,11 +105,11 @@ func drag(s Services) Command {
 		}
 		fx, fy, tx, ty := a.FromX, a.FromY, a.ToX, a.ToY
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-			from, serr := shotPoint(s, w, fx, fy, "drag")
+			from, serr := shotPoint(ctx, s, w, fx, fy, "drag")
 			if serr != nil {
 				return "", serr
 			}
-			to, serr := shotPoint(s, w, tx, ty, "drag")
+			to, serr := shotPoint(ctx, s, w, tx, ty, "drag")
 			if serr != nil {
 				return "", serr
 			}
@@ -141,7 +141,7 @@ func hover(s Services) Command {
 		}
 		x, y := a.X, a.Y
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-			pt, serr := shotPoint(s, w, x, y, "hover")
+			pt, serr := shotPoint(ctx, s, w, x, y, "hover")
 			if serr != nil {
 				return "", serr
 			}

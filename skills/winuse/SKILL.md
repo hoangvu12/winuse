@@ -63,10 +63,15 @@ session, and `winuse status` lists the agents it served. Sub-agents of one
 session share that program, so give each one its own name in
 `WINUSE_AGENT`. Set it on every winuse command, because a Harness often
 starts a fresh shell per command: in PowerShell,
-`$env:WINUSE_AGENT = "reviewer"; winuse click 101 3`. The agents still share
-each Window's Element Indexes: another agent's read of the same Window
-renumbers them, so prefer `name:` and `id:` while another agent works in
-that Window.
+`$env:WINUSE_AGENT = "reviewer"; winuse click 101 3`.
+
+Each agent keeps its own Window State and screenshot of each Window, so
+another agent's read never renumbers your Element Indexes or moves your
+`@x,y` points. Read a Window yourself before you act in it: until you do,
+winuse refuses with nothing sent and says the Window has not been read by
+this agent, even when another agent read it. If that refusal comes on
+every command, your identity is changing between commands; set
+`WINUSE_AGENT` to one name for all of them.
 
 ## Find the Window
 

@@ -34,7 +34,7 @@ _Avoid_: CDP session, debug port, endpoint
 
 **Window State**:
 What the agent observes about one Window at one moment: its accessibility tree of Elements as text and, when requested, a screenshot.
-Planned (ADR 0014): each Agent keeps its own Window State per Window, so another Agent's read never replaces it.
+Each Agent keeps its own Window State per Window (ADR 0014), so another Agent's read never replaces it.
 _Avoid_: App state, snapshot, skyshot
 
 **Element**:
@@ -43,7 +43,7 @@ _Avoid_: Control, node, widget
 
 **Element Index**:
 The number that identifies an Element within one Window State. It is only valid for the Window State that produced it and goes stale after any change to the Window.
-Planned (ADR 0014): Element Indexes are per Agent, valid only for the Agent whose Window State produced them.
+Element Indexes are per Agent (ADR 0014), valid only for the Agent whose Window State produced them.
 _Avoid_: Element ID, ref
 
 ### Operation
@@ -108,7 +108,7 @@ _Avoid_: Client, agent, host
 ### Agents
 
 **Agent**:
-One caller of winuse, with an identity: by default the Harness process the command came from, or the name in `WINUSE_AGENT`; a command with neither belongs to one shared default Agent. Every request names its Agent, and `winuse status` lists the Agents the helper served. Planned (ADR 0014): several Agents run at once, each with its own Window States and Agent Cursor.
+One caller of winuse, with an identity: by default the Harness process the command came from, or the name in `WINUSE_AGENT`; a command with neither belongs to one shared default Agent. Every request names its Agent, each Agent has its own Window States, and `winuse status` lists the Agents the helper served. Planned (ADR 0014): several Agents run at once, each with its own Agent Cursor.
 _Avoid_: Session, client, user
 
 **Lane**:

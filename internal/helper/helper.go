@@ -10,6 +10,7 @@ import (
 	"github.com/hoangvu12/winuse/internal/browser"
 	"github.com/hoangvu12/winuse/internal/pipe"
 	"github.com/hoangvu12/winuse/internal/protocol"
+	"github.com/hoangvu12/winuse/internal/shot"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/version"
 	"github.com/hoangvu12/winuse/internal/win"
@@ -93,6 +94,9 @@ func Main() int {
 	// list-windows never touches COM. The window-state commands keep the
 	// live Elements behind the latest Window State in it.
 	trees := uia.New()
+	// An Agent idle as long as the helper's own idle period loses its
+	// Window States (multi-agent ticket 03).
+	trees.SetAgentIdle(idle)
 	budget, err := treeBudgetFromEnv(uia.DefaultTreeBudget)
 	if err != nil {
 		log.Printf("invalid WINUSE_TREE_BUDGET, using default %s: %v", uia.DefaultTreeBudget, err)
@@ -154,10 +158,13 @@ func Main() int {
 	browsers := browser.NewManager(browser.Live())
 	defer browsers.Close()
 
+	shots := shot.NewStore()
+	shots.Idle = idle
 	svc := Services{
 		Trees:   trees,
 		Budget:  budget,
 		Browser: browsers,
+		Shots:   shots,
 	}
 	if overlay != nil {
 		svc.Overlay = overlay

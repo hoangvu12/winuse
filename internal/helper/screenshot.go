@@ -77,7 +77,7 @@ func windowStateScreenshot(s Services, ctx context.Context, w win.WindowInfo, he
 	}
 	// Recorded only on full success: the agent's @x,y references mean the
 	// screenshot it actually saw (the tree is part of the same answer).
-	s.Shots.Record(w.ID, m)
+	s.Shots.Record(AgentOf(ctx).ID, w.ID, m)
 	r := frame.Rect
 	return wstate.Render(tree) +
 		fmt.Sprintf("Screenshot: %s (%dx%d px, scale %s, window at %d,%d %dx%d)\n",
@@ -143,7 +143,7 @@ func zoom(s Services) Command {
 			return "", rerr
 		}
 		// The cheap checks refuse before anything touches the screen.
-		m, ok := s.Shots.Lookup(w.ID)
+		m, ok := s.Shots.Lookup(AgentOf(ctx).ID, w.ID)
 		if !ok {
 			return "", Fail(fmt.Sprintf("no screenshot is available for window %d", w.ID),
 				"run winuse get-window-state "+strconv.FormatUint(w.ID, 10)+" --screenshot first; zoom regions are in that screenshot's pixels")
@@ -191,8 +191,8 @@ func zoom(s Services) Command {
 // input survives the Window having moved since the screenshot. verb
 // names the action ("click", "scroll", ...) in the no-screenshot
 // recovery hint.
-func shotPoint(s Services, w win.WindowInfo, x, y int, verb string) (image.Point, *Error) {
-	m, ok := s.Shots.Lookup(w.ID)
+func shotPoint(ctx context.Context, s Services, w win.WindowInfo, x, y int, verb string) (image.Point, *Error) {
+	m, ok := s.Shots.Lookup(AgentOf(ctx).ID, w.ID)
 	if !ok {
 		return image.Point{}, Fail(fmt.Sprintf("no screenshot is available for window %d", w.ID),
 			"run winuse get-window-state "+strconv.FormatUint(w.ID, 10)+" --screenshot, then "+verb+" @x,y coordinates from that screenshot")

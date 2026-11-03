@@ -465,7 +465,7 @@ func propString(el comPtr, prop uint32) string {
 func (c *Client) SetValue(ctx context.Context, hwnd uint64, index int, value string) error {
 	var jobErr error
 	err := c.Run(ctx, func(w *worker, _ *run) {
-		el, lerr := c.lookup(hwnd, index)
+		el, lerr := c.lookup(ctx, hwnd, index)
 		if lerr != nil {
 			jobErr = lerr
 			return
@@ -541,7 +541,7 @@ func (c *Client) PerformSecondaryActionAtPoint(ctx context.Context, x, y int32, 
 func (c *Client) PerformSecondaryAction(ctx context.Context, hwnd uint64, index int, action string) error {
 	var jobErr error
 	err := c.Run(ctx, func(w *worker, _ *run) {
-		el, lerr := c.lookup(hwnd, index)
+		el, lerr := c.lookup(ctx, hwnd, index)
 		if lerr != nil {
 			jobErr = lerr
 			return

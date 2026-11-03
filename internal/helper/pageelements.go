@@ -98,9 +98,9 @@ func (s Services) pageHover(ctx context.Context, a protocol.HoverArgs) (string, 
 	if rerr != nil {
 		return "", rerr
 	}
-	w, index, o, ok := s.pageRoute(a.Window, target)
+	w, index, o, ok := s.pageRoute(ctx, a.Window, target)
 	if !ok {
-		return "", s.notPageElement(a.Window, target, "hover", "hover reaches other Elements by a point: run winuse get-window-state %s --screenshot, then winuse hover %s @x,y")
+		return "", s.notPageElement(ctx, a.Window, target, "hover", "hover reaches other Elements by a point: run winuse get-window-state %s --screenshot, then winuse hover %s @x,y")
 	}
 	return s.runPage(ctx, pageRun{
 		noun: "hover", done: "hovered", verb: "hover", w: w, index: index, origin: o, target: target,
@@ -113,12 +113,12 @@ func (s Services) pageHover(ctx context.Context, a protocol.HoverArgs) (string, 
 
 // notPageElement refuses an Element form that only Page Elements take,
 // naming the point form instead. hintFmt takes the Window id twice.
-func (s Services) notPageElement(ref string, target elementTarget, cmd, hintFmt string) *Error {
+func (s Services) notPageElement(ctx context.Context, ref string, target elementTarget, cmd, hintFmt string) *Error {
 	w, rerr := resolveWindow(s, ref)
 	if rerr != nil {
 		return rerr
 	}
-	index, rerr := target.resolve(s, w)
+	index, rerr := target.resolve(ctx, s, w)
 	if rerr != nil {
 		return nothingSent(rerr)
 	}
@@ -145,15 +145,15 @@ func (s Services) pageDrag(ctx context.Context, a protocol.DragArgs) (string, *E
 	} else if a.ToX < 0 || a.ToY < 0 {
 		return "", Fail("drag: the @x,y coordinates must be non-negative integers", dragUsageHint)
 	}
-	w, index, o, ok := s.pageRoute(a.Window, from)
+	w, index, o, ok := s.pageRoute(ctx, a.Window, from)
 	if !ok {
-		return "", s.notPageElement(a.Window, from, "drag", "drag reaches other Elements by points: run winuse get-window-state %s --screenshot, then winuse drag %s @x,y @x,y")
+		return "", s.notPageElement(ctx, a.Window, from, "drag", "drag reaches other Elements by points: run winuse get-window-state %s --screenshot, then winuse drag %s @x,y @x,y")
 	}
 	id := strconv.FormatUint(w.ID, 10)
 	var toOrigin *page.Origin
 	toIndex := -1
 	if to != nil {
-		_, ti, to2, ok := s.pageRoute(a.Window, *to)
+		_, ti, to2, ok := s.pageRoute(ctx, a.Window, *to)
 		if !ok || to2.Client != o.Client || to2.TargetID != o.TargetID {
 			return "", nothingSent(Fail(fmt.Sprintf("a drag from element %d ends in the same Page, and the target %s is not in it", index, to.token()),
 				"drag to an element of that Page, or to @x,y inside it (run winuse get-window-state "+id+" --screenshot)"))
@@ -250,9 +250,9 @@ func pageUpload(s Services) Command {
 		if rerr != nil {
 			return "", rerr
 		}
-		w, index, o, ok := s.pageRoute(a.Window, target)
+		w, index, o, ok := s.pageRoute(ctx, a.Window, target)
 		if !ok {
-			return "", s.notPageElement(a.Window, target, "upload", "upload gives files to a file input of a Page: read winuse get-window-state %s for one, or click the Page's upload button and run winuse upload %s <file>...")
+			return "", s.notPageElement(ctx, a.Window, target, "upload", "upload gives files to a file input of a Page: read winuse get-window-state %s for one, or click the Page's upload button and run winuse upload %s <file>...")
 		}
 		id := strconv.FormatUint(w.ID, 10)
 		watch := page.WatchOf(o.Client, o.TopSession())

@@ -359,6 +359,12 @@ still the foreground window afterwards. The shared helpers are in
   toggles the checkbox and `set-value` fills the text field, while Element
   `scroll` and the screenshot are refused with "is minimized". The Window
   stays minimized, and the foreground and the pointer do not change.
+- `TestWindowStatesArePerAgent` (`agents_test.go`, multi-agent ticket 03):
+  two Agents named by `WINUSE_AGENT` (alpha and beta) against one fixture
+  through one helper. After alpha reads the Window, beta's click is refused
+  with "has not been read by this agent" and nothing sent; after beta
+  reads too, alpha's click still lands on alpha's Element, then beta's; the
+  foreground stays put; `winuse status` lists both Agents.
 - `TestSetValueOnOffTheCheckbox`: `set-value` with `on`, `ON`, `checked`,
   `off`, `unchecked`, `True` and `false` on the covered checkbox. Setting
   the state it already has sends nothing (the fixture's generation stays

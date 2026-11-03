@@ -485,7 +485,7 @@ func TestPageSelectText(t *testing.T) {
 func TestPageSelectTextBatchStep(t *testing.T) {
 	r := newPageRig(t)
 	args := batchStepArgs(protocol.SelectTextArgs{Window: "301", ElementIndex: idx(8), Start: 0, Length: 2})
-	if !r.svc.stepHeadless("select-text", args, &win.WindowInfo{ID: browserWindowID}) {
+	if !r.svc.stepHeadless(context.Background(), "select-text", args, &win.WindowInfo{ID: browserWindowID}) {
 		t.Error("a select-text step on a Page Element must be Headless")
 	}
 }
