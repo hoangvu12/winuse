@@ -26,8 +26,10 @@ import (
 )
 
 // openExplorerOn opens a File Explorer Window of the test's own on a new
-// temp folder holding file, and returns its Window ID; the Window is
-// closed on cleanup.
+// temp folder holding file, and returns its Window ID. Every Window titled
+// after the folder is closed on cleanup, registered before Explorer
+// starts, so it runs on every exit path, a failure included (a Window
+// that opens after the test gave up on finding it too).
 func openExplorerOn(t *testing.T, file string) string {
 	t.Helper()
 	name := "winuse-e2e-explorer-" + strconv.FormatInt(time.Now().UnixNano(), 36)
@@ -38,15 +40,41 @@ func openExplorerOn(t *testing.T, file string) string {
 	if err := os.WriteFile(filepath.Join(dir, file), []byte("winuse e2e"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeExplorerWindows(t, name) }) // runs before t.TempDir's removal
 	if err := exec.Command("explorer.exe", dir).Start(); err != nil {
 		t.Fatalf("starting explorer.exe: %v", err)
 	}
 	window := strconv.FormatUint(findWindowByTitle(t, name, 20*time.Second), 10)
-	t.Cleanup(func() {
-		runWinuse(t, []string{"close-window", window}, "WINUSE_HELPER_IDLE="+e2eIdle)
-	})
 	time.Sleep(time.Second) // the items view fills in
 	return window
+}
+
+// closeExplorerWindows closes every top-level Window whose title starts
+// with the test's folder name, with WM_CLOSE posted straight to it (no
+// helper in the way), and fails the test when one is still open 5 s later.
+func closeExplorerWindows(t *testing.T, name string) {
+	t.Helper()
+	ws, err := win.Collect()
+	if err != nil {
+		t.Errorf("listing the Windows to close the test's Explorer: %v", err)
+		return
+	}
+	for _, w := range ws {
+		if !strings.HasPrefix(w.Title, name) {
+			continue
+		}
+		if err := win.PostClose(w.ID); err != nil {
+			t.Errorf("closing the test's Explorer Window %d: %v", w.ID, err)
+			continue
+		}
+		deadline := time.Now().Add(5 * time.Second)
+		for win.WindowOpen(w.ID) && time.Now().Before(deadline) {
+			time.Sleep(100 * time.Millisecond)
+		}
+		if win.WindowOpen(w.ID) {
+			t.Errorf("the test's Explorer Window %d %q is still open after WM_CLOSE", w.ID, w.Title)
+		}
+	}
 }
 
 // explorerItem is the Element Index of the list item named file.
