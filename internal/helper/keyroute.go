@@ -298,7 +298,7 @@ func expectedLength(before win.EditState, units int) int {
 
 // postedOutput is what every Posted Keys success prints: a posted message
 // has no readable outcome, so the agent checks the Window State.
-const postedOutput = "ok (posted; the app may ignore posted keys, read the Window State to check)\n"
+const postedOutput = "ok\nNote: posted; the app may ignore posted keys, read the Window State to check\n"
 
 // postFlagsError is the refusal of `post` together with `headed`: the
 // CLI catches it as a usage error first; the helper refuses it for any

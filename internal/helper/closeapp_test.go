@@ -203,7 +203,7 @@ func TestCloseAppStillRunningIsOKWithANote(t *testing.T) {
 	if cmdErr != nil {
 		t.Fatalf("close-app: %v", cmdErr.Error())
 	}
-	want := "ok (the close was requested; Fixture is still running, it may be asking to save: read winuse list-windows --app Fixture or the Window State next)\n"
+	want := "ok\nNote: the close was requested; Fixture is still running, it may be asking to save: read winuse list-windows --app Fixture or the Window State next\n"
 	if out != want {
 		t.Errorf("output = %q, want %q", out, want)
 	}
@@ -238,7 +238,7 @@ func TestCloseAppForceEndsTheProcessesStillRunning(t *testing.T) {
 	if cmdErr != nil {
 		t.Fatalf("close-app --force: %v", cmdErr.Error())
 	}
-	if want := "ok (Fixture was still running after the close; --force ended 2 processes)\n"; out != want {
+	if want := "ok\nNote: Fixture was still running after the close; --force ended 2 processes\n"; out != want {
 		t.Errorf("output = %q, want %q", out, want)
 	}
 	want := []string{"locked", "open 7", "open 8", "close 101", "close 102", "close 201", "terminate 7", "terminate 8"}

@@ -98,3 +98,52 @@ func TestLiveRefRefusals(t *testing.T) {
 		t.Errorf("cache ambiguity: %+v", e)
 	}
 }
+
+// storeSpy is a live resolver that remembers what a fresh read added, as
+// the UIA client's store does: the first resolution of a reference is a
+// fresh read, every later one a cache hit. It also answers the Page
+// splicer's calls, so the lane classification routes on the reference
+// (pageStep) before the command runs.
+type storeSpy struct {
+	*headlessSpy
+	stored map[string]bool
+}
+
+func (s *storeSpy) ResolveElementRefLive(ctx context.Context, hwnd uint64, ref string, budget time.Duration) (uia.LiveResolution, error) {
+	fresh := !s.stored[ref]
+	s.stored[ref] = true
+	return uia.LiveResolution{Index: 245, Fresh: fresh}, nil
+}
+
+// ResolveElementRef is the cache alone: what a fresh read stored.
+func (s *storeSpy) ResolveElementRef(ctx context.Context, hwnd uint64, ref string) (int, error) {
+	if s.stored[ref] {
+		return 245, nil
+	}
+	return 0, &wstate.NoMatchRefError{}
+}
+
+func (s *storeSpy) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any) error {
+	return nil
+}
+
+func (s *storeSpy) ElementOrigin(ctx context.Context, hwnd uint64, index int) (any, error) {
+	return nil, nil // a UIA Element, not the Page's
+}
+
+// The live TestNameReferenceAfterHelperRestart failure: the lane
+// classification resolved the reference in a fresh read first, so the
+// command found it cached and printed no note. The classification now
+// resolves against the cache alone.
+func TestLiveRefNoteSurvivesTheLaneClassification(t *testing.T) {
+	s := &storeSpy{headlessSpy: newHeadlessSpy(), stored: map[string]bool{}}
+	s.svc.Actions = s
+	out, e := runCommand(t, CommandsWith(s.svc), "click", protocol.ClickArgs{Window: "101", Ref: "name:Save"})
+	want := "ok\nNote: found name:Save in a fresh read of window 101, as Element Index 245; the Window State you have is unchanged\n"
+	if e != nil || out != want || s.hIndex != 245 {
+		t.Errorf("click: %q, %+v (clicked %d), want %q on 245", out, e, s.hIndex, want)
+	}
+	if out, e := runCommand(t, CommandsWith(s.svc), "click", protocol.ClickArgs{Window: "101", Ref: "name:Save"}); e != nil || out != "ok\n" {
+		t.Errorf("the second click, a cache hit: %q, %+v, want ok alone", out, e)
+	}
+}

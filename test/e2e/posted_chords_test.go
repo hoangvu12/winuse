@@ -47,7 +47,7 @@ func TestPostedChordFiresAClassicAccelerator(t *testing.T) {
 
 	stdout, stderr, exit := runPostedChord(t, window, fixture.AcceleratorChord)
 	assertActionOK(t, "press-key "+fixture.AcceleratorChord+" --post", stdout, stderr, exit)
-	if !strings.HasPrefix(stdout, "ok (posted") {
+	if !strings.HasPrefix(stdout, "ok\nNote: posted") {
 		t.Errorf("output = %q, want the posted output", stdout)
 	}
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.Accelerators == 1 })

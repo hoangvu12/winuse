@@ -41,7 +41,7 @@ func TestPointFormsActHeadlessOnTheCoveredWindow(t *testing.T) {
 		if res.exit != 0 {
 			t.Fatalf("%s: exit %d, stderr:\n%s", what, res.exit, res.stderr)
 		}
-		if !strings.HasPrefix(res.stdout, "ok (") || !strings.Contains(res.stdout, wantIn) {
+		if !strings.HasPrefix(res.stdout, "ok\nNote: ") || !strings.Contains(res.stdout, wantIn) {
 			t.Errorf("%s: stdout %q, want an ok that names %q", what, res.stdout, wantIn)
 		}
 		if overlaySeen {

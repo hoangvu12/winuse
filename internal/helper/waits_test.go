@@ -411,7 +411,7 @@ func TestWaitElementGone(t *testing.T) {
 	d = newWaitDesk()
 	d.states = func(int) (uia.ElementState, error) { return uia.ElementState{}, stale }
 	d.open = func(int) bool { return false }
-	if out, e := runWait(t, d, protocol.WaitArgs{Window: "101", For: "element", ElementIndex: intp(2), State: "gone"}); e != nil || out != "ok (the Window closed)\n" {
+	if out, e := runWait(t, d, protocol.WaitArgs{Window: "101", For: "element", ElementIndex: intp(2), State: "gone"}); e != nil || out != "ok\nNote: the Window closed\n" {
 		t.Fatalf("gone with its Window = %q, %v", out, e)
 	}
 }

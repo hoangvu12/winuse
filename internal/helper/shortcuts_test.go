@@ -37,7 +37,7 @@ func TestAShortcutRunsItsClassicMenuCommand(t *testing.T) {
 		if cmdErr != nil {
 			t.Fatalf("%s: %v", c.key, cmdErr.Error())
 		}
-		if want := `ok (invoked "` + c.path + `" through its shortcut)` + "\n"; out != want {
+		if want := "ok\nNote: invoked \"" + c.path + "\" through its shortcut\n"; out != want {
 			t.Errorf("%s: output = %q, want %q", c.key, out, want)
 		}
 		if len(spy.commands) != 1 || spy.commands[0] != c.id {
@@ -108,7 +108,7 @@ func newAccelSpy(res uia.AccelResult, err error) *accelSpy {
 func TestAShortcutRunsItsUIAElement(t *testing.T) {
 	spy := newAccelSpy(uia.AccelResult{Invoked: true, Name: "Save", Enabled: 1}, nil)
 	out, cmdErr := runCommand(t, CommandsWith(spy.svc), "press-key", pressArgs("Control_L+s"))
-	if cmdErr != nil || out != `ok (invoked "Save" through its shortcut)`+"\n" {
+	if cmdErr != nil || out != "ok\nNote: invoked \"Save\" through its shortcut\n" {
 		t.Fatalf("press-key: %q, %v", out, cmdErr)
 	}
 	if !spy.shown("Ctrl+S", "Save", true) || spy.shown("Ctrl+O", "Open", true) || !spy.shown("", "Save\tCtrl+S", true) {

@@ -110,13 +110,14 @@ type TextSplicer interface {
 var _ TextSplicer = (*uia.Client)(nil)
 
 // spliceOutput is the splice's success: the text is in, written as the
-// field's value, which is not typing; the agent learns what that means.
+// field's value, which is not typing; a note after the `ok` tells the
+// agent what that means (the note-line convention, opened.go).
 func spliceOutput(r uia.SpliceResult) string {
-	out := "ok (set as the field's value at the caret: no key events fired, and the field's undo may not hold it"
+	note := "the text was set as the field's value at the caret: no key events fired, and the field's undo may not hold it"
 	if !r.CaretPlaced {
-		out += "; the caret could not be placed after the text"
+		note += "; the caret could not be placed after the text"
 	}
-	return out + ")\n"
+	return okOutput + notePrefix + note + "\n"
 }
 
 // spliceInto runs the caret splice through runHeadless (its refusals, the

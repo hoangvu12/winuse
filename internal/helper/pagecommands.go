@@ -644,9 +644,9 @@ func (s Services) navFailure(err error, pw pageWin, what string) (string, bool, 
 			"the Page asks before it leaves: run winuse dialog "+id+" accept to leave it, or winuse dialog "+id+" dismiss to stay")
 	case errors.Is(err, page.ErrDownloadStarted):
 		if page.DownloadsOf(pw.conn.Client) == nil {
-			return fmt.Sprintf("ok (%s; it goes to the browser's own download folder, which winuse does not track for this browser)\n", err.Error()), true, nil
+			return fmt.Sprintf("ok\nNote: %s; it goes to the browser's own download folder, which winuse does not track for this browser\n", err.Error()), true, nil
 		}
-		return fmt.Sprintf("ok (%s; winuse wait %s download prints its path when it is done)\n", err.Error(), id), true, nil
+		return fmt.Sprintf("ok\nNote: %s; winuse wait %s download prints its path when it is done\n", err.Error(), id), true, nil
 	case errors.As(err, &nav):
 		return "", true, Fail(nav.Error(), "check the address; the Tab shows the browser's error page now (winuse get-window-state "+id+")")
 	case errors.As(err, &ce):

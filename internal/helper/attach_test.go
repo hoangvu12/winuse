@@ -62,14 +62,14 @@ func TestBrowserAttach(t *testing.T) {
 	b := &attachBrowsers{mode: browser.ModeAttach}
 	cmds := attachCommands(b)
 	out, e := runAttach(t, cmds, "browser-attach")
-	if e != nil || out != "ok (attached to Slack process 600: get-window-state 700 reads its pages; winuse browser detach 700 ends the attach and closes its inspector)\n" {
+	if e != nil || out != "ok\nNote: attached to Slack process 600: get-window-state 700 reads its pages; winuse browser detach 700 ends the attach and closes its inspector\n" {
 		t.Errorf("attach: %q, %+v", out, e)
 	}
 	if len(b.calls) != 1 || b.calls[0] != slackExe {
 		t.Errorf("attached with %v", b.calls)
 	}
 	out, e = runAttach(t, cmds, "browser-detach")
-	if e != nil || out != "ok (detached; the App's inspector is closed)\n" || len(b.detached) != 1 || b.detached[0] != 600 {
+	if e != nil || out != "ok\nNote: detached; the App's inspector is closed\n" || len(b.detached) != 1 || b.detached[0] != 600 {
 		t.Errorf("detach: %q, %+v, %v", out, e, b.detached)
 	}
 }

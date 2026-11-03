@@ -194,6 +194,12 @@ func Main() int {
 		log.Printf("helper server: %v", err)
 		return 1
 	}
+	// Serve drained the requests in flight, and each Headed Action let go
+	// of its keys on its way out; this is the backstop for whatever made
+	// the helper exit (its idle period, a CLI of another build: ticket 25).
+	if n, err := win.ReleaseHeld(); n > 0 || err != nil {
+		log.Printf("released %d held keys and buttons on exit: %v", n, err)
+	}
 	trees.Close()
 	log.Printf("helper exiting")
 	return 0

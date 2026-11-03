@@ -39,6 +39,7 @@ func statusCommand(s Services) Command {
 			Helper: status.Helper{
 				State:   status.HelperRunning,
 				Version: version.Version,
+				Build:   version.Build(),
 				PID:     os.Getpid(),
 				Uptime:  s.Now().Sub(s.Started),
 			},

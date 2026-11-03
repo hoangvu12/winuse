@@ -15,11 +15,18 @@ package uia
 // children are its close button and the like). The caller picks the item
 // by name; the driver (selectTab) runs over tabSteps, so the offline tests
 // drive it with fakes, and the COM bindings below only run live.
+//
+// Chromium builds its accessibility tree lazily (ADR 0005), and a browser
+// that winuse drove over CDP alone for a while shows no tab-strip items to
+// the first walk (the 2026-11-03 live run of TestBrowserPages): an empty
+// strip is walked again until tabStripSettle passes (settleTabStrip).
+// Nothing was selected before a retry.
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 	"unsafe"
 )
 
@@ -36,6 +43,11 @@ const (
 	maxTabDepth = 25
 	maxTabNodes = 3000
 	maxTabItems = 500
+
+	// tabStripSettle bounds the walks of a strip that shows no items yet,
+	// tabStripRetry spaces them.
+	tabStripSettle = 3 * time.Second
+	tabStripRetry  = 250 * time.Millisecond
 )
 
 // ErrNoTabStrip is a Window whose tree shows no tab-strip item: nothing
@@ -84,6 +96,33 @@ func selectTab(steps tabSteps, pick func(names []string) (int, error)) error {
 // both before anything was selected. A failed Select is a *WriteError and
 // a Select that does not read back selected a *VerifyError.
 func (c *Client) SelectTab(ctx context.Context, hwnd uint64, pick func(names []string) (int, error)) error {
+	return settleTabStrip(ctx, tabStripSettle, tabStripRetry, sleepCtx, func() error {
+		return c.selectTabOnce(ctx, hwnd, pick)
+	})
+}
+
+// settleTabStrip runs attempt again, interval apart, while it fails with
+// ErrNoTabStrip and budget (cut by ctx) lasts: a Chromium tab strip that
+// is still being built. Any other answer is final.
+func settleTabStrip(ctx context.Context, budget, interval time.Duration, sleep func(context.Context, time.Duration) error, attempt func() error) error {
+	deadline := time.Now().Add(budget)
+	for {
+		err := attempt()
+		if !errors.Is(err, ErrNoTabStrip) || time.Now().Add(interval).After(deadline) {
+			return err
+		}
+		if dl, ok := ctx.Deadline(); ok && time.Now().Add(interval).After(dl) {
+			return err
+		}
+		if sleep(ctx, interval) != nil {
+			return err
+		}
+	}
+}
+
+// selectTabOnce is one walk of the tab strip and, when it shows items,
+// the selection.
+func (c *Client) selectTabOnce(ctx context.Context, hwnd uint64, pick func(names []string) (int, error)) error {
 	var jobErr error
 	err := c.RunFor(ctx, hwnd, func(w *worker, _ *run) {
 		if w.thread == nil {

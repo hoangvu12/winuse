@@ -20,7 +20,7 @@ import (
 	"github.com/hoangvu12/winuse/internal/win"
 )
 
-const postedClickOK = "ok (posted; the app may ignore posted clicks, read the Window State to check)\n"
+const postedClickOK = "ok\nNote: posted; the app may ignore posted clicks, read the Window State to check\n"
 
 func TestPostedClicksOnACoveredEdit(t *testing.T) {
 	optIn(t)

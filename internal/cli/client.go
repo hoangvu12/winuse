@@ -81,11 +81,12 @@ func DefaultClient() (*Client, error) {
 //
 //   - no helper running: spawn one, dial until it answers;
 //   - helper answers "stale" (different build): it exits itself; retry once
-//     with a fresh helper;
+//     with a fresh helper, and the answer notes the restart (restartNote);
 //   - connection drops before a response (helper exited under us): retry
 //     once, which respawns it.
 func (c *Client) Call(ctx context.Context, req *protocol.Request) (*protocol.Response, error) {
 	var lastErr error
+	restarted := false
 	for attempt := 0; attempt < 2; attempt++ {
 		conn, err := c.dialOrStart(ctx)
 		if err != nil {
@@ -100,7 +101,11 @@ func (c *Client) Call(ctx context.Context, req *protocol.Request) (*protocol.Res
 				// the single-instance mutex on the way out), then loop into
 				// dialOrStart, which spawns a current one.
 				c.waitPipeGone(ctx, 2*time.Second)
+				restarted = true
 				continue
+			}
+			if restarted && !resp.Stale {
+				resp.Out = withNote(resp.Out, restartNote)
 			}
 			return resp, nil
 		}
@@ -115,6 +120,19 @@ func (c *Client) Call(ctx context.Context, req *protocol.Request) (*protocol.Res
 		lastErr = errors.New("no response from helper")
 	}
 	return nil, lastErr
+}
+
+// restartNote ends the first answer from a helper the CLI restarted for
+// its own build (desktop-parity ticket 25): the old helper's Window
+// States and Element Indexes went with it.
+const restartNote = "Note: the helper was restarted for another winuse build, so Window States and Element Indexes from before are gone; read the Window again, or use name: or id:, which re-resolve live.\n"
+
+// withNote appends a note line to a command's output.
+func withNote(out, note string) string {
+	if out != "" && !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	return out + note
 }
 
 // CallExisting sends one request to a helper that is already running and
@@ -256,7 +274,7 @@ var callingAgent = sync.OnceValue(agent.Resolve)
 // Agent.
 func Request(cmd string, args any) (*protocol.Request, error) {
 	who := callingAgent()
-	req := &protocol.Request{V: protocol.Version, Ver: version.Version, Cmd: cmd, Agent: who.ID, AgentLabel: who.Label, AgentColor: who.Color}
+	req := &protocol.Request{V: protocol.Version, Ver: version.Version, Cmd: cmd, Agent: who.ID, AgentLabel: who.Label, AgentColor: who.Color, Build: version.Build()}
 	if args != nil {
 		raw, err := json.Marshal(args)
 		if err != nil {

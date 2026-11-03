@@ -379,3 +379,30 @@ func TestBrowserDomainRefusedOnTheExtension(t *testing.T) {
 		t.Errorf("Winuse.windows refused with %d", code)
 	}
 }
+
+// TestFindTabOfAnAttachedApp: a running Electron App winuse attached to
+// (browser attach) answers no Browser.getWindowForTarget through its JS
+// shim, so its page matches by title alone, as an App launched with --cdp
+// does; the browsers' title-and-bounds match would find no Tab (the live
+// TestAttachToRunningElectron failure).
+func TestFindTabOfAnAttachedApp(t *testing.T) {
+	srv := cdptest.NewServer()
+	t.Cleanup(srv.Close)
+	srv.Targets = []cdptest.Target{{TargetID: "E1", Type: "page", Title: "winuse e2e page 14", URL: "file:///page.html"}}
+	srv.Handle("Browser.getWindowForTarget", func(*cdptest.Conn, cdptest.Message) (any, error) {
+		return nil, &cdptest.ReplyError{Code: -32601, Message: "'Browser.getWindowForTarget' wasn't found"}
+	})
+	ws, err := cdp.DialWS(context.Background(), srv.URL(), 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := cdp.NewClient(ws)
+	t.Cleanup(func() { c.Close() })
+	g := Geometry{Title: "winuse e2e page 14", DPI: 144, Rect: Box{Left: 10, Top: 10, Right: 1210, Bottom: 910}}
+	for _, mode := range []browser.Mode{browser.ModeAttach, browser.ModeApp} {
+		conn := &browser.Connection{Browser: "electron", Mode: mode, PID: 77, Client: c}
+		if tab, err := FindTab(context.Background(), conn, g); err != nil || tab.TargetID != "E1" {
+			t.Errorf("%s: FindTab = %+v, %v; want the App's page E1", mode, tab, err)
+		}
+	}
+}

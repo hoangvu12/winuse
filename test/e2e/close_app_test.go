@@ -100,7 +100,7 @@ func TestCloseAppForceEndsAnAppThatStaysOpen(t *testing.T) {
 
 	// Without --force: the close is requested and the App keeps running.
 	stdout, stderr, exit := runCloseApp(t, app)
-	if exit != 0 || stderr != "" || !strings.HasPrefix(stdout, "ok (the close was requested; "+app+" is still running") {
+	if exit != 0 || stderr != "" || !strings.HasPrefix(stdout, "ok\nNote: the close was requested; "+app+" is still running") {
 		t.Fatalf("close-app %s: exit %d, stdout %q, stderr %q; want the still-running ok", app, exit, stdout, stderr)
 	}
 	if !win.WindowOpen(id) || waitProcessExit(t, uint32(proc.Pid), 0) {
@@ -109,7 +109,7 @@ func TestCloseAppForceEndsAnAppThatStaysOpen(t *testing.T) {
 
 	// --force: the process is ended.
 	stdout, stderr, exit = runCloseApp(t, app, "--force")
-	want := "ok (" + app + " was still running after the close; --force ended 1 process)\n"
+	want := "ok\nNote: " + app + " was still running after the close; --force ended 1 process\n"
 	if exit != 0 || stdout != want || stderr != "" {
 		t.Fatalf("close-app %s --force: exit %d, stdout %q, stderr %q; want %q", app, exit, stdout, stderr, want)
 	}
