@@ -1,8 +1,11 @@
 package win
 
 // The Window Actions' Win32 layer (ADR 0011): restore, minimize, move,
-// resize and close a Window without activating it. Every call here is
-// non-activating and asynchronous towards the target: ShowWindowAsync and
+// resize and close a Window without activating it, and maximize it. Every
+// call here but Maximize is non-activating (Windows has no non-activating
+// maximize, so maximize-window is Headed and calls it after the
+// activation, desktop-parity ticket 11), and every call is asynchronous
+// towards the target: ShowWindowAsync and
 // SetWindowPos(SWP_ASYNCWINDOWPOS) queue the change on the Window's own
 // thread, and WM_CLOSE is posted, so a hung app can never block the
 // helper. The read-backs (IsIconic, IsZoomed, WindowFrame,
@@ -37,6 +40,7 @@ var (
 
 const (
 	swShowMinNoActive     = 7      // SW_SHOWMINNOACTIVE: minimize, the active Window stays active
+	swMaximize            = 3      // SW_MAXIMIZE (SW_SHOWMAXIMIZED): maximize and activate
 	swpNoZOrder           = 0x0004 // SWP_NOZORDER
 	swpAsyncWindowPos     = 0x4000 // SWP_ASYNCWINDOWPOS: queue it on the Window's thread
 	wmClose               = 0x0010 // WM_CLOSE
@@ -69,6 +73,14 @@ func RestoreNoActivate(hwnd uint64) error {
 // active (ShowWindowAsync with SW_SHOWMINNOACTIVE).
 func MinimizeNoActivate(hwnd uint64) error {
 	return showAsync(hwnd, swShowMinNoActive, "SW_SHOWMINNOACTIVE")
+}
+
+// Maximize maximizes a Window, as its maximize button does
+// (ShowWindowAsync with SW_MAXIMIZE). Unlike the other calls here it
+// activates the Window: the helper runs it only in the Headed pipeline,
+// after the Window was brought to the foreground.
+func Maximize(hwnd uint64) error {
+	return showAsync(hwnd, swMaximize, "SW_MAXIMIZE")
 }
 
 func showAsync(hwnd uint64, cmd uintptr, name string) error {

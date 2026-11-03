@@ -439,4 +439,7 @@ physical pixels, effective scale, primary) and `screenshot --display <n>`
 captures one without the foreground, like agent-desktop's
 `list-displays` and `screenshot --screen`; the display screenshot binds
 no `@x,y` points, which stay per Window. Codex captures Windows only.
-**extension**.
+`maximize-window` (desktop-parity 11) maximizes a Window for real, like
+agent-desktop's `maximize`; Windows has no non-activating maximize, so it
+is the one Headed Window Action and is refused with nothing sent unless
+`--headed`. **extension**.

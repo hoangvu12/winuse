@@ -360,6 +360,14 @@ type ResizeWindowArgs struct {
 	Height int    `json:"height"`
 }
 
+// MaximizeWindowArgs are maximize-window's arguments (desktop-parity
+// ticket 11): the one Headed Window Action. Windows has no non-activating
+// maximize, so without headed nothing is sent.
+type MaximizeWindowArgs struct {
+	Window string `json:"window"`
+	Headed bool   `json:"headed,omitempty"` // the global --headed flag: activate, then SW_MAXIMIZE
+}
+
 // TypeTextArgs are type-text's arguments — Codex's type_text parameters:
 // the text is typed into the Window's focused Element (the Window is
 // activated first, like every Headed Action). Text without control
