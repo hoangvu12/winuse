@@ -286,3 +286,34 @@ func TestBatchStepInAHungWindowIsRefused(t *testing.T) {
 		t.Errorf("out %q, steps %v; want only Action 2 sent", e.Out, spy.recorded())
 	}
 }
+
+func TestBatchInNewRefusalCodes(t *testing.T) {
+	// desktop-parity 07's codes: the `in new` refusals set their own.
+	spy := newHeadlessSpy()
+	openingDesk(spy, saveDialog, editMenu)
+	stopped := noopEscWatch{}
+	before, _ := spy.svc.snapshotWindow(notepadMain)
+	spy.step("headless-click") // the click opened both
+	for _, c := range []struct {
+		name string
+		err  *Error
+		want string
+	}{
+		{"the step before failed", errOf(spy.svc.openedByStep(context.Background(), stopped, 1, Fail("x", ""), before, true)), protocol.CodeNotFound},
+		{"two opened", errOf(spy.svc.openedByStep(context.Background(), stopped, 1, nil, before, true)), protocol.CodeAmbiguousTarget},
+	} {
+		if c.err == nil || c.err.Code != c.want {
+			t.Errorf("%s: %+v, want code %s", c.name, c.err, c.want)
+		}
+	}
+	spy.svc.Surfaces = func() ([]win.WindowInfo, error) { return []win.WindowInfo{notepadMain}, nil }
+	if _, e := spy.svc.openedByStep(context.Background(), stopped, 1, nil, before, true); e == nil || e.Code != protocol.CodeNotFound {
+		t.Errorf("nothing opened: %+v, want %s", e, protocol.CodeNotFound)
+	}
+	lane := "window 777 needs a lane this Batch did not take when it started (x); nothing was sent"
+	if code, _ := protocol.CodeFor(lane, "", 1); code != protocol.CodeUsage {
+		t.Errorf("the lane refusal reads as %s, want %s", code, protocol.CodeUsage)
+	}
+}
+
+func errOf(_ win.WindowInfo, e *Error) *Error { return e }

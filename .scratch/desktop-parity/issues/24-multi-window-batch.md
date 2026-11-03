@@ -11,7 +11,7 @@ Today a Batch is `batch <window> <action> ... then ...`, one Window for all step
 
 **Blocked by:** 02 (for `in new`), 17 (for `name:` on unread Windows)
 
-**Status:** done (the live e2e run is still to do)
+**Status:** done
 
 - [x] Parser and protocol per-step Window
 - [x] `in new`
@@ -49,3 +49,20 @@ Do it like agent-desktop (each step may name its own Window) with the `in <windo
 - ma-07's hung pre-check covers only the Batch's Window (the registry's). A step in its own Window, or `in new`, now gets the same check at its turn (`stepHung`; Page steps skipped), and a hung one fails with "nothing was sent" while the Batch runs on.
 - ma-08's give-back for a Headed Batch used the last Headed step's Window. With several Windows, the last step can close a dialog, and the foreground then falls back to its owner, which an earlier step acted in. The run now records every Headed step's Window (`politeRun.visited`), and a foreground on any of them is still the Batch's, so it is given back. A foreground elsewhere is the user's, as before.
 - Tests: `TestBatchStepInAHungWindowIsRefused`, `TestPoliteBatchGivesBackFromAnyOfItsWindows`. The four checks pass.
+
+### 2026-11-03: live run; merged main (71cc59d: dp-07 codes)
+
+- Live, on the laptop, under the live lock, one run at a time, fixture only. All three passed:
+  - `TestBatchInNewActsInTheOpenedMessageBox` (15.8 s)
+  - `TestBatchAgainstTheDialog` (10.4 s; `Note: window ... closed` came after the step lines)
+  - `TestBatchRunsPastAFailedStep` (6.6 s)
+  - Afterwards no winuse, fixture or e2e process was left running, and the lock was released.
+- dp-07's codes:
+  - Several of the new refusals would read wrongly through codes.go's rules, so they set `Error.Code` themselves:
+    - `in new` with an index or point is USAGE.
+    - "Action N failed, so no Window it opened is known" is NOT_FOUND.
+    - "opened no Window" is NOT_FOUND.
+    - "opened N Windows" is AMBIGUOUS_TARGET.
+  - The lane refusal is left to the rules and reads as USAGE (its `needs `): the agent must send that Action differently.
+  - `TestBatchInNewRefusalCodes` pins these codes.
+- The four checks pass after the merge.

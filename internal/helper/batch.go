@@ -120,8 +120,8 @@ func batch(commands map[string]Command, s Services) Command {
 				return "", Fail(fmt.Sprintf("batch: Action %d (%s): `in new` needs an Action before it and names no other Window", i+1, st.Kind), batchUsageHint)
 			}
 			if st.InNew && indexedStep(st.Args) {
-				return "", Fail(fmt.Sprintf("batch: Action %d (%s) is in a new Window, which has no Window State or screenshot yet; nothing was sent", i+1, st.Kind),
-					"name its Element with name: or id:, which resolve in a fresh read, or send a key or a Window Action")
+				return "", &Error{Msg: fmt.Sprintf("batch: Action %d (%s) is in a new Window, which has no Window State or screenshot yet; nothing was sent", i+1, st.Kind),
+					Hint: "name its Element with name: or id:, which resolve in a fresh read, or send a key or a Window Action", Exit: 1, Code: protocol.CodeUsage}
 			}
 			if !batchableStep(st.Kind) {
 				return "", Fail(fmt.Sprintf("batch: Action %d (%s) is not a batchable action; expected one of %s",
@@ -542,17 +542,19 @@ func inNewHeaded(kind string, raw json.RawMessage) bool {
 // (snapshotWindow). None, several, or a failed Action n refuses the `in
 // new` step with nothing sent.
 func (s Services) openedByStep(ctx context.Context, esc EscWatch, n int, err *Error, before openedBefore, listed bool) (win.WindowInfo, *Error) {
+	// The codes (desktop-parity 07) are set here: the text reads as a
+	// failure or a usage error to codes.go's rules.
 	hint := "run winuse list-windows, then name the Window with in <window ID> in a new Batch"
 	switch {
 	case err != nil:
-		return win.WindowInfo{}, Fail(fmt.Sprintf("Action %d failed, so no Window it opened is known; nothing was sent", n), hint)
+		return win.WindowInfo{}, &Error{Msg: fmt.Sprintf("Action %d failed, so no Window it opened is known; nothing was sent", n), Hint: hint, Exit: 1, Code: protocol.CodeNotFound}
 	case !listed:
 		return win.WindowInfo{}, Fail(fmt.Sprintf("the Windows could not be listed to find the one Action %d opened; nothing was sent", n), hint)
 	}
 	opened := s.openedWithin(ctx, esc.Stopped, before, inNewWait)
 	switch len(opened) {
 	case 0:
-		return win.WindowInfo{}, Fail(fmt.Sprintf("Action %d opened no Window within %s; nothing was sent", n, inNewWait), hint)
+		return win.WindowInfo{}, &Error{Msg: fmt.Sprintf("Action %d opened no Window within %s; nothing was sent", n, inNewWait), Hint: hint, Exit: 1, Code: protocol.CodeNotFound}
 	case 1:
 		return opened[0], nil
 	}
@@ -560,8 +562,8 @@ func (s Services) openedByStep(ctx context.Context, esc EscWatch, n int, err *Er
 	for i, w := range opened {
 		names[i] = fmt.Sprintf("%d %q", w.ID, strings.Join(strings.Fields(w.Title), " "))
 	}
-	return win.WindowInfo{}, Fail(fmt.Sprintf("Action %d opened %d Windows (%s), and `in new` needs one; nothing was sent", n, len(opened), strings.Join(names, ", ")),
-		"name the one to act in with in <window ID> in a new Batch")
+	return win.WindowInfo{}, &Error{Msg: fmt.Sprintf("Action %d opened %d Windows (%s), and `in new` needs one; nothing was sent", n, len(opened), strings.Join(names, ", ")),
+		Hint: "name the one to act in with in <window ID> in a new Batch", Exit: 1, Code: protocol.CodeAmbiguousTarget}
 }
 
 // inNewWindow aims an `in new` step at the Window found for it. The Batch

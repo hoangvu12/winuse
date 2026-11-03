@@ -66,7 +66,7 @@ Details are in each ticket's Comments.
 | 21 | Agent Cursor polish | P3 | S | wontfix (folded into multi-agent 04) |
 | 22 | list-windows details and filter | P2 | S | done |
 | 23 | type-text into an Element, and pacing | P2 | S-M | done (`--into` and `--interval-ms`; the Text-pattern leg landed with headless-max 13) |
-| 24 | Batch across several Windows | P3 | M | done (live e2e run still to do) |
+| 24 | Batch across several Windows | P3 | M | done |
 
 24 tickets: 7 P1, 12 P2, 5 P3. Tickets 22-24 were added after a cross-check of the research's "partial" rows (rows 4, 23 and 60) against the tickets. The research's ticket 15 (`launch-app` options) moved into `../headless-max/issues/01-launch-without-foreground.md`, which changes the same code.
 
