@@ -119,7 +119,7 @@ func openShell(s Services) Command {
 		}
 		at := slices.IndexFunc(before, func(w win.WindowInfo) bool { return w.Class == "Shell_TrayWnd" })
 		if at < 0 {
-			return "", nothingSent(Fail("open-shell found no taskbar", "run winuse list-windows --shell"))
+			return "", nothingSent(&Error{Msg: "open-shell found no taskbar", Hint: "run winuse list-windows --shell", Exit: 1, Code: protocol.CodeNotFound})
 		}
 		taskbar := before[at]
 		open := map[uint64]bool{}

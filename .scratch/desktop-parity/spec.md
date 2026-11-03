@@ -49,7 +49,7 @@ Details are in each ticket's Comments.
 | 04 | `find` and a region read | P1 | M-L | done (live e2e run still to do) |
 | 05 | Blocked dangerous combos with `--force` | P1 | S | done |
 | 06 | Modifiers on point clicks and wheel | P1 | S | done (live e2e not run yet) |
-| 07 | Opt-in `--json` output with codes and delivery | P1 | L | ready-for-agent |
+| 07 | Opt-in `--json` output with codes and delivery | P1 | L | done (live e2e not run yet) |
 | 08 | Display list and full-screen capture | P2 | S | done |
 | 09 | Shell surfaces | P2 | M | done (`open-shell` built with 18) |
 | 10 | close-app | P2 | S-M | done |

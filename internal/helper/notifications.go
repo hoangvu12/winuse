@@ -445,8 +445,8 @@ func (s Services) pressNotification(ctx context.Context, cmd string, n int, pick
 			"the button may have been pressed; run winuse list-notifications before pressing it again")
 	}
 	if !s.notificationLeft(ctx, want) {
-		return "", Fail(fmt.Sprintf("%s pressed the button of notification %d and it still shows", cmd, n),
-			"the press was delivered; do not repeat it, read winuse list-notifications")
+		return "", &Error{Msg: fmt.Sprintf("%s pressed the button of notification %d and it still shows", cmd, n),
+			Hint: "the press was delivered; do not repeat it, read winuse list-notifications", Exit: 1, Code: protocol.CodeVerifyFailed}
 	}
 	return withNotes(okOutput, s.notificationForegroundNote(fg)), nil
 }

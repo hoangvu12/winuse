@@ -25,11 +25,15 @@ import (
 // (1 for ordinary failures, protocol.ExitEsc when the user pressed Esc).
 // Out is what the CLI prints on stdout before the failure: the steps a
 // failed Batch ran (batch.go, desktop-parity ticket 20); empty otherwise.
+// Code is the failure's code (protocol codes.go, desktop-parity ticket
+// 07) when the site knows better than its message; empty, the message
+// and hint decide it (protocol.CodeFor).
 type Error struct {
 	Msg  string
 	Hint string
 	Exit int
 	Out  string
+	Code string
 }
 
 func (e *Error) Error() string { return e.Msg }
@@ -192,8 +196,11 @@ func (s *Server) serveConn(conn net.Conn) {
 	}
 }
 
-// handle dispatches one request to its command.
+// handle dispatches one request to its command. Every failure leaves
+// with its code and delivery (protocol codes.go, desktop-parity ticket 07).
 func (s *Server) handle(req *protocol.Request) (resp protocol.Response) {
+	var code string // the failing command's own code, if it set one
+	defer func() { resp.Stamp(code) }()
 	if req.V != protocol.Version {
 		return protocol.Errorf(1, "wire protocol version %d not supported (helper speaks %d); upgrade winuse", req.V, protocol.Version)
 	}
@@ -224,6 +231,9 @@ func (s *Server) handle(req *protocol.Request) (resp protocol.Response) {
 	ctx, notes := withTraceNotes(ctx, req.Trace)
 	defer func() { resp.Trace = notes.report() }()
 	out, cmdErr := cmd(ctx, req.Args)
+	if cmdErr != nil {
+		code = cmdErr.Code
+	}
 	// Timeout policy (orchestrator decision): a command that failed or
 	// produced nothing while its budget expired is reported centrally as
 	// "winuse request timed out: <command>". A command that returned
@@ -234,11 +244,13 @@ func (s *Server) handle(req *protocol.Request) (resp protocol.Response) {
 	// instead of a timeout the user did not cause.
 	// A failure's Out (the steps a Batch ran) travels with it either way.
 	if cmdErr != nil && cmdErr.Exit == protocol.ExitEsc {
+		code = protocol.CodeStopped
 		resp := protocol.Errorf(cmdErr.Exit, "%s", cmdErr.Msg)
 		resp.Hint, resp.Out = cmdErr.Hint, cmdErr.Out
 		return resp
 	}
 	if ctx.Err() != nil && (cmdErr != nil || out == "") {
+		code = protocol.CodeTimeout
 		resp := timeoutResponse(req.Cmd)
 		if cmdErr != nil {
 			resp.Out = cmdErr.Out
