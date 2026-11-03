@@ -533,6 +533,26 @@ set WINUSE_E2E=1
 go test -tags e2e -v -run "^TestClipboard$" ./test/e2e
 ```
 
+## The display tests
+
+`displays_test.go` (desktop-parity ticket 08) launches nothing and sends
+no input. `TestListDisplaysAndCapturePrimary` checks `list-displays`
+against the system's own metrics, read per-monitor DPI aware: as many
+lines as `SM_CMONITORS`, one primary, numbered 0 and at 0,0 with the
+`SM_CXSCREEN` x `SM_CYSCREEN` size. Then `screenshot --display 0` must
+print the Screenshot line for that rectangle and the no-`@x,y` note, save
+a JPEG of the printed size with its long edge at most 1568 px and not one
+colour, log a Windows.Graphics.Capture display capture (unless this
+Windows has none), and leave the foreground where it was. A display past
+the last one is refused. `TestDisplayScreenshotFallsBackToTheScreenRegion`
+restarts the helper with `WINUSE_WGC=off`, so the display is captured
+through its screen region, and restarts it again afterwards.
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -run "Displays|DisplayScreenshot" ./test/e2e
+```
+
 ## The browser merge probe
 
 `TestBrowserProbe` (`browser_probe_test.go`, ticket 03 of
@@ -767,12 +787,17 @@ through UI Automation" note), a `set-value` on it must answer `ok`, and
 throughout. `TestLaunchAppCDPOnWebView2` needs `WINUSE_E2E_WEBVIEW2`, an
 executable that hosts a WebView2 control (it skips without it): the
 launch must print the WebView2 note, and the covered Window's State must
-come over CDP; the test logs it. Both end the App, the fixture and the
-helper.
+come over CDP; the test logs it. `TestAttachToRunningElectron` starts
+the same electron.exe the plain way (no debugging port), covers it, and
+runs `winuse browser attach <window>`: the Window State must then show
+the field read over CDP, `set-value` must be read back by `eval`, and
+`winuse browser detach <window>` must answer `ok (detached` after which
+`eval` fails. It sends the Node debug signal into the test's own Electron
+process only. All three end the App, the fixture and the helper.
 
 ```
 set WINUSE_E2E=1
 set WINUSE_E2E_ELECTRON=C:\electron-dist\electron-vX.Y.Z-win32-x64\electron.exe
 set WINUSE_E2E_WEBVIEW2=C:\path\to\WebView2App.exe
-go test -tags e2e -v -timeout 5m -run TestLaunchAppCDP ./test/e2e
+go test -tags e2e -v -timeout 5m -run "TestLaunchAppCDP|TestAttachToRunningElectron" ./test/e2e
 ```

@@ -18,7 +18,7 @@ Rules:
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent (launch done on branch hm15-electron-cdp; the attach to a running Electron App is in progress)
+**Status:** done (the live e2e runs are still to do: paused while the user games)
 
 - [x] `--cdp` in the CLI and protocol
 - [x] Electron and WebView2 argument injection; port discovery and owner verification
@@ -65,4 +65,16 @@ Both work, with the foreground unchanged at launch.
 - Docs: ADR 0012 amendment, ADR 0013 table ("launch done; attach planned"), SKILL.md launch section, codex-parity launch_app row, CLI usage, e2e README.
 - Tests: `internal/browser/apps_test.go` (switches, env var, Electron detection, owner tree check incl. the user's own msedgewebview2 refused, wait expiry and a late port, WindowConnection/open/Held/DisplayName), `internal/helper/launchcdp_test.go` (Electron and WebView2 launches, refusals, App Window recognised), `TestMatchAppTab`, `TestParseLaunchArgsCDP`. Opt-in e2e `test/e2e/app_cdp_test.go` (covered Electron 45 via `WINUSE_E2E_ELECTRON`: Page read over CDP, Headless set-value read back by eval; WebView2 via `WINUSE_E2E_WEBVIEW2`), compiled, NOT run (live runs paused).
 - Live risks: page.Merge needs a UIA Document element in the App's tree. Electron gets occlusion off for that, but it is unmeasured whether a covered Electron/WebView2 exposes one. Without it, the read falls back to UI Automation with the note.
+
+### 2026-11-03: attach to a running Electron App done (worker, branch hm15-electron-cdp, second part)
+
+- `winuse browser attach <window>` / `browser detach <window>` (`internal/helper/attach.go`; budget 30 s). The attach checks the Window's executable is Electron (`browser.IsElectron`) and that its process publishes `node-debug-handler-<pid>`. That mapping is the nodeCliInspect fuse; without it the attach is refused with nothing sent, and the hint says the App stays on UI Automation or can be relaunched with `--cdp` if the user agrees. An App launched with `--cdp` is answered with its existing connection.
+- No Node runtime is needed: `win.SignalNodeDebug` does what `process._debugProcess` does on Windows (node_process_methods.cc). It reads the handler address from the mapping and runs CreateRemoteThread at it, waiting at most 5 s. It is refused inside an offline test binary.
+- `browser.Manager.AttachElectron` then polls the loopback ports the App's own process listens on (9229 first, `System.ListeningPorts` from the TCP table) for a Node inspector (`/json/list`, type node). It registers the endpoint as `ModeAttach` for the Window's pid and dials at once, so a failed shim install fails the attach.
+- Transport (`internal/browser/electron.go`): one `Runtime.evaluate` (includeCommandLineAPI) installs a JS shim in the main process. Every CDP command then becomes `Runtime.evaluate(globalThis.__winuseShim.call(<json>), awaitPromise, returnByValue)`, answered as the CDP reply. Events come back through `Runtime.addBinding("__winuseEmit")` → `Runtime.bindingCalled`, and the inspector's own events are dropped.
+- The shim mirrors the extension's routing: browser level emulates only `Target.getTargets`/`attachToTarget`/`detachFromTarget` over `webContents` (window, browserView, webview), with target id `electron-<id>` = session id. Child sessions keep Chromium's id via `debugger.sendCommand(method, params, sessionId)`. `Page.bringToFront`/`Target.activateTarget` are refused.
+- Closing (detach, a dropped connection, `Manager.Close` at helper exit) runs the shim's `release()`: every `debugger.detach()`, then `require('inspector').close()`.
+- Docs: ADR 0012 addendum, ADR 0013 row 15 done, CONTEXT.md "Browser Connection", SKILL.md (ask the user first; detach when done), codex-parity launch_app row, CLI usage, e2e README.
+- Tests: `internal/browser/electron_test.go` (transport translation, errors, exceptions, events, release on close, a shim that does not install; AttachElectron refusals before any signal, inspector found on 9229 among the App's ports, no inspector, detach only of an attach), `internal/helper/attach_test.go`, `internal/win/nodedebug_test.go`, `TestParseBrowserAttach`. Opt-in e2e `TestAttachToRunningElectron` (compiled, NOT run).
+- Unmeasured live: the shim itself. The probe ran the same calls by hand (`webContents.getAllWebContents()[0].debugger.attach('1.3')`, Input commands), but not the `sendCommand` session routing, `Runtime.addBinding` on Node's inspector, nor `require` through the command-line API. The live run is the check.
 

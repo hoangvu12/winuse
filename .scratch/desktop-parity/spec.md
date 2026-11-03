@@ -50,7 +50,7 @@ Details are in each ticket's Comments.
 | 05 | Blocked dangerous combos with `--force` | P1 | S | done |
 | 06 | Modifiers on point clicks and wheel | P1 | S | ready-for-agent |
 | 07 | Opt-in `--json` output with codes and delivery | P1 | L | ready-for-agent |
-| 08 | Display list and full-screen capture | P2 | S | ready-for-agent |
+| 08 | Display list and full-screen capture | P2 | S | done |
 | 09 | Shell surfaces | P2 | M | ready-for-agent |
 | 10 | close-app | P2 | S-M | done |
 | 11 | maximize-window | P2 | S | ready-for-agent |
