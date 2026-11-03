@@ -109,9 +109,10 @@ instead when winuse knows it. `--minimized` works for every App, but an
 App can ignore it.
 
 A dialog such as Save As, a file picker or a message box is its own Window
-of the same App. Target it directly. If a dialog you expect is missing from
-the Window State, look for it in `list-windows`. Listings already leave out
-hidden, cloaked and tool windows.
+of the same App. Target it directly. An Action that opens one names it in a
+note after its `ok` (see "Read the result"). If a dialog you expect is
+missing from the Window State, look for it in `list-windows`. Listings
+already leave out hidden, cloaked and tool windows.
 
 ## Read the Window State
 
@@ -170,7 +171,8 @@ rather than guessing.
 Screenshots and `zoom` capture the Window where it is, even behind other
 Windows, and leave the foreground alone. They show the Window alone: a menu,
 dropdown or popup that opens outside its frame is a Window of its own, so
-find it in `list-windows` and screenshot it by its Window ID. A minimized
+screenshot it by the Window ID that the Action's note gave, or find it in
+`list-windows`. A minimized
 Window is refused, because nothing of it is on screen; run `restore-window`
 first. `--headed` activates the Window and captures it the old way, for an
 app whose headless capture comes out blank.
@@ -572,11 +574,14 @@ winuse drag <window> <element> <element|@x,y>
   banner. Deal with that Element, then read the Window State again.
 - A Page Element goes stale when the Page navigates or the node goes away.
   Read the Window State again.
-- A click that opens a JavaScript dialog, such as an alert, confirm, prompt
-  or leave-this-page dialog, fails with the dialog's text. winuse delivered
-  the click, so do not repeat it. While a dialog shows, every Page Action
-  fails and names it. Answer it with `dialog`, and give a prompt its text
-  after `accept`.
+- A click or key that opens a JavaScript dialog, such as an alert,
+  confirm, prompt or leave-this-page dialog, prints `ok` and a `Note:` line
+  with the dialog's text. winuse delivered the click, so do not repeat it.
+  While a dialog shows, every Page Action fails and names it. Answer it
+  with `dialog` next, and give a prompt its text after `accept`.
+- A click or key that opens a new Tab adds
+  `Note: a new Tab opened: <tab> "<title>" <url>`. `tab list` shows which
+  Window holds it, and `tab switch` makes it the Tab you read and act on.
 - A click that opens a file chooser says that winuse held it back, so no
   file dialog opens on the screen. Answer it with
   `winuse upload <window> <file>...`, or give files to a file input
@@ -643,8 +648,8 @@ Headless. That is why the example needs `--headed`; without it, the click
 would not move focus to the field.
 
 The Page commands and `tab new`, `tab close` and `tab switch` are Batch
-steps too. A Batch prints only `ok`, so run `eval` and `tab list` on their
-own when you need their output.
+steps too. A Batch prints only `ok` and the note lines below, so run `eval`
+and `tab list` on their own when you need their output.
 
 ## Read the result
 
@@ -672,6 +677,23 @@ anything reached the app.
 
 When a failure does not say whether anything was sent, treat the outcome as
 unknown, read the Window State, and decide from it.
+
+After `click`, `perform-secondary-action` Expand or Select, `press-key`,
+`set-value` and a Batch, winuse watches the App's Windows for a moment and
+adds a line after `ok` for each change:
+
+- `Note: a new Window opened: <id> <App> "<title>"` for a dialog, menu or
+  popup the Action opened. Read that Window next with
+  `get-window-state <id>`, before you act on the Window you clicked. A menu
+  has no title and is left out of `list-windows`, but its Window ID works
+  in every command.
+- `Note: window <id> closed` when the Window you acted on closed, such as a
+  dialog after its OK button. Go back to its owner.
+
+Tooltips are never reported, and neither are notifications, which belong to
+Windows rather than the App. No note does not prove nothing opened: a slow
+App can open its dialog later, so check `list-windows` when you expected
+one.
 
 ## When the user presses Esc
 

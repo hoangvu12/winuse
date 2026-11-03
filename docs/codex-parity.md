@@ -229,8 +229,14 @@ background helper over a named pipe restricted to the user's SID,
 version-checked (a stale helper exits so upgrades never act through an
 old one; only the read-only `status` is answered across builds, naming
 both versions), idle-exiting after 5 minutes. The observable contract — one
-request at a time, `ok` or a one-line failure, no state echo — is
-preserved. **intentionally different**.
+request at a time, `ok` or a one-line failure, no Window State echoed back
+— is preserved. After `click`, `perform-secondary-action` Expand or
+Select, `press-key`, `set-value` and a Batch, the `ok` may be followed by
+`Note:` lines naming a Window the Action opened (a dialog, a menu or a
+popup of the same App, with its Window ID) or the target Window closing,
+and a Page Action's JavaScript dialog or new Tab (desktop-parity 02,
+agent-desktop's `data.surfaces`); Codex finds a new Window only through
+the next `list_windows`. **intentionally different**.
 
 ### timeouts
 
@@ -406,5 +412,6 @@ or a drag. `list-windows --details` and `--app` add a Window's frame,
 pid and state flags and an App filter to Codex's plain listing. `status`
 prints the winuse and helper versions, the helper's uptime, the desktop's
 lock state, the integrity level, DPI awareness, the Browser Connections
-and the Windows build; it only reads and never starts the helper.
-**extension**.
+and the Windows build; it only reads and never starts the helper. The
+notes after an Action's `ok` (see process model) report the Windows and
+Tabs it opened. **extension**.

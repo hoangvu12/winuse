@@ -166,6 +166,14 @@ type Services struct {
 	// Window polls use Windows, Foreground and Sleep above.
 	StartApp func(spec apps.Spec, opts win.LaunchOptions) (pid uint32, err error)
 
+	// The Windows an Action opened (desktop-parity 02, opened.go):
+	// Surfaces lists every visible top-level window, unfiltered, menus and
+	// popups included (win.Collect), for the before-and-after diff and for
+	// resolving a reported menu's Window ID. Nil falls back to win.Collect,
+	// which refuses inside an offline test binary (the diff is then
+	// skipped); tests fake it.
+	Surfaces func() ([]win.WindowInfo, error)
+
 	// The in-control indicator (ticket 13): raised over the target Window
 	// for the duration of every Action, click-through, never focused, and
 	// hidden around every capture. Nil means no indicator (offline tests;
@@ -278,14 +286,16 @@ func CommandsWith(s Services) map[string]Command {
 		cmds[name] = cmd
 	}
 
-	// The serialized registry: every control-path command runs alone.
+	// The serialized registry: every control-path command runs alone, and
+	// the Actions that can open a Window report it (opened.go). The Batch
+	// keeps the raw step commands, so it diffs once around all its steps.
 	out := make(map[string]Command, len(cmds))
 	for name, cmd := range cmds {
 		if observationOnlyCommand(name) {
 			out[name] = cmd
 			continue
 		}
-		out[name] = s.serialized(cmd)
+		out[name] = s.serialized(s.reportOpened(name, cmd))
 	}
 	return out
 }
@@ -502,6 +512,16 @@ func defaultServices(s Services) Services {
 	if s.StartApp == nil {
 		s.StartApp = apps.StartApp
 	}
+	if s.Surfaces == nil {
+		s.Surfaces = func() ([]win.WindowInfo, error) {
+			// Read-only, but an offline test must not depend on the
+			// user's desktop: the diff is skipped there.
+			if err := win.LiveDesktopGuard(); err != nil {
+				return nil, err
+			}
+			return win.Collect()
+		}
+	}
 	if s.Browser == nil {
 		s.Browser = browser.NewManager(browser.Live())
 	}
@@ -641,7 +661,10 @@ func parseArgs(args json.RawMessage, v any) error {
 }
 
 // resolveWindow names a Window by Window ID or App name over the live
-// desktop (see win.ResolveWindow for the matching rules).
+// desktop (see win.ResolveWindow for the matching rules). A Window ID
+// that list-windows drops resolves too when it is an open menu or popup
+// (win.OpenedSurface), so the agent can read the Window an Action
+// reported opening.
 func resolveWindow(s Services, ref string) (win.WindowInfo, *Error) {
 	ws, err := s.Windows()
 	if err != nil {
@@ -649,6 +672,9 @@ func resolveWindow(s Services, ref string) (win.WindowInfo, *Error) {
 	}
 	w, rerr := win.ResolveWindow(ws, ref)
 	if rerr != nil {
+		if popup, ok := s.popupByID(ref); ok {
+			return popup, nil // a menu or popup an Action reported (opened.go)
+		}
 		var re *win.ResolveError
 		if errors.As(rerr, &re) {
 			return win.WindowInfo{}, &Error{Msg: re.Msg, Hint: re.Hint, Exit: 1}

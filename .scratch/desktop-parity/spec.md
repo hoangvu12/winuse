@@ -44,7 +44,7 @@ Details are in each ticket's Comments.
 | # | Title | Priority | Effort | Status |
 |---|---|---|---|---|
 | 01 | Clipboard commands | P1 | S | ready-for-agent |
-| 02 | Report Windows that an Action opened | P1 | S-M | ready-for-agent |
+| 02 | Report Windows that an Action opened | P1 | S-M | done (live e2e run still to do) |
 | 03 | Desktop waits | P1 | M | ready-for-agent |
 | 04 | `find` and a region read | P1 | M-L | ready-for-agent |
 | 05 | Blocked dangerous combos with `--force` | P1 | S | done |

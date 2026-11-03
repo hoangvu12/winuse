@@ -319,8 +319,9 @@ func (p *pageRun) dragAndCapture(t *testing.T) {
 	}
 }
 
-// dialogs: alert, confirm and prompt through `winuse dialog`, other
-// Actions failing fast with nothing sent while one is open, and the
+// dialogs: alert, confirm and prompt through `winuse dialog`, the click
+// that opened each one reported as `ok` with a note (desktop-parity 02),
+// other Actions failing fast with nothing sent while one is open, and the
 // Window State's note.
 func (p *pageRun) dialogs(t *testing.T) {
 	st := p.open(t, p.srv.mainURL(false, ""), "")
@@ -330,8 +331,8 @@ func (p *pageRun) dialogs(t *testing.T) {
 	text := pageIndex(t, st, "edit", "e2e text")
 	alertB := pageIndex(t, st, "button", "e2e alert")
 
-	out, _ := p.failing(t, "click", p.window, alertB)
-	expectContains(t, "the click that opened an alert", out, "alert dialog")
+	out := p.act(t, "click", p.window, alertB)
+	expectContains(t, "the click that opened an alert", out, "ok\nNote: the Page opened an alert dialog")
 	expectContains(t, "the click that opened an alert", out, "e2e alert message")
 
 	// Before any new Window State read: the Page indexes above stay
@@ -365,13 +366,13 @@ func (p *pageRun) dialogs(t *testing.T) {
 	p.expectEval(t, "String(document.getElementById('count').dataset.count || 0)", "0")
 	p.expectEval(t, "document.getElementById('text').value", "")
 
-	out, _ = p.failing(t, "click", p.window, pageIndex(t, st, "button", "e2e confirm"))
-	expectContains(t, "the click that opened a confirm", out, "confirm dialog")
+	out = p.act(t, "click", p.window, pageIndex(t, st, "button", "e2e confirm"))
+	expectContains(t, "the click that opened a confirm", out, "Note: the Page opened a confirm dialog")
 	p.actOK(t, "dialog", p.window, "dismiss")
 	p.expectEval(t, "String(window.e2eConfirm)", "false")
 
-	out, _ = p.failing(t, "click", p.window, pageIndex(t, st, "button", "e2e prompt"))
-	expectContains(t, "the click that opened a prompt", out, "prompt dialog")
+	out = p.act(t, "click", p.window, pageIndex(t, st, "button", "e2e prompt"))
+	expectContains(t, "the click that opened a prompt", out, "Note: the Page opened a prompt dialog")
 	p.actOK(t, "dialog", p.window, "accept", "e2e answer")
 	p.expectEval(t, "String(window.e2ePrompt)", "e2e answer")
 
@@ -659,11 +660,17 @@ func (p *pageRun) act(t *testing.T, args ...string) string {
 	return stdout
 }
 
-// actOK is act for an Action whose whole output is "ok".
+// actOK is act for an Action whose output is "ok", with any note lines
+// logged (assertActionOK).
 func (p *pageRun) actOK(t *testing.T, args ...string) {
 	t.Helper()
-	if out := p.act(t, args...); out != "ok\n" {
-		t.Errorf("winuse %s: stdout %q, want %q", strings.Join(args, " "), out, "ok\n")
+	out := p.act(t, args...)
+	notes, ok := actionNotes(out)
+	if !ok {
+		t.Errorf("winuse %s: stdout %q, want %q and any note lines", strings.Join(args, " "), out, "ok\n")
+	}
+	for _, n := range notes {
+		t.Logf("winuse %s: %s", strings.Join(args, " "), n)
 	}
 }
 

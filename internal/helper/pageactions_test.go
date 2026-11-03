@@ -426,17 +426,20 @@ func TestPageClickStale(t *testing.T) {
 }
 
 // TestPageClickDialogRace: a press that opens a dialog is reported at
-// once, with the dialog command; the click counts as delivered.
+// once: the click was delivered, so it is `ok` and a note names the
+// dialog and the dialog command (desktop-parity 02).
 func TestPageClickDialogRace(t *testing.T) {
 	r := newPageRig(t)
 	r.set(func() { r.holdPress = true })
 	start := time.Now()
-	_, e := r.run(t, "click", protocol.ClickArgs{Window: "301", ElementIndex: idx(7)})
-	if e == nil || e.Msg != `the click was delivered, and the Page opened a confirm dialog: "Leave this page?"` {
+	out, e := r.run(t, "click", protocol.ClickArgs{Window: "301", ElementIndex: idx(7)})
+	if e != nil {
 		t.Fatalf("dialog: %+v", e)
 	}
-	if !strings.Contains(e.Hint, "winuse dialog 301 accept") || !strings.Contains(e.Hint, "winuse dialog 301 dismiss") || !strings.Contains(e.Hint, "do not repeat the click") {
-		t.Errorf("hint %q", e.Hint)
+	want := "ok\nNote: the Page opened a confirm dialog: \"Leave this page?\"; the Page takes no other input until it is answered: " +
+		"run winuse dialog 301 accept or winuse dialog 301 dismiss (a prompt takes its text: winuse dialog 301 accept <text>)\n"
+	if out != want {
+		t.Errorf("output %q, want %q", out, want)
 	}
 	if time.Since(start) > 3*time.Second {
 		t.Error("the click waited for the held press")

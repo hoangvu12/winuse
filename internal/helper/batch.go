@@ -48,7 +48,10 @@ const batchUsageHint = "usage: winuse batch <window> <action> [arguments] [then 
 // first failure stops the Batch with the failed Action named. Steps are the
 // Action commands (protocol.BatchStepKinds); a Step's arguments are the
 // standalone command's own, without the Window. A stopped Batch (the
-// user's Esc press) keeps the stop's exit code (130) and message.
+// user's Esc press) keeps the stop's exit code (130) and message. A
+// successful Batch prints `ok` with its steps' note lines after it (a
+// Page step's dialog or new Tab); the Windows the Batch opened are diffed
+// once around the whole Batch (opened.go).
 //
 // A Batch with a Headed step is one overlay bracket (finding 12; an
 // all-Headless Batch shows no banner, ADR 0010): the indicator shows once
@@ -168,6 +171,7 @@ func batch(commands map[string]Command, s Services) Command {
 				defer s.hideOverlay()
 			}
 		}
+		var notes strings.Builder // the steps' note lines (opened.go)
 		for i, st := range steps {
 			if esc.Stopped() {
 				return "", escStopError()
@@ -179,7 +183,8 @@ func batch(commands map[string]Command, s Services) Command {
 				return "", Fail(fmt.Sprintf("the batch's request budget expired before Action %d (%s); the Actions that ran took effect", i+1, st.kind),
 					"re-observe the Window and continue in a fresh request")
 			}
-			_, err := st.cmd(ctx, st.args)
+			out, err := st.cmd(ctx, st.args)
+			notes.WriteString(stepNotes(out))
 			if err != nil {
 				return "", &Error{
 					Msg:  fmt.Sprintf("batch stopped at Action %d (%s): %s", i+1, st.kind, err.Msg),
@@ -194,7 +199,7 @@ func batch(commands map[string]Command, s Services) Command {
 		if esc.Stopped() {
 			return "", escStopError()
 		}
-		return okOutput, nil
+		return withNotes(okOutput, notes.String()), nil
 	}
 }
 

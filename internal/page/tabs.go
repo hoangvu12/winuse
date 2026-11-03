@@ -88,6 +88,13 @@ func ListWindowTabs(ctx context.Context, conn *browser.Connection, g Geometry) (
 	return out, nil
 }
 
+// ListTabs lists every Tab of the connection, in all its browser windows,
+// as Target.getTargets has them now: the before-and-after diff that finds
+// a Tab an Action opened.
+func ListTabs(ctx context.Context, c *cdp.Client) ([]Tab, error) {
+	return pageTabs(ctx, c)
+}
+
 // pageTabs lists the connection's Tabs (IsTabTarget), browser pages marked
 // Internal, with the extension's windowId and active fields when it sends
 // them.

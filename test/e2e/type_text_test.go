@@ -176,8 +176,8 @@ func TestPressKeyNames(t *testing.T) {
 		if exit != 0 {
 			t.Fatalf("press-key %q: exit %d, stderr:\n%s", tc.key, exit, stderr)
 		}
-		if stdout != "ok\n" {
-			t.Errorf("press-key %q: stdout = %q, want %q", tc.key, stdout, "ok\n")
+		if _, ok := actionNotes(stdout); !ok {
+			t.Errorf("press-key %q: stdout = %q, want %q and any note lines", tc.key, stdout, "ok\n")
 		}
 		fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.LastKey == tc.want })
 	}
