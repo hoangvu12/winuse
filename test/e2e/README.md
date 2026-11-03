@@ -390,6 +390,12 @@ still the foreground window afterwards. The shared helpers are in
   "ok", and `press-key Escape` with "cancel".
 - `TestHeadlessTypeTextIntoClassicEdit`: `type-text` into the Classic
   Dialog's Edit (non-ASCII text, then an appended character).
+- `TestActionReportsOpenedAndClosedWindows` (`opened_windows_test.go`,
+  desktop-parity 02): the Headless click on "Classic Dialog..." prints
+  `ok` and `Note: a new Window opened: <id> <App> "Classic Dialog"`,
+  `get-window <id>` finds that Window, and a Headless Escape on it prints
+  `Note: window <id> closed`. The foreground stays put. Every other test
+  accepts such note lines after `ok` and logs them (`assertActionOK`).
 - `TestHeadlessTypeTextIntoPasswordEdit`: a posted Tab moves the focus to
   the password Edit, then `type-text` fills it and the output is exactly
   `ok`, without the text.
@@ -459,7 +465,7 @@ Run only these tests:
 
 ```
 set WINUSE_E2E=1
-go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted" ./test/e2e
+go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted|OpenedAndClosed" ./test/e2e
 ```
 
 ## The browser merge probe

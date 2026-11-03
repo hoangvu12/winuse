@@ -24,8 +24,10 @@ package helper
 //
 // Every refusal raised before the first input event says "nothing was
 // sent". Scrolling the Element into view (DOM.scrollIntoViewIfNeeded)
-// comes before the checks and is not input. A click whose handler opens
-// a JavaScript dialog is reported with the dialog command to answer it.
+// comes before the checks and is not input. Input whose handler opens a
+// JavaScript dialog was delivered: the Action's `ok` is followed by a
+// note naming the dialog and the dialog command to answer it, and a new
+// Tab it opened gets a note too (desktop-parity 02, opened.go).
 
 import (
 	"context"
@@ -316,6 +318,7 @@ func (s Services) runPage(ctx context.Context, run pageRun) (string, *Error) {
 	}
 	defer in.Close()
 	defer s.holdChoosers(ctx, w, o)() // file chooser interception for this Action (ticket 06)
+	s.watchNewTabs(ctx, o)
 	err = run.act(ctx, in, aim)
 	if shown && in.Sent > 0 {
 		s.cursorClick(rect)
@@ -326,10 +329,61 @@ func (s Services) runPage(ctx context.Context, run pageRun) (string, *Error) {
 		}
 		return "", escStopError()
 	}
+	if note, ok := dialogNote(err, w); ok {
+		return okOutput + note, nil
+	}
 	if err != nil {
 		return "", pageFailure(err, run, in.Sent)
 	}
 	return okOutput, nil
+}
+
+// dialogNote turns a JavaScript dialog that the Action's input opened
+// into a note after its `ok` (desktop-parity 02): the input was
+// delivered, and the agent answers the dialog next. false for any other
+// outcome.
+func dialogNote(err error, w win.WindowInfo) (string, bool) {
+	var dialog *page.DialogError
+	if !errors.As(err, &dialog) {
+		return "", false
+	}
+	id := strconv.FormatUint(w.ID, 10)
+	return notePrefix + dialog.Error() + "; the Page takes no other input until it is answered: " + dialogHint(id) + "\n", true
+}
+
+// watchNewTabs registers a probe that finds the Tabs a Page Action opens
+// (desktop-parity 02): the connection's Tabs now, compared with the Tabs
+// at each poll of the reported Action's settle (opened.go). Outside a
+// reported Action, or when the Tabs cannot be listed, it does nothing.
+func (s Services) watchNewTabs(ctx context.Context, o *page.Origin) {
+	if !reportingOpened(ctx) {
+		return
+	}
+	lctx, cancel := context.WithTimeout(ctx, pageProbeBudget)
+	before, err := page.ListTabs(lctx, o.Client)
+	cancel()
+	if err != nil {
+		return
+	}
+	known := make(map[string]bool, len(before))
+	for _, t := range before {
+		known[t.TargetID] = true
+	}
+	addOpenedProbe(ctx, func(ctx context.Context) []string {
+		lctx, cancel := context.WithTimeout(ctx, pageProbeBudget)
+		defer cancel()
+		now, err := page.ListTabs(lctx, o.Client)
+		if err != nil {
+			return nil
+		}
+		var lines []string
+		for _, t := range now {
+			if !known[t.TargetID] {
+				lines = append(lines, fmt.Sprintf("a new Tab opened: %s %q %s", page.TabID(t.TargetID), tabTitle(t.Title), t.URL))
+			}
+		}
+		return lines
+	})
 }
 
 // pageFailure maps a Page Action's failure. sent is how many input events
@@ -672,6 +726,7 @@ func (s Services) runPageInput(ctx context.Context, w win.WindowInfo, o *page.Or
 	}
 	defer in.Close()
 	defer s.holdChoosers(ctx, w, o)() // Enter or Space on a file input opens a chooser too
+	s.watchNewTabs(ctx, o)
 	err = p.act(ctx, in)
 	if shown && in.Sent > 0 {
 		s.cursorClick(rect)
@@ -681,6 +736,9 @@ func (s Services) runPageInput(ctx context.Context, w win.WindowInfo, o *page.Or
 			return "", escStopBeforeActError()
 		}
 		return "", escStopError()
+	}
+	if note, ok := dialogNote(err, w); ok {
+		return okOutput + note, nil
 	}
 	if err != nil {
 		return "", pageFailure(err, run, in.Sent)

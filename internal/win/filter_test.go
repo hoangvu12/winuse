@@ -134,3 +134,34 @@ func TestCloakedBeatsMinimized(t *testing.T) {
 		t.Fatal("cloaked windows must be dropped even when minimized")
 	}
 }
+
+// OpenedSurface keeps what an Action can open and the agent reads next
+// (desktop-parity 02): dialogs, and the menus and popups list-windows
+// drops; tooltips and click-through windows are no such thing.
+func TestOpenedSurface(t *testing.T) {
+	b := Rect{Left: 10, Top: 10, Right: 300, Bottom: 400}
+	cases := []struct {
+		name string
+		w    WindowInfo
+		want bool
+	}{
+		{"message box", WindowInfo{Title: "Fixture", Class: dialogClass, Visible: true, Bounds: b}, true},
+		{"classic menu", WindowInfo{Class: "#32768", ExStyle: wsExToolWindow, Visible: true, Bounds: b}, true},
+		{"WinUI 3 menu", WindowInfo{Title: "PopupHost", Class: "Microsoft.UI.Content.PopupWindowSiteBridge", ExStyle: wsExToolWindow | wsExNoActivate, Visible: true, Bounds: b}, true},
+		{"Chromium menu popup", WindowInfo{Class: "Chrome_WidgetWin_1", ExStyle: wsExToolWindow, Visible: true, Bounds: b}, true},
+		{"tooltip", WindowInfo{Class: "tooltips_class32", ExStyle: wsExToolWindow, Visible: true, Bounds: b}, false},
+		{"menu shadow", WindowInfo{Class: "SysShadow", Visible: true, Bounds: b}, false},
+		{"click-through popup", WindowInfo{Class: "Chrome_WidgetWin_1", ExStyle: wsExToolWindow | wsExTransparent, Visible: true, Bounds: b}, false},
+		{"hidden", WindowInfo{Class: "#32768", Bounds: b}, false},
+		{"cloaked", WindowInfo{Class: "#32768", Visible: true, Cloaked: true, Bounds: b}, false},
+		{"minimized", WindowInfo{Title: "x", Visible: true, Minimized: true}, false},
+		{"zero area", WindowInfo{Class: "#32768", Visible: true}, false},
+		{"shell surface", WindowInfo{Class: "Shell_TrayWnd", Visible: true, ShellWindow: true, Bounds: b}, false},
+		{"winuse's own overlay", WindowInfo{Visible: true, OwnProcess: true, Bounds: b}, false},
+	}
+	for _, c := range cases {
+		if got := OpenedSurface(c.w); got != c.want {
+			t.Errorf("%s: OpenedSurface = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
