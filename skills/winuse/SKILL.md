@@ -664,7 +664,7 @@ the format you asked for, the hint says what it holds.
 literal text joined by spaces, like `type-text`, or a PNG file, or a list
 of existing files (paths from your working directory). For a long text in
 a field with no Headless route, `clipboard-set` it, then paste with
-`press-key <window> Control_L+v`, which is Headed.
+`press-key <window> Control_L+v`, which takes the key routes above.
 
 A clipboard whose owner stopped responding is refused with nothing sent;
 wait until that program responds, then retry.
@@ -682,9 +682,9 @@ still uses the real pointer.
 
 Without a Browser Connection, the Window State ends with a line such as
 `Note: the Page is read through UI Automation because no Browser Connection
-is open to Chrome; run winuse browser status chrome.` Typing then needs
-`--headed` and the Page commands below fail; run the command the note
-names. Other notes name a Tab that did not match the Window, or a
+is open to Chrome; run winuse browser status chrome.` Keys and typing then
+go as window messages (see "Fill in fields, keys and text"), and the Page
+commands below fail; run the command the note names. Other notes name a Tab that did not match the Window, or a
 JavaScript dialog to answer first.
 
 ### Get a Browser Connection

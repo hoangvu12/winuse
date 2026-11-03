@@ -4,6 +4,13 @@
 
 Accepted (ticket 12 — Esc stop).
 
+Amended by ADR 0014: one press stops every agent's running and waiting
+commands (multi-agent ticket 05), and while a Headed Action is armed the
+hook also yields to the user: their own key presses and, through a
+WH_MOUSE_LL hook on the same thread, their mouse buttons and wheel pass
+through and stop the Action like Esc, with a message saying the user
+took over (multi-agent ticket 08).
+
 ## Context
 
 The spec (Control, user story 45) requires the physical Esc key to

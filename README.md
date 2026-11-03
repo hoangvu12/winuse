@@ -62,22 +62,27 @@ window where it is and leaves it behind your other windows.
 
 ## Headless and headed actions
 
-winuse does most actions in the background. It clicks buttons, sets
-fields and check boxes, expands and toggles elements, scrolls elements,
-and restores, minimizes, moves, resizes and closes windows. It also
-presses Enter or Esc in a classic dialog and types into a classic edit
-box such as Notepad's. It does not move your mouse, press keys or bring
-the window to the front, so you can keep working in another window. A
-second cursor shows where the agent acts.
+winuse does most actions in the background, behind your work and on
+minimized windows too. It clicks buttons, sets fields, check boxes and
+list items, expands and toggles elements, scrolls, selects text, runs
+menu-bar commands and the shortcuts a window labels, presses Enter or Esc
+in a classic dialog, types into a named text field, and restores,
+minimizes, moves, resizes and closes windows. In Chrome, Edge and
+Electron apps it also types, presses keys and clicks through window
+messages. It does not move your mouse, press keys or bring the window to
+the front, so you can keep working in another window. A second cursor
+shows where each agent acts.
 
-Other typing and key presses, dragging, hovering and clicks at screen
-coordinates need the real mouse and keyboard. winuse does those only when
-the agent passes `--headed`: it then brings the window to the front and
-frames it with a banner. Without the flag it refuses, sends nothing and
-names the `--headed` command, so it never takes your screen on its own.
-`--headed` also makes any other action except a window action work this
-way. Pass `--post` to send keys and text to a background window instead,
-which some apps ignore.
+Hover, dragging, games and other apps that read raw input, and the
+other gaps listed in [ADR 0013](docs/adr/0013-headless-by-readback-posted-by-opt-in.md)
+need the real mouse and keyboard. winuse does those only when the agent
+passes `--headed`: it waits until you pause, brings the window to the
+front under a banner, and gives your window and pointer back when done;
+touching the keyboard or mouse stops it. Without the flag it refuses,
+sends nothing and names the `--headed` command, so it never takes your
+screen on its own. `--headed` also makes any other action except a
+window action work this way. Pass `--post` to send keys, text or clicks
+to a background window instead, which some apps ignore.
 
 Press Esc at any time to stop winuse. It refuses to act on administrator
 windows or a locked screen, and it never presses the Windows key. It also

@@ -49,7 +49,7 @@ Close every gap that has a route, and say plainly where none exists.
 | 14 | Headless Actions on minimized Windows | S | done (live e2e pending) |
 | 15 | Electron and WebView2 Browser Connections at launch, and attach to a running Electron (opt-in) | L | done (live e2e runs still to do) |
 | 16 | Spike: MXC session container | M | wontfix |
-| 17 | ADR 0013, CONTEXT.md, skill and the impossible list | S | ready-for-agent |
+| 17 | ADR 0013, CONTEXT.md, skill and the impossible list | S | done |
 | 18 | Longer settle for a cold Chromium UIA tree | S | done |
 | 19 | Headless typing into a covered Windows 11 Notepad | S-M | done |
 | 20 | Background typing, keys and clicks for Chromium and Electron without CDP | M | done (live e2e not run yet) |

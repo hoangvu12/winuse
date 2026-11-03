@@ -7,8 +7,8 @@ Accepted by the user on 2026-11-03 (headless-max spec,
 0012. It reverses ADR 0010 Decision 1, the headless spec's minimized
 refusal, ADR 0011 Decision 5's chord refusal and ADR 0012 Decision 6's
 "Chromium browsers only"; "Reversals" below names the ticket behind
-each. Most routes it rules on are planned: the table in "Routes" says
-which have landed.
+each. Every route it rules on has landed except the ContextMenu
+Secondary Action (ticket 09); the table in "Routes" says which.
 
 ## Context
 
@@ -163,7 +163,8 @@ administrator Windows, with the advice to start winuse elevated.
 - WPF context menus: neither ShowContextMenu nor a posted WM_CONTEXTMENU
   opens one in a background Window (round 4).
 - The tray overflow, whose opening takes the foreground, and the clock
-  and notification panel, which does not open from a UIA call (round 5).
+  and notification panel, which does not open from a UIA call (round 5;
+  the shell surfaces are ADR 0015's).
 - Guaranteeing that an App never takes the foreground itself.
 - Administrator Windows, from a helper that is not elevated.
 - Attaching CDP to a running WebView2 App, or to a running Electron App
@@ -181,9 +182,11 @@ CDP (ticket 20), and attaching to a running Electron App with the fuse on
 - `ok` from a Headless route means winuse read the effect back. `ok` from
   a Posted route means only that the messages were delivered, and the
   output says to read the Window State.
-- More `press-key` and `type-text` calls stay in the background, so the
-  rule "keys outside a classic dialog or edit box take the foreground"
-  in the skill narrows ticket by ticket.
+- More `press-key` and `type-text` calls stay in the background. The
+  skill's old rule "keys outside a classic dialog or edit box take the
+  foreground" gave way to the shortcut lookup (ticket 06), posted chords
+  (07), the caret splice through `--into` (13, 19) and the Chromium and
+  Electron message route (20); what is left needs `--headed`.
 - UIA Invoke on a classic `#32768` menu item takes the foreground (round
   4), so the menu routes choose items through posted mnemonics or
   WM_COMMAND, never through UIA Invoke there.

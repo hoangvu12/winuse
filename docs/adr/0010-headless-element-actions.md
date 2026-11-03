@@ -12,6 +12,10 @@ Window (headless-max ticket 11), and the minimized refusal of the
 headless spec is lifted for classic Win32, WPF and WinUI 3 Desktop
 Windows (ticket 14).
 
+Amended by ADR 0014: Decision 5's Agent Cursor is one per Agent, with
+its own colour and name, placed just above the Window it acts on rather
+than topmost (multi-agent ticket 04).
+
 ## Context
 
 v1 copied Codex's Windows model: every Action activates the Window,

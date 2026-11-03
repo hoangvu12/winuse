@@ -18,12 +18,12 @@ Write the ADR before the tickets that reverse earlier decisions land; update CON
 
 **Blocked by:** none for the ADR; the documentation pass follows 01-15
 
-**Status:** ready-for-agent (ADR 0013 accepted by the user)
+**Status:** done
 
 - [x] ADR 0013 drafted and accepted by the user
-- [ ] CONTEXT.md terms
-- [ ] SKILL.md impossible list and routing rules
-- [ ] codex-parity rows reworded; parity guard test passes
+- [x] CONTEXT.md terms
+- [x] SKILL.md impossible list and routing rules
+- [x] codex-parity rows reworded; parity guard test passes
 
 ## Comments
 
@@ -48,3 +48,14 @@ Update the impossible list from round 3: Chromium and Electron keys without CDP 
 - CONTEXT.md: Posted Clicks next to Posted Keys (marked planned); the Headed Action definition notes ADR 0013.
 - SKILL.md: "What winuse cannot do headless" under "Choose Headless or Headed", with when to use `--post` or `--headed`. It describes only what winuse does today, so it names no planned route.
 - Still open, as each code ticket lands: CONTEXT.md's Headed Action narrowing and the new Actions (invoke-menu, ContextMenu), the SKILL.md routes, README's headless line, and the docs/codex-parity.md rows. Then check the whole set here.
+
+### 2026-11-03: the final doc pass
+
+Checked the whole set against what landed (headless-max 01 to 21, desktop-parity, multi-agent 01 to 11) and fixed what had gone stale.
+
+- **ADR 0013:** the Status no longer says most routes are planned (all landed but ticket 09); the impossible list points the shell surfaces at ADR 0015; the consequence about the skill's keys rule names the tickets that replaced it.
+- **ADR cross-links:** ADR 0007 now notes ADR 0014's amendments (one press stops every agent; the hook's yield to the user's keys and mouse, with a WH_MOUSE_LL hook). ADR 0010 notes the Agent Cursor per Agent. ADR 0011's Status names its later amendments (headless-max 19 with desktop-parity 23, headless-max 03), which were only at the end of the file.
+- **CONTEXT.md:** the stale "Planned" Posted Clicks entry (a duplicate of the landed one) is gone; Agent and Lane drop "Planned"; Headed Action says ADR 0013 narrowed the set and leaves out Chromium and Electron Windows and Posted Clicks from the double, right and middle clicks; Headless Action says Element Actions reach a minimized Window except a Store App's.
+- **SKILL.md:** two contradictions fixed: a browser Window without a Browser Connection said typing needs `--headed` (ticket 20 sends it as window messages), and the clipboard paste said `Control_L+v` is Headed (it takes the key routes). The impossible list already matched ADR 0013; it stays the agent-facing subset (IME, a WebView2 attach and the self-activation guarantee are covered where the agent meets them). 55 KB.
+- **README:** the headless paragraph says what runs in the background now (menus, shortcuts, text selection, named fields, minimized Windows, Chromium and Electron messages), points at ADR 0013's list for the rest, and says how a Headed Action behaves (it waits, gives the foreground and pointer back, stops when the user touches the keyboard or mouse).
+- **docs/codex-parity.md:** reworded, statuses kept: the double, right and middle click refusals leave out Chromium and Electron Windows; press-key names the shortcut lookup; activate-window no longer says Headless Actions refuse every minimized Window; polite real input (multi-agent 08) in activate-window, process model's notes and the Esc stop. `go test ./internal/skill/...` passes.

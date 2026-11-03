@@ -18,8 +18,10 @@ and the `--headed` retry unless the agent passed `--headed`. They no
 longer go Headed on their own.
 
 Amended on 2026-11-03 (desktop-parity ticket 11): Decision 2 gains
-`maximize-window`, the one Headed Window Action. See the amendment at
-the end.
+`maximize-window`, the one Headed Window Action; (headless-max ticket 19
+and desktop-parity ticket 23) Decision 4 routes `type-text` by a named
+Element too; (headless-max ticket 03) self-activation is reported after
+every Headless Action. See the amendments at the end.
 
 ## Context
 
