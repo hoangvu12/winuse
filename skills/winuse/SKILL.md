@@ -555,7 +555,7 @@ Some Apps drop characters typed fast. `type-text <window> --interval-ms 50
 <text>` pauses that many milliseconds (0 to 1000) between characters typed
 key by key, with `--headed` or `--post`; it sits right after the Window
 with `--post` or `--into`. A route that puts the text in at once ignores
-it, and its `ok` says so.
+it, and a `Note:` after `ok` says so.
 
 ## Run a menu command
 
@@ -838,10 +838,10 @@ needs. Page and tab commands are steps too.
 
 ## Read the result
 
-An Action prints `ok`, or one failure line and a `hint:` line. The exit code
-is 0 for success, 1 for a failure, 2 for a usage error and 130 for an Esc
-stop. The hint usually names the recovery. These phrases tell you whether
-anything reached the app.
+An Action prints `ok` and any `Note:` lines, or one failure line and a
+`hint:` line. The exit code is 0 for success, 1 for a failure, 2 for a
+usage error and 130 for an Esc stop. The hint usually names the recovery.
+These phrases tell you whether anything reached the app.
 
 - `nothing was sent` means winuse did not touch the app. Fix the cause the
   line names and retry; a retry is safe.
