@@ -493,7 +493,7 @@ still the foreground window afterwards. The shared helpers are in
   covered by an instance that grants it the foreground
   (`-allow-foreground`), is minimized and restored. It must take the
   foreground, and `restore-window` must print
-  `ok (the App brought itself to the foreground)`. It used to start
+  `ok` and `Note: the App brought itself to the foreground`. It used to start
   charmap, which the research measured doing this, but charmap only does
   it when it has not been the foreground since it started, and whether a
   process the test starts takes the foreground at launch depends on the
@@ -626,7 +626,7 @@ still the foreground window afterwards. The shared helpers are in
   no banner shows.
 - `TestPostedKeysIntoClassicEdit` (`posted_keys_test.go`):
   `type-text --post` and `press-key BackSpace --post` reach the Classic
-  Dialog's Edit, the output starts with `ok (posted;`, and
+  Dialog's Edit, the output starts with `ok` and `Note: posted;`, and
   `Control_L+Alt_L+a --post` (Control and Alt together) is refused with "nothing was sent".
 - `TestPostedChordFiresAClassicAccelerator` (`posted_chords_test.go`,
   headless-max ticket 07): `press-key Control_L+Shift_L+k --post` on the
@@ -958,7 +958,7 @@ come over CDP; the test logs it. `TestAttachToRunningElectron` starts
 the same electron.exe the plain way (no debugging port), covers it, and
 runs `winuse browser attach <window>`: the Window State must then show
 the field read over CDP, `set-value` must be read back by `eval`, and
-`winuse browser detach <window>` must answer `ok (detached` after which
+`winuse browser detach <window>` must answer `ok` and `Note: detached` after which
 `eval` fails. It sends the Node debug signal into the test's own Electron
 process only. All three end the App, the fixture and the helper.
 

@@ -85,11 +85,11 @@ func chromiumMessagesOn(t *testing.T, exe string, electron bool, args ...string)
 
 	// The double click (mouse messages, no activation pair) focuses the
 	// input; the typing then has a field to land in.
-	step("double click on the input", []string{"click", window, input, "--count", "2"}, "ok (clicked as window messages)")
-	step("type-text", []string{"type-text", window, "typed by messages"}, "ok (typed as window messages")
+	step("double click on the input", []string{"click", window, input, "--count", "2"}, "ok\nNote: clicked as window messages\n")
+	step("type-text", []string{"type-text", window, "typed by messages"}, "ok\nNote: typed as window messages")
 	valueIs("typed by messages")
-	step("press-key Control_L+a", []string{"press-key", window, "Control_L+a"}, "ok (pressed as window messages")
-	step("type-text over the selection", []string{"type-text", window, "replaced"}, "ok (typed as window messages")
+	step("press-key Control_L+a", []string{"press-key", window, "Control_L+a"}, "ok\nNote: pressed as window messages")
+	step("type-text over the selection", []string{"type-text", window, "replaced"}, "ok\nNote: typed as window messages")
 	valueIs("replaced")
 }
 

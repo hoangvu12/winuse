@@ -954,7 +954,7 @@ func TestPageRightClickKeepsTheContextMenuClosed(t *testing.T) {
 			return nil, false
 		})
 		out, e := r.run(t, "click", protocol.ClickArgs{Window: "301", ElementIndex: idx(7), MouseButton: "right"})
-		want := "ok (the page has no menu of its own there, so winuse kept the browser's context menu from opening)\n"
+		want := "ok\nNote: the page has no menu of its own there, so winuse kept the browser's context menu from opening\n"
 		if own {
 			want = okOutput
 		}
@@ -982,7 +982,7 @@ func TestPageClickThatOpensAFileChooser(t *testing.T) {
 		return nil, nil
 	})
 	out, e := r.run(t, "click", protocol.ClickArgs{Window: "301", ElementIndex: idx(7)})
-	if e != nil || out != "ok (the click opened a file chooser, which the browser held back so nothing opened on the screen: answer it with winuse upload 301 <file>...)\n" {
+	if e != nil || out != "ok\nNote: the click opened a file chooser, which the browser held back so nothing opened on the screen: answer it with winuse upload 301 <file>...\n" {
 		t.Errorf("click: %q %+v", out, e)
 	}
 }

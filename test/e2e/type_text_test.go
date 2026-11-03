@@ -270,7 +270,7 @@ func TestTypeTextUsageErrors(t *testing.T) {
 	optIn(t)
 
 	stdout, stderr, exit := runTypeText(t, []string{})
-	if exit != 2 || stdout != "" || !strings.Contains(stderr, "usage: winuse type-text <window> [--post | --into <element>] <text>") {
+	if exit != 2 || stdout != "" || !strings.Contains(stderr, "usage: winuse type-text <window> [--post | --into <element>] [--interval-ms <n>] <text>") {
 		t.Errorf("type-text with no arguments: exit %d, stdout %q, stderr %q", exit, stdout, stderr)
 	}
 	stdout, stderr, exit = runTypeText(t, []string{"101"})

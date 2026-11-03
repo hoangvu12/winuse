@@ -243,7 +243,7 @@ func TestRestoreWindowReportsSelfActivation(t *testing.T) {
 	if fg := win.ForegroundWindow(); fg != id {
 		t.Fatalf("the fixture did not bring itself to the foreground (the foreground is %s; restore-window printed %q)", describeWindow(t, fg), stdout)
 	}
-	if want := "ok (the App brought itself to the foreground)\n"; stdout != want {
+	if want := "ok\nNote: the App brought itself to the foreground\n"; stdout != want {
 		t.Errorf("restore-window: stdout = %q, want %q (the fixture took the foreground)", stdout, want)
 	}
 	if stderr != "" {
