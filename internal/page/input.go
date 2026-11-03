@@ -567,11 +567,22 @@ func buttonsMask(b MouseButton) int {
 // press and a release per click, with clickCount counting up (so a double
 // click fires click, click and dblclick, as a person's would).
 func ClickEvents(p Point, button MouseButton, count int) []map[string]any {
+	return ClickEventsWith(p, button, count, 0)
+}
+
+// ClickEventsWith is ClickEvents with modifiers held (CDP's bitmask: Alt
+// 1, Control 2, Shift 8; desktop-parity ticket 06) on every event.
+func ClickEventsWith(p Point, button MouseButton, count, modifiers int) []map[string]any {
 	evs := []map[string]any{{"type": "mouseMoved", "x": p.X, "y": p.Y, "button": "none", "buttons": 0}}
 	for i := 1; i <= count; i++ {
 		evs = append(evs,
 			map[string]any{"type": "mousePressed", "x": p.X, "y": p.Y, "button": string(button), "buttons": buttonsMask(button), "clickCount": i},
 			map[string]any{"type": "mouseReleased", "x": p.X, "y": p.Y, "button": string(button), "buttons": 0, "clickCount": i})
+	}
+	if modifiers != 0 {
+		for _, ev := range evs {
+			ev["modifiers"] = modifiers
+		}
 	}
 	return evs
 }
@@ -579,7 +590,12 @@ func ClickEvents(p Point, button MouseButton, count int) []map[string]any {
 // Click sends ClickEvents, each raced against the dialogs and preceded by
 // the Esc checkpoint.
 func (in *Input) Click(ctx context.Context, p Point, button MouseButton, count int) error {
-	for _, ev := range ClickEvents(p, button, count) {
+	return in.ClickWith(ctx, p, button, count, 0)
+}
+
+// ClickWith is Click with modifiers held (ClickEventsWith).
+func (in *Input) ClickWith(ctx context.Context, p Point, button MouseButton, count, modifiers int) error {
+	for _, ev := range ClickEventsWith(p, button, count, modifiers) {
 		if err := in.send(ctx, "Input.dispatchMouseEvent", ev); err != nil {
 			return err
 		}
@@ -599,7 +615,17 @@ func WheelEvent(p Point, dx, dy float64) map[string]any {
 
 // Wheel sends one mouse wheel event at p.
 func (in *Input) Wheel(ctx context.Context, p Point, dx, dy float64) error {
-	return in.send(ctx, "Input.dispatchMouseEvent", WheelEvent(p, dx, dy))
+	return in.WheelWith(ctx, p, dx, dy, 0)
+}
+
+// WheelWith is Wheel with modifiers held (CDP's bitmask; Control zooms in
+// most pages; desktop-parity ticket 06).
+func (in *Input) WheelWith(ctx context.Context, p Point, dx, dy float64, modifiers int) error {
+	ev := WheelEvent(p, dx, dy)
+	if modifiers != 0 {
+		ev["modifiers"] = modifiers
+	}
+	return in.send(ctx, "Input.dispatchMouseEvent", ev)
 }
 
 // InsertText inserts text into the Page's focused element, as an IME

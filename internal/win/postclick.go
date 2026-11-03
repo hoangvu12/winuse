@@ -149,24 +149,44 @@ func ChildAtPoint(top uint64, sx, sy int32) (hwnd uint64, cx, cy int32, class st
 	return uint64(h), p.X, p.Y, className(h)
 }
 
-// PostClick posts a click (clickMessages) to target at its client point.
-// It returns how many messages were posted, so the caller can tell
+// withKeyState sets the modifiers' MK_* flags in every mouse message's key
+// state (desktop-parity ticket 06): a mouse message's wParam carries the
+// keys held while it happened; the wheel messages carry them in the low
+// word, beside the delta. WM_CANCELMODE carries none.
+func withKeyState(msgs []postedMessage, mk uintptr) []postedMessage {
+	if mk == 0 {
+		return msgs
+	}
+	out := make([]postedMessage, len(msgs))
+	for i, m := range msgs {
+		if m.msg != wmCancelMode {
+			m.wparam |= mk
+		}
+		out[i] = m
+	}
+	return out
+}
+
+// PostClick posts a click (clickMessages) to target at its client point,
+// with the modifiers' key state (Alt cannot be posted; the helper refuses
+// it). It returns how many messages were posted, so the caller can tell
 // "nothing was sent" (0) from a partial post.
-func PostClick(target uint64, cx, cy int32, button MouseButton, count int) (int, error) {
+func PostClick(target uint64, cx, cy int32, button MouseButton, count int, mods Modifiers) (int, error) {
 	if err := LiveDesktopGuard(); err != nil {
 		return 0, err
 	}
 	if count < 1 || count > 3 {
 		return 0, fmt.Errorf("click count %d is not 1, 2 or 3", count)
 	}
-	return postAll(target, clickMessages(button, count, cx, cy))
+	return postAll(target, withKeyState(clickMessages(button, count, cx, cy), mods.MK()))
 }
 
 // PostWheel posts wheel scrolls (wheelMessages) to target at a screen
-// point. It returns how many messages were posted.
-func PostWheel(target uint64, sx, sy, dx, dy int32) (int, error) {
+// point, with the modifiers' key state. It returns how many messages were
+// posted.
+func PostWheel(target uint64, sx, sy, dx, dy int32, mods Modifiers) (int, error) {
 	if err := LiveDesktopGuard(); err != nil {
 		return 0, err
 	}
-	return postAll(target, wheelMessages(sx, sy, dx, dy))
+	return postAll(target, withKeyState(wheelMessages(sx, sy, dx, dy), mods.MK()))
 }

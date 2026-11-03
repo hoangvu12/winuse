@@ -265,14 +265,15 @@ type BrowserCloneArgs struct {
 // form (Point); ticket 11 adds the name:/id: Element Reference form (Ref).
 // The three forms are mutually exclusive.
 type ClickArgs struct {
-	Window       string `json:"window"`                 // Window ID, or an App name when that App has exactly one Window
-	ElementIndex *int   `json:"element_index"`          // the Element to click, from that Window's latest Window State
-	Ref          string `json:"ref,omitempty"`          // name:<text> or id:<AutomationId>: the Element to click, resolved against the Window's latest Window State
-	Point        *Point `json:"point,omitempty"`        // @x,y: coordinates in the latest screenshot's coordinate space
-	ClickCount   int    `json:"click_count,omitempty"`  // 1 (default), 2 (double click) or 3 (triple click)
-	MouseButton  string `json:"mouse_button,omitempty"` // "left" (default), "right" or "middle"; aliases l, r, m
-	Headed       bool   `json:"headed,omitempty"`       // force v1's foreground click with the real pointer (ADR 0010); default Headless for an Element click
-	Post         bool   `json:"post,omitempty"`         // post the click's mouse messages to the classic control there, best effort (headless-max ticket 12); not with headed
+	Window       string   `json:"window"`                 // Window ID, or an App name when that App has exactly one Window
+	ElementIndex *int     `json:"element_index"`          // the Element to click, from that Window's latest Window State
+	Ref          string   `json:"ref,omitempty"`          // name:<text> or id:<AutomationId>: the Element to click, resolved against the Window's latest Window State
+	Point        *Point   `json:"point,omitempty"`        // @x,y: coordinates in the latest screenshot's coordinate space
+	ClickCount   int      `json:"click_count,omitempty"`  // 1 (default), 2 (double click) or 3 (triple click)
+	MouseButton  string   `json:"mouse_button,omitempty"` // "left" (default), "right" or "middle"; aliases l, r, m
+	Headed       bool     `json:"headed,omitempty"`       // force v1's foreground click with the real pointer (ADR 0010); default Headless for an Element click
+	Post         bool     `json:"post,omitempty"`         // post the click's mouse messages to the classic control there, best effort (headless-max ticket 12); not with headed
+	Modifiers    []string `json:"modifiers,omitempty"`    // ctrl, shift, alt held during the click (desktop-parity ticket 06)
 }
 
 // Point is a coordinate Element Reference: a point in the coordinate space
@@ -315,12 +316,13 @@ type ScrollArgs struct {
 	ScrollX int    `json:"scrollX"`
 	ScrollY int    `json:"scrollY"`
 
-	ElementIndex *int   `json:"element_index,omitempty"` // the Element to scroll, from the Window's latest Window State
-	Ref          string `json:"ref,omitempty"`           // name:<text> or id:<AutomationId>: the Element to scroll
-	Direction    string `json:"direction,omitempty"`     // up, down, left, right or into-view
-	Steps        *int   `json:"steps,omitempty"`         // scroll steps for a direction (default 3, 1 to 50); none for into-view
-	Headed       bool   `json:"headed,omitempty"`        // the v1 way: activate, then the wheel at the point or the Element (into-view: the ScrollItem call after activation); without it a point outside a Page is refused
-	Post         bool   `json:"post,omitempty"`          // the point form: post the wheel to the classic control there, best effort (headless-max ticket 12); not with headed
+	ElementIndex *int     `json:"element_index,omitempty"` // the Element to scroll, from the Window's latest Window State
+	Ref          string   `json:"ref,omitempty"`           // name:<text> or id:<AutomationId>: the Element to scroll
+	Direction    string   `json:"direction,omitempty"`     // up, down, left, right or into-view
+	Steps        *int     `json:"steps,omitempty"`         // scroll steps for a direction (default 3, 1 to 50); none for into-view
+	Headed       bool     `json:"headed,omitempty"`        // the v1 way: activate, then the wheel at the point or the Element (into-view: the ScrollItem call after activation); without it a point outside a Page is refused
+	Post         bool     `json:"post,omitempty"`          // the point form: post the wheel to the classic control there, best effort (headless-max ticket 12); not with headed
+	Modifiers    []string `json:"modifiers,omitempty"`     // the point form: ctrl, shift, alt held during the wheel, e.g. ctrl to zoom (desktop-parity ticket 06)
 }
 
 // DragArgs are drag's arguments — Codex's drag parameters: from and to

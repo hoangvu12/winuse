@@ -243,7 +243,7 @@ func TestTraceShow(t *testing.T) {
 			OK: true, OutLines: 40, Refs: []string{`C:\Temp\shot.png`}, DurationMS: 812},
 		{Time: "2026-11-03T14:02:12.000+07:00", Command: "click", Routes: []string{"Headless"},
 			Window: &protocol.TraceWindow{ID: 101, App: "Notepad", Title: "Untitled - Notepad"},
-			Exit: 1, Error: "element 12 is stale; nothing was sent", Hint: "read the Window State again", DurationMS: 40, Unredacted: true},
+			Exit:   1, Error: "element 12 is stale; nothing was sent", Hint: "read the Window State again", DurationMS: 40, Unredacted: true},
 	}
 	for _, l := range lines {
 		b, _ := json.Marshal(l)

@@ -99,6 +99,7 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 			ClickCount:   o.count,
 			MouseButton:  o.button,
 			Post:         o.post,
+			Modifiers:    o.mods,
 		}
 	case "type-text":
 		// --post first in the step posts the text (Posted Keys, ticket 07),
@@ -167,10 +168,14 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 		// --post anywhere posts the wheel at the point (headless-max
 		// ticket 12); it has no Element form.
 		stripped, post := stripFlag(tokens, postFlag)
+		stripped, mods, merr := takeModifiers(stripped)
+		if merr != nil {
+			return protocol.Step{}, merr
+		}
 		rest = stripped[1:]
 		if len(rest) == 0 || !isPointToken(rest[0]) {
-			if post {
-				return protocol.Step{}, errors.New("a batch scroll --post Action takes an @x,y point and two scroll amounts")
+			if post || mods != nil {
+				return protocol.Step{}, errors.New("a batch scroll Action with --post or --modifiers takes an @x,y point and two scroll amounts")
 			}
 			if len(rest) < 2 {
 				return protocol.Step{}, errors.New("a batch scroll Action takes an element and a direction (up, down, left, right or into-view), or an @x,y point and two scroll amounts")
@@ -197,7 +202,7 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 		if err != nil {
 			return protocol.Step{}, err
 		}
-		args = protocol.ScrollArgs{X: x, Y: y, ScrollX: dx, ScrollY: dy, Post: post}
+		args = protocol.ScrollArgs{X: x, Y: y, ScrollX: dx, ScrollY: dy, Post: post, Modifiers: mods}
 	case "drag":
 		// --drop-delay <ms> anywhere in the step (desktop-parity 13).
 		dragRest, delay, err := stripDropDelay(rest)

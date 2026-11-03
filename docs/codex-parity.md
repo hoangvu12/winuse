@@ -135,6 +135,7 @@ the one frame (Codex composites several `zIndex` layers).
 | `x`, `y` | window-relative **logical** pixels (the 175%-scaling offset bug) | `@x,y` in the latest screenshot's pixel space, mapped back to **physical** pixels, re-anchored to the Window's live bounds at action time | intentionally different |
 | `click_count` | 1 (single) or 2 (double); right double click is not supported | `--count 1|2|3`; non-left multi-clicks are refused with Codex's message | matched |
 | `mouse_button` | `left`/`right`/`middle`, aliases `l`/`r`/`m`; unknown → `unsupported mouse_button: <v>` | `--button left|middle|right` with the same `l`/`r`/`m` aliases and the same error | matched |
+| (modifiers) | none | `--modifiers ctrl,shift,alt` (desktop-parity 06, from agent-desktop): CDP modifiers on a Page; Ctrl or Shift on a multi-select list item through SelectionItem.AddToSelection, read back; MK_CONTROL/MK_SHIFT with `--post`; the real keys held around the click with `--headed`; `scroll @x,y` takes them too | extension |
 | `screenshotId` | coordinates are validated against the screenshot they came from | no ids: coordinates bind to the Window's **latest** screenshot; a new screenshot or a helper restart fails with the instruction to take a fresh one instead of guessing | intentionally different |
 
 The Headed element path scrolls the Element into view and uses its
