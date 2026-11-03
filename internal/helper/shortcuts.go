@@ -204,7 +204,7 @@ func (s Services) runMenuShortcut(ctx context.Context, w win.WindowInfo, chord k
 // shortcutOutput is the lookup's success: what ran, so the agent can tell
 // it from a key press.
 func shortcutOutput(name string) string {
-	return fmt.Sprintf("ok (invoked %q through its shortcut)\n", strings.Join(strings.Fields(name), " "))
+	return fmt.Sprintf("ok\nNote: invoked %q through its shortcut\n", strings.Join(strings.Fields(name), " "))
 }
 
 // disabledShortcut refuses a shortcut whose command is disabled: nothing

@@ -291,8 +291,8 @@ An Element Reference takes one of four forms.
 - `@x,y`, a point in the latest screenshot's pixels, as in
   `winuse click 101 @412,88`. A left click, `set-value`,
   `perform-secondary-action` and `scroll` act Headless on the Element under
-  the point, even while another Window covers it, and `ok` names it, as in
-  `ok (clicked element 5 button "Save" at @412,88)`. If it is not the
+  the point, even while another Window covers it, and a note after `ok`
+  names it: `Note: clicked element 5 button "Save" at @412,88`. If it is not the
   Element you meant, name the Element instead. Drag, hover and double,
   right or middle clicks aim at the point itself, with `--headed`.
 
@@ -451,8 +451,8 @@ winuse picks the route from the live Window before it sends anything.
   multi-line box that takes it as a new line.
 - `press-key` with Control, Shift or Alt, such as `Control_L+s`, first looks
   for the menu item or ribbon button the Window labels with that shortcut.
-  One match runs Headless, as in
-  `ok (invoked "File > Save" through its shortcut)`; a disabled one is
+  One match runs Headless and is named after `ok`, as in
+  `Note: invoked "File > Save" through its shortcut`; a disabled one is
   refused with nothing sent. WinForms, WinUI, ribbons and classic menus
   label shortcuts; WPF never does. With no match, or two, the chord goes
   on to the routes below.
@@ -463,7 +463,7 @@ winuse picks the route from the live Window before it sends anything.
 - In a browser Window with a Browser Connection, both go to the Page
   Headless while a Page Element has the focus.
 - In other Chromium browser or Electron Windows, both go as window
-  messages without the foreground: `ok (typed as window messages; ...)`.
+  messages without the foreground: `Note: typed as window messages; ...`.
   The page sees a focus and blur around each step. Typed text is read back
   where the field has a value; otherwise the output says it was not
   verified. Click into the field first with
@@ -538,8 +538,8 @@ post the key or text to the focused control of a background Window, with no
 foreground change and no real input (in `type-text`, `--post` goes right
 after the Window). Posting is best effort.
 
-- Some apps ignore posted keys, and winuse cannot tell. Success prints
-  `ok (posted; the app may ignore posted keys, read the Window State to check)`.
+- Some apps ignore posted keys, and winuse cannot tell. Success prints `ok`
+  and `Note: posted; the app may ignore posted keys, read the Window State to check`.
   Confirm the effect in the Window State; if nothing changed, send the
   command again without `--post`.
 - A chord with Control, Shift or Alt, such as `Control_L+s` or `Alt_L+f`,
@@ -626,8 +626,8 @@ back, and print `ok`. They are not Batch steps.
   size, and the output says so; use `winuse --headed maximize-window` if
   the user wants it maximized again.
 - Some Apps bring themselves to the front when restored, most often one
-  not in front since it started. `restore-window` then prints
-  `ok (the App brought itself to the foreground)`; winuse does not take it
+  not in front since it started. `restore-window` then adds
+  `Note: the App brought itself to the foreground`; winuse does not take it
   back. Tell the user if they were working elsewhere, and do not repeat
   the restore.
 - `move-window` and `resize-window` refuse a minimized or maximized Window
@@ -640,8 +640,8 @@ back, and print `ok`. They are not Batch steps.
   handle that prompt.
 - `close-app` names the App as `list-windows` prints it, or by executable
   name, asks every Window to close and waits up to five seconds for it to
-  exit. One still running gets `ok (the close
-  was requested; <App> is still running, it may be asking to save: ...)`.
+  exit. One still running gets `ok` and `Note: the close was requested;
+  <App> is still running, it may be asking to save: ...`.
   It refuses administrator Apps, a locked desktop and Windows' own
   processes (explorer, dwm, csrss, winlogon and the like) with nothing
   sent.
@@ -871,7 +871,8 @@ and `retry` (`safe` or `unsafe`). A Window State stays text in `out`.
 
 After `click`, `perform-secondary-action` Expand or Select, `press-key`,
 `set-value` and a Batch, winuse watches the App's Windows for a moment and
-adds a line after `ok` for each change:
+adds a line after `ok` for each change. Every note an Action prints, such
+as a route's or a point's, is such a `Note:` line:
 
 - `Note: a new Window opened: <id> <App> "<title>"` for a dialog, menu or
   popup the Action opened. Read it next with `get-window-state <id>`. A

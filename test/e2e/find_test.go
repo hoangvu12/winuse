@@ -63,7 +63,7 @@ func TestFindAndRegionReadOnTheFixture(t *testing.T) {
 
 	list := mainElementIndexes()[fixture.ElemItemList]
 	out = run("get-window-state", window, "--root", strconv.Itoa(list), "--depth", "1")
-	if !regexp.MustCompile(`(?m)^\t\d+ list Item List`).MatchString(out) || strings.Count(out, "list item (selectable)") != 8 {
+	if !regexp.MustCompile(`(?m)^\t\d+ list Item List`).MatchString(out) || strings.Count(out, "list item (selectable") != 8 {
 		t.Errorf("--root the list:\n%s", out)
 	}
 	out = run("get-window-state", window, "--skeleton")

@@ -153,20 +153,13 @@ func pointNote(done string, hit uia.PointHit, x, y int) string {
 	return done + " " + what + " at " + pointToken(x, y)
 }
 
-// withNote puts a note into an `ok` output: `ok (note)`, or the note first
-// inside an existing `ok (...)`; any further lines stay as they are.
+// withNote puts a note first among an `ok` output's note lines; any
+// further lines stay as they are. A failure's output is left alone.
 func withNote(out, note string) string {
-	first, rest, _ := strings.Cut(out, "\n")
-	if rest != "" {
-		rest = "\n" + rest
+	if !isOK(out) {
+		return out
 	}
-	switch {
-	case first == "ok":
-		return "ok (" + note + ")\n" + strings.TrimPrefix(rest, "\n")
-	case strings.HasPrefix(first, "ok (") && strings.HasSuffix(first, ")"):
-		return "ok (" + note + "; " + strings.TrimPrefix(first, "ok (") + "\n" + strings.TrimPrefix(rest, "\n")
-	}
-	return out
+	return okOutput + notePrefix + note + "\n" + strings.TrimPrefix(out, okOutput)
 }
 
 // wheelDirection is the Element scroll direction of a wheel amount in

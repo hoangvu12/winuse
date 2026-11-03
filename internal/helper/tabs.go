@@ -283,7 +283,7 @@ func tabClose(s Services) Command {
 			if gone {
 				return okOutput, nil, true
 			}
-			return fmt.Sprintf("ok (the close was requested and tab %s is still open; the page may be asking whether to leave: read winuse tab list %d)\n", short, tw.w.ID), nil, true
+			return fmt.Sprintf("ok\nNote: the close was requested and tab %s is still open; the page may be asking whether to leave: read winuse tab list %d\n", short, tw.w.ID), nil, true
 		})
 	}
 }

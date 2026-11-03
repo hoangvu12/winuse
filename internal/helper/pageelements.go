@@ -451,5 +451,5 @@ func (s Services) pageClickRun(ctx context.Context, run pageRun, o *page.Origin,
 	if len(notes) == 0 {
 		return out, nil
 	}
-	return "ok (" + strings.Join(notes, "; ") + ")\n", nil
+	return okWith(notes...), nil
 }

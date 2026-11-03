@@ -419,7 +419,7 @@ func TestTabClose(t *testing.T) {
 	// A page that asks whether to leave keeps its Tab.
 	b.KeepOpen = true
 	out, e = r.run(t, "tab-close", protocol.TabArgs{Window: "301", Tab: "aaaa"})
-	if e != nil || out != "ok (the close was requested and tab aaaa0000 is still open; the page may be asking whether to leave: read winuse tab list 301)\n" {
+	if e != nil || out != "ok\nNote: the close was requested and tab aaaa0000 is still open; the page may be asking whether to leave: read winuse tab list 301\n" {
 		t.Errorf("kept open: %q, %+v", out, e)
 	}
 	noForegroundCalls(t, b.Methods())

@@ -28,8 +28,8 @@ import (
 // The Posted Clicks' and posted scrolls' success outputs: a posted
 // message has no readable outcome.
 const (
-	postedClickOutput  = "ok (posted; the app may ignore posted clicks, read the Window State to check)\n"
-	postedScrollOutput = "ok (posted; the app may ignore posted scrolls, read the Window State to check)\n"
+	postedClickOutput  = "ok\nNote: posted; the app may ignore posted clicks, read the Window State to check\n"
+	postedScrollOutput = "ok\nNote: posted; the app may ignore posted scrolls, read the Window State to check\n"
 )
 
 // postMouseFlagsError refuses `post` together with `headed` on click and

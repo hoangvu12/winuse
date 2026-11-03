@@ -177,14 +177,14 @@ func TestRestoreWindowNotesNormalSizeForAMaximizedWindow(t *testing.T) {
 	if cmdErr != nil {
 		t.Fatalf("restore-window: %v", cmdErr.Error())
 	}
-	if !strings.HasPrefix(out, "ok (") || !strings.Contains(out, "restored at normal size") {
+	if !strings.HasPrefix(out, "ok\nNote: ") || !strings.Contains(out, "restored at normal size") {
 		t.Errorf("output = %q, want ok with the normal-size note", out)
 	}
 	spy.assertNoForeground(t)
 }
 
 func TestRestoreWindowReportsSelfActivation(t *testing.T) {
-	const note = "ok (the App brought itself to the foreground)\n"
+	const note = "ok\nNote: the App brought itself to the foreground\n"
 	cases := []struct {
 		name         string
 		before       uint64 // the foreground before the restore
@@ -223,8 +223,8 @@ func TestRestoreWindowJoinsTheNotes(t *testing.T) {
 	if cmdErr != nil {
 		t.Fatalf("restore-window: %v", cmdErr.Error())
 	}
-	if !strings.HasPrefix(out, "ok (restored at normal size: ") || !strings.HasSuffix(out, "; the App brought itself to the foreground)\n") {
-		t.Errorf("output = %q, want both notes in one ok line", out)
+	if !strings.HasPrefix(out, "ok\nNote: restored at normal size: ") || !strings.HasSuffix(out, "\nNote: the App brought itself to the foreground\n") {
+		t.Errorf("output = %q, want both notes, a line each", out)
 	}
 }
 
@@ -438,7 +438,7 @@ func TestCloseWindowStillOpenIsOKWithANote(t *testing.T) {
 	if cmdErr != nil {
 		t.Fatalf("close-window: %v", cmdErr.Error())
 	}
-	for _, want := range []string{"ok (", "close was requested", "still open", "asking to save", "list-windows", "get-window-state 101"} {
+	for _, want := range []string{"ok\nNote: ", "close was requested", "still open", "asking to save", "list-windows", "get-window-state 101"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output = %q, want it to contain %q", out, want)
 		}

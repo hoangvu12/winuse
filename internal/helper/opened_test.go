@@ -291,7 +291,7 @@ func TestOpenedNotesFormat(t *testing.T) {
 	if got != want {
 		t.Errorf("formatOpened = %q, want %q", got, want)
 	}
-	if got := stepLines(3, "click", "ok (a download)\nNote: one\n\nNote: two\n"); got != "Action 3 (click): ok (a download)\n  Note: one\n  \n  Note: two\n" {
+	if got := stepLines(3, "click", "ok\nNote: a download\nNote: one\n\nNote: two\n"); got != "Action 3 (click): ok\n  Note: a download\n  Note: one\n  \n  Note: two\n" {
 		t.Errorf("stepLines = %q", got)
 	}
 	if got := stepLines(1, "tab-close", ""); got != "Action 1 (tab-close): ok\n" {

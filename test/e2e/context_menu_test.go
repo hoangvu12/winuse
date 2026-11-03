@@ -47,7 +47,7 @@ func runAsMenuAgent(t *testing.T, args ...string) (string, string, int) {
 func openContextMenu(t *testing.T, window, element string, cover uint64) uint64 {
 	t.Helper()
 	stdout, stderr, exit := runAsMenuAgent(t, "perform-secondary-action", window, element, "ContextMenu")
-	if exit != 0 || !strings.HasPrefix(stdout, "ok (the context menu opened") {
+	if exit != 0 || !strings.HasPrefix(stdout, "ok\nNote: the context menu opened") {
 		t.Fatalf("perform-secondary-action ContextMenu: exit %d, stdout %q, stderr %q", exit, stdout, stderr)
 	}
 	m := menuIDPattern.FindStringSubmatch(stdout)

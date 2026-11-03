@@ -176,7 +176,7 @@ func TestAttachToRunningElectron(t *testing.T) {
 		return runWinuse(t, args, "WINUSE_HELPER_IDLE="+e2eIdle)
 	}
 	out, stderr, exit := run("browser", "attach", window)
-	if exit != 0 || !strings.HasPrefix(out, "ok (attached to ") {
+	if exit != 0 || !strings.HasPrefix(out, "ok\nNote: attached to ") {
 		t.Fatalf("browser attach: exit %d, stdout %q, stderr %q", exit, out, stderr)
 	}
 	state, stderr, exit := runGetWindowState(t, window)
@@ -193,7 +193,7 @@ func TestAttachToRunningElectron(t *testing.T) {
 	if v, stderr, exit := run("eval", window, "document.getElementById('e2e-input').value"); exit != 0 || strings.TrimSpace(v) != "typed through the attach" {
 		t.Errorf("eval read %q (exit %d, stderr %q)", v, exit, stderr)
 	}
-	if out, stderr, exit := run("browser", "detach", window); exit != 0 || !strings.HasPrefix(out, "ok (detached") {
+	if out, stderr, exit := run("browser", "detach", window); exit != 0 || !strings.HasPrefix(out, "ok\nNote: detached") {
 		t.Errorf("browser detach: exit %d, stdout %q, stderr %q", exit, out, stderr)
 	}
 	if _, _, exit := run("eval", window, "1"); exit == 0 {

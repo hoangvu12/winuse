@@ -41,7 +41,7 @@ var selectedItemColour = color.RGBA{
 
 // postedOK is the start of a posted-key Action's output: posting has no
 // readable outcome, so the line says so instead of a plain ok.
-const postedOK = "ok (posted;"
+const postedOK = "ok\nNote: posted;"
 
 // coverAgain brings the covering Window back to the foreground, after
 // something the test did may have raised a fixture window (a dialog the

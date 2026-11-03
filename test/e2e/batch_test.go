@@ -151,7 +151,7 @@ func TestClickMissingReferenceFailsWithHint(t *testing.T) {
 
 	stdout, stderr, exit := runClick(t, []string{window, "name:Does Not Exist"})
 	assertActionFailed(t, "click name:Does Not Exist", stdout, stderr, exit,
-		`no element named "Does Not Exist" in the cached Window State for window `+window)
+		`no element named "Does Not Exist" in window `+window+`, in its cached Window State or a fresh read; nothing was sent`)
 	if !strings.Contains(stderr, "get-window-state") {
 		t.Errorf("the miss must instruct a fresh Window State read: %q", stderr)
 	}

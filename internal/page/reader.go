@@ -111,7 +111,9 @@ func windowTab(ctx context.Context, conn *browser.Connection, g Geometry) (Tab, 
 	if err != nil {
 		return Tab{}, nil, err
 	}
-	if conn.Mode == browser.ModeApp {
+	if conn.Mode == browser.ModeApp || conn.Mode == browser.ModeAttach {
+		// An App launched with --cdp or attached to (its JS shim answers no
+		// Browser.getWindowForTarget): its pages match by title alone.
 		tab, err := MatchAppTab(g, tabs)
 		return tab, tabs, err
 	}
