@@ -53,9 +53,9 @@ Close every gap that has a route, and say plainly where none exists.
 | 18 | Longer settle for a cold Chromium UIA tree | S | done |
 | 19 | Headless typing into a covered Windows 11 Notepad | S-M | done |
 | 20 | Background typing, keys and clicks for Chromium and Electron without CDP | M | ready-for-agent |
-| 21 | No Headed Action without `--headed` | M | ready-for-agent (build before the click and typing chains) |
+| 21 | No Headed Action without `--headed` | M | done (live e2e not run yet) |
 
-21 tickets: 10 S, 1 S-M, 9 M (one spike), 1 L. Done: 01, 02, 04, 10, 18, 19.
+21 tickets: 10 S, 1 S-M, 9 M (one spike), 1 L. Done: 01, 02, 04, 10, 18, 19, 21.
 
 ## Impossible headless (stays a refusal with a `--headed` hint)
 

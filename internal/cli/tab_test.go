@@ -120,7 +120,8 @@ func TestBatchTabSteps(t *testing.T) {
 
 func TestUsageMentionsTabCommands(t *testing.T) {
 	for _, s := range []string{"tab list <window>", "tab new <window> [url]", "tab close <window> <tab>", "tab switch <window> <tab>",
-		"tab switch is headless through the\n  winuse extension"} {
+		"tab switch is headless through the winuse extension",
+		"tab switch on a launched or cloned browser"} {
 		if !strings.Contains(Usage, s) {
 			t.Errorf("usage text missing %q", s)
 		}

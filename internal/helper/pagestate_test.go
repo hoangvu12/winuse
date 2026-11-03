@@ -440,7 +440,8 @@ func TestUnroutedPageElementsAreRefusedBeforeActivating(t *testing.T) {
 	}
 
 	// Read again meanwhile: the route saw a UIA Element, the act a Page
-	// Element.
+	// Element. The double click is sent with `headed`: off a Page it has
+	// only the Headed route (refused without it, headless-max ticket 21).
 	spy := &actionSpy{point: uia.Point{X: 1, Y: 2}}
 	cs := spy.services()
 	cs.Windows = s.Windows
@@ -448,7 +449,7 @@ func TestUnroutedPageElementsAreRefusedBeforeActivating(t *testing.T) {
 		*actionSpy
 		PageSplicer
 	}{spy, &rereadOrigins{pageTrees: trees, n: 1, pageAfter: 10}}
-	_, cmdErr := runCommand(t, CommandsWith(cs), "click", clickArgs("301", 10, 2, "left"))
+	_, cmdErr := runCommand(t, CommandsWith(cs), "click", headedArgs(clickArgs("301", 10, 2, "left")))
 	if cmdErr == nil || cmdErr.Msg != want {
 		t.Fatalf("click on an Element that became a Page Element: %+v", cmdErr)
 	}

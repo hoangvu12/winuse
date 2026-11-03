@@ -48,9 +48,11 @@ func TestPressKeyRefusesBlockedCombos(t *testing.T) {
 }
 
 func TestPressKeyForceSendsBlockedCombos(t *testing.T) {
+	// A forced combo has no Headless route: it is pressed Headed, so the
+	// requests send `headed` (headless-max ticket 21).
 	for _, key := range []string{"Alt_L+F4", "Alt_L+Tab", "Control_L+Shift_L+Escape", "Control_L+Alt_L+F4"} {
 		spy := &keySpy{}
-		out, cmdErr := runCommand(t, CommandsWith(spy.services()), "press-key", protocol.PressKeyArgs{Window: "101", Key: key, Force: true})
+		out, cmdErr := runCommand(t, CommandsWith(spy.services()), "press-key", protocol.PressKeyArgs{Window: "101", Key: key, Force: true, Headed: true})
 		if cmdErr != nil {
 			t.Fatalf("%s --force: %v", key, cmdErr.Error())
 		}
@@ -117,6 +119,7 @@ func TestBatchRefusesBlockedStepsUpFront(t *testing.T) {
 	spy = newBatchSpy()
 	if _, cmdErr := runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{
 		Window: "101",
+		Headed: true,
 		Steps:  []protocol.Step{stepOf("press-key", protocol.PressKeyArgs{Key: "Alt_L+F4", Force: true})},
 	}); cmdErr != nil {
 		t.Fatalf("forced step: %v", cmdErr.Error())

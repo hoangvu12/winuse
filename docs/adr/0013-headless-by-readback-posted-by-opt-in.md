@@ -90,7 +90,7 @@ is not, which is why ADR 0011 made Posted Keys opt-in.
 | Headless Actions on minimized Windows | 1 | 14 | planned |
 | Electron and WebView2 Browser Connections at launch; attach to a running Electron | 1 | 15 | planned |
 | Typing, keys and clicks into Chromium and Electron without CDP | 7 | 20 | planned |
-| No Headed Action without `--headed` | 3 | 21 | planned |
+| No Headed Action without `--headed` | 3 | 21 | done |
 
 ## Reversals
 
@@ -125,7 +125,11 @@ is not, which is why ADR 0011 made Posted Keys opt-in.
   21. `press-key` and `type-text` still route by the live Window before
   anything is sent, but where no Headless route exists they refuse with
   the `--headed` retry instead of taking the foreground. The same holds
-  for double, right and middle clicks, `@x,y` forms, drag and hover.
+  for double, right and middle clicks, `@x,y` forms, drag, hover, Raise,
+  and `tab switch` on a launched, cloned or toggled browser (browser
+  merge ticket 07 made it Headed without asking). A Batch refuses such a
+  step at its turn, so without `--headed` it never shows the banner unless
+  it activates a Window.
 - **ADR 0012 Decision 6** ("Chromium browsers only", and its consequence
   that Electron and WebView2 stay on UI Automation), by ticket 15.
   `launch-app --cdp` starts an Electron or WebView2 App with a loopback

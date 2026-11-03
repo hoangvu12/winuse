@@ -6,7 +6,9 @@ package helper
 // the candidates; a miss points at a fresh Window State read; a Window
 // without a cached state says so), and the mutual-exclusion refusals when
 // two Element Reference forms are supplied. Everything Win32 and
-// element-side is faked; no desktop is touched.
+// element-side is faked; no desktop is touched. The spies are no
+// HeadlessActor, so the tests send `headed` for the Headed pipeline (it is
+// refused without it, headless-max ticket 21).
 
 import (
 	"fmt"
@@ -47,7 +49,7 @@ func ambiguousRefErr(text string, matches ...int) error {
 func TestClickByReferenceResolvesThenClicks(t *testing.T) {
 	spy := &actionSpy{refIndex: 2, point: uia.Point{X: 100, Y: 200}}
 	out, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", protocol.ClickArgs{
-		Window: "101", Ref: "name:OK",
+		Window: "101", Ref: "name:OK", Headed: true,
 	})
 	if cmdErr != nil {
 		t.Fatalf("click by name: %v", cmdErr.Error())
@@ -75,7 +77,7 @@ func TestClickByReferenceResolvesThenClicks(t *testing.T) {
 func TestClickAmbiguousReferenceListsCandidates(t *testing.T) {
 	spy := &actionSpy{refErr: ambiguousRefErr("Twin", 1, 2)}
 	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", protocol.ClickArgs{
-		Window: "101", Ref: "name:Twin",
+		Window: "101", Ref: "name:Twin", Headed: true,
 	})
 	if cmdErr == nil {
 		t.Fatal("an ambiguous reference must fail, never guess")
@@ -102,7 +104,7 @@ func TestClickAmbiguousReferenceListsCandidates(t *testing.T) {
 func TestClickMissingReferencePointsAtWindowState(t *testing.T) {
 	spy := &actionSpy{refErr: &wstate.NoMatchRefError{Kind: wstate.RefName, Text: "OK"}}
 	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", protocol.ClickArgs{
-		Window: "101", Ref: "name:OK",
+		Window: "101", Ref: "name:OK", Headed: true,
 	})
 	if cmdErr == nil {
 		t.Fatal("a missing reference must fail")
@@ -121,7 +123,7 @@ func TestClickMissingReferencePointsAtWindowState(t *testing.T) {
 	// The id: form names the ID column.
 	spy = &actionSpy{refErr: &wstate.NoMatchRefError{Kind: wstate.RefID, Text: "box"}}
 	_, cmdErr = runCommand(t, CommandsWith(spy.services()), "click", protocol.ClickArgs{
-		Window: "101", Ref: "id:box",
+		Window: "101", Ref: "id:box", Headed: true,
 	})
 	if cmdErr == nil || cmdErr.Msg != `no element with ID "box" in the cached Window State for window 101` {
 		t.Fatalf("message = %v, want the ID wording", cmdErr)
@@ -131,7 +133,7 @@ func TestClickMissingReferencePointsAtWindowState(t *testing.T) {
 func TestClickReferenceWithoutCachedState(t *testing.T) {
 	spy := &actionSpy{refErr: fmt.Errorf("%w: window 101", uia.ErrNoState)}
 	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", protocol.ClickArgs{
-		Window: "101", Ref: "name:OK",
+		Window: "101", Ref: "name:OK", Headed: true,
 	})
 	if cmdErr == nil || cmdErr.Msg != "no cached Window State is available for window 101" {
 		t.Fatalf("message = %v, want the shared no-state failure", cmdErr)
@@ -144,7 +146,7 @@ func TestClickReferenceWithoutCachedState(t *testing.T) {
 func TestClickMalformedReference(t *testing.T) {
 	spy := &actionSpy{refErr: &wstate.BadRefError{Ref: "what:OK"}}
 	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", protocol.ClickArgs{
-		Window: "101", Ref: "what:OK",
+		Window: "101", Ref: "what:OK", Headed: true,
 	})
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "invalid element reference") {
 		t.Fatalf("message = %v, want the invalid-reference refusal", cmdErr)
@@ -181,7 +183,7 @@ func TestSetValueByReferenceResolvesThenSets(t *testing.T) {
 	spy := newActorSpy()
 	spy.refIndex = 2
 	out, cmdErr := runCommand(t, CommandsWith(spy.svc), "set-value", protocol.SetValueArgs{
-		Window: "101", Ref: "id:text-field", Value: "hello",
+		Window: "101", Ref: "id:text-field", Value: "hello", Headed: true,
 	})
 	if cmdErr != nil {
 		t.Fatalf("set-value by id: %v", cmdErr.Error())
@@ -203,7 +205,7 @@ func TestSetValueReferenceFailuresShareTheClickMapping(t *testing.T) {
 	spy := newActorSpy()
 	spy.refErr = ambiguousRefErr("Twin", 1, 2)
 	_, cmdErr := runCommand(t, CommandsWith(spy.svc), "set-value", protocol.SetValueArgs{
-		Window: "101", Ref: "name:Twin", Value: "x",
+		Window: "101", Ref: "name:Twin", Value: "x", Headed: true,
 	})
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, `name "Twin" matches 2 elements`) {
 		t.Fatalf("message = %v, want the ambiguous failure", cmdErr)
@@ -229,7 +231,7 @@ func TestPerformSecondaryActionByReference(t *testing.T) {
 	spy := newActorSpy()
 	spy.refIndex = 6
 	out, cmdErr := runCommand(t, CommandsWith(spy.svc), "perform-secondary-action", protocol.SecondaryActionArgs{
-		Window: "101", Ref: "name:Details", Action: "expand",
+		Window: "101", Ref: "name:Details", Action: "expand", Headed: true,
 	})
 	if cmdErr != nil {
 		t.Fatalf("perform-secondary-action by name: %v", cmdErr.Error())
@@ -245,7 +247,7 @@ func TestPerformSecondaryActionByReference(t *testing.T) {
 	spy = newActorSpy()
 	spy.refErr = &wstate.NoMatchRefError{Kind: wstate.RefID, Text: "nope"}
 	_, cmdErr = runCommand(t, CommandsWith(spy.svc), "perform-secondary-action", protocol.SecondaryActionArgs{
-		Window: "101", Ref: "id:nope", Action: "Expand",
+		Window: "101", Ref: "id:nope", Action: "Expand", Headed: true,
 	})
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, `no element with ID "nope"`) {
 		t.Fatalf("message = %v, want the missing-reference failure", cmdErr)

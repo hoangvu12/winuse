@@ -486,11 +486,26 @@ func TestTabSwitchThroughTheExtensionStoppedDuringTravel(t *testing.T) {
 	}
 }
 
-func TestTabSwitchOnALaunchedBrowserIsHeaded(t *testing.T) {
+// TestTabSwitchOnALaunchedBrowserNeedsHeaded: on a launched browser the
+// switch has only the Headed route. Without --headed it is refused with
+// nothing sent (headless-max ticket 21); with it, the Headed pipeline.
+func TestTabSwitchOnALaunchedBrowserNeedsHeaded(t *testing.T) {
 	b := launchedBrowser(t)
 	r := newTabRig(t, b.Connection(t), nil, b, nil)
-	// No Window State: Ctrl+Tab steps from Docs, checked one by one.
 	out, e := r.run(t, "tab-switch", protocol.TabArgs{Window: "301", Tab: "aaaa"})
+	wantHeadedRefusal(t, "tab-switch on a launched browser", out, e)
+	if got := r.log(); len(got) != 0 {
+		t.Errorf("a refused switch ran %v", got)
+	}
+	if b.ActiveTab(1) == tInbox {
+		t.Error("a refused switch changed the active tab")
+	}
+	noForegroundCalls(t, b.Methods())
+
+	b = launchedBrowser(t)
+	r = newTabRig(t, b.Connection(t), nil, b, nil)
+	// No Window State: Ctrl+Tab steps from Docs, checked one by one.
+	out, e = r.run(t, "tab-switch", protocol.TabArgs{Window: "301", Tab: "aaaa", Headed: true})
 	if e != nil || out != okOutput {
 		t.Fatalf("switch = %q, %+v", out, e)
 	}
@@ -513,7 +528,7 @@ func TestTabSwitchOnALaunchedBrowserIsHeaded(t *testing.T) {
 func TestTabSwitchUsesTheStripPosition(t *testing.T) {
 	b := launchedBrowser(t)
 	r := newTabRig(t, b.Connection(t), nil, b, stripOf301())
-	out, e := r.run(t, "tab-switch", protocol.TabArgs{Window: "301", Tab: "cccc"})
+	out, e := r.run(t, "tab-switch", protocol.TabArgs{Window: "301", Tab: "cccc", Headed: true})
 	if e != nil || out != okOutput {
 		t.Fatalf("switch = %q, %+v", out, e)
 	}
@@ -530,7 +545,7 @@ func TestTabSwitchThatNeverShows(t *testing.T) {
 	r := newTabRig(t, b.Connection(t), nil, b, nil)
 	r.svc.Activate = func(uint64) error { r.step("activate"); return nil } // keys reach no browser window
 	r.cmds = CommandsWith(r.svc)
-	_, e := r.run(t, "tab-switch", protocol.TabArgs{Window: "301", Tab: "aaaa"})
+	_, e := r.run(t, "tab-switch", protocol.TabArgs{Window: "301", Tab: "aaaa", Headed: true})
 	if e == nil || e.Msg != "tab aaaa0000 is not the active tab of window 301 after the switch" ||
 		e.Hint != "keys were sent to the Window; read winuse tab list 301 before repeating it" {
 		t.Errorf("never shown: %+v", e)
@@ -608,8 +623,11 @@ func TestTabStepsInABatch(t *testing.T) {
 		t.Errorf("activated %v", ext.Activated())
 	}
 
-	// On a launched browser tab switch is Headed: the Batch takes the
-	// swallowing scope up front; tab new alone stays Headless.
+	// On a launched browser tab switch is Headed, and only with --headed:
+	// without it the step is refused at its turn with nothing sent
+	// (headless-max ticket 21) and the scope stays passive. Sent with
+	// `headed`, the Batch takes the swallowing scope up front; tab new
+	// alone stays Headless.
 	b := launchedBrowser(t)
 	r = newTabRig(t, b.Connection(t), nil, b, nil)
 	w := tabTestWindows[0]
@@ -618,6 +636,20 @@ func TestTabStepsInABatch(t *testing.T) {
 	}
 	_, e = r.run(t, "batch", protocol.BatchArgs{Window: "301", Steps: []protocol.Step{
 		{Kind: "tab-switch", Args: json.RawMessage(`{"tab":"cccc"}`)},
+	}})
+	if e == nil || !strings.HasPrefix(e.Msg, "batch stopped at Action 1 (tab-switch): ") ||
+		!strings.HasSuffix(e.Msg, "; nothing was sent") || !strings.Contains(e.Hint, "winuse --headed ") {
+		t.Errorf("unheaded launched batch: %+v, want the --headed refusal", e)
+	}
+	if got := r.log(); len(got) != 0 {
+		t.Errorf("a refused switch ran %v", got)
+	}
+	if br := r.esc.brackets(); containsStep(br, "arm") || len(br) == 0 || br[0] != "arm-passive" {
+		t.Errorf("unheaded launched batch: Esc brackets = %v, want the passive scope", br)
+	}
+	r = newTabRig(t, b.Connection(t), nil, b, nil)
+	_, e = r.run(t, "batch", protocol.BatchArgs{Window: "301", Steps: []protocol.Step{
+		{Kind: "tab-switch", Args: json.RawMessage(`{"tab":"cccc","headed":true}`)},
 	}})
 	if e != nil || r.esc.brackets()[0] != "arm" {
 		t.Errorf("launched batch: %+v, %v", e, r.esc.brackets())
@@ -641,8 +673,10 @@ func TestTabCommandsRegisteredAndGated(t *testing.T) {
 		if _, ok := protocol.CommandTimeout(name); !ok {
 			t.Errorf("%s has no budget", name)
 		}
-		if takesHeaded(name) {
-			t.Errorf("%s takes no --headed", name)
+		// tab-switch takes --headed where it is Headed (outside the
+		// extension, headless-max ticket 21); the others never are.
+		if got, want := takesHeaded(name), name == "tab-switch"; got != want {
+			t.Errorf("%s: takesHeaded = %v, want %v", name, got, want)
 		}
 	}
 	if !observationOnlyCommand("tab-list") {

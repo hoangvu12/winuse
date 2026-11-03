@@ -5,7 +5,8 @@ package helper
 // refusals and before the activation; hidden after the action, whatever
 // its outcome), and the capture bracket (a capture method runs with the
 // indicator hidden, which is restored afterwards). The overlay is faked;
-// no desktop is touched.
+// no desktop is touched. The bracketed Actions are Headed, so they are
+// sent with `headed` (refused without it, headless-max ticket 21).
 
 import (
 	"errors"
@@ -131,7 +132,7 @@ func TestActionShowsOverlayOverTargetWindowAndHidesAfter(t *testing.T) {
 	svc := spy.services()
 	svc.Overlay = ov
 
-	out, cmdErr := runCommand(t, CommandsWith(svc), "click", clickArgs("101", 2, 1, "left"))
+	out, cmdErr := runCommand(t, CommandsWith(svc), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 	if cmdErr != nil {
 		t.Fatalf("click: %v", cmdErr.Error())
 	}
@@ -173,7 +174,7 @@ func TestOverlayHiddenAfterActionFailure(t *testing.T) {
 			ov := &overlaySpy{}
 			svc := tc.spy.services()
 			svc.Overlay = ov
-			_, _ = runCommand(t, CommandsWith(svc), "click", clickArgs("101", 1, 1, "left"))
+			_, _ = runCommand(t, CommandsWith(svc), "click", headedArgs(clickArgs("101", 1, 1, "left")))
 			if got := ov.recorded(); !hasStepPrefix(got, "overlay-show") || !containsStep(got, "overlay-hide") {
 				t.Errorf("bracket steps = %v, want a show and a hide around the failed Action", got)
 			}
@@ -209,7 +210,7 @@ func TestRefusalsNeverShowOverlay(t *testing.T) {
 			ov := &overlaySpy{}
 			svc := tc.spy.services()
 			svc.Overlay = ov
-			_, _ = runCommand(t, CommandsWith(svc), "click", clickArgs("101", 1, 1, "left"))
+			_, _ = runCommand(t, CommandsWith(svc), "click", headedArgs(clickArgs("101", 1, 1, "left")))
 			if got := ov.recorded(); len(got) != 0 {
 				t.Errorf("refused Action steps = %v, want no indicator activity", got)
 			}
@@ -232,7 +233,7 @@ func TestOverlayFailureNeverFailsAction(t *testing.T) {
 	ov := &overlaySpy{showErr: errors.New("wedge"), hideErr: errors.New("wedge")}
 	svc := spy.services()
 	svc.Overlay = ov
-	out, cmdErr := runCommand(t, CommandsWith(svc), "click", clickArgs("101", 2, 1, "left"))
+	out, cmdErr := runCommand(t, CommandsWith(svc), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 	if cmdErr != nil {
 		t.Fatalf("click with a failing overlay: %v", cmdErr.Error())
 	}
@@ -344,6 +345,7 @@ func TestBatchShowsOneOverlayBracketForTheWholeRun(t *testing.T) {
 
 	out, cmdErr := runCommand(t, cmds, "batch", protocol.BatchArgs{
 		Window: "101",
+		Headed: true,
 		Steps: []protocol.Step{
 			stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(1)}),
 			stepOf("type-text", protocol.TypeTextArgs{Text: "hello"}),
@@ -398,7 +400,7 @@ func TestBatchShowsOneOverlayBracketForTheWholeRun(t *testing.T) {
 	svc := spy2.services()
 	svc.Overlay = ov2
 	cmds2 := CommandsWith(svc)
-	if _, cmdErr := runCommand(t, cmds2, "click", clickArgs("101", 2, 1, "left")); cmdErr != nil {
+	if _, cmdErr := runCommand(t, cmds2, "click", headedArgs(clickArgs("101", 2, 1, "left"))); cmdErr != nil {
 		t.Fatalf("standalone click: %v", cmdErr.Error())
 	}
 	if got := ov2.recorded(); len(got) != 2 || !strings.HasPrefix(got[0], "overlay-show(") || got[1] != "overlay-hide" {

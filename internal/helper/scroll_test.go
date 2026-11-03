@@ -360,13 +360,38 @@ func TestBatchElementScrollStepsKeepTheHeadlessScope(t *testing.T) {
 		t.Errorf("Esc brackets = %v, want the passive scope", b)
 	}
 
-	// The point form is a Headed step: the Batch swallows Esc.
+	// The point form outside a Page is Headed only with `headed`. Without
+	// it the step is refused at its turn with nothing sent (headless-max
+	// ticket 21), so it gives the Batch no reason to swallow Esc: the scope
+	// stays passive and no wheel turns.
+	spy = newScrollSpy()
+	_, cmdErr = runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{
+		Window: "101",
+		Steps: []protocol.Step{
+			stepOf("scroll", protocol.ScrollArgs{ElementIndex: intPtrBatch(2), Direction: "down"}),
+			stepOf("scroll", protocol.ScrollArgs{X: 4, Y: 4, ScrollY: 120}),
+		},
+	})
+	if cmdErr == nil || !strings.HasPrefix(cmdErr.Msg, "batch stopped at Action 2 (scroll): ") ||
+		!strings.HasSuffix(cmdErr.Msg, "; nothing was sent") || !strings.Contains(cmdErr.Hint, "winuse --headed ") {
+		t.Errorf("unheaded point step: %+v, want the --headed refusal", cmdErr)
+	}
+	if got := spy.recorded(); containsStep(got, "wheel") {
+		t.Errorf("the refused point step turned the wheel: %v", got)
+	}
+	assertNoV1(t, spy.recorded())
+	if b := spy.esc.brackets(); containsStep(b, "arm") || len(b) == 0 || b[0] != "arm-passive" {
+		t.Errorf("Esc brackets = %v, want the passive scope", b)
+	}
+
+	// The point step sent with `headed` is a Headed step: the Batch
+	// swallows Esc.
 	spy = newScrollSpy()
 	_, _ = runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{
 		Window: "101",
 		Steps: []protocol.Step{
 			stepOf("scroll", protocol.ScrollArgs{ElementIndex: intPtrBatch(2), Direction: "down"}),
-			stepOf("scroll", protocol.ScrollArgs{X: 4, Y: 4, ScrollY: 120}),
+			stepOf("scroll", protocol.ScrollArgs{X: 4, Y: 4, ScrollY: 120, Headed: true}),
 		},
 	})
 	if b := spy.esc.brackets(); len(b) == 0 || b[0] != "arm" {

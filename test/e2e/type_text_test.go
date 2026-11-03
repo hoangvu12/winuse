@@ -8,6 +8,12 @@
 // The typing assertions read the fixture's state file (Text, Typed,
 // TextSelected, LastKey) — never pixels. Element Indexes and the
 // fixture's Element contract come from internal/fixture.
+//
+// The fixture's main window and its Save As dialog draw their own text
+// fields (no classic edit control), so typing and keys there have no
+// Headless route: these tests pass --headed (headless-max ticket 21).
+// The refusals that happen before any route is chosen (an unknown key,
+// the Windows key, an empty key, usage errors) need no flag.
 
 package e2e
 
@@ -33,6 +39,21 @@ func runPressKey(t *testing.T, args []string, extraEnv ...string) (string, strin
 	return runWinuse(t, append([]string{"press-key"}, args...), append(extraEnv, "WINUSE_HELPER_IDLE="+e2eIdle)...)
 }
 
+// runTypeTextHeaded invokes `winuse --headed type-text ...`: the fixture's
+// main window is not a classic edit control, so typing into it has no
+// Headless route and needs --headed (headless-max ticket 21).
+func runTypeTextHeaded(t *testing.T, args []string, extraEnv ...string) (string, string, int) {
+	t.Helper()
+	return runWinuse(t, append([]string{"--headed", "type-text"}, args...), append(extraEnv, "WINUSE_HELPER_IDLE="+e2eIdle)...)
+}
+
+// runPressKeyHeaded invokes `winuse --headed press-key ...`: a key other
+// than Return or Escape on a classic dialog has no Headless route.
+func runPressKeyHeaded(t *testing.T, args []string, extraEnv ...string) (string, string, int) {
+	t.Helper()
+	return runWinuse(t, append([]string{"--headed", "press-key"}, args...), append(extraEnv, "WINUSE_HELPER_IDLE="+e2eIdle)...)
+}
+
 func TestTypeTextTypesUnicode(t *testing.T) {
 	optIn(t)
 	fix, window := startFixtureWithState(t)
@@ -41,7 +62,7 @@ func TestTypeTextTypesUnicode(t *testing.T) {
 	// arrives as two WM_CHAR messages the fixture must recombine) and
 	// punctuation, in one typed string.
 	text := "Hello, 世界! Caña 🎉 déjà-vu"
-	stdout, stderr, exit := runTypeText(t, []string{window, text})
+	stdout, stderr, exit := runTypeTextHeaded(t, []string{window, text})
 	assertActionOK(t, "type-text", stdout, stderr, exit)
 
 	st := fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.Text == text })
@@ -56,7 +77,7 @@ func TestTypeTextWordsJoinWithoutQuotes(t *testing.T) {
 	optIn(t)
 	fix, window := startFixtureWithState(t)
 
-	stdout, stderr, exit := runTypeText(t, []string{window, "hello", "brave", "world"})
+	stdout, stderr, exit := runTypeTextHeaded(t, []string{window, "hello", "brave", "world"})
 	assertActionOK(t, "type-text unquoted words", stdout, stderr, exit)
 
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.Text == "hello brave world" })
@@ -69,7 +90,7 @@ func TestTypeTextLongText(t *testing.T) {
 	fix, window := startFixtureWithState(t)
 
 	text := strings.Repeat("αβγdéjà ", 30) // 240 runes, several batches
-	stdout, stderr, exit := runTypeText(t, []string{window, text})
+	stdout, stderr, exit := runTypeTextHeaded(t, []string{window, text})
 	assertActionOK(t, "type-text long text", stdout, stderr, exit)
 
 	fix.waitState(t, 10*time.Second, func(s *fixture.State) bool { return s.Text == text })
@@ -81,15 +102,15 @@ func TestTypeTextSelectAllAndReplace(t *testing.T) {
 	optIn(t)
 	fix, window := startFixtureWithState(t)
 
-	stdout, stderr, exit := runTypeText(t, []string{window, "Hello world"})
+	stdout, stderr, exit := runTypeTextHeaded(t, []string{window, "Hello world"})
 	assertActionOK(t, "type-text", stdout, stderr, exit)
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.Text == "Hello world" })
 
-	stdout, stderr, exit = runPressKey(t, []string{window, "Control_L+a"})
+	stdout, stderr, exit = runPressKeyHeaded(t, []string{window, "Control_L+a"})
 	assertActionOK(t, "press-key Control_L+a", stdout, stderr, exit)
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.TextSelected })
 
-	stdout, stderr, exit = runTypeText(t, []string{window, "Bye"})
+	stdout, stderr, exit = runTypeTextHeaded(t, []string{window, "Bye"})
 	assertActionOK(t, "type-text replacement", stdout, stderr, exit)
 	st := fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.Text == "Bye" })
 	if st.TextSelected {
@@ -103,16 +124,16 @@ func TestTypeTextBackspaceReplacesSelection(t *testing.T) {
 	optIn(t)
 	fix, window := startFixtureWithState(t)
 
-	if _, _, exit := runTypeText(t, []string{window, "scratch"}); exit != 0 {
+	if _, _, exit := runTypeTextHeaded(t, []string{window, "scratch"}); exit != 0 {
 		t.Fatalf("type-text: exit %d", exit)
 	}
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.Text == "scratch" })
-	if _, _, exit := runPressKey(t, []string{window, "Control_L+a"}); exit != 0 {
+	if _, _, exit := runPressKeyHeaded(t, []string{window, "Control_L+a"}); exit != 0 {
 		t.Fatalf("press-key: exit %d", exit)
 	}
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.TextSelected })
 
-	if _, _, exit := runPressKey(t, []string{window, "BackSpace"}); exit != 0 {
+	if _, _, exit := runPressKeyHeaded(t, []string{window, "BackSpace"}); exit != 0 {
 		t.Fatalf("press-key BackSpace: exit %d", exit)
 	}
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.Text == "" })
@@ -131,13 +152,22 @@ func TestTypeTextIntoDialogEdit(t *testing.T) {
 	st := fix.waitState(t, 10*time.Second, func(s *fixture.State) bool { return s.DialogOpen && s.DialogWindowID != 0 })
 	dialog := strconv.FormatUint(st.DialogWindowID, 10)
 
-	// The fixture draws its edit inside the dialog window, so a dialog in
-	// the background reports no focused control: the text goes Headed and
-	// the ok says why (headless-max ticket 19).
+	// The fixture draws its edit inside the dialog window, so the dialog
+	// has no classic edit control to type into: without --headed, plain
+	// type-text has no Headless route and is refused with nothing sent
+	// (headless-max ticket 21; it used to go Headed on its own and say so,
+	// ticket 19).
 	stdout, stderr, exit := runTypeText(t, []string{dialog, "report.txt"})
-	if exit != 0 || stderr != "" || (stdout != "ok\n" && !strings.HasPrefix(stdout, "ok (typed Headed: window "+dialog+" reports no focused control")) {
-		t.Fatalf("type-text into the dialog: exit %d, stdout %q, stderr %q", exit, stdout, stderr)
+	assertHeadedRefusal(t, "type-text into the dialog without --headed", stdout, stderr, exit,
+		"winuse --headed type-text "+dialog+" <text>")
+	time.Sleep(300 * time.Millisecond)
+	if st := fix.waitState(t, time.Second, func(*fixture.State) bool { return true }); st.DialogFileName != "" || st.Typed != "" {
+		t.Errorf("the refused type-text reached the fixture: file name %q, typed %q", st.DialogFileName, st.Typed)
 	}
+
+	// With --headed it is typed the v1 way, as before.
+	stdout, stderr, exit = runTypeTextHeaded(t, []string{dialog, "report.txt"})
+	assertActionOK(t, "--headed type-text into the dialog", stdout, stderr, exit)
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.DialogFileName == "report.txt" })
 }
 
@@ -172,7 +202,7 @@ func TestPressKeyNames(t *testing.T) {
 		{"Numpad_Add", "vk-0x0000006b"},
 	}
 	for _, tc := range cases {
-		stdout, stderr, exit := runPressKey(t, []string{window, tc.key})
+		stdout, stderr, exit := runPressKeyHeaded(t, []string{window, tc.key})
 		if exit != 0 {
 			t.Fatalf("press-key %q: exit %d, stderr:\n%s", tc.key, exit, stderr)
 		}
@@ -190,7 +220,7 @@ func TestPressKeyChord(t *testing.T) {
 	optIn(t)
 	fix, window := startFixtureWithState(t)
 
-	stdout, stderr, exit := runPressKey(t, []string{window, "Control_L+a"})
+	stdout, stderr, exit := runPressKeyHeaded(t, []string{window, "Control_L+a"})
 	assertActionOK(t, "press-key chord", stdout, stderr, exit)
 	st := fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.TextSelected })
 	if st.LastKey != "a" {

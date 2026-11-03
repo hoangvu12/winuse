@@ -9,6 +9,9 @@ package helper
 // Window injected into its arguments, so a step behaves exactly as if the
 // agent had sent it alone. A Batch sent with `headed` injects `headed`
 // into every step that takes it, so the whole Batch runs the v1 way.
+// Without it, a step with no Headless route is refused at its turn, before
+// it sends anything, exactly as when sent alone (headless-max ticket 21);
+// the Batch stops there, and the steps before it took effect.
 //
 // Codex has no batch tool (codex-surface.md §1: the model chains calls in
 // a JS cell instead); winuse's Batch keeps Codex's output style — `ok`,
@@ -140,12 +143,22 @@ func batch(commands map[string]Command, s Services) Command {
 		if werr == nil {
 			bw = &w
 		}
+		//
+		// A step with no Headless route that is not `headed` never goes
+		// Headed: its command refuses it at its turn with nothing sent
+		// (headless-max ticket 21), so it does not make the Batch Headed.
+		// activate-window is the one step that asks for the foreground
+		// itself.
 		allHeadless := true
 		for _, st := range steps {
-			if !s.stepHeadless(st.kind, st.args, bw) {
-				allHeadless = false
-				break
+			if s.stepHeadless(st.kind, st.args, bw) {
+				continue
 			}
+			if st.kind != "activate-window" && !stepHeaded(st.args) {
+				continue
+			}
+			allHeadless = false
+			break
 		}
 
 		// Run the steps in order, stopping at the first failure. The

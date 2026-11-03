@@ -601,6 +601,8 @@ func TestScreenshotLineNegativeOrigin(t *testing.T) {
 	}
 }
 
+// The coordinate click tests send `headed`: a click at a point has only the
+// Headed route, refused without --headed (headless-max ticket 21).
 func TestClickCoordinateLandsOnMappedPixel(t *testing.T) {
 	s := newShotSpy(t)
 	s.frame = syntheticFrame(800, 470, 100, 200)
@@ -616,6 +618,7 @@ func TestClickCoordinateLandsOnMappedPixel(t *testing.T) {
 	out, cmdErr := runJSON(t, cmds, "click", protocol.ClickArgs{
 		Window: "101",
 		Point:  &protocol.Point{X: 400, Y: 235},
+		Headed: true,
 	})
 	if cmdErr != nil {
 		t.Fatalf("click @x,y: %v", cmdErr.Error())
@@ -651,6 +654,7 @@ func TestClickCoordinateHalfScaleCentre(t *testing.T) {
 	out, cmdErr := runJSON(t, cmds, "click", protocol.ClickArgs{
 		Window: "101",
 		Point:  &protocol.Point{X: 0, Y: 0},
+		Headed: true,
 	})
 	if cmdErr != nil {
 		t.Fatalf("click @x,y: %v", cmdErr.Error())
@@ -673,6 +677,7 @@ func TestClickCoordinateWithoutScreenshot(t *testing.T) {
 	_, cmdErr := runJSON(t, cmds, "click", protocol.ClickArgs{
 		Window: "101",
 		Point:  &protocol.Point{X: 10, Y: 10},
+		Headed: true,
 	})
 	if cmdErr == nil {
 		t.Fatal("click @x,y without a screenshot must fail")
@@ -704,6 +709,7 @@ func TestClickCoordinateOutsideScreenshot(t *testing.T) {
 	_, cmdErr = runJSON(t, cmds, "click", protocol.ClickArgs{
 		Window: "101",
 		Point:  &protocol.Point{X: 800, Y: 235},
+		Headed: true,
 	})
 	if cmdErr == nil || !strings.Contains(cmdErr.Error(), "point @800,235 is outside the latest screenshot of window 101 (800x470 px)") {
 		t.Fatalf("want out-of-screenshot failure, got %v", cmdErr)
@@ -724,7 +730,7 @@ func TestClickCoordinateRefusalsMatchPipeline(t *testing.T) {
 	// A locked desktop refuses before anything else, exactly like the
 	// Element Index form.
 	s.locked = true
-	_, cmdErr = runJSON(t, cmds, "click", protocol.ClickArgs{Window: "101", Point: &protocol.Point{X: 1, Y: 1}})
+	_, cmdErr = runJSON(t, cmds, "click", protocol.ClickArgs{Window: "101", Point: &protocol.Point{X: 1, Y: 1}, Headed: true})
 	if cmdErr == nil || !strings.Contains(cmdErr.Error(), "Windows desktop is locked") {
 		t.Fatalf("want locked-desktop refusal, got %v", cmdErr)
 	}
@@ -763,7 +769,7 @@ func TestClickCoordinateWindowGone(t *testing.T) {
 		t.Fatalf("screenshot: %v", cmdErr.Error())
 	}
 	s.originErr = fmt.Errorf("%w (window 101): reading the extended frame bounds failed", win.ErrGone)
-	_, cmdErr = runJSON(t, cmds, "click", protocol.ClickArgs{Window: "101", Point: &protocol.Point{X: 1, Y: 1}})
+	_, cmdErr = runJSON(t, cmds, "click", protocol.ClickArgs{Window: "101", Point: &protocol.Point{X: 1, Y: 1}, Headed: true})
 	if cmdErr == nil || !strings.Contains(cmdErr.Error(), "window is gone") {
 		t.Fatalf("want window-gone failure, got %v", cmdErr)
 	}
@@ -916,7 +922,7 @@ func TestMappingsArePerWindow(t *testing.T) {
 	if _, ok := s.svc.Shots.Lookup(303); ok {
 		t.Fatal("window 303 must have no mapping")
 	}
-	_, cmdErr = runJSON(t, cmds, "click", protocol.ClickArgs{Window: "Paint", Point: &protocol.Point{X: 1, Y: 1}})
+	_, cmdErr = runJSON(t, cmds, "click", protocol.ClickArgs{Window: "Paint", Point: &protocol.Point{X: 1, Y: 1}, Headed: true})
 	if cmdErr == nil || !strings.Contains(cmdErr.Error(), "no screenshot is available for window 303") {
 		t.Fatalf("want per-window no-screenshot failure, got %v", cmdErr)
 	}

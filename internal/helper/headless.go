@@ -7,12 +7,14 @@ package helper
 // never activate the Window, move the pointer, inject input or raise the
 // in-control banner; the Agent Cursor shows what is happening instead.
 // Everything else — `@x,y` forms, double/right/middle clicks, Raise, the
-// physical Actions, and any Action sent with `headed` — stays Headed,
-// exactly v1's runAction pipeline.
+// physical Actions — has only v1's runAction pipeline, and runs it only
+// when sent with `headed`; any Action sent with `headed` runs it too.
 //
 // winuse never switches mode on its own: a Headless click whose Element
 // offers no pattern route fails with nothing sent and a hint to pass
-// --headed (taking the user's foreground is the agent's explicit choice).
+// --headed (taking the user's foreground is the agent's explicit choice),
+// and so does every Action whose only route is Headed when it was sent
+// without `headed` (headedgate.go, ADR 0013 rule 3).
 //
 // Routing is decided by one predicate, headlessStep, over the command's
 // wire arguments: the standalone commands and the Batch (which must pick
@@ -114,13 +116,25 @@ func armPassive(esc EscWatch) (disarm func()) {
 }
 
 // takesHeaded reports whether a command takes the protocol's `headed`
-// flag: the only ones with a Headless form.
+// flag: the ones with a Headless form, and the ones that are Headed only
+// when the agent asks (drag and hover at a point, tab-switch outside the
+// extension: headless-max ticket 21).
 func takesHeaded(kind string) bool {
 	switch kind {
-	case "click", "set-value", "perform-secondary-action", "scroll", "press-key", "type-text":
+	case "click", "set-value", "perform-secondary-action", "scroll", "press-key", "type-text",
+		"drag", "hover", "tab-switch":
 		return true
 	}
 	return false
+}
+
+// stepHeaded reports whether one step's prepared arguments carry `headed`
+// (the Batch's own, injected by withHeaded, or the step's).
+func stepHeaded(raw json.RawMessage) bool {
+	var f struct {
+		Headed bool `json:"headed"`
+	}
+	return json.Unmarshal(raw, &f) == nil && f.Headed
 }
 
 // headlessStep is the one routing predicate (spec, "Headless Action

@@ -483,8 +483,9 @@ func (p *pageRun) navigation(t *testing.T) {
 
 // tabs: tab new opens a background tab (the Window keeps showing its
 // page), tab list lists it, tab close closes it. tab switch on a launched
-// browser is Headed (ticket 07), so it is not run here;
-// TestBrowserPagesExtension runs the Headless one.
+// browser is Headed (ticket 07) and refused without --headed (headless-max
+// ticket 21), so it is not run here; TestBrowserPagesExtension runs the
+// Headless one.
 func (p *pageRun) tabs(t *testing.T) {
 	p.open(t, p.srv.mainURL(false, ""), "")
 	_, before := p.tabList(t)
@@ -510,7 +511,7 @@ func (p *pageRun) tabs(t *testing.T) {
 	if title := windowTitle(t, p.main); !strings.HasPrefix(title, pagesTitle) {
 		t.Errorf("the Window's title is %q after tab new, want it to start with %q", title, pagesTitle)
 	}
-	t.Log("tab switch on a launched browser is Headed (ticket 07): not run here; TestBrowserPagesExtension runs the Headless one")
+	t.Log("tab switch on a launched browser is Headed (ticket 07), only with --headed: not run here; TestBrowserPagesExtension runs the Headless one")
 
 	p.actOK(t, "tab", "close", p.window, tab)
 	closed = true

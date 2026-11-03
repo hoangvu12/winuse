@@ -4,9 +4,10 @@ package cli
 // list|new|close|switch <window> ...` on a browser Window with a Browser
 // Connection. Parsing is local (usage errors exit 2 and never dial the
 // helper). The wire names are tab-list, tab-new, tab-close and tab-switch.
-// The tab commands take no --headed: tab switch picks its route from the
-// Browser Connection (Headless through the winuse extension, Headed
-// otherwise), and the others are Headless.
+// tab switch picks its route from the Browser Connection: Headless through
+// the winuse extension, and Headed otherwise, which needs the global
+// --headed (headless-max ticket 21); the CLI forwards it. The others are
+// Headless and ignore it.
 
 import (
 	"encoding/json"
@@ -73,8 +74,9 @@ func checkTabRef(ref string) error {
 }
 
 // tabCmd implements `winuse tab list|new|close|switch <window> ...`.
-func tabCmd(args []string) int {
-	cmd, a, err := parseTabArgs(args)
+// headed is the global --headed flag, which only tab switch uses.
+func tabCmd(args []string, headed bool) int {
+	cmd, a, err := tabRequest(args, headed)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, tabUsage)
 		return 2
@@ -84,6 +86,16 @@ func tabCmd(args []string) int {
 		return ExitCode(err)
 	}
 	return 0
+}
+
+// tabRequest is parseTabArgs with the global --headed, which only tab
+// switch carries.
+func tabRequest(args []string, headed bool) (string, protocol.TabArgs, error) {
+	cmd, a, err := parseTabArgs(args)
+	if err == nil && cmd == "tab-switch" {
+		a.Headed = headed
+	}
+	return cmd, a, err
 }
 
 // parseBatchTabStep parses a tab step of a Batch: `tab new [url]`, `tab

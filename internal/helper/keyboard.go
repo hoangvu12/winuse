@@ -27,8 +27,9 @@ const (
 	pressKeyUsageHint = "usage: winuse press-key <window> <key> [--post] [--force]"
 )
 
-// typeText runs `winuse type-text <window> <text>`: the Window is
-// activated and verified in the foreground, then the text is typed into
+// typeText runs `winuse type-text <window> <text>`. With `headed`, the
+// Window is activated and verified in the foreground, then the text is
+// typed into
 // whatever holds keyboard focus, as Unicode key events — any script and
 // emoji, newline as a real Return, tab as a real Tab. The abort
 // checkpoint rides along: typing aborts between its batches when the
@@ -43,9 +44,10 @@ const (
 // focused control as Posted Keys (Decision 5). With an Element (--into)
 // the text goes into that Element instead (typeinto.go).
 //
-// When the probe finds no focused control at all (a covered Windows 11
-// Notepad reports none), the text still goes Headed, and the output says
-// why and points at --into (headless-max ticket 19).
+// Without `headed`, text with no Headless route is refused with nothing
+// sent and the --headed retry (headless-max ticket 21); when the probe
+// finds no focused control at all (a covered Windows 11 Notepad reports
+// none), the refusal says so and points at --into (ticket 19).
 func typeText(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.TypeTextArgs
@@ -76,22 +78,26 @@ func typeText(s Services) Command {
 				return out, rerr
 			}
 		}
-		out := okOutput
-		if !a.Headed && s.KeyRoute != nil {
+		if !a.Headed {
 			w, rerr := resolveWindow(s, a.Window)
 			if rerr != nil {
 				return "", rerr
 			}
 			// headlessStep's type-text case for an unposted, unheaded
-			// request: the route read once, then editTypeRoute.
-			if route := s.keyRoute(args, w); route != nil {
+			// request: the route read once, then editTypeRoute. With no
+			// Headless route the text is refused, never typed Headed
+			// (headless-max ticket 21): the reason names a Window that
+			// reports no focused control, such as a covered Windows 11
+			// Notepad, and the alternatives are --into and --post.
+			route := s.keyRoute(args, w)
+			if route != nil {
 				if edit, ok := editTypeRoute(a.Text, *route); ok {
 					return s.typeIntoEdit(ctx, w, edit, a.Text)
 				}
-				if route.Focus.HWND == 0 && (s.Foreground == nil || s.Foreground() != w.ID) {
-					out = noFocusOutput(w)
-				}
 			}
+			return "", headedRefusal(w, typeTextWhy(w, a.Text, route),
+				func(id string) string { return "type-text " + id + " <text>" },
+				typeTextAlt(strconv.FormatUint(w.ID, 10)))
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
 			// The abort checkpoint polls the Esc stop and the request's
@@ -100,30 +106,22 @@ func typeText(s Services) Command {
 			if err := s.TypeText(a.Text, func() bool { return s.Esc.Stopped() || ctx.Err() != nil }); err != nil {
 				return "", inputAbortError(s, ctx, err, "while typing (the text injected so far landed)")
 			}
-			return out, nil
+			return okOutput, nil
 		})
 	}
 }
 
-// noFocusOutput is plain type-text's success when the Window reported no
-// focused control, so the text went Headed (headless-max ticket 19): why,
-// and the --into form that needs no focus.
-func noFocusOutput(w win.WindowInfo) string {
-	id := strconv.FormatUint(w.ID, 10)
-	return "ok (typed Headed: window " + id + " reports no focused control while it is in the background, so winuse brought it to the foreground; " +
-		"to type without the foreground, name the field: winuse type-text " + id + " --into <element> <text>)\n"
-}
-
-// pressKey runs `winuse press-key <window> <key>`: the Window is activated
-// and verified in the foreground, then the key (or chord, keys down in
-// order and up in reverse) is injected.
+// pressKey runs `winuse press-key <window> <key>`. With `headed`, the
+// Window is activated and verified in the foreground, then the key (or
+// chord, keys down in order and up in reverse) is injected.
 //
 // Return and Escape on a classic dialog are Headless instead (ADR 0011,
 // Decision 4; keyroute.go): the Window resolves, the probe reads it, and
-// the shared predicate decides the route before anything is sent. With
-// `headed` the probe is skipped and the press is v1's. With `post` the key
-// is posted to the focused control as Posted Keys (Decision 5), refused
-// with modifiers. A Blocked Combo is refused before any of these routes
+// the shared predicate decides the route before anything is sent; any
+// other key without `headed` is refused with nothing sent and the --headed
+// retry (headless-max ticket 21). With `headed` the probe is skipped and
+// the press is v1's. With `post` the key is posted to the focused control
+// as Posted Keys (Decision 5), refused with modifiers. A Blocked Combo is refused before any of these routes
 // unless `force` (blockedComboError).
 func pressKey(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
@@ -158,18 +156,27 @@ func pressKey(s Services) Command {
 				return out, rerr
 			}
 		}
-		if !a.Headed && s.KeyRoute != nil {
+		if !a.Headed {
 			w, rerr := resolveWindow(s, a.Window)
 			if rerr != nil {
 				return "", rerr
 			}
 			// headlessStep's press-key case for an unposted, unheaded
-			// request: the route read once, then dialogKeyRoute.
+			// request: the route read once, then dialogKeyRoute. With no
+			// Headless route the key is refused, never pressed Headed
+			// (headless-max ticket 21); a key with no modifier can be posted.
 			if route := s.keyRoute(args, w); route != nil {
 				if dk, ok := dialogKeyRoute(chord, *route); ok {
 					return s.pressDialogKey(ctx, w, dk)
 				}
 			}
+			force := ""
+			if a.Force {
+				force = " --force"
+			}
+			return "", headedRefusal(w, pressKeyWhy(w, chord),
+				func(id string) string { return "press-key " + id + " " + chord.String() + force },
+				pressKeyAlt(strconv.FormatUint(w.ID, 10), chord))
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
 			if err := s.PressKeys(chord); err != nil {

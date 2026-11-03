@@ -257,9 +257,10 @@ type Region struct {
 // The Element forms (headless-parity spec, "Element scroll") name an
 // Element instead, by Element Index or name:/id: reference, with a
 // direction: up, down, left or right by steps (default 3, at most 50), or
-// into-view. They are Headless unless headed; the point form is always
-// Headed. A request uses one form: the point and amounts stay zero in an
-// Element form.
+// into-view. They are Headless unless headed. The point form is Headless
+// on a Page and Headed elsewhere, and Headed only with headed (headless-max
+// ticket 21). A request uses one form: the point and amounts stay zero in
+// an Element form.
 type ScrollArgs struct {
 	Window  string `json:"window"`
 	X       int    `json:"x"`
@@ -271,7 +272,7 @@ type ScrollArgs struct {
 	Ref          string `json:"ref,omitempty"`           // name:<text> or id:<AutomationId>: the Element to scroll
 	Direction    string `json:"direction,omitempty"`     // up, down, left, right or into-view
 	Steps        *int   `json:"steps,omitempty"`         // scroll steps for a direction (default 3, 1 to 50); none for into-view
-	Headed       bool   `json:"headed,omitempty"`        // an Element form the v1 way: activate, then the wheel at the Element (into-view: the ScrollItem call after activation)
+	Headed       bool   `json:"headed,omitempty"`        // the v1 way: activate, then the wheel at the point or the Element (into-view: the ScrollItem call after activation); without it a point outside a Page is refused
 }
 
 // DragArgs are drag's arguments — Codex's drag parameters: from and to
@@ -291,6 +292,11 @@ type DragArgs struct {
 	FromRef   string `json:"from_ref,omitempty"`
 	ToIndex   *int   `json:"to_index,omitempty"`
 	ToRef     string `json:"to_ref,omitempty"`
+
+	// Headed is the agent's --headed (headless-max ticket 21): the point
+	// form drags with the real pointer only with it, and is refused with
+	// nothing sent without it. The Page form ignores it.
+	Headed bool `json:"headed,omitempty"`
 }
 
 // HoverArgs are hover's arguments: the point to move the pointer to,
@@ -306,6 +312,11 @@ type HoverArgs struct {
 	// point, Headless over the Browser Connection.
 	ElementIndex *int   `json:"element_index,omitempty"`
 	Ref          string `json:"ref,omitempty"`
+
+	// Headed is the agent's --headed (headless-max ticket 21): the point
+	// form moves the real pointer only with it, and is refused with nothing
+	// sent without it. The Page form ignores it.
+	Headed bool `json:"headed,omitempty"`
 }
 
 // ZoomArgs are zoom's arguments.

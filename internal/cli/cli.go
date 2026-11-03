@@ -38,12 +38,17 @@ headless (the default; your foreground, pointer and keyboard stay untouched):
   text with no newline, tab or other control character; screenshots from
   get-window-state --screenshot and zoom (--headed activates the Window
   first); and the Window Actions restore-, minimize-, move-, resize- and
-  close-window, which have no headed form. Every other Action is headed.
-  tab new and tab close are headless; tab switch is headless through the
-  winuse extension and headed on a launched or cloned browser. In a
+  close-window, which have no headed form. tab new and tab close are
+  headless; tab switch is headless through the winuse extension. In a
   browser Window with a Browser Connection, every Action on its Page is
   headless, and so are navigate, back, forward, reload, upload, dialog,
   wait and eval, which have no headed form.
+
+headed only with --headed: every other Action (@x,y forms, double, right
+  and middle clicks, drag, hover, Raise, press-key and type-text with no
+  headless route, tab switch on a launched or cloned browser) is refused
+  with "nothing was sent" and the exact --headed retry. activate-window
+  always takes the foreground: that is what it is for.
 
 commands:
   list-windows [--details] [--app <name>]
@@ -342,9 +347,9 @@ func Main(args []string) int {
 	case "select-text":
 		return selectTextCmd(args[1:])
 	case "drag":
-		return dragCmd(args[1:])
+		return dragCmd(args[1:], headed)
 	case "hover":
-		return hoverCmd(args[1:])
+		return hoverCmd(args[1:], headed)
 	case "activate-window":
 		return activateWindowCmd(args[1:])
 	case "restore-window", "minimize-window", "close-window":
@@ -356,7 +361,7 @@ func Main(args []string) int {
 	case "browser":
 		return browserCmd(args[1:])
 	case "tab":
-		return tabCmd(args[1:])
+		return tabCmd(args[1:], headed)
 	case "navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval":
 		return pageCmd(args[0], args[1:]) // page.go, browser merge ticket 06
 	case "skill":

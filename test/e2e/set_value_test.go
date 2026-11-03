@@ -241,8 +241,12 @@ func TestSecondaryActionRaiseOnTheWindowRoot(t *testing.T) {
 	_, window := startFixtureWithState(t)
 
 	// The fixture's window root offers Raise (Window pattern).
+	// Raise brings the Window to the foreground by definition: it has no
+	// Headless route and needs --headed (headless-max ticket 21;
+	// headed_gate_test.go pins the refusal without it).
 	idx := mainElementIndexes()[fixture.ElemWindow]
-	stdout, stderr, exit := runSecondary(t, window, idx, "Raise")
+	stdout, stderr, exit := runWinuse(t, []string{"--headed", "perform-secondary-action", window, strconv.Itoa(idx), "Raise"},
+		"WINUSE_HELPER_IDLE="+e2eIdle)
 	assertActionOK(t, "perform-secondary-action raise", stdout, stderr, exit)
 }
 
@@ -302,12 +306,14 @@ func TestSetValueByPoint(t *testing.T) {
 	// The @x,y Element Reference (finding 8): the point of the latest
 	// screenshot names the Element under it — here the text field's
 	// centre — and set-value writes into that Element without any index.
+	// The point form finds the Element only after bringing the Window to
+	// the foreground, so it needs --headed (headless-max ticket 21).
 	optIn(t)
 	fix, window, info := startFixtureForShots(t)
 
 	r, _ := fixture.Rect(fixture.ElemTextField, 0)
 	shotX, shotY := shotCoordsOfClient(t, fix, window, info.scale, (r.Left+r.Right)/2, (r.Top+r.Bottom)/2)
-	stdout, stderr, exit := runWinuse(t, []string{"set-value", window, fmt.Sprintf("@%d,%d", shotX, shotY), "typed at a point"},
+	stdout, stderr, exit := runWinuse(t, []string{"--headed", "set-value", window, fmt.Sprintf("@%d,%d", shotX, shotY), "typed at a point"},
 		"WINUSE_HELPER_IDLE="+e2eIdle)
 	assertActionOK(t, "set-value @x,y", stdout, stderr, exit)
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.Text == "typed at a point" })
@@ -315,13 +321,14 @@ func TestSetValueByPoint(t *testing.T) {
 
 func TestPerformSecondaryActionByPoint(t *testing.T) {
 	// The @x,y form for perform-secondary-action: the checkbox's centre
-	// names the Element under it, and Toggle flips it.
+	// names the Element under it, and Toggle flips it. Like set-value at a
+	// point, it needs --headed (headless-max ticket 21).
 	optIn(t)
 	fix, window, info := startFixtureForShots(t)
 
 	r, _ := fixture.Rect(fixture.ElemCheckboxNotify, 0)
 	shotX, shotY := shotCoordsOfClient(t, fix, window, info.scale, (r.Left+r.Right)/2, (r.Top+r.Bottom)/2)
-	stdout, stderr, exit := runWinuse(t, []string{"perform-secondary-action", window, fmt.Sprintf("@%d,%d", shotX, shotY), "Toggle"},
+	stdout, stderr, exit := runWinuse(t, []string{"--headed", "perform-secondary-action", window, fmt.Sprintf("@%d,%d", shotX, shotY), "Toggle"},
 		"WINUSE_HELPER_IDLE="+e2eIdle)
 	assertActionOK(t, "perform-secondary-action @x,y", stdout, stderr, exit)
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.Checkbox })

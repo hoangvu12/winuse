@@ -155,9 +155,9 @@ func scrollCmd(args []string, headed bool) int {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, scrollUsage)
 		return 2
 	}
-	if a.ElementIndex != nil || a.Ref != "" {
-		a.Headed = headed
-	}
+	// The point form needs it too: outside a Page it is Headed only with
+	// --headed (headless-max ticket 21).
+	a.Headed = headed
 	if err := runWithArgs("scroll", a); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
@@ -183,23 +183,47 @@ func parseDragArgs(args []string) (window string, fromX, fromY, toX, toY int, er
 }
 
 // dragCmd implements `winuse drag <window> @x,y @x,y`: drag from one
-// point of the Window's latest screenshot to another.
-func dragCmd(args []string) int {
-	if len(args) == 0 {
-		fmt.Fprintf(os.Stderr, "winuse: drag takes a window reference first\n%s\n", dragUsage)
-		return 2
-	}
-	a, err := parseDragTokens(args[1:]) // page.go: points, or Page Elements (ticket 06)
+// point of the Window's latest screenshot to another, with the real
+// pointer only under the global --headed (headless-max ticket 21).
+func dragCmd(args []string, headed bool) int {
+	a, err := dragRequest(args, headed)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, dragUsage)
 		return 2
 	}
-	a.Window = args[0]
 	if err := runWithArgs("drag", a); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}
 	return 0
+}
+
+// dragRequest builds drag's request: the Window, then points or Page
+// Elements, and the global --headed.
+func dragRequest(args []string, headed bool) (protocol.DragArgs, error) {
+	if len(args) == 0 {
+		return protocol.DragArgs{}, errors.New("drag takes a window reference first")
+	}
+	a, err := parseDragTokens(args[1:]) // page.go: points, or Page Elements (ticket 06)
+	if err != nil {
+		return protocol.DragArgs{}, err
+	}
+	a.Window, a.Headed = args[0], headed
+	return a, nil
+}
+
+// hoverRequest builds hover's request: the Window, then a point or a Page
+// Element, and the global --headed.
+func hoverRequest(args []string, headed bool) (protocol.HoverArgs, error) {
+	if len(args) == 0 {
+		return protocol.HoverArgs{}, errors.New("hover takes a window reference first")
+	}
+	a, err := parseHoverTokens(args[1:]) // page.go: a point, or a Page Element (ticket 06)
+	if err != nil {
+		return protocol.HoverArgs{}, err
+	}
+	a.Window, a.Headed = args[0], headed
+	return a, nil
 }
 
 // parseHoverArgs parses hover's arguments: a Window reference and one
@@ -216,18 +240,14 @@ func parseHoverArgs(args []string) (window string, x, y int, err error) {
 }
 
 // hoverCmd implements `winuse hover <window> @x,y`: move the pointer to
-// a point of the Window's latest screenshot and leave it there.
-func hoverCmd(args []string) int {
-	if len(args) == 0 {
-		fmt.Fprintf(os.Stderr, "winuse: hover takes a window reference first\n%s\n", hoverUsage)
-		return 2
-	}
-	a, err := parseHoverTokens(args[1:]) // page.go: a point, or a Page Element (ticket 06)
+// a point of the Window's latest screenshot and leave it there, only
+// under the global --headed (headless-max ticket 21).
+func hoverCmd(args []string, headed bool) int {
+	a, err := hoverRequest(args, headed)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, hoverUsage)
 		return 2
 	}
-	a.Window = args[0]
 	if err := runWithArgs("hover", a); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)

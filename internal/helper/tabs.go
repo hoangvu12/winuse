@@ -16,11 +16,13 @@ package helper
 //     inside a passive Esc scope.
 //   - tab-switch is Headless through the extension (Winuse.activateTab,
 //     chrome.tabs.update active, never focusing the window). On a
-//     launched, cloned or toggled browser it is always Headed: the probe
-//     never measured a Headless route there, and Target.activateTarget and
-//     Page.bringToFront are forbidden. The Window comes to the foreground
-//     under the banner (runAction), real keys switch the Tab (Ctrl+<n>,
-//     or Ctrl+Tab steps), and CDP verifies the Tab became visible.
+//     launched, cloned or toggled browser it is Headed, and only with
+//     `headed` (refused with nothing sent otherwise, headless-max ticket
+//     21): the probe never measured a Headless route there, and
+//     Target.activateTarget and Page.bringToFront are forbidden. The
+//     Window comes to the foreground under the banner (runAction), real
+//     keys switch the Tab (Ctrl+<n>, or Ctrl+Tab steps), and CDP verifies
+//     the Tab became visible.
 //
 // winuse never sends Target.activateTarget or Page.bringToFront.
 //
@@ -302,6 +304,15 @@ func tabSwitch(s Services) Command {
 		}
 		if tw.conn.Mode == browser.ModeExtension {
 			return s.tabSwitchExtension(ctx, tw, tab)
+		}
+		if !a.Headed {
+			// No background route outside the extension: the switch presses
+			// Ctrl+<n> with the Window in the foreground (headless-max
+			// ticket 21).
+			return "", headedRefusal(tw.w,
+				"tab switch has no background route on a browser reached through "+tw.conn.Mode.Describe()+": it presses Ctrl+<n> with the Window in the foreground",
+				func(id string) string { return "tab switch " + id + " " + a.Tab },
+				"to stay in the background, open the page in the active Tab instead: winuse navigate "+tw.id()+" <url>")
 		}
 		return s.tabSwitchHeaded(ctx, a.Window, tw, tab)
 	}

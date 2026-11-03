@@ -25,6 +25,17 @@ calls on a Window that stays where it is, no activation, no pointer, no
 keys, no banner. The rows below mark that stance **intentionally
 different**; `--headed` restores Codex's behaviour for any Action.
 
+**No Headed Action without `--headed` (ADR 0013 rule 3, headless-max
+ticket 21).** Codex's activate-and-inject is winuse's Headed pipeline, and
+winuse runs it only when the agent passes `--headed`. An Action with no
+Headless or Posted route sent without it — `@x,y` forms outside a Page,
+double/triple and right/middle clicks outside a Page, drag, hover, Raise,
+`press-key` and `type-text` with no Headless route, `tab switch` outside
+the extension — is refused with "nothing was sent" and the exact
+`--headed` retry. `activate-window` keeps Codex's behaviour unflagged.
+This is the **intentionally different** row behind every "activates the
+Window" delivery below.
+
 ## Tools: Codex window2 → winuse CLI
 
 ### list_windows
@@ -113,7 +124,7 @@ the one frame (Codex composites several `zIndex` layers).
 |---|---|---|---|
 | `window` | the Window to click in | `<window>` | matched |
 | `element_index` | the Element Index from the last state | the Element Index, or `name:`/`id:` references resolved against the latest Window State | matched (extended) |
-| (delivery) | activates the Window and injects a real pointer click | an Element click (left, single) is **Headless**: the first pattern the Element offers (Invoke → Toggle → SelectionItem.Select → Expand/Collapse → LegacyIAccessible default action), Toggle/Select/Expand/Collapse read back; none offered fails with "nothing was sent" and the `--headed` hint, never a silent switch. `@x,y`, double/triple and right/middle clicks, and `--headed`, are Codex's real click | intentionally different |
+| (delivery) | activates the Window and injects a real pointer click | an Element click (left, single) is **Headless**: the first pattern the Element offers (Invoke → Toggle → SelectionItem.Select → Expand/Collapse → LegacyIAccessible default action), Toggle/Select/Expand/Collapse read back; none offered fails with "nothing was sent" and the `--headed` hint, never a silent switch. with `--headed`, every click is Codex's real click; without it, `@x,y` and double/triple and right/middle clicks outside a Page are refused with nothing sent and the `--headed` retry (ticket 21) | intentionally different |
 | `x`, `y` | window-relative **logical** pixels (the 175%-scaling offset bug) | `@x,y` in the latest screenshot's pixel space, mapped back to **physical** pixels, re-anchored to the Window's live bounds at action time | intentionally different |
 | `click_count` | 1 (single) or 2 (double); right double click is not supported | `--count 1|2|3`; non-left multi-clicks are refused with Codex's message | matched |
 | `mouse_button` | `left`/`right`/`middle`, aliases `l`/`r`/`m`; unknown → `unsupported mouse_button: <v>` | `--button left|middle|right` with the same `l`/`r`/`m` aliases and the same error | matched |
@@ -129,7 +140,7 @@ retried with `--headed`.
 
 | Parameter | Codex | winuse `press-key` | Status |
 |---|---|---|---|
-| `window` | the Window receiving the key | `<window>` (activated first, like every Headed Action) | matched |
+| `window` | the Window receiving the key | `<window>`; with `--headed` activated first, like every Headed Action. Without it, Return or Escape on a classic dialog and Page keys are Headless, `--post` posts, and any other key is refused with nothing sent and the `--headed` retry (ticket 21) | intentionally different |
 | `key` | X keysym names and `+` chords (`Return`, `Control_L+a`, `Numpad_0`), aliases, whitespace around `+` ignored; unknown → `unsupported key: <name>` | the same names, aliases and chord delivery (all key-downs in order, key-ups in reverse, scan codes filled, extended keys flagged); the same error | matched |
 
 The Windows key differs in enforcement only: Codex's guidance forbids
@@ -139,7 +150,7 @@ it and winuse's code refuses it (see cross-cutting).
 
 | Parameter | Codex | winuse `type-text` | Status |
 |---|---|---|---|
-| `window` | the Window with the focused Element | `<window>` | matched |
+| `window` | the Window with the focused Element | `<window>`; text into a focused classic edit box, `--into` a named field, Page typing and `--post` need no foreground; anything else types Headed only with `--headed`, and is refused with nothing sent without it (ticket 21) | intentionally different |
 | `text` | one string, typed into the current focus as Unicode | every argument after the Window joins into the text (CLI sugar); injected as Unicode key events, one UTF-16 unit per event, newline/tab as real Return/Tab keys | matched |
 
 ### scroll
@@ -147,7 +158,7 @@ it and winuse's code refuses it (see cross-cutting).
 | Parameter | Codex | winuse `scroll` | Status |
 |---|---|---|---|
 | `window` | the Window scrolled | `<window>` | matched |
-| `x`, `y` | window-relative point to scroll at | `@x,y` in the latest screenshot's space, mapped like coordinate clicks | intentionally different |
+| `x`, `y` | window-relative point to scroll at | `@x,y` in the latest screenshot's space, mapped like coordinate clicks; Headless on a Page, elsewhere the real wheel only with `--headed` (ticket 21) | intentionally different |
 | `scrollX`, `scrollY` | wheel amounts; positive down/right, one notch is 120; point-based, not element-based (Codex guidance: "do not pass element_index") | the same signs, the same notch size, the same point-based contract; a point over another window is refused, not scrolled | matched |
 | `screenshotId` | validated against that screenshot | latest-screenshot binding (as click) | intentionally different |
 
@@ -158,7 +169,7 @@ it and winuse's code refuses it (see cross-cutting).
 | `window` | the Window holding the Element | `<window>` | matched |
 | `element_index` | the Element to write | the Element Index, a `name:`/`id:` reference, or `@x,y` (the Element UIA finds under the point of the latest screenshot) | matched (extended) |
 | `value` | the string to set | the value; numeric Elements (RangeValue) take it parsed as a number; a combo box or list with no writable value takes an item's name | matched |
-| (delivery) | activates the Window, focuses the Element, then writes | by Element Index or reference **Headless**: no activation and no focus (UIA SetFocus moves the desktop foreground), a text write read back live; `@x,y` and `--headed` keep Codex's activate-and-focus order | intentionally different |
+| (delivery) | activates the Window, focuses the Element, then writes | by Element Index or reference **Headless**: no activation and no focus (UIA SetFocus moves the desktop foreground), a text write read back live; `--headed` keeps Codex's activate-and-focus order; `@x,y` runs only with it and is refused with nothing sent without it (ticket 21) | intentionally different |
 
 Non-settable Elements fail with Codex's `Cannot set a value for an
 element that is not settable` plus the click-and-type-text hint. A
@@ -195,7 +206,9 @@ which a programmatic selection does not.
 Left button only, as in Codex. winuse interpolates ~16 absolute moves
 ~10 ms apart so apps register a drag (menus track, canvases draw, lists
 reorder) instead of a teleport — a fidelity extension on the same
-contract.
+contract. The point form drags only with `--headed`; without it, it is
+refused with nothing sent (ticket 21). Hover at a point follows the same
+rule.
 
 ### perform_secondary_action
 
@@ -204,7 +217,7 @@ contract.
 | `window` | the Window holding the Element | `<window>` | matched |
 | `element_index` | the Element to act on | the Element Index, a `name:`/`id:` reference, or `@x,y` (as set-value's) | matched (extended) |
 | `action` | case-insensitive; only `Raise`, `Scroll Up/Down/Left/Right`, `Expand`, `Collapse`; unknown → `unsupported secondary action: {action}; expected …` | the same set and the same error listing the expected names, **plus** the `Toggle` and `Select` extensions | matched (extended) |
-| (delivery) | activates the Window first | by Element Index or reference **Headless** (no activation), Toggle/Select/Expand/Collapse read back; Raise (a foreground operation), `@x,y` and `--headed` are Headed | intentionally different |
+| (delivery) | activates the Window first | by Element Index or reference **Headless** (no activation), Toggle/Select/Expand/Collapse read back; `--headed` is Headed; Raise (a foreground operation) and `@x,y` run only with it and are refused with nothing sent without it (ticket 21) | intentionally different |
 
 An action the Element does not offer fails listing the ones it does,
 probed live — so a changed Element says so.
