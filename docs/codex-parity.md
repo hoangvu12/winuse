@@ -427,4 +427,9 @@ foreground instead. Codex switches tabs only with keys.
 empty the clipboard (text, an image as PNG, a file list), like
 agent-desktop's: Desktop commands that name no Window, need no
 foreground and refuse a clipboard owner that does not respond. Codex has
-no clipboard tool. **extension**.
+no clipboard tool. `list-displays` lists the displays (rectangle in
+physical pixels, effective scale, primary) and `screenshot --display <n>`
+captures one without the foreground, like agent-desktop's
+`list-displays` and `screenshot --screen`; the display screenshot binds
+no `@x,y` points, which stay per Window. Codex captures Windows only.
+**extension**.

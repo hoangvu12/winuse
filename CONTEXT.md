@@ -57,7 +57,7 @@ An Action on the Window itself rather than on one of its Elements: restore, mini
 _Avoid_: Window management, window op
 
 **Desktop command**:
-A command aimed at the desktop as a whole rather than at a Window, such as reading, setting or clearing the clipboard. It is not an Action: it shows no Agent Cursor and is not a Batch step, but it runs one at a time with the Actions.
+A command aimed at the desktop as a whole rather than at a Window, such as reading, setting or clearing the clipboard, listing the displays or capturing one. It is not an Action: it shows no Agent Cursor and is not a Batch step. One that touches the clipboard or captures the screen runs one at a time with the Actions; one that only lists, such as the displays, does not wait for them.
 _Avoid_: Global action, system command
 
 **Secondary Action**:
