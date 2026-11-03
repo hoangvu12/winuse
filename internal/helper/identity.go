@@ -144,9 +144,11 @@ func reusedWindowError(id uint64) *Error {
 		"run winuse list-windows and use the Window ID it prints now; read the new Window's State before acting on it")
 }
 
-// recordReads records the Window a successful read names: get-window,
-// get-window-state, find and the other reads that take a Window, and the
-// Window launch-app reports.
+// recordReads records the Window a successful read names, without
+// enumerating the Windows again: get-window-state, find and the other
+// reads that take a Window ID, and the Window line get-window and
+// launch-app print (a read by App name prints no ID otherwise, and an App
+// name is never checked).
 func (s Services) recordReads(name string, cmd Command) Command {
 	if s.windowIDs == nil || s.WindowIdentity == nil || name == "list-windows" {
 		return cmd // list-windows records every listed Window itself
@@ -156,19 +158,14 @@ func (s Services) recordReads(name string, cmd Command) Command {
 		if err != nil {
 			return out, err
 		}
-		if name == "launch-app" {
+		if name == "launch-app" || name == "get-window" {
 			if id, perr := strconv.ParseUint(strings.SplitN(out, "\t", 2)[0], 10, 64); perr == nil {
 				s.sawWindow(id)
 			}
 			return out, nil
 		}
-		var a struct {
-			Window string `json:"window"`
-		}
-		if json.Unmarshal(args, &a) == nil && strings.TrimSpace(a.Window) != "" {
-			if w, rerr := resolveWindow(s, a.Window); rerr == nil {
-				s.sawWindow(w.ID)
-			}
+		if id, ok := numericWindow(args); ok {
+			s.sawWindow(id)
 		}
 		return out, nil
 	}
