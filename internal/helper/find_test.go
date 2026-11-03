@@ -67,7 +67,7 @@ func findServices() (Services, *findTrees) {
 
 func TestFindPrintsTheAddedMatches(t *testing.T) {
 	s, trees := findServices()
-	trees.found = uia.FindResult{Count: 2, Added: uia.Added{First: 3, Elements: cannedFindElements[1:3]}}
+	trees.found = uia.FindResult{Count: 2, Added: uia.Added{Indexes: []int{3, 4}, Elements: cannedFindElements[1:3]}}
 	out, e := runCommand(t, CommandsWith(s), "find", protocol.FindArgs{Window: "101", Role: "Button"})
 	if e != nil {
 		t.Fatalf("find: %+v", e)
@@ -76,7 +76,7 @@ func TestFindPrintsTheAddedMatches(t *testing.T) {
 		"\t3 button Save ID: save\n" +
 		"\t4 button Open\n" +
 		"\n" +
-		"Note: these Elements (matched role \"Button\") were added to window 101's Window State as 3 to 4; its earlier Element Indexes still work until the next full get-window-state\n"
+		"Note: these Elements (matched role \"Button\") are in window 101's Window State as 3 to 4; its earlier Element Indexes still work until the next full get-window-state\n"
 	if out != want {
 		t.Errorf("output:\n%q\nwant:\n%q", out, want)
 	}
@@ -92,7 +92,7 @@ func TestFindCountFirstAndMisses(t *testing.T) {
 	if out, e := runCommand(t, cmds, "find", protocol.FindArgs{Window: "101", Text: "x", Count: true}); e != nil || out != "7\n" || !trees.countOnly {
 		t.Errorf("count: %q, %+v", out, e)
 	}
-	trees.found = uia.FindResult{Count: 1, Added: uia.Added{First: 3, Elements: cannedFindElements[1:2]}}
+	trees.found = uia.FindResult{Count: 1, Added: uia.Added{Indexes: []int{3}, Elements: cannedFindElements[1:2]}}
 	if _, e := runCommand(t, cmds, "find", protocol.FindArgs{Window: "101", Name: "save", First: true}); e != nil || !trees.first {
 		t.Errorf("first: %+v", e)
 	}
@@ -123,7 +123,7 @@ func TestFindCountFirstAndMisses(t *testing.T) {
 
 func TestRegionRead(t *testing.T) {
 	s, trees := findServices()
-	trees.region = uia.Added{First: 3, Elements: []wstate.Element{
+	trees.region = uia.Added{Indexes: []int{3, 4, 5}, Elements: []wstate.Element{
 		{Role: "pane", Name: "Body"},
 		{Depth: 1, Role: "button", Name: "Go"},
 		{Depth: 2, Role: "text", Name: "label"},
@@ -138,7 +138,7 @@ func TestRegionRead(t *testing.T) {
 		"\t\t\t5 text label\n" +
 		"\n" +
 		"Note: this Window State is partial: the depth cap (2) was reached\n" +
-		"Note: these Elements (the interactive Elements under 1) were added to window 101's Window State as 3 to 5; its earlier Element Indexes still work until the next full get-window-state\n"
+		"Note: these Elements (the interactive Elements under 1) are in window 101's Window State as 3 to 5; its earlier Element Indexes still work until the next full get-window-state\n"
 	if out != want {
 		t.Errorf("output:\n%q\nwant:\n%q", out, want)
 	}

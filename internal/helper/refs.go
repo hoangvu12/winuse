@@ -106,7 +106,21 @@ type ElementResolver interface {
 // Action acts on, exactly as if the agent had passed it. Resolution
 // failures follow ticket 03's candidate pattern: ambiguity lists the
 // matching Elements' lines, a miss points at a fresh Window State read.
+//
+// With a LiveResolver (desktop-parity 17, liverefs.go), a reference the
+// cached Window State cannot answer is resolved in a fresh bounded read,
+// and the Action's output notes it.
 func resolveElementRef(ctx context.Context, s Services, w win.WindowInfo, ref string) (int, *Error) {
+	if live, ok := s.Actions.(LiveResolver); ok {
+		res, err := live.ResolveElementRefLive(ctx, w.ID, ref, liveBudget(ctx))
+		if err != nil {
+			return 0, refError(err, w)
+		}
+		if res.Fresh {
+			noteFreshRef(ctx, w, ref, res.Index)
+		}
+		return res.Index, nil
+	}
 	resolver, ok := s.Actions.(ElementResolver)
 	if !ok {
 		return 0, Fail("element references are unavailable: no UIA client", "")
@@ -121,6 +135,10 @@ func resolveElementRef(ctx context.Context, s Services, w win.WindowInfo, ref st
 // refError maps a reference-resolution failure to the user-facing line
 // and recovery hint, in the shared Codex style.
 func refError(err error, w win.WindowInfo) *Error {
+	var live *uia.LiveRefError
+	if errors.As(err, &live) {
+		return liveRefError(live, w)
+	}
 	var ambiguous *wstate.AmbiguousRefError
 	if errors.As(err, &ambiguous) {
 		return Fail(fmt.Sprintf("%s in the cached Window State for window %d", err.Error(), w.ID),
@@ -141,6 +159,20 @@ func refError(err error, w win.WindowInfo) *Error {
 		return noStateError(err, w)
 	}
 	return Fail(err.Error(), "")
+}
+
+// liveRefError maps a reference that a fresh read could not resolve
+// either: none matches, or several do, and those were added to the Window
+// State under the indexes the candidates list.
+func liveRefError(live *uia.LiveRefError, w win.WindowInfo) *Error {
+	id := strconv.FormatUint(w.ID, 10)
+	var ambiguous *wstate.AmbiguousRefError
+	if errors.As(live, &ambiguous) {
+		return Fail(fmt.Sprintf("%s in a fresh read of window %d", live.Error(), w.ID),
+			"pick one by its Element Index; the candidates are now in the Window State under these indexes:\n"+strings.Join(ambiguous.Candidates, "\n"))
+	}
+	return Fail(fmt.Sprintf("%s in window %d, in its cached Window State or a fresh read", live.Error(), w.ID),
+		"run winuse get-window-state "+id+" or winuse find "+id+" and use what it prints (name: and id: match the tree's name and ID: columns exactly)")
 }
 
 // noStateError maps an Element Reference into a Window with no Window

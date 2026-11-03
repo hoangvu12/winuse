@@ -59,7 +59,7 @@ Details are in each ticket's Comments.
 | 14 | Caller-set timeouts | P2 | S | done |
 | 15 | `winuse skill` prints the embedded skill | P2 | S | done |
 | 16 | `status` | P2 | S | done |
-| 17 | Live re-resolution of `name:`/`id:` | P2 | M | ready-for-agent |
+| 17 | Live re-resolution of `name:`/`id:` | P2 | M | done (live e2e run still to do) |
 | 18 | Notifications | P3 | M | ready-for-agent |
 | 19 | Session traces with redaction | P3 | M-L | done |
 | 20 | Batch improvements | P3 | S-M | ready-for-agent |
