@@ -924,6 +924,17 @@ ordinary Escape sent to the app; only the physical key stops winuse.
   only reads and never
   starts the helper, so it is safe at any time; include its output when
   you report a problem to the user.
+- To record what you did, put `--trace <file>` before the command, or set
+  `WINUSE_TRACE=<file>` for the session. Each command appends one JSON
+  line: the time, the command, the Agent, the Window, the arguments, the
+  routes taken (Headless, Posted, Headed, CDP), the outcome, up to 4 KiB of
+  output, screenshot paths and the duration. A Window State is kept only
+  as its line count. Typed text, set-value values, clipboard content and
+  eval expressions and results are redacted to their length. Pass
+  `--trace-unredacted` only when the user asks for it for local
+  debugging. Past 32 MiB the file is renamed `<name>.1` and a new one is
+  started. `winuse trace show <file>` prints a readable summary. Put the
+  trace in a folder the user chose or a temp folder.
 
 ## Safety
 
@@ -990,6 +1001,7 @@ list-displays | screenshot --display <n>   # --screen <n> is the same
 record-tree <window> <file>         # development only, records a tree fixture for winuse's own tests
 skill | skill install <dir>         # print this file from the binary, or write it to <dir>\winuse\SKILL.md
 status                              # read-only: versions, helper uptime, lock, integrity, DPI, browsers, agents, Windows build
+trace show <file>                   # summary of a --trace <file> / WINUSE_TRACE session trace
 version
 ```
 

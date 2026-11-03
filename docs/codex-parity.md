@@ -465,3 +465,11 @@ processes to exit, and `--force` then ends the ones still running,
 refusing agent-desktop's protected Windows processes; it is the only
 command that ends a process. Codex has no close tool.
 **extension**.
+`--trace <file>` (or `WINUSE_TRACE`, desktop-parity 19)
+appends one JSON line per command: the time, the command, the Agent, the
+Window, the arguments, the routes taken, the outcome, up to 4 KiB of
+output and the duration. Screenshots are kept by path, and a Window
+State only as its line count. Typed text, values, clipboard content and
+eval are redacted unless `--trace-unredacted`. The file rolls over at
+32 MiB, and `trace show` summarizes it, like agent-desktop's session
+traces without the HTML export. Codex keeps no trace. **extension**.

@@ -61,7 +61,7 @@ Details are in each ticket's Comments.
 | 16 | `status` | P2 | S | done |
 | 17 | Live re-resolution of `name:`/`id:` | P2 | M | ready-for-agent |
 | 18 | Notifications | P3 | M | ready-for-agent |
-| 19 | Session traces with redaction | P3 | M-L | ready-for-agent |
+| 19 | Session traces with redaction | P3 | M-L | done |
 | 20 | Batch improvements | P3 | S-M | ready-for-agent |
 | 21 | Agent Cursor polish | P3 | S | wontfix (folded into multi-agent 04) |
 | 22 | list-windows details and filter | P2 | S | done |

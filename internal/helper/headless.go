@@ -343,6 +343,7 @@ func (s Services) runHeadless(ctx context.Context, ref string, actor HeadlessAct
 	if rerr != nil {
 		return "", rerr
 	}
+	noteRoute(ctx, w, protocol.RouteHeadless) // trace.go
 	iconic, rerr := s.refusals(w, adminPatternHint, run.minimized)
 	if rerr != nil {
 		return "", rerr

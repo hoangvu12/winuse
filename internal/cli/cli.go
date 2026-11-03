@@ -29,6 +29,16 @@ global options:
                                or after the command; inside type-text's text,
                                set-value's value or clipboard-set's text it is
                                literal text
+  --trace <file>              before the command (or WINUSE_TRACE=<file>):
+                               append one JSON line per command to the file:
+                               time, command, Agent, Window, arguments, routes
+                               (Headless, Posted, Headed, CDP), outcome,
+                               output (4 KiB; a Window State only by its line
+                               count), screenshot paths and duration. Typed
+                               text, values, clipboard content and eval are
+                               redacted; past 32 MiB the file is renamed
+                               <name>.1 and a new one started
+  --trace-unredacted          keep the redacted values, for local debugging only
 
 headless (the default; your foreground, pointer and keyboard stay untouched):
   click (left, single), set-value, perform-secondary-action (except Raise)
@@ -312,6 +322,9 @@ const usageTail = `);
                                holds and the Windows build. Read-only: it
                                never starts the helper (it says "not
                                running") and never connects a browser
+  trace show <file>           print a trace file readably: per command its
+                               time, Agent, Window, routes, outcome and
+                               duration, then its arguments, error and files
   version                     print the winuse version
 
 a <window> is a Window ID, or an App name when that App has exactly one Window;
@@ -361,7 +374,15 @@ func secondaryActionsPhrase() string {
 // before the command or anywhere after it outside literal text, and
 // forwarded to the Actions that have a Headless form, and to
 // get-window-state and zoom, whose captures are headless (ADR 0011).
-func Main(args []string) int {
+func Main(args []string) (code int) {
+	// The session trace (trace.go, desktop-parity ticket 19): one line per
+	// command, written when it exits.
+	args, trace, ok := startTrace(args, os.Getenv)
+	if !ok {
+		return 2
+	}
+	activeTrace = trace
+	defer func() { trace.finish(code) }()
 	args, headed := extractHeaded(args)
 	if len(args) == 0 {
 		fmt.Fprint(os.Stderr, Usage)
@@ -439,6 +460,8 @@ func Main(args []string) int {
 		return skillCmd(args[1:])
 	case "status":
 		return statusCmd(args[1:])
+	case "trace":
+		return traceCmd(args[1:]) // trace.go, desktop-parity ticket 19
 	default:
 		fmt.Fprintf(os.Stderr, "winuse: unknown command %q\n\n%s", args[0], Usage)
 		return 2
@@ -736,7 +759,9 @@ func runRequest(cmd string, args any, edit func(*protocol.Request)) error {
 	if edit != nil {
 		edit(req)
 	}
+	req.Trace = tracing()
 	resp, err := client.Call(context.Background(), req)
+	activeTrace.observe(req, resp, err) // trace.go
 	if err != nil {
 		return err
 	}
