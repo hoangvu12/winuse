@@ -122,6 +122,7 @@ const WaitMargin = time.Second
 // its cap.
 var maxTimeouts = map[string]time.Duration{
 	"get-window-state": MaxStateTimeout,
+	"find":             MaxStateTimeout,
 	"launch-app":       MaxLaunchTimeout,
 	"batch":            MaxBatchTimeout,
 	"wait":             MaxWaitTimeout + WaitMargin,
@@ -222,6 +223,19 @@ type LaunchArgs struct {
 type CloseAppArgs struct {
 	App   string `json:"app"`
 	Force bool   `json:"force,omitempty"`
+}
+
+// FindArgs are find's arguments (desktop-parity 04): the Window and the
+// filters, every one optional; First keeps the first match, Count prints
+// only how many matched.
+type FindArgs struct {
+	Window string `json:"window"`
+	Role   string `json:"role,omitempty"`
+	Name   string `json:"name,omitempty"`
+	Text   string `json:"text,omitempty"`
+	State  string `json:"state,omitempty"`
+	First  bool   `json:"first,omitempty"`
+	Count  bool   `json:"count,omitempty"`
 }
 
 // AttachArgs are the arguments of browser attach and browser detach

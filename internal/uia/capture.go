@@ -67,6 +67,7 @@ func (th *thread) capture(hwnd uintptr, title, app string, cfg WalkConfig) (*cap
 type comSource struct {
 	th        *thread
 	hwnd      uintptr
+	from      comPtr // a region read's root Element (region.go); nil: the Window's
 	req       comPtr // cache request, created on first use
 	rootClass string // the root element's ClassName, read in Root (Chromium/Electron detection)
 }
@@ -122,6 +123,16 @@ func (s *comSource) Root() (comPtr, NodeData, error) {
 		return nil, NodeData{}, err
 	}
 	var el comPtr
+	if s.from != nil {
+		// A region read: the Element itself, its properties cached afresh.
+		if hr := call(s.from, elBuildUpdatedCache, uintptr(s.req), uintptr(unsafe.Pointer(&el))); hr.Failed() || el == nil {
+			if hrStale(hr) {
+				return nil, NodeData{}, staleErr(hr)
+			}
+			return nil, NodeData{}, fmt.Errorf("reading the Element failed (HRESULT %s)", hr)
+		}
+		return el, s.data(el), nil
+	}
 	if hr := call(s.th.auto, uiaElementFromHandleBuildCache, s.hwnd, uintptr(s.req), uintptr(unsafe.Pointer(&el))); hr.Failed() || el == nil {
 		return nil, NodeData{}, fmt.Errorf("%w: reading the Window's tree failed (HRESULT %s)", ErrWindowGone, hr)
 	}

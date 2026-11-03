@@ -85,6 +85,12 @@ type WalkConfig struct {
 	// stops the read there: what was read under the cut Document is dropped
 	// as if never read. A Document read whole before the answer stays whole.
 	Cut DocumentCut
+
+	// CountHidden makes MaxDepth a chosen shape rather than a cap (the
+	// skeleton read, desktop-parity 04): a node at MaxDepth gets its
+	// children counted (Element.MoreChildren) instead of the depth-cap
+	// note. The counted children are released unread.
+	CountHidden bool
 }
 
 // DocumentCut picks the one Document Element whose descendants a walk
@@ -268,8 +274,13 @@ func (w *walker[T]) expand(node T, depth, index int) {
 	}
 
 	// Expansion. Depth first: a node at MaxDepth is rendered but never
-	// expanded (its children would exceed the depth cap).
+	// expanded (its children would exceed the depth cap). A skeleton
+	// counts them instead.
 	if depth >= w.cfg.MaxDepth {
+		if w.cfg.CountHidden {
+			w.countHidden(node, index)
+			return
+		}
 		w.reasons[reasonDepth] = true
 		return
 	}
@@ -325,6 +336,28 @@ func (w *walker[T]) expand(node T, depth, index int) {
 		}
 	}
 	w.drop(kids[limit:])
+}
+
+// countHidden reads how many children a node below the skeleton's depth
+// has, and releases them unread. A read that fails or runs out of time
+// leaves no count.
+func (w *walker[T]) countHidden(node T, index int) {
+	remaining := w.deadline.Sub(w.now())
+	if remaining <= 0 {
+		w.reasons[reasonTime] = true
+		w.stopped = true
+		return
+	}
+	kids, _, err := w.src.Children(node, remaining)
+	w.drop(kids)
+	if err != nil {
+		if errors.Is(err, ErrChunkTimedOut) {
+			w.reasons[reasonTime] = true
+			w.stopped = true
+		}
+		return
+	}
+	w.res.Elements[index].MoreChildren = len(kids)
 }
 
 // cutPending reports whether the walk still has a Document cut to place.

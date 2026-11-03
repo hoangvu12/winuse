@@ -12,6 +12,7 @@ design).
 
 **Line grammar** — adopted verbatim from Codex:
 `<index> <role>[ (<states>)][ <name>][ Description: <HelpText>][ Value: <value>][ on|off|indeterminate][ Secondary Actions: A, B][ ID: <AutomationId>]`
+(and, from desktop-parity 04, a skeleton's `(+N children)` at the end)
 with depth-first pre-order numbering from 0 at the root window, one TAB per
 depth level (the root itself gets one TAB), a header line
 `Window: "<title>", App: <exe file name>.`, and a tail after a blank line:
@@ -68,3 +69,40 @@ the hint. Titles never match.
 - Cycle detection is not implemented: the node and time caps already bound
   a cyclic provider, at the cost of a truncated tree with a note instead of
   a precise cycle marker.
+
+## Amendment: find and partial reads add Element Indexes (2026-11-03)
+
+Desktop-parity ticket 04, numbering decided by the user (option c, of
+three: a fresh numbering that replaces the store; agent-desktop's saved,
+snapshot-qualified refs with re-identification; or added indexes).
+
+- `find <window>` walks the live tree with the same bounded chunks, up to
+  20000 Elements within the read's time budget (past a printed Window
+  State's 3000), and prints the matching Elements' lines, one TAB each.
+  Its filters are the role (as the tree prints it), a part of the name, a
+  part of the name, value or description, and a state; `--first` and
+  `--count` shape the answer, and a role that matches nothing lists the
+  roles the Window shows.
+- `get-window-state <window> --root <element>` reads one Element's
+  subtree (`--depth N` levels, `--interactive` keeps the Elements an agent
+  acts on), indented from that Element.
+- Both **add** the Elements they print to the Agent's live store after the
+  ones its latest Window State holds: a full read that ended at 240 makes
+  `find` print 241, 242, ... The full read's indexes keep resolving to
+  their Elements, and stale ones still fail with the same message. A full
+  `get-window-state` still renumbers from 0 and drops the added ones.
+  `name:`/`id:` references resolve against the full read's Elements first
+  and reach an added one only when none of those matches, so a reference
+  that worked before a `find` still names the same Element after it.
+- `get-window-state <window> --skeleton` is a full read three levels below
+  the Window. Each Element where it stops shows its child count as
+  `(+N children)` after the line, and a note says how to read a part. It
+  replaces the store like any full read.
+- A browser Window's Page is read over CDP whole, so `find` there filters
+  a fresh full read (it says that the earlier indexes were replaced), and
+  `--root` on a Page Element, or on the document the Page was spliced
+  under, prints the stored subtree with the indexes it already has.
+- To revisit, by the user's request: if agents are seen failing on stale
+  indexes, consider agent-desktop's snapshot-qualified refs with
+  re-identification.
+

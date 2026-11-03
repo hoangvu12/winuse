@@ -298,6 +298,7 @@ func CommandsWith(s Services) map[string]Command {
 		"list-windows":             listWindows(s),
 		"get-window":               getWindow(s),
 		"get-window-state":         func(ctx context.Context, args json.RawMessage) (string, *Error) { return getWindowState(s, ctx, args) },
+		"find":                     find(s),
 		"record-tree":              func(ctx context.Context, args json.RawMessage) (string, *Error) { return recordTree(s, ctx, args) },
 		"zoom":                     zoom(s),
 		"click":                    click(s),
@@ -383,7 +384,7 @@ func CommandsWith(s Services) map[string]Command {
 // own dials.
 func observationOnlyCommand(name string) bool {
 	switch name {
-	case "list-windows", "get-window", "list-apps", "get-window-state", "record-tree", "launch-app",
+	case "list-windows", "get-window", "list-apps", "get-window-state", "find", "record-tree", "launch-app",
 		"tab-list",      // reads a browser Window's Tabs only (tabs.go)
 		"list-displays", // a Desktop command that only reads the monitors (display.go)
 		StatusCommand:   // read-only probes (status.go): never waits behind an Action
@@ -666,6 +667,14 @@ type windowRef struct {
 	Window     string `json:"window"`           // a Window ID, or an App name (exactly one Window)
 	Screenshot bool   `json:"screenshot"`       // get-window-state --screenshot: capture and save a screenshot too
 	Headed     bool   `json:"headed,omitempty"` // with --screenshot: activate, then capture through the full chain (ADR 0011)
+
+	// The partial reads (desktop-parity 04, find.go): --root reads one
+	// Element's subtree (--depth levels, --interactive Elements only);
+	// --skeleton the whole Window three levels deep.
+	Root        string `json:"root,omitempty"`
+	Depth       int    `json:"depth,omitempty"`
+	Interactive bool   `json:"interactive,omitempty"`
+	Skeleton    bool   `json:"skeleton,omitempty"`
 }
 
 // getWindowState answers `winuse get-window-state <window>`: the resolved
@@ -684,6 +693,12 @@ func getWindowState(s Services, ctx context.Context, args json.RawMessage) (stri
 	w, rerr := resolveWindow(s, a.Window)
 	if rerr != nil {
 		return "", rerr
+	}
+	if a.Screenshot && (a.Root != "" || a.Skeleton) {
+		return "", Fail("get-window-state: --screenshot goes with a full read, not --root or --skeleton", windowStateUsage)
+	}
+	if out, serr, ok := windowStateShape(s, ctx, w, a); ok {
+		return out, serr
 	}
 	if a.Screenshot {
 		// The screenshot path captures with the indicator and the Agent
