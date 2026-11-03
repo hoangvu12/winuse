@@ -846,6 +846,13 @@ Windows rather than the App. No note does not prove nothing opened: a slow
 App can open its dialog later, so check `list-windows` when you expected
 one.
 
+An App can take the foreground by itself when a Headless Action reaches
+it, most often by bringing forward a dialog the click opened. winuse cannot
+stop that, and it does not take the foreground back. After any Headless
+Action, a Window Action or a Page Action, the output then ends with
+`Note: the App took the foreground; winuse does not take it back.` The user
+may have been typing elsewhere: tell them, and do not repeat the Action.
+
 ## When the user presses Esc
 
 The Esc stop is the user's way to take back control. While an Action or

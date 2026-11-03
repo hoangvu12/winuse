@@ -147,3 +147,28 @@ Headless; maximize is a Headed Window Action.
 
 The headless "fill the work area" form (`resize-window --fill`, the
 ticket's option 2) was not built.
+
+## Amendment: self-activation is reported after every Headless Action (2026-11-03)
+
+Ticket 03 of `.scratch/headless-max/`, decided by the user as "detect and
+report". Decision 2's report for `restore-window` now covers the other
+Actions that run without the foreground. In the safe probe batch, an App
+took the foreground by itself after a Headless click: the fixture's
+dialog, 19 ms after a UIA Invoke opened it, while the foreground lock had
+lapsed.
+
+- After every Element, keyboard, Window and Page Action, and after a
+  Batch, winuse compares the foreground with the one before the Action,
+  after the Action's settle. If it moved from another process's Window to
+  a Window of the target's process (the target, or a dialog it opened),
+  the output ends with `Note: the App took the foreground; winuse does
+  not take it back.`, the line `launch-app` prints. When the Action
+  opened a Window, winuse looks once more a moment later.
+- A request that ran a Headed Action took the foreground on purpose and
+  reports nothing, and neither does a Batch with a Headed step.
+  `restore-window` keeps its own wording, and `activate-window` asks for
+  the foreground.
+- The EnableWindow guard is not built. It cannot cover a dialog shown
+  after the pattern call returns, and LockSetForegroundWindow fails
+  without foreground rights (probe round 3). winuse still never takes the
+  foreground back.
