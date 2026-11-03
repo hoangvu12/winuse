@@ -18,6 +18,7 @@ import (
 // (and Helper when no helper answered) and prints Format.
 type Report struct {
 	CLIVersion string `json:"-"` // the CLI's own build; set by the CLI
+	CLIBuild   string `json:"-"` // the CLI's executable build (version.Build, ticket 25); set by the CLI
 
 	Helper Helper `json:"helper"`
 
@@ -60,6 +61,7 @@ type Helper struct {
 	PID     int           `json:"pid,omitempty"`
 	Uptime  time.Duration `json:"uptime,omitempty"`
 	Detail  string        `json:"detail,omitempty"` // why a running helper did not answer (HelperFailed)
+	Build   string        `json:"build,omitempty"`  // the helper's executable build (version.Build, ticket 25)
 }
 
 // HelperState is what the CLI found on the helper's pipe.
@@ -82,7 +84,11 @@ const (
 // integrity, DPI awareness, Browser Connections, Agents, Windows.
 func (r Report) Format() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "winuse: %s\n", r.CLIVersion)
+	cli := r.CLIVersion
+	if r.buildsDiffer() {
+		cli += " build " + r.CLIBuild
+	}
+	fmt.Fprintf(&b, "winuse: %s\n", cli)
 	fmt.Fprintf(&b, "helper: %s\n", r.helperLine())
 	fmt.Fprintf(&b, "desktop: %s\n", r.desktopLine())
 	whose := "the helper's"
@@ -105,7 +111,10 @@ func (r Report) helperLine() string {
 	switch h.State {
 	case HelperRunning:
 		line := "running, " + orUnknown(h.Version)
-		if h.Version != "" && r.CLIVersion != "" && h.Version != r.CLIVersion {
+		if r.buildsDiffer() {
+			line += " build " + h.Build
+		}
+		if h.Version != "" && r.CLIVersion != "" && h.Version != r.CLIVersion || r.buildsDiffer() {
 			line += " (a different build; the next command restarts it)"
 		}
 		if h.PID != 0 {
@@ -118,6 +127,13 @@ func (r Report) helperLine() string {
 		return "running but not answering: " + orUnknown(h.Detail)
 	}
 	return "not running; the next command starts it"
+}
+
+// buildsDiffer reports whether the running helper is another build than
+// the CLI's (desktop-parity ticket 25): both lines then name their
+// build. An empty build on either side matches, as the stale check does.
+func (r Report) buildsDiffer() bool {
+	return r.Helper.State == HelperRunning && r.Helper.Build != "" && r.CLIBuild != "" && r.Helper.Build != r.CLIBuild
 }
 
 func (r Report) desktopLine() string {

@@ -250,9 +250,10 @@ naming the dialog.
 Codex ships a per-turn `codex-computer-use.exe` driven over JSON-RPC by
 `@oai/sky` inside a JS REPL; winuse is a CLI plus a persistent
 background helper over a named pipe restricted to the user's SID,
-version-checked (a stale helper exits so upgrades never act through an
-old one; only the read-only `status` is answered across builds, naming
-both versions), idle-exiting after 5 minutes. The observable contract — one
+version- and build-checked (a stale helper exits so upgrades and
+rebuilds never act through an old one, after its requests in flight;
+only the read-only `status` is answered across builds, naming both
+versions, and both builds of one version: desktop-parity 25), idle-exiting after 5 minutes. The observable contract — one
 request at a time, `ok` or a one-line failure, no Window State echoed back
 — is preserved. After `click`, `perform-secondary-action` Expand or
 Select, `press-key`, `set-value` and a Batch, the `ok` (a Batch's step

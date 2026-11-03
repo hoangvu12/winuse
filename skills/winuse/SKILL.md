@@ -888,6 +888,11 @@ Tooltips and notifications are never reported. No note does not prove
 nothing opened: a slow App can open its dialog later, so check
 `list-windows` when you expected one.
 
+Any command may end with `Note: the helper was restarted for another
+winuse build, …`: another winuse binary was using the helper, and the
+Window States and Element Indexes you read are gone. Read the Window
+again, or use `name:` or `id:`.
+
 ## Wait for a change
 
 When an Action starts something slow, wait for its effect instead of

@@ -139,7 +139,7 @@ at all, and winuse says so.
 | `list-notifications`, `notification-action`, `notification-dismiss`, `wait notification` | Lists the notifications the toast banners show, presses a notification's button or closes it without the foreground (refused when the notification changed since it was listed), or waits for one |
 | `--headed open-shell start\|notifications\|quick-settings\|overflow` | Opens Start, the notification panel, quick settings or the hidden tray icons, the way a person would; refused with nothing sent without `--headed` |
 | `browser status`, `browser ext install`, `browser launch`, `browser clone`, `browser connect` | Connects to a browser and reports how |
-| `status` | Prints the versions, whether the helper runs, the lock state, integrity level, DPI awareness, browser connections and Windows build, without starting anything |
+| `status` | Prints the versions (and both builds when the helper is another build of this version), whether the helper runs, the lock state, integrity level, DPI awareness, browser connections and Windows build, without starting anything |
 | `--trace <file>`, `trace show <file>` | Records one JSON line per command (or set `WINUSE_TRACE`), with typed text, values, clipboard content and eval redacted unless `--trace-unredacted`, rolling over at 32 MiB; `trace show` prints a summary |
 
 [SKILL.md](skills/winuse/SKILL.md) is the full guide your agent loads.
