@@ -86,7 +86,7 @@ is not, which is why ADR 0011 made Posted Keys opt-in.
 | select-text | 1 | 10 | done |
 | Point forms resolve to an Element in the target Window | 1 | 11 | planned |
 | Posted Clicks and `scroll @x,y --post` | 2 | 12 | planned |
-| Caret-aware typing into Text-pattern fields | 1 | 13 | planned |
+| Caret-aware typing into Text-pattern fields | 1 | 13 | done (`--into` only; see the ticket) |
 | Headless Actions on minimized Windows | 1 | 14 | done |
 | Electron and WebView2 Browser Connections at launch; attach to a running Electron | 1 | 15 | done |
 | Typing, keys and clicks into Chromium and Electron without CDP | 7 | 20 | planned |
