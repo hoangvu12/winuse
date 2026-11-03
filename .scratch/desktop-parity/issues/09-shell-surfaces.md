@@ -9,7 +9,7 @@
 
 **Blocked by:** none
 
-**Status:** done (open: which command sends the Win+N fallback; the overflow e2e waits for the user's OK)
+**Status:** done (the Win+N route, `open-shell`, is built with ticket 18; the overflow e2e waits for the user's OK)
 
 - [x] Shell Windows in the listing behind `--shell`
 - [x] Probe: Invoke on taskbar, tray and notification buttons, foreground before and after (round 5: the chevron and the clock; no running-App button was touched)
@@ -60,3 +60,8 @@ Open:
 
 - The Win+N fallback for the notification panel: which command sends it (a press-key exception for a shell target, or an `open-shell`-style command like agent-desktop's `open-system-surface`) is undecided. Until then the panel opens with a `--headed` click on the clock (a real click, not measured).
 - Unmeasured: Invoke on a running App's taskbar button, and on the overflow's icons; the Start, Action Center and ShellHost CoreWindow names on this build.
+- ShellExperienceHost's CoreWindow also hosts the toast banner ("New notification", probes round 5 section 7): a visible toast is listed as the Action Center, and an Action on a shell surface that coincides with one reports it as the Action Center opening. Ticket 18 must tell the toast banner apart from the panel.
+
+### 2026-11-03: decision (PC orchestrator)
+
+The Win+N fallback gets a dedicated command, `--headed open-shell start|notifications|quick-settings|overflow` (option b). press-key keeps refusing the Windows key, and CONTEXT.md is unchanged. It is built with ticket 18, not here: 09 ships as is, and ADR 0015 keeps the point open until 18 closes it.

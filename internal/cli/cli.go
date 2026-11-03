@@ -77,7 +77,7 @@ commands:
                                --shell adds the shell surfaces: the taskbar, and
                                the tray overflow, Start and the Action Center
                                while open, read and acted on by Window ID
-  get-window <window>        print one Window's line (Window ID, App and title),
+  get-window <window>         print one Window's line (Window ID, App and title),
                                resolved by Window ID or an unambiguous App name
   list-apps                   list running and recently used Apps, with their Windows
   launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <seconds>]

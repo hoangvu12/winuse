@@ -80,6 +80,17 @@ shell target, or a dedicated command like agent-desktop's
 `open-system-surface`. Until then the panel opens only with a `--headed`
 click on the clock.
 
+Decided on 2026-11-03: a dedicated
+`--headed open-shell start|notifications|quick-settings|overflow`, built
+with ticket 18, which closes this point. press-key keeps refusing the
+Windows key.
+
+ShellExperienceHost's CoreWindow also hosts the toast banner ("New
+notification", probes round 5 section 7), so a visible toast is listed as
+the Action Center today, and an Action on a shell surface that coincides
+with one reports it as the Action Center opening. Ticket 18
+(notifications) must tell the toast banner apart from the panel.
+
 ## Consequences
 
 - An agent can read the taskbar and switch Apps through it without
