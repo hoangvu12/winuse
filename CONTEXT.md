@@ -109,6 +109,10 @@ _Avoid_: Fake cursor, ghost cursor, pointer
 The user pressing the physical Escape key while winuse is acting: the running command stops immediately and the agent is told the user stopped winuse (exit code 130). During a Headed Action the key never reaches the controlled app; during a Headless Action it still reaches whatever app the user is working in. The user's own key press, click or wheel turn during a Headed Action stops it the same way; it reaches its app, and the agent is told the user took over.
 _Avoid_: Interrupt, cancel, kill switch
 
+**Delivery**:
+What a failure says about its Action reaching the app: not delivered ("nothing was sent", a retry is safe), delivered but unverified ("the Action was delivered; do not repeat it"), or uncertain ("may have taken effect"). Under `--json` it is a field beside the failure's code (desktop-parity 07); in the text it is the phrase.
+_Avoid_: Sent state, side effect
+
 **Harness**:
 The coding-agent program the user runs (Claude Code, Pi, ...) that drives winuse on the model's behalf.
 _Avoid_: Client, agent, host

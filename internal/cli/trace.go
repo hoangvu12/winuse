@@ -84,8 +84,9 @@ type traceLine struct {
 	Exit       int                   `json:"exit"`
 	Error      string                `json:"error,omitempty"`
 	Hint       string                `json:"hint,omitempty"`
-	// Ticket 07's code and delivery go here, copied from
-	// protocol.Response once it carries them.
+	Code       string                `json:"code,omitempty"`     // the failure's code (ticket 07, copied from protocol.Response)
+	Delivery   string                `json:"delivery,omitempty"` // and its delivery, when its text says
+	// What the command printed.
 	Out        any      `json:"out,omitempty"`       // the output kept: text, or a redaction
 	OutLen     int      `json:"out_len,omitempty"`   // the whole output's length in characters
 	OutLines   int      `json:"out_lines,omitempty"` // a Window State's line count (its text is not kept)
@@ -222,6 +223,7 @@ func (t *traceRun) line(code int, end time.Time) traceLine {
 	}
 	if !t.resp.OK {
 		l.Error, l.Hint = t.resp.Err, t.resp.Hint
+		l.Code, l.Delivery = t.resp.Code, t.resp.Delivery
 	}
 	t.keepOut(&l, t.resp.Out)
 	return l

@@ -588,6 +588,13 @@ type Response struct {
 	Hint  string `json:"hint,omitempty"`  // recovery hint printed after the error
 	Exit  int    `json:"exit,omitempty"`  // exit code the CLI should use on failure
 
+	// A failure's code, and its delivery and retry when its text says
+	// (codes.go, desktop-parity ticket 07): set by Stamp, printed only
+	// under --json.
+	Code     string `json:"code,omitempty"`
+	Delivery string `json:"delivery,omitempty"`
+	Retry    string `json:"retry,omitempty"`
+
 	// Trace is the helper's part of a trace line (desktop-parity ticket
 	// 19, trace.go), only when Request.Trace asked for it.
 	Trace *Trace `json:"trace,omitempty"`
