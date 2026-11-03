@@ -51,7 +51,7 @@ Details are in each ticket's Comments.
 | 06 | Modifiers on point clicks and wheel | P1 | S | ready-for-agent |
 | 07 | Opt-in `--json` output with codes and delivery | P1 | L | ready-for-agent |
 | 08 | Display list and full-screen capture | P2 | S | done |
-| 09 | Shell surfaces | P2 | M | done (`open-shell` comes with 18) |
+| 09 | Shell surfaces | P2 | M | done (`open-shell` built with 18) |
 | 10 | close-app | P2 | S-M | done |
 | 11 | maximize-window | P2 | S | done |
 | 12 | Select an option by name in UIA combos and lists | P2 | S-M | done |
@@ -60,7 +60,7 @@ Details are in each ticket's Comments.
 | 15 | `winuse skill` prints the embedded skill | P2 | S | done |
 | 16 | `status` | P2 | S | done |
 | 17 | Live re-resolution of `name:`/`id:` | P2 | M | done (live e2e run still to do) |
-| 18 | Notifications | P3 | M | ready-for-agent |
+| 18 | Notifications | P3 | M | done (live toast and open-shell e2e runs still to do) |
 | 19 | Session traces with redaction | P3 | M-L | done |
 | 20 | Batch improvements | P3 | S-M | ready-for-agent |
 | 21 | Agent Cursor polish | P3 | S | wontfix (folded into multi-agent 04) |

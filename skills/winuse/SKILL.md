@@ -180,15 +180,17 @@ battery, Show Desktop) and one button per running App.
   sent. To bring an App forward, use `winuse activate-window <window>`
   with the Window from `list-windows`; the refusal names it.
 - Every other click, `set-value` or Secondary Action on a shell Element
-  is refused without `--headed` too: Start, Search and the notification
-  area's buttons open flyouts, and the tray icons in the overflow and the
-  items of an open Start or Action Center may activate an App. With
-  `--headed` they change the user's screen, so tell the user first. A note
-  after a `--headed` Action's `ok` says where the foreground went.
-  `winuse --headed press-key <taskbar> Control_L+Escape` opens Start.
-  `winuse --headed click <taskbar> <chevron>` opens the hidden icons; the
-  output names the overflow's Window ID, and the overflow keeps the
-  foreground.
+  is refused without `--headed` too: they open flyouts or activate Apps.
+  With `--headed` they change the user's screen, so tell the user first.
+  A note after a `--headed` Action's `ok` says where the foreground went.
+- `winuse --headed open-shell start|notifications|quick-settings|overflow`
+  opens one and prints its line, to read next. Start and the overflow
+  keep the foreground.
+- Toasts: `winuse list-notifications [--app <a>] [--text <t>]` numbers
+  the showing banners, `notification-action <n> <button>` and
+  `notification-dismiss <n>` press them Headless (refused when it
+  changed), `wait notification [--app] [--text]` waits for one. A banner
+  lasts about 5 s: act at once. Older ones: `open-shell notifications`.
 - `winuse press-key <overflow> Escape` closes the open overflow Headless.
   The foreground then stays on the taskbar, not back on the user's Window.
 
@@ -460,12 +462,9 @@ without it the command is refused with nothing sent.
 - A right-click menu in a desktop App, such as a WPF App's.
   `click --button right` needs `--headed`, or `--post` on a classic
   control (see "Posted Clicks").
-- Opening the shell: Start, the taskbar's hidden icons, and the clock's
-  calendar and notification panel. The hidden-icons overflow takes the
-  foreground when it opens, and the panel does not open from UI
-  Automation at all. Clicking anything on the taskbar or in the overflow
-  needs `--headed` too; reading them stays Headless (see "The taskbar and
-  the shell").
+- Opening the shell (`--headed open-shell`), and any click on it but a
+  toast's buttons. Reading it stays Headless (see "The taskbar and the
+  shell").
 - Games, canvases and Apps that read raw input. They expose no Elements
   and ignore posted keys, so work with `--headed` from a screenshot with
   `@x,y` points.

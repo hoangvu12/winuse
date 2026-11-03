@@ -970,3 +970,34 @@ set WINUSE_E2E=1
 set WINUSE_E2E_SHELL=1
 go test -tags e2e -v -run "TestShell" ./test/e2e
 ```
+
+## Notifications and open-shell (desktop-parity 18)
+
+`test/e2e/notifications_test.go`. `TestListNotificationsOnlyReads` runs
+with the usual opt-in: `list-notifications` and a 1 s `wait
+notification` for a text no toast has, the foreground unchanged.
+
+The toast tests raise their own toasts (`internal/fixture/toast.go`,
+WinRT from Go) from winuse's e2e App User Model ID `winuse.e2e.toast`,
+registered under `HKCU\Software\Classes\AppUserModelId` for the run;
+cleanup clears its notifications from the Notification Center and
+removes that key and the per-App settings key Windows makes for it. They
+show toasts on the user's screen and skip unless `WINUSE_E2E_TOASTS=1`
+is set as well, and skip when the user's notifications are off (Settings
+> System > Notifications; writing ToastEnabled alone does not turn them
+on). `TestNotificationsPressAndDismissARaisedToast` waits for a toast,
+presses its Beta button with `notification-action` (the test process
+hears the activation) and dismisses a second one;
+`TestNotificationIdentityGuardRefusesAGoneToast` hides a listed toast and
+expects `notification-action` to refuse with nothing sent.
+
+`TestOpenShellRefusesWithoutHeaded` and
+`TestOpenShellOpensTheNotificationPanel` (Win+N, read, a `--headed`
+Escape) change the user's screen: they skip unless `WINUSE_E2E_SHELL=1`.
+
+```
+set WINUSE_E2E=1
+set WINUSE_E2E_TOASTS=1
+set WINUSE_E2E_SHELL=1
+go test -tags e2e -v -run "TestNotification|TestListNotifications|TestOpenShell" ./test/e2e
+```
