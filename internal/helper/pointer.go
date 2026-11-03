@@ -91,9 +91,18 @@ func scroll(s Services) Command {
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("scroll: "+err.Error(), scrollUsageHint)
 		}
+		// Modifiers held during the wheel, e.g. Ctrl to zoom (desktop-parity
+		// ticket 06, modifiers.go): the point form only.
+		mods, merr := win.ParseModifiers(a.Modifiers)
+		if merr != nil {
+			return "", Fail("scroll: "+merr.Error(), scrollUsageHint)
+		}
 		if isElementScroll(a) {
 			if a.Post {
 				return "", Fail("scroll: --post scrolls at an @x,y point; an Element scrolls headless without it", scrollUsageHint)
+			}
+			if !mods.None() {
+				return "", Fail("scroll: --modifiers goes with an @x,y point; an Element scrolls by steps without them", scrollUsageHint)
 			}
 			return scrollElement(ctx, s, args, a)
 		}
@@ -112,13 +121,21 @@ func scroll(s Services) Command {
 		if a.Post {
 			// A posted wheel to the classic control there, opt-in
 			// (headless-max ticket 12, postclick.go).
-			return s.postScroll(ctx, a)
+			return s.postScroll(ctx, a, mods)
 		}
 		x, y, dx, dy := a.X, a.Y, a.ScrollX, a.ScrollY
 		// A point on a browser Window's Page wheels over the Browser
 		// Connection, Headless (pageactions.go).
-		if out, rerr, ok := s.pageScrollAt(ctx, a.Window, x, y, dx, dy); ok {
+		if out, rerr, ok := s.pageScrollAt(ctx, a.Window, x, y, dx, dy, mods); ok {
 			return out, rerr
+		}
+		if !mods.None() && !a.Headed {
+			// A wheel with modifiers (Ctrl zooms) is no UI Automation
+			// scroll: it needs the real keys.
+			return "", s.modifierRefusal(a.Window, "scroll", mods,
+				func(id string) string {
+					return fmt.Sprintf("scroll %s %s %d %d%s", id, pointToken(x, y), dx, dy, modsOption(mods))
+				})
 		}
 		if ha, pr, ok := s.pointActor(); ok && !a.Headed &&
 			wheelSteps(dx) <= uia.MaxScrollSteps && wheelSteps(dy) <= uia.MaxScrollSteps {
@@ -162,7 +179,7 @@ func scroll(s Services) Command {
 			if serr != nil {
 				return "", serr
 			}
-			if err := s.Scroll(w.ID, int32(pt.X), int32(pt.Y), int32(dx), int32(dy)); err != nil {
+			if err := s.heldInput(mods, func() error { return s.Scroll(w.ID, int32(pt.X), int32(pt.Y), int32(dx), int32(dy)) }); err != nil {
 				return "", inputError(err)
 			}
 			return okOutput, nil

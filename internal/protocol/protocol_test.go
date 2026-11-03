@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -294,7 +295,7 @@ func TestScrollArgsJSONShape(t *testing.T) {
 		t.Fatalf("scroll args JSON:\n got %s\nwant %s", b, want)
 	}
 	var got ScrollArgs
-	if err := json.Unmarshal([]byte(`{"window":"101","x":400,"y":235,"scrollX":-240,"scrollY":600}`), &got); err != nil || got != (ScrollArgs{Window: "101", X: 400, Y: 235, ScrollX: -240, ScrollY: 600}) {
+	if err := json.Unmarshal([]byte(`{"window":"101","x":400,"y":235,"scrollX":-240,"scrollY":600}`), &got); err != nil || !reflect.DeepEqual(got, ScrollArgs{Window: "101", X: 400, Y: 235, ScrollX: -240, ScrollY: 600}) {
 		t.Fatalf("unmarshal: %v %+v", err, got)
 	}
 }

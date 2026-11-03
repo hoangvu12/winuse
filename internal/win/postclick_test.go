@@ -106,10 +106,10 @@ func TestPostableClass(t *testing.T) {
 
 func TestPostClickAndWheelRefuseInsideTests(t *testing.T) {
 	t.Setenv("WINUSE_E2E", "")
-	if _, err := PostClick(1, 0, 0, MouseLeft, 1); !errors.Is(err, ErrLiveDesktopInTest) {
+	if _, err := PostClick(1, 0, 0, MouseLeft, 1, Modifiers{}); !errors.Is(err, ErrLiveDesktopInTest) {
 		t.Errorf("PostClick in a test binary = %v", err)
 	}
-	if _, err := PostWheel(1, 0, 0, 0, 120); !errors.Is(err, ErrLiveDesktopInTest) {
+	if _, err := PostWheel(1, 0, 0, 0, 120, Modifiers{}); !errors.Is(err, ErrLiveDesktopInTest) {
 		t.Errorf("PostWheel in a test binary = %v", err)
 	}
 }

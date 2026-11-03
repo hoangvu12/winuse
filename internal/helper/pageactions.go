@@ -469,12 +469,12 @@ func pageMouseButton(b win.MouseButton) page.MouseButton {
 // click count (CDP needs no pointer), or with --headed the v1 click at the
 // Element's transformed screen point. The headed form runs every check
 // before activating the Window, so it never activates and then refuses.
-func (s Services) pageClick(ctx context.Context, w win.WindowInfo, index int, o *page.Origin, target elementTarget, button win.MouseButton, count int, headed bool) (string, *Error) {
+func (s Services) pageClick(ctx context.Context, w win.WindowInfo, index int, o *page.Origin, target elementTarget, button win.MouseButton, count int, headed bool, mods win.Modifiers) (string, *Error) {
 	opts := page.AimOptions{Scroll: true, Enabled: true, Visible: true, HitTest: true}
 	run := pageRun{noun: "click", done: "clicked", verb: pageClickVerb(button, count), w: w, index: index, origin: o, target: target, aim: opts}
 	if !headed {
 		run.act = func(ctx context.Context, in *page.Input, aim page.Aim) error {
-			return in.Click(ctx, aim.Point, pageMouseButton(button), count)
+			return in.ClickWith(ctx, aim.Point, pageMouseButton(button), count, mods.CDP())
 		}
 		return s.pageClickRun(ctx, run, o, button) // pageelements.go: chooser, download, context menu
 	}
@@ -490,7 +490,7 @@ func (s Services) pageClick(ctx context.Context, w win.WindowInfo, index int, o 
 		if rerr != nil {
 			return "", rerr
 		}
-		if err := s.Click(w.ID, x, y, button, count); err != nil {
+		if err := s.heldInput(mods, func() error { return s.Click(w.ID, x, y, button, count) }); err != nil {
 			return "", inputError(err)
 		}
 		return okOutput, nil
@@ -652,7 +652,7 @@ func (s Services) pagePoint(ctx context.Context, w win.WindowInfo, x, y int) (o 
 // Tab's viewport by the inverse transform (page.ToCSS); dx and dy are
 // wheel units (120 a notch), sent as Chrome's own notch in CSS px.
 // handled is false when the point is not on a Page: today's route runs.
-func (s Services) pageScrollAt(ctx context.Context, ref string, x, y, dx, dy int) (out string, rerr *Error, handled bool) {
+func (s Services) pageScrollAt(ctx context.Context, ref string, x, y, dx, dy int, mods win.Modifiers) (out string, rerr *Error, handled bool) {
 	if !s.pageCapable() {
 		return "", nil, false
 	}
@@ -678,7 +678,7 @@ func (s Services) pageScrollAt(ctx context.Context, ref string, x, y, dx, dy int
 				return err
 			}
 			p := page.ToCSS(l, t, dpr, at.Left, at.Top)
-			return in.Wheel(ctx, p, float64(dx)*page.WheelPxPerStep/wheelNotch, float64(dy)*page.WheelPxPerStep/wheelNotch)
+			return in.WheelWith(ctx, p, float64(dx)*page.WheelPxPerStep/wheelNotch, float64(dy)*page.WheelPxPerStep/wheelNotch, mods.CDP())
 		},
 	})
 	return out, rerr, true

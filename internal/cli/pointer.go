@@ -199,10 +199,18 @@ func scrollCmd(args []string, headed bool) int {
 // the global --headed, which the point form needs too (ticket 21).
 func scrollRequest(args []string, headed bool) (protocol.ScrollArgs, error) {
 	args, post := stripFlag(args, postFlag)
+	args, mods, err := takeModifiers(args)
+	if err != nil {
+		return protocol.ScrollArgs{}, err
+	}
 	a, err := parseScrollCommand(args)
 	if err != nil {
 		return a, err
 	}
+	if mods != nil && (a.ElementIndex != nil || a.Ref != "") {
+		return a, errors.New("--modifiers goes with an @x,y point; an Element scrolls by steps without them")
+	}
+	a.Modifiers = mods
 	if post && (a.ElementIndex != nil || a.Ref != "") {
 		return a, errors.New("--post scrolls at an @x,y point; an Element scrolls headless without it")
 	}
@@ -211,6 +219,32 @@ func scrollRequest(args []string, headed bool) (protocol.ScrollArgs, error) {
 	}
 	a.Headed, a.Post = headed, post
 	return a, nil
+}
+
+// takeModifiers removes --modifiers <list> (or --modifiers=<list>) after
+// the first token and returns its comma-separated names (desktop-parity
+// ticket 06); the helper checks them.
+func takeModifiers(args []string) ([]string, []string, error) {
+	var rest, mods []string
+	for i := 0; i < len(args); i++ {
+		tok := args[i]
+		if i > 0 {
+			if v, ok := strings.CutPrefix(tok, "--modifiers="); ok {
+				mods = strings.Split(v, ",")
+				continue
+			}
+			if tok == "--modifiers" {
+				if i+1 >= len(args) {
+					return nil, nil, errors.New("--modifiers needs a value such as ctrl or ctrl,shift")
+				}
+				i++
+				mods = strings.Split(args[i], ",")
+				continue
+			}
+		}
+		rest = append(rest, tok)
+	}
+	return rest, mods, nil
 }
 
 // parseDragArgs parses drag's arguments: a Window reference and two @x,y

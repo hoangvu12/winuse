@@ -138,7 +138,11 @@ commands:
                                --button left|middle|right (default left),
                                --post (post the click to the classic
                                control there without the foreground: best
-                               effort, the app may ignore it)
+                               effort, the app may ignore it),
+                               --modifiers ctrl,shift,alt (held during the
+                               click: headless on a Page and for ctrl or
+                               shift on a multi-select list item, as MK
+                               flags with --post, else --headed)
   type-text <window> [--post | --into <element index | name: | id:>] [--interval-ms <n>] <text>
                                type Unicode text into the Window's focused
                                Element (headless into a classic edit control
@@ -200,7 +204,7 @@ const usageTail = `);
                                steps (1 to 50, default 3)
   scroll <window> <element index | name: | id:> into-view
                                scroll an Element into view
-  scroll <window> @x,y <dx> <dy> [--post]
+  scroll <window> @x,y <dx> <dy> [--post] [--modifiers ctrl,shift,alt]
                                scroll the Window at a point of its latest
                                screenshot: positive dy scrolls down, positive
                                dx right; one wheel notch is 120 (three

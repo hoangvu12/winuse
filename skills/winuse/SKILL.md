@@ -979,7 +979,8 @@ close-app <app> [--force]           # --force ends what is still running: the on
 get-window-state <window> [--screenshot] [--skeleton | --root <element> [--depth N] [--interactive]] [--timeout <s>]
 find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --count] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
-click <window> <ref> [--count 1|2|3] [--button left|middle|right] [--post]
+click <window> <ref> [--count 1|2|3] [--button left|middle|right] [--post] [--modifiers ctrl,shift,alt]
+# --modifiers: Headless on a Page and for ctrl or shift on a multi-select list item; else --post or --headed
 set-value <window> <ref> <value|on|off|item name>
 perform-secondary-action <window> <ref> <action>   # Raise, Scroll Up/Down/Left/Right, Expand, Collapse, Toggle, Select
 type-text <window> [--post | --into <ref>] [--interval-ms <n>] <text>
@@ -987,7 +988,7 @@ press-key <window> <key> [--post] [--force]
 select-text <window> <ref> <start> <length> | select-text <window> <ref> all
 invoke-menu <window> "<menu> > <item>"   # a classic menu bar command, Headless
 scroll <window> <ref> <up|down|left|right> [steps] | scroll <window> <ref> into-view
-scroll <window> @x,y <dx> <dy> [--post]   # Headless: the Page, or the Window's Element under the point; --post posts the wheel
+scroll <window> @x,y <dx> <dy> [--post] [--modifiers ctrl]   # Headless: the Page, or the Window's Element under the point; --post posts the wheel
 drag <window> @x,y @x,y [--drop-delay <ms>]   # --headed: left button, point to point
 drag <window> <element> <element|@x,y> [--drop-delay <ms>]   # a Page Element Headless; other Elements --headed
 hover <window> @x,y                 # --headed: moves the pointer and leaves it there, to reveal tooltips
