@@ -208,3 +208,33 @@ func jsonString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
 }
+
+// The 2026-11-03 final live run: a launch whose App opens no Window must
+// fail with "did not expose a targetable window" before the request's
+// deadline, however long the name took to resolve, so the server reports
+// that failure and not its generic timeout. The resolution here takes a
+// third of a short request budget, and the poll sleeps for real.
+func TestLaunchAppNoWindowFailsBeforeTheDeadline(t *testing.T) {
+	l := newLaunchSpy()
+	s := l.services()
+	slowFirst := true
+	windows := s.Windows
+	s.Windows = func() ([]win.WindowInfo, error) {
+		if slowFirst {
+			slowFirst = false
+			time.Sleep(time.Second) // the before-start snapshot and resolution
+		}
+		return windows()
+	}
+	s.StartApp = func(apps.Spec, win.LaunchOptions) (uint32, error) { return 77, nil } // opens nothing
+	s.Sleep = time.Sleep
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, cmdErr := CommandsWith(s)["launch-app"](ctx, json.RawMessage(`{"app":`+jsonString(fakeAppPath)+`}`))
+	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "did not expose a targetable window") {
+		t.Fatalf("launch-app: %+v, want the no-window failure", cmdErr)
+	}
+	if ctx.Err() != nil {
+		t.Errorf("the failure came after the request's deadline: the server would report its generic timeout")
+	}
+}

@@ -123,24 +123,28 @@ func listApps(store *apps.StoreSource) Command {
 	}
 }
 
-// launchPollBudget stays just under the request budget so the specific
-// "did not expose a targetable window" failure is reported rather than
-// the generic request timeout.
-const launchPollBudget = protocol.LaunchTimeout - 500*time.Millisecond
+// launchDeadlineMargin is kept between the end of a launch's Window poll
+// and the request's deadline, so the specific "did not expose a targetable
+// window" failure is reported rather than the generic request timeout: it
+// covers the poll's last Window listing and the answer.
+const launchDeadlineMargin = time.Second
 
-// launchPoll is the poll budget of a launch under ctx: launchPollBudget's
-// margin under the request's deadline, which a caller-set --timeout
-// widens (desktop-parity ticket 14). Without a deadline it is
-// launchPollBudget.
+// launchPollBudget is the poll of a launch with no deadline.
+const launchPollBudget = protocol.LaunchTimeout - launchDeadlineMargin
+
+// launchPoll is the poll budget of a launch under ctx: what is left of the
+// request's budget (15 s, or a caller-set --timeout, desktop-parity ticket
+// 14) once the name was resolved and the App started, less
+// launchDeadlineMargin. It never reaches past the deadline: the final live
+// run of 2026-11-03 resolved for long enough that a fixed 14.5 s poll ended
+// after the 15 s budget, and the request timed out instead. Without a
+// deadline it is launchPollBudget.
 func launchPoll(ctx context.Context) time.Duration {
 	dl, ok := ctx.Deadline()
 	if !ok {
 		return launchPollBudget
 	}
-	if d := time.Until(dl) - (protocol.LaunchTimeout - launchPollBudget); d > launchPollBudget {
-		return d
-	}
-	return launchPollBudget
+	return max(time.Until(dl)-launchDeadlineMargin, 0)
 }
 
 // launchApp starts an App and reports the Window it opened within the
