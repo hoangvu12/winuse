@@ -91,7 +91,7 @@ func (s Services) runChromium(ctx context.Context, w win.WindowInfo, run chromiu
 			return "", headedRefusal(w,
 				fmt.Sprintf("window %d's thread owns the foreground: the user is working in that browser, and winuse does not fake its activation under them", w.ID),
 				run.retry, "")
-		case n == 0:
+		case n == 0 && !errors.Is(err, win.ErrAfterActivation):
 			return "", nothingSent(Fail(err.Error(), "the Window may have closed or be hung; run winuse list-windows"))
 		case ctx.Err() != nil:
 			return "", inputAbortError(s, ctx, err, "while sending the messages (the part sent so far landed)")

@@ -383,7 +383,7 @@ func (s Services) postKeys(ctx context.Context, ref, label string, post func(w w
 			if errors.As(err, &notSent) {
 				return err
 			}
-			if err != nil && n == 0 {
+			if err != nil && n == 0 && !errors.Is(err, win.ErrAfterActivation) {
 				return &notSentError{err: err, hint: "the Window or its focused control may have closed; run winuse list-windows"}
 			}
 			return err
