@@ -263,15 +263,16 @@ func parseBatchPageStep(kind string, rest []string) (protocol.Step, error) {
 	return protocol.Step{Kind: kind, Args: raw}, nil
 }
 
-// parseHoverTokens parses hover after the Window: an @x,y point, or a Page
-// Element (an Element Index or name:/id: reference).
+// parseHoverTokens parses hover after the Window: an @x,y point, or an
+// Element (an Element Index or name:/id: reference): a Page Element, or a
+// UIA Element (desktop-parity 13).
 func parseHoverTokens(rest []string) (protocol.HoverArgs, error) {
 	var a protocol.HoverArgs
 	if len(rest) != 1 {
 		if len(rest) > 1 && isRefToken(rest[0]) {
 			return a, errors.New(unquotedRefHint(rest[0] + " " + rest[1]))
 		}
-		return a, errors.New("hover takes an @x,y point or a page element")
+		return a, errors.New("hover takes an @x,y point or an element")
 	}
 	if isPointToken(rest[0]) {
 		x, y, err := parsePointRef(rest[0])
@@ -290,15 +291,16 @@ func parseHoverTokens(rest []string) (protocol.HoverArgs, error) {
 	return a, nil
 }
 
-// parseDragTokens parses drag after the Window: two @x,y points, or a Page
-// Element and then another Page Element or an @x,y point.
+// parseDragTokens parses drag after the Window: two @x,y points, or an
+// Element (a Page Element, or a UIA Element: desktop-parity 13) and then
+// another Element or an @x,y point.
 func parseDragTokens(rest []string) (protocol.DragArgs, error) {
 	var a protocol.DragArgs
 	if len(rest) != 2 {
 		if len(rest) > 2 && isRefToken(rest[0]) {
 			return a, errors.New(unquotedRefHint(rest[0] + " " + rest[1]))
 		}
-		return a, errors.New("drag takes two @x,y points (from, to), or a page element and then a page element or an @x,y point")
+		return a, errors.New("drag takes two @x,y points (from, to), or an element and then an element or an @x,y point")
 	}
 	if isPointToken(rest[0]) {
 		fx, fy, err := parsePointRef(rest[0])

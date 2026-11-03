@@ -191,27 +191,33 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 		}
 		args = protocol.ScrollArgs{X: x, Y: y, ScrollX: dx, ScrollY: dy}
 	case "drag":
-		if len(rest) > 0 && !isPointToken(rest[0]) {
-			// From a Page Element (page.go, browser merge ticket 06).
-			da, err := parseDragTokens(rest)
+		// --drop-delay <ms> anywhere in the step (desktop-parity 13).
+		dragRest, delay, err := stripDropDelay(rest)
+		if err != nil {
+			return protocol.Step{}, fmt.Errorf("a batch drag Action: %v", err)
+		}
+		if len(dragRest) > 0 && !isPointToken(dragRest[0]) {
+			// From an Element (page.go, browser merge ticket 06).
+			da, err := parseDragTokens(dragRest)
 			if err != nil {
 				return protocol.Step{}, fmt.Errorf("a batch drag Action: %v", err)
 			}
+			da.DropDelayMS = delay
 			args = da
 			break
 		}
-		if len(rest) != 2 {
+		if len(dragRest) != 2 {
 			return protocol.Step{}, errors.New("a batch drag Action takes two @x,y points (from, to)")
 		}
-		fromX, fromY, err := parsePointRef(rest[0])
+		fromX, fromY, err := parsePointRef(dragRest[0])
 		if err != nil {
 			return protocol.Step{}, err
 		}
-		toX, toY, err := parsePointRef(rest[1])
+		toX, toY, err := parsePointRef(dragRest[1])
 		if err != nil {
 			return protocol.Step{}, err
 		}
-		args = protocol.DragArgs{FromX: fromX, FromY: fromY, ToX: toX, ToY: toY}
+		args = protocol.DragArgs{FromX: fromX, FromY: fromY, ToX: toX, ToY: toY, DropDelayMS: delay}
 	case "hover":
 		if len(rest) > 0 && !isPointToken(rest[0]) {
 			// A Page Element (page.go, browser merge ticket 06).

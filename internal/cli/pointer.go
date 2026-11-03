@@ -26,11 +26,42 @@ const (
 	scrollUsage = "usage: winuse scroll <window> <element index | name:<text> | id:<id>> <up|down|left|right> [steps]   (steps 1-50, default 3)\n" +
 		"       winuse scroll <window> <element index | name:<text> | id:<id>> into-view\n" +
 		"       winuse scroll <window> @x,y <dx> <dy>   (positive dy scrolls down; one wheel notch is 120)"
-	dragUsage = "usage: winuse drag <window> @x,y @x,y   (from, to; both in the latest screenshot's pixels)\n" +
-		"       winuse drag <window> <page element> <page element | @x,y>"
+	dragUsage = "usage: winuse drag <window> @x,y @x,y [--drop-delay <ms>]   (from, to; both in the latest screenshot's pixels)\n" +
+		"       winuse drag <window> <element> <element | @x,y> [--drop-delay <ms>]"
 	hoverUsage = "usage: winuse hover <window> @x,y   (the point, in the latest screenshot's pixels)\n" +
-		"       winuse hover <window> <page element>"
+		"       winuse hover <window> <element>"
 )
+
+// dropDelayFlag is drag's --drop-delay <ms> (desktop-parity 13): how long
+// the drag holds at its end before the drop.
+const dropDelayFlag = "--drop-delay"
+
+// stripDropDelay takes --drop-delay <ms> (or --drop-delay=<ms>) out of a
+// drag's arguments, anywhere among them, and returns the rest. The range
+// is the helper's to check; here the value must be an integer.
+func stripDropDelay(args []string) (rest []string, ms int, err error) {
+	rest = make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		tok := args[i]
+		value, ok := strings.CutPrefix(tok, dropDelayFlag+"=")
+		if !ok {
+			if tok != dropDelayFlag {
+				rest = append(rest, tok)
+				continue
+			}
+			if i+1 >= len(args) {
+				return nil, 0, errors.New("--drop-delay needs a value in milliseconds")
+			}
+			i++
+			value = args[i]
+		}
+		ms, err = strconv.Atoi(value)
+		if err != nil {
+			return nil, 0, fmt.Errorf("--drop-delay needs a value in milliseconds, got %q", value)
+		}
+	}
+	return rest, ms, nil
+}
 
 // parseScrollArgs parses scroll's arguments: a Window reference, an @x,y
 // point of the Window's latest screenshot, and the horizontal and
@@ -184,7 +215,9 @@ func parseDragArgs(args []string) (window string, fromX, fromY, toX, toY int, er
 
 // dragCmd implements `winuse drag <window> @x,y @x,y`: drag from one
 // point of the Window's latest screenshot to another, with the real
-// pointer only under the global --headed (headless-max ticket 21).
+// pointer only under the global --headed (headless-max ticket 21). The
+// Element form drags from a Page Element Headless, or from a UIA Element
+// with the real pointer, again only under --headed (desktop-parity 13).
 func dragCmd(args []string, headed bool) int {
 	a, err := dragRequest(args, headed)
 	if err != nil {
@@ -198,27 +231,31 @@ func dragCmd(args []string, headed bool) int {
 	return 0
 }
 
-// dragRequest builds drag's request: the Window, then points or Page
-// Elements, and the global --headed.
+// dragRequest builds drag's request: the Window, then points or Elements,
+// --drop-delay, and the global --headed.
 func dragRequest(args []string, headed bool) (protocol.DragArgs, error) {
-	if len(args) == 0 {
-		return protocol.DragArgs{}, errors.New("drag takes a window reference first")
-	}
-	a, err := parseDragTokens(args[1:]) // page.go: points, or Page Elements (ticket 06)
+	args, delay, err := stripDropDelay(args)
 	if err != nil {
 		return protocol.DragArgs{}, err
 	}
-	a.Window, a.Headed = args[0], headed
+	if len(args) == 0 {
+		return protocol.DragArgs{}, errors.New("drag takes a window reference first")
+	}
+	a, err := parseDragTokens(args[1:]) // page.go: points, or Elements (ticket 06, desktop-parity 13)
+	if err != nil {
+		return protocol.DragArgs{}, err
+	}
+	a.Window, a.Headed, a.DropDelayMS = args[0], headed, delay
 	return a, nil
 }
 
-// hoverRequest builds hover's request: the Window, then a point or a Page
+// hoverRequest builds hover's request: the Window, then a point or an
 // Element, and the global --headed.
 func hoverRequest(args []string, headed bool) (protocol.HoverArgs, error) {
 	if len(args) == 0 {
 		return protocol.HoverArgs{}, errors.New("hover takes a window reference first")
 	}
-	a, err := parseHoverTokens(args[1:]) // page.go: a point, or a Page Element (ticket 06)
+	a, err := parseHoverTokens(args[1:]) // page.go: a point, or an Element (ticket 06, desktop-parity 13)
 	if err != nil {
 		return protocol.HoverArgs{}, err
 	}
@@ -241,7 +278,9 @@ func parseHoverArgs(args []string) (window string, x, y int, err error) {
 
 // hoverCmd implements `winuse hover <window> @x,y`: move the pointer to
 // a point of the Window's latest screenshot and leave it there, only
-// under the global --headed (headless-max ticket 21).
+// under the global --headed (headless-max ticket 21). The Element form
+// hovers a Page Element Headless, or a UIA Element's clickable point with
+// the real pointer under --headed (desktop-parity 13).
 func hoverCmd(args []string, headed bool) int {
 	a, err := hoverRequest(args, headed)
 	if err != nil {

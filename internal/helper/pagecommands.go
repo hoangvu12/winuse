@@ -84,20 +84,10 @@ func pageCommands(s Services) map[string]Command {
 // pageOnlyStep is the Batch's scope question for the page-only commands:
 // they have no Headed route at all, and a Window that is no browser Page
 // fails them before anything is sent. hover and drag are Headless in their
-// Page Element forms only.
+// Page Element forms only, which pageStep checks (a UIA Element form is
+// Headed, desktop-parity 13).
 func pageOnlyStep(kind string, args json.RawMessage) bool {
-	if slices.Contains(protocol.PageCommands, kind) {
-		return true
-	}
-	switch kind {
-	case "hover":
-		var a protocol.HoverArgs
-		return json.Unmarshal(args, &a) == nil && (a.ElementIndex != nil || a.Ref != "")
-	case "drag":
-		var a protocol.DragArgs
-		return json.Unmarshal(args, &a) == nil && (a.FromIndex != nil || a.FromRef != "")
-	}
-	return false
+	return slices.Contains(protocol.PageCommands, kind)
 }
 
 // browserConn is a browser Window with its Browser Connection: what the
