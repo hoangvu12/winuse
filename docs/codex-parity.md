@@ -314,7 +314,9 @@ banner — the Agent Cursor shows them instead (see extensions).
 Lowercase, specific, one line, with a recovery hint: stale elements
 ("element N is not available in cached app state for <app>" plus the
 read-again instruction), ambiguity with candidates, timeouts, window
-gone, app not found. **matched**.
+gone, app not found. **matched**. The opt-in `--json` (desktop-parity
+07) wraps the same lines in agent-desktop's envelope with a code and a
+delivery; the text stays the default.
 
 ### admin windows
 
@@ -514,6 +516,15 @@ State only as its line count. Typed text, values, clipboard content and
 eval are redacted unless `--trace-unredacted`. The file rolls over at
 32 MiB, and `trace show` summarizes it, like agent-desktop's session
 traces without the HTML export. Codex keeps no trace. **extension**.
+`--json` before the command (desktop-parity 07) prints one JSON line,
+agent-desktop's envelope: `ok`, `command`, `out` (a Window State stays its
+text tree), and on a failure `error` with a code (`STALE_REF`,
+`NO_HEADLESS_ROUTE`, `TIMEOUT`, ...), the message, the hint, and the
+delivery and retry its text states ("nothing was sent" is
+`not_delivered`, safe to retry). Codes come from the failure's text in one
+table (`internal/protocol/codes.go`). Exit codes are unchanged, and
+without the flag the output is byte-for-byte the text. Codex has no JSON
+output. **extension**.
 `list-windows --shell` (desktop-parity 09, ADR 0015) adds the shell
 surfaces: the taskbar, and the tray overflow, Start and the Action Center
 while open, named by Window ID. The taskbar reads Headless; a click,

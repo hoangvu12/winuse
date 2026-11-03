@@ -39,6 +39,10 @@ global options:
                                redacted; past 32 MiB the file is renamed
                                <name>.1 and a new one started
   --trace-unredacted          keep the redacted values, for local debugging only
+  --json                      before the command: print one JSON line instead
+                               of the text: {"ok","command","out"} and, on a
+                               failure, "error" with its code, message, hint,
+                               delivery and retry. Exit codes are unchanged
 
 headless (the default; your foreground, pointer and keyboard stay untouched):
   click (left, single), set-value, perform-secondary-action (except Raise)
@@ -430,7 +434,18 @@ func secondaryActionsPhrase() string {
 }
 
 // Main runs the CLI for args (without the program name) and returns the exit
-// code: 0 success, 1 command failure, 2 usage error. The first command
+// code: 0 success, 1 command failure, 2 usage error. With --json among the
+// leading flags, the command's output becomes one JSON line (json.go,
+// desktop-parity ticket 07); runCommand runs it either way.
+func Main(args []string) int {
+	args, asJSON, command := extractJSON(args)
+	if asJSON {
+		return runJSON(command, func() int { return runCommand(args) })
+	}
+	return runCommand(args)
+}
+
+// runCommand runs one command line and prints its text. The first command
 // invocation starts the background helper automatically; later ones reuse
 // it. status never starts it (status.go).
 //
@@ -438,7 +453,7 @@ func secondaryActionsPhrase() string {
 // before the command or anywhere after it outside literal text, and
 // forwarded to the Actions that have a Headless form, and to
 // get-window-state and zoom, whose captures are headless (ADR 0011).
-func Main(args []string) (code int) {
+func runCommand(args []string) (code int) {
 	// The session trace (trace.go, desktop-parity ticket 19): one line per
 	// command, written when it exits.
 	args, trace, ok := startTrace(args, os.Getenv)
@@ -846,8 +861,10 @@ func runRequest(cmd string, args any, edit func(*protocol.Request)) error {
 
 // finish turns a response into an error carrying the exit code the CLI
 // should use; helper-reported failures keep their exact message text. A
-// failure's output (the steps a Batch ran) is printed first.
+// failure's output (the steps a Batch ran) is printed first. --json reads
+// the failure's code and delivery from the response it records (json.go).
 func finish(resp *protocol.Response) error {
+	lastResponse = resp
 	os.Stdout.WriteString(resp.Out)
 	if resp.OK {
 		return nil
