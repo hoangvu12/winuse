@@ -145,10 +145,10 @@ func (s Services) classicMenuClick(ctx context.Context, a protocol.ClickArgs, ta
 				}
 				if owner != 0 {
 					if err := s.CancelMenu(owner); err != nil {
-						return &uia.VerifyError{Msg: fmt.Sprintf("%q was chosen in menu %d, but the menu stayed open, and closing it failed: %v", menuName(p.item.Text), w.ID, err)}
+						return &uia.VerifyError{Msg: fmt.Sprintf("the choice of %q in menu %d was delivered, but the menu stayed open, and closing it failed: %v", menuName(p.item.Text), w.ID, err)}
 					}
 				}
-				return &uia.VerifyError{Msg: fmt.Sprintf("%q was chosen in menu %d, but the menu stayed open, so winuse closed it", menuName(p.item.Text), w.ID)}
+				return &uia.VerifyError{Msg: fmt.Sprintf("the choice of %q in menu %d was delivered, but the menu stayed open, so winuse closed it", menuName(p.item.Text), w.ID)}
 			}
 			return nil
 		},
@@ -183,7 +183,7 @@ func (s Services) pickMenuItem(w win.WindowInfo, name string, retry func(id stri
 	at := strconv.Quote(menuName(it.Text))
 	switch {
 	case it.Popup():
-		return menuPick{}, headedRefusal(w, fmt.Sprintf("the menu item %s opens a submenu, which winuse does not open without the foreground", at), retry, "")
+		return menuPick{}, headedRefusal(w, fmt.Sprintf("the menu item %s opens a submenu, which has no background route", at), retry, "")
 	case it.Unavailable():
 		return menuPick{}, headedRefusal(w, fmt.Sprintf("the menu item %s is greyed out", at), retry,
 			"the App does not offer this command now; close the menu with winuse press-key "+strconv.FormatUint(w.ID, 10)+" Escape")

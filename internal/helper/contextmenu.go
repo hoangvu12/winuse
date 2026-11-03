@@ -100,7 +100,7 @@ func contextMenuRoute(t uia.MenuTarget) menuRoute {
 // The context menu route's own failures, mapped by contextMenuRefusal.
 var (
 	// errMenuWPF: a WPF Element (nothing was sent).
-	errMenuWPF = errors.New("WPF opens no context menu in a background Window: neither UI Automation's ShowContextMenu nor a posted WM_CONTEXTMENU reaches it")
+	errMenuWPF = errors.New("its context menu has no background route: WPF opens no menu in a background Window, from UI Automation's ShowContextMenu or a posted WM_CONTEXTMENU")
 	// errMenuNoReadback: the desktop cannot be enumerated to read a menu
 	// back (nothing was sent).
 	errMenuNoReadback = errors.New("winuse cannot list the App's Windows to read an opened menu back")
@@ -112,7 +112,7 @@ type menuNotOpenedError struct{ route menuRoute }
 func (e *menuNotOpenedError) Error() string {
 	how := "UI Automation's ShowContextMenu was delivered"
 	if e.route == menuRoutePost {
-		how = "WM_CONTEXTMENU was posted to the Element's window"
+		how = "WM_CONTEXTMENU to the Element's window was delivered"
 	}
 	return how + ", but no menu opened"
 }
@@ -225,7 +225,7 @@ func contextMenuRefusal(err error, w win.WindowInfo, index int, retry func(id st
 	var none *menuNotOpenedError
 	switch {
 	case errors.Is(err, errMenuWPF):
-		return headedRefusal(w, fmt.Sprintf("element %d is a WPF Element, and %v", index, err), retry, "")
+		return headedRefusal(w, fmt.Sprintf("element %d is a WPF Element: %v", index, err), retry, "")
 	case errors.Is(err, errMenuNoReadback), errors.Is(err, uia.ErrNoShowContextMenu):
 		return headedRefusal(w, err.Error(), retry, "")
 	case errors.As(err, &notSent):
@@ -454,7 +454,7 @@ func (s Services) pressMenuEscape(ctx context.Context, args json.RawMessage, ref
 				return err
 			}
 			if !s.menuClosed(w.ID) {
-				return &uia.VerifyError{Msg: fmt.Sprintf("Escape was posted to menu %d and it is still open", w.ID)}
+				return &uia.VerifyError{Msg: fmt.Sprintf("Escape to menu %d was delivered, but the menu is still open", w.ID)}
 			}
 			return nil
 		},

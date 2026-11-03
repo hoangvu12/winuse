@@ -34,7 +34,7 @@ var iidUIAutomationElement3 = windows.GUID{
 
 // ErrNoShowContextMenu is an Element whose UIA client object has no
 // IUIAutomationElement3. Nothing was sent.
-var ErrNoShowContextMenu = errors.New("UI Automation cannot open this Element's context menu (no IUIAutomationElement3)")
+var ErrNoShowContextMenu = errors.New("this Element's context menu has no background route: UI Automation cannot open it (no IUIAutomationElement3)")
 
 // MenuTarget is what the context menu route is chosen from: the Element's
 // UI framework (UIA FrameworkId: "Win32", "WinForm", "WPF", "XAML",
