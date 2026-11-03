@@ -183,6 +183,11 @@ type Request struct {
 	// Trace asks for Response.Trace (desktop-parity ticket 19, trace.go):
 	// the CLI sets it under --trace or WINUSE_TRACE.
 	Trace bool `json:"trace,omitempty"`
+
+	// Build is the CLI's build (version.Build, desktop-parity ticket 25):
+	// a helper of another build answers stale as for another Ver. Empty
+	// on either side (a CLI or helper from before it) matches.
+	Build string `json:"build,omitempty"`
 }
 
 // ListWindowsArgs are list-windows's optional arguments (desktop-parity

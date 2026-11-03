@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
+	"github.com/hoangvu12/winuse/internal/version"
 )
 
 // Error is a command failure with the process exit code the CLI should use
@@ -50,6 +51,7 @@ type Command func(ctx context.Context, args json.RawMessage) (string, *Error)
 // Server serves helper requests until it goes idle.
 type Server struct {
 	version        string // binary version; mismatching CLI versions make the helper exit
+	build          string // executable build (version.Build); a CLI of another build makes it exit too, "" matches any
 	idle           time.Duration
 	requestTimeout time.Duration
 	commands       map[string]Command
@@ -67,12 +69,13 @@ type Server struct {
 // New creates a server. idle is how long without a connection being
 // served before the helper exits by itself; requestTimeout bounds one
 // command (slightly under the client's deadline). logger may be nil.
-func New(version string, idle, requestTimeout time.Duration, commands map[string]Command, logger *log.Logger) *Server {
+func New(ver string, idle, requestTimeout time.Duration, commands map[string]Command, logger *log.Logger) *Server {
 	if logger == nil {
 		logger = log.Default()
 	}
 	return &Server{
-		version:        version,
+		version:        ver,
+		build:          version.Build(),
 		idle:           idle,
 		requestTimeout: requestTimeout,
 		commands:       commands,
@@ -191,7 +194,10 @@ func (s *Server) serveConn(conn net.Conn) {
 	if resp.Stale {
 		// The CLI that just talked to us is from a different build: this
 		// helper is outdated. Exit so the CLI can start a current one.
-		s.log.Printf("helper is from a different build (CLI %s, helper %s), exiting", req.Ver, s.version)
+		// Shutdown drains first: the requests in flight finish, with
+		// their give-back and held-key release, before Serve returns.
+		s.log.Printf("helper is from a different build (CLI %s, helper %s), exiting after the requests in flight",
+			buildName(req.Ver, req.Build), buildName(s.version, s.build))
 		s.Shutdown()
 	}
 }
@@ -205,12 +211,13 @@ func (s *Server) handle(req *protocol.Request) (resp protocol.Response) {
 		return protocol.Errorf(1, "wire protocol version %d not supported (helper speaks %d); upgrade winuse", req.V, protocol.Version)
 	}
 	// status only reads, so a CLI of another build may ask it without
-	// stopping this helper: the report names both versions (ticket 16).
-	if req.Ver != s.version && req.Cmd != StatusCommand {
+	// stopping this helper: the report names both versions and builds
+	// (tickets 16 and 25).
+	if s.otherBuild(req) && req.Cmd != StatusCommand {
 		return protocol.Response{
 			OK:    false,
 			Stale: true,
-			Err:   fmt.Sprintf("helper is from a different winuse build (helper %s, CLI %s)", s.version, req.Ver),
+			Err:   fmt.Sprintf("helper is from a different winuse build (helper %s, CLI %s)", buildName(s.version, s.build), buildName(req.Ver, req.Build)),
 			Hint:  "the helper exits itself; the CLI restarts a current one",
 			Exit:  1,
 		}
@@ -266,6 +273,26 @@ func (s *Server) handle(req *protocol.Request) (resp protocol.Response) {
 		return resp
 	}
 	return protocol.OK(out)
+}
+
+// otherBuild reports whether the request comes from a CLI of another
+// build: another version, or the same version with another executable
+// build (desktop-parity ticket 25). An empty build on either side, a CLI
+// or helper from before builds were compared, matches.
+func (s *Server) otherBuild(req *protocol.Request) bool {
+	if req.Ver != s.version {
+		return true
+	}
+	return req.Build != "" && s.build != "" && req.Build != s.build
+}
+
+// buildName names a version and, when known, its build: "0.1.0 build
+// <id>".
+func buildName(ver, build string) string {
+	if build == "" {
+		return ver
+	}
+	return ver + " build " + build
 }
 
 // timeoutResponse builds the request-timeout failure in the decided style.

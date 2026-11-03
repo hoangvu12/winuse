@@ -70,3 +70,18 @@ func TestFormatUnknownBrowsersFromARunningHelper(t *testing.T) {
 		t.Errorf("Format() = %q", r.Format())
 	}
 }
+
+func TestFormatNamesBuildsOnlyWhenTheyDiffer(t *testing.T) {
+	r := Report{CLIVersion: "1.0.0", CLIBuild: "new", Helper: Helper{State: HelperRunning, Version: "1.0.0", Build: "old", Uptime: time.Minute}}
+	got := r.Format()
+	if !strings.Contains(got, "winuse: 1.0.0 build new\n") || !strings.Contains(got, "helper: running, 1.0.0 build old (a different build; the next command restarts it), up 1m0s\n") {
+		t.Errorf("Format =\n%s", got)
+	}
+	for _, builds := range [][2]string{{"same", "same"}, {"", "old"}, {"new", ""}} {
+		r.CLIBuild, r.Helper.Build = builds[0], builds[1]
+		got := r.Format()
+		if strings.Contains(got, " build ") || strings.Contains(got, "a different build") {
+			t.Errorf("CLI build %q, helper build %q:\n%s", builds[0], builds[1], got)
+		}
+	}
+}

@@ -5,5 +5,5 @@ package version
 // a helper built from a different version reports itself stale, exits, and
 // the CLI starts a current one (so a winuse upgrade never acts through the
 // old helper; only the read-only status is answered across builds). Bump
-// it per release.
+// it per release. Build (build.go) tells two builds of one version apart.
 const Version = "0.1.0"
