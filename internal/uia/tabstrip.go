@@ -54,6 +54,13 @@ const (
 // was selected.
 var ErrNoTabStrip = errors.New("the Window shows no tab strip through UI Automation")
 
+// ErrTabStripUnanswered is a walk that found no tab-strip item because the
+// browser's UI Automation calls failed: measured on a launched Chrome after
+// a download (the 2026-11-03 live runs), where every call into the Window
+// failed with E_FAIL, get-window-state's included, once a tab was switched.
+// Nothing was selected.
+var ErrTabStripUnanswered = errors.New("the browser's UI Automation did not answer for the Window's tab strip")
+
 // tabSteps are the live operations selectTab is driven through.
 type tabSteps struct {
 	names    func() ([]string, error) // the tab-strip items' names, in tree order
@@ -101,14 +108,16 @@ func (c *Client) SelectTab(ctx context.Context, hwnd uint64, pick func(names []s
 	})
 }
 
-// settleTabStrip runs attempt again, interval apart, while it fails with
-// ErrNoTabStrip and budget (cut by ctx) lasts: a Chromium tab strip that
-// is still being built. Any other answer is final.
+// settleTabStrip runs attempt again, interval apart, while it finds no
+// tab strip (ErrNoTabStrip, ErrTabStripUnanswered, or a root that did not
+// read) and budget (cut by ctx) lasts: a Chromium tab strip that is still
+// being built. Any other answer is final.
 func settleTabStrip(ctx context.Context, budget, interval time.Duration, sleep func(context.Context, time.Duration) error, attempt func() error) error {
 	deadline := time.Now().Add(budget)
 	for {
 		err := attempt()
-		if !errors.Is(err, ErrNoTabStrip) || time.Now().Add(interval).After(deadline) {
+		retry := errors.Is(err, ErrNoTabStrip) || errors.Is(err, ErrTabStripUnanswered) || errors.Is(err, ErrWindowGone)
+		if !retry || time.Now().Add(interval).After(deadline) {
 			return err
 		}
 		if dl, ok := ctx.Deadline(); ok && time.Now().Add(interval).After(dl) {
@@ -129,12 +138,16 @@ func (c *Client) selectTabOnce(ctx context.Context, hwnd uint64, pick func(names
 			jobErr = ErrNoTabStrip // fake workers carry no COM thread
 			return
 		}
-		items, err := w.thread.tabItems(hwnd)
+		items, failed, err := w.thread.tabItems(hwnd)
 		if err != nil {
 			jobErr = err
 			return
 		}
 		defer releaseAll(items)
+		if len(items) == 0 && failed.Failed() {
+			jobErr = fmt.Errorf("%w (HRESULT %s)", ErrTabStripUnanswered, failed)
+			return
+		}
 		jobErr = selectTab(tabSteps{
 			names: func() ([]string, error) {
 				names := make([]string, len(items))
@@ -167,21 +180,21 @@ func (c *Client) selectTabOnce(ctx context.Context, hwnd uint64, pick func(names
 }
 
 // tabItems is the bounded walk: the TabItem elements of hwnd's control
-// view, outside any Document and TabItem subtree. The caller releases
-// them.
-func (th *thread) tabItems(hwnd uint64) ([]comPtr, error) {
+// view, outside any Document and TabItem subtree, and the first failed
+// child lookup's HRESULT (S_OK when none failed). The caller releases the
+// elements.
+func (th *thread) tabItems(hwnd uint64) (items []comPtr, failed HRESULT, err error) {
 	var root comPtr
 	if hr := call(th.auto, uiaElementFromHandle, uintptr(hwnd), uintptr(unsafe.Pointer(&root))); hr.Failed() || root == nil {
-		return nil, fmt.Errorf("%w: reading the Window's tab strip failed (HRESULT %s)", ErrWindowGone, hr)
+		return nil, 0, fmt.Errorf("%w: reading the Window's tab strip failed (HRESULT %s)", ErrWindowGone, hr)
 	}
 	defer release(root)
 	var cond comPtr
 	if hr := call(th.auto, uiaGetControlViewCondition, uintptr(unsafe.Pointer(&cond))); hr.Failed() || cond == nil {
-		return nil, fmt.Errorf("get_ControlViewCondition failed (HRESULT %s)", hr)
+		return nil, 0, fmt.Errorf("get_ControlViewCondition failed (HRESULT %s)", hr)
 	}
 	defer release(cond)
 
-	var items []comPtr
 	level := []comPtr{root} // root is released above; every other element is owned
 	visited := 0
 	for depth := 0; depth < maxTabDepth && len(level) > 0; depth++ {
@@ -189,7 +202,11 @@ func (th *thread) tabItems(hwnd uint64) ([]comPtr, error) {
 		for _, node := range level {
 			var kids []comPtr
 			if visited < maxTabNodes {
-				kids, _ = findChildren(node, cond)
+				var hr HRESULT
+				kids, hr = findChildren(node, cond)
+				if hr.Failed() && !failed.Failed() {
+					failed = hr
+				}
 			}
 			for _, k := range kids {
 				visited++
@@ -213,5 +230,5 @@ func (th *thread) tabItems(hwnd uint64) ([]comPtr, error) {
 			release(node)
 		}
 	}
-	return items, nil
+	return items, failed, nil
 }

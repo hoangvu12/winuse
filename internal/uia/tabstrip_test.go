@@ -9,6 +9,7 @@ package uia
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -121,6 +122,19 @@ func TestSettleTabStripWaitsForALazyStrip(t *testing.T) {
 	}, func() error { walks++; return ErrNoTabStrip })
 	if !errors.Is(err, ErrNoTabStrip) || walks < 2 || time.Since(start) > time.Second {
 		t.Errorf("a strip that never shows: %v after %d walks in %s, want ErrNoTabStrip after a few walks within the budget", err, walks, time.Since(start))
+	}
+
+	// A walk whose calls failed (Chrome after a download) is retried too.
+	walks = 0
+	err = settleTabStrip(ctx, time.Hour, time.Millisecond, noSleep, func() error {
+		walks++
+		if walks < 2 {
+			return fmt.Errorf("%w (HRESULT 0x80004005)", ErrTabStripUnanswered)
+		}
+		return nil
+	})
+	if err != nil || walks != 2 {
+		t.Errorf("an unanswered walk, then a strip: %v after %d walks", err, walks)
 	}
 
 	refused := errors.New("no such tab")
