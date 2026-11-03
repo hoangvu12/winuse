@@ -66,3 +66,9 @@ Open decision: the stdin format (`winuse batch -`). agent-desktop's PR #439 read
 1. The same tokens as the command line (`<window> [--timeout s] [--stop-on-error] <action> ... then ...`), split on whitespace with double quotes grouping. This needs a quoting rule of winuse's own.
 2. Recommended: one step per line in the CLI step syntax, with no `then` needed. The first line is the Window and the Batch flags, and double quotes group words. Long or quote-heavy text stops fighting the shell, which is what #439 is for.
 3. The wire JSON (`protocol.BatchArgs`: `{"window":..,"steps":[{"kind":..,"args":{..}}]}`). This is closest to agent-desktop, but it exposes the wire argument names as a user format.
+
+### 2026-11-03: merged main (4fabe2a)
+
+- One conflict, in test/e2e/README.md. Both sides are kept: this ticket's Batch wording for `TestHeadedOnlyActionsAreRefusedWithoutTheFlag`, and main's headless-max 11 sentence and its 11 and 12 test paragraphs.
+- Three Batch tests from main expected the old `ok`. They now expect the step lines: `TestBatchPointStepsKeepTheHeadlessScope` (each step's `ok (clicked element 5 ...)` comes back), `TestBatchPostedStepsArePassive` and `TestDesktopWaitIsABatchStep` (dp-03).
+- main's new e2e files run no Batch. The four checks pass after the merge.
