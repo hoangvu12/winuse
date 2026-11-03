@@ -72,6 +72,10 @@ type Options struct {
 	// only with such a grant from the foreground process, or in input
 	// states a test cannot arrange.
 	AllowForeground uint32
+	// IgnoreClose makes the main window ignore WM_CLOSE, as an App that
+	// asks to save keeps its Window: close-app --force must end it
+	// (desktop-parity ticket 10).
+	IgnoreClose bool
 }
 
 // Main runs the fixture app: creates the windows, pumps messages until the
@@ -224,6 +228,9 @@ func (a *app) wndMain(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		procPostQuitMessage.Call(0)
 		return 0
 	case wmClose:
+		if a.opts.IgnoreClose {
+			return 0
+		}
 		procDestroyWindow.Call(hwnd)
 		return 0
 	case wmWindowPosChanged:

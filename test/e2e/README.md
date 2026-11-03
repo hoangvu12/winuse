@@ -394,6 +394,16 @@ still the foreground window afterwards. The shared helpers are in
   retry, leaving the fixture at its size and the cover in front;
   `--headed maximize-window` brings the fixture to the foreground and
   maximizes it (IsZoomed), and `restore-window` returns it to its size.
+- `TestCloseAppClosesTwoWindowsWithOneCommand` (`close_app_test.go`,
+  desktop-parity ticket 10): two instances of a uniquely named copy of the
+  fixture, closed by one `close-app <name>`, which prints `ok` once both
+  processes have exited; a plain fixture beside them stays open. The copy's
+  name keeps close-app away from any process the test did not start.
+- `TestCloseAppForceEndsAnAppThatStaysOpen` (`close_app_test.go`): the
+  copy with `-ignore-close` stays open on `close-app`, which prints the
+  still-running `ok`; `close-app --force` then ends its process. The
+  protected-process refusal is tested offline only: a live test would aim
+  at the user's own explorer.exe.
 - `TestLaunchAppKeepsTheForeground`, `TestLaunchAppMinimized` and
   `TestLaunchAppNotepadReportsTheForeground` (`launch_noactivate_test.go`,
   headless-max ticket 01): a cover fixture is made the foreground with

@@ -443,3 +443,8 @@ no `@x,y` points, which stay per Window. Codex captures Windows only.
 agent-desktop's `maximize`; Windows has no non-activating maximize, so it
 is the one Headed Window Action and is refused with nothing sent unless
 `--headed`. **extension**.
+`close-app` posts WM_CLOSE to every Window of an App and waits for its
+processes to exit, and `--force` then ends the ones still running,
+refusing agent-desktop's protected Windows processes; it is the only
+command that ends a process. Codex has no close tool.
+**extension**.
