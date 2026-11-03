@@ -150,7 +150,8 @@ administrator Windows, with the advice to start winuse elevated.
 - Keys into Apps that read raw input or GetAsyncKeyState, and into UWP
   Apps with keystroke semantics.
 - IME composition outside CDP.
-- activate-window, and Raise of a top-level Window.
+- activate-window, maximize-window (desktop-parity ticket 11), and Raise
+  of a top-level Window.
 - A minimized Store app: it has no UI while minimized, and restoring it
   brings it to the front. Launching one takes the foreground too.
 - A minimized Chromium or Electron Window through the message routes.

@@ -171,6 +171,10 @@ type Services struct {
 	Foreground        func() uint64                                // GetForegroundWindow: restore-window's and launch-app's self-activation check
 	WindowPID         func(hwnd uint64) uint32                     // the Window's process: another Window of the same App
 	Sleep             func(d time.Duration)                        // the verification polls' pause; nil: time.Sleep
+	// MaximizeWindow is maximize-window's call (desktop-parity ticket 11),
+	// ShowWindowAsync(SW_MAXIMIZE): it activates, so it runs only after the
+	// Headed pipeline's activation.
+	MaximizeWindow func(hwnd uint64) error
 
 	// StartApp starts a resolved App for launch-app with a non-activating
 	// show state (headless-max ticket 01). Nil falls back to apps.StartApp;
@@ -289,6 +293,7 @@ func CommandsWith(s Services) map[string]Command {
 		"list-apps":                listApps(store),
 		"launch-app":               launchApp(s, store),
 		StatusCommand:              statusCommand(s),
+		"maximize-window":          maximizeWindow(s), // windowactions.go, desktop-parity ticket 11
 	}
 	// The Batch dispatches its steps to the other commands, and brackets
 	// itself as one armed Esc scope and one overlay bracket around them
@@ -554,6 +559,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.Sleep == nil {
 		s.Sleep = time.Sleep
+	}
+	if s.MaximizeWindow == nil {
+		s.MaximizeWindow = win.Maximize
 	}
 	if s.StartApp == nil {
 		s.StartApp = apps.StartApp

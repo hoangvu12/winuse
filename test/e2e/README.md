@@ -382,6 +382,12 @@ still the foreground window afterwards. The shared helpers are in
   it when it has not been the foreground since it started, and whether a
   process the test starts takes the foreground at launch depends on the
   desktop's input state, so it skipped on most runs.
+- `TestMaximizeWindowNeedsHeaded` (`window_actions_test.go`,
+  desktop-parity ticket 11): on a covered fixture, `maximize-window`
+  without `--headed` is refused with "nothing was sent" and the `--headed`
+  retry, leaving the fixture at its size and the cover in front;
+  `--headed maximize-window` brings the fixture to the foreground and
+  maximizes it (IsZoomed), and `restore-window` returns it to its size.
 - `TestLaunchAppKeepsTheForeground`, `TestLaunchAppMinimized` and
   `TestLaunchAppNotepadReportsTheForeground` (`launch_noactivate_test.go`,
   headless-max ticket 01): a cover fixture is made the foreground with

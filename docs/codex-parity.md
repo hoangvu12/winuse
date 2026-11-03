@@ -431,4 +431,7 @@ foreground instead. Codex switches tabs only with keys.
 empty the clipboard (text, an image as PNG, a file list), like
 agent-desktop's: Desktop commands that name no Window, need no
 foreground and refuse a clipboard owner that does not respond. Codex has
-no clipboard tool. **extension**.
+no clipboard tool. `maximize-window` (desktop-parity 11) maximizes a
+Window for real, like agent-desktop's `maximize`; Windows has no
+non-activating maximize, so it is the one Headed Window Action and is
+refused with nothing sent unless `--headed`. **extension**.

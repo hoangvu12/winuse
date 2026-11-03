@@ -239,8 +239,9 @@ default:
   `scroll`, and `select-text`, which has no Headed form.
 - `invoke-menu`, a command of a classic menu bar, which has no Headed
   form either.
-- Every Window Action: `restore-window`, `minimize-window`, `move-window`,
-  `resize-window` and `close-window`.
+- Every Window Action but one: `restore-window`, `minimize-window`,
+  `move-window`, `resize-window` and `close-window`. `maximize-window` is
+  Headed only.
 - `press-key` Return or Escape on a classic dialog, `type-text` into a
   focused classic edit box, and `type-text --into` a classic edit box or a
   Page field you name, as described in "Fill in fields, keys and text".
@@ -251,8 +252,8 @@ Every other Action is a Headed Action. winuse brings the Window to the
 foreground, uses the real pointer and keyboard, and frames the Window with a
 banner telling the user that winuse is in control and Esc stops it. Headed
 applies to every `@x,y` form, `--count 2|3`, `--button right|middle`,
-`drag`, `hover`, `activate-window`, Raise, and `press-key` and `type-text`
-anywhere else. A Headed Action activates its Window itself, so use
+`drag`, `hover`, `activate-window`, `maximize-window`, Raise, and
+`press-key` and `type-text` anywhere else. A Headed Action activates its Window itself, so use
 `activate-window` only when focus drifted and you must restore it first.
 
 The user sees each Headless Action through the Agent Cursor, a second cursor
@@ -270,7 +271,8 @@ Window State.
 
 `--headed` forces the Headed way for any Action that has a Headless form, as
 in `winuse --headed click 101 3`. On a Batch it makes every step Headed.
-Window Actions have no Headed form. It goes before the command or anywhere
+Window Actions have no Headed form, except `maximize-window`, which has
+only one and needs `--headed`. It goes before the command or anywhere
 after it, except inside `type-text`'s text, `set-value`'s value and
 `clipboard-set`'s text, where a `--headed` token is literal text. Put the
 flag before the command there. Use
@@ -521,15 +523,25 @@ winuse minimize-window <window>
 winuse move-window <window> <x> <y>              # visible frame top-left, screen physical pixels
 winuse resize-window <window> <width> <height>   # visible frame size, physical pixels
 winuse close-window <window>                     # the same request as the close button
+winuse --headed maximize-window <window>         # a real maximize; takes the foreground
 ```
 
 Window Actions change the Window without bringing it to the front, read it
-back, and print `ok`. They are not Batch steps.
+back, and print `ok`. They are not Batch steps. `maximize-window` is the
+exception.
 
+- `maximize-window` maximizes the Window for real, as its maximize button
+  does. Windows cannot maximize a Window without bringing it to the front,
+  so it needs `--headed`: it brings the Window to the foreground under the
+  banner, maximizes it and reads the maximized state back. Without
+  `--headed` it is refused with nothing sent. Tell the user first if they
+  are working in another Window. To keep their foreground, `move-window`
+  and `resize-window` the Window to fill the monitor instead; it then looks
+  maximized but is not. A Window that is already maximized prints `ok`.
 - A Window that was maximized before it was minimized comes back at its
   normal size, because Windows cannot maximize without activating. The
-  output says so. Use `activate-window` when the user wants it maximized and
-  in front.
+  output says so. Use `winuse --headed maximize-window` when the user wants
+  it maximized again.
 - Some Apps bring themselves to the front when they are restored, even
   though winuse does not activate them. Expect it most from an App that
   has not been in front since it started, for example one launched in the
@@ -882,6 +894,7 @@ hover <window> <element>            # a Page Element, Headless
 activate-window <window>
 restore-window <window> | minimize-window <window> | close-window <window>
 move-window <window> <x> <y> | resize-window <window> <width> <height>
+maximize-window <window>            # needs --headed: takes the foreground
 batch <window> [--timeout <s>] <action> [args] [then <action> [args]] ...
 navigate <window> <url> [--wait load|domcontentloaded|none] | back | forward | reload <window>
 wait <window> selector <css> | text <text> | url <url> | load | download [--timeout <s>]

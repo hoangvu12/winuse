@@ -39,7 +39,8 @@ headless (the default; your foreground, pointer and keyboard stay untouched):
   text with no newline, tab or other control character; screenshots from
   get-window-state --screenshot and zoom (--headed activates the Window
   first); and the Window Actions restore-, minimize-, move-, resize- and
-  close-window, which have no headed form. Every other Action is headed.
+  close-window, which have no headed form (maximize-window is headed
+  only). Every other Action is headed.
   tab new, tab close and tab switch are headless (on a launched or cloned
   browser, tab switch selects the Tab in the Window's tab strip; --headed
   switches with real keys in the foreground instead). In a
@@ -175,6 +176,10 @@ const usageTail = `);
                                normal size without activating it (the output
                                says when the App brings itself to the front)
   minimize-window <window>    minimize a Window without activating another
+  maximize-window <window>    maximize a Window for real; headed only: Windows
+                               cannot maximize without bringing the Window to
+                               the foreground, so without --headed nothing is
+                               sent
   move-window <window> <x> <y>
                                move the Window's visible frame top-left to a
                                screen point, in physical pixels
@@ -380,6 +385,8 @@ func Main(args []string) int {
 		return moveWindowCmd(args[1:])
 	case "resize-window":
 		return resizeWindowCmd(args[1:])
+	case "maximize-window":
+		return maximizeWindowCmd(args[1:], headed) // window.go, desktop-parity ticket 11
 	case "browser":
 		return browserCmd(args[1:])
 	case "tab":
