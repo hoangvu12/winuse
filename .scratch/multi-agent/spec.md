@@ -49,7 +49,7 @@ agent-desktop and cua both serialize every input-producing action machine-wide. 
 | 07 | UIA worker pool with per-App affinity | M-L | done (live e2e run still to do) |
 | 08 | Polite real input | M | done (live e2e pending) |
 | 09 | Window identity check before writes | S | done |
-| 10 | Opt-in e2e for several agents | M | ready-for-agent |
+| 10 | Opt-in e2e for several agents | M | done (live e2e runs still to do) |
 | 11 | Insertion caret after a Headless type-text or set-value (split from 04) | S-M | done (live e2e pending) |
 
 Order: 01, 02, then 03, 04, 05, 09 in any order, then 06, 07, 08, then 10.
