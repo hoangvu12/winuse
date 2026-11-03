@@ -86,7 +86,8 @@ window action work this way. Pass `--post` to send keys, text or clicks
 to a background window instead, which some apps ignore.
 
 Press Esc at any time to stop winuse. It refuses to act on administrator
-windows or a locked screen, and it never presses the Windows key. It also
+windows or a locked screen, and it presses the Windows key only for
+`--headed open-shell notifications` or `quick-settings`. It also
 refuses Alt+F4, Alt+Tab and Ctrl+Shift+Escape unless you pass `--force`.
 
 ## Browsers
