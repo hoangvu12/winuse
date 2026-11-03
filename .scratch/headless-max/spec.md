@@ -35,7 +35,7 @@ Close every gap that has a route, and say plainly where none exists.
 |---|---|---|---|
 | 01 | Launch without the foreground, and launch options | S | done (live e2e not run yet) |
 | 02 | restore-window reports self-activation | S | done |
-| 03 | EnableWindow guard against self-activation | S | ready-for-agent (detect and report) |
+| 03 | EnableWindow guard against self-activation | S | done (detect and report; live e2e run still to do) |
 | 04 | Occlusion flag for launched browsers | S | done |
 | 05 | Headless tab switch on launched browsers | S | done (live e2e run still to do) |
 | 06 | Accelerator lookup route for press-key | S | ready-for-agent (low priority) |

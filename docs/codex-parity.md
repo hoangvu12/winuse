@@ -243,7 +243,10 @@ Select, `press-key`, `set-value` and a Batch, the `ok` may be followed by
 popup of the same App, with its Window ID) or the target Window closing,
 and a Page Action's JavaScript dialog or new Tab (desktop-parity 02,
 agent-desktop's `data.surfaces`); Codex finds a new Window only through
-the next `list_windows`. **intentionally different**.
+the next `list_windows`. A Headless, Window or Page Action whose App took
+the foreground by itself ends with `Note: the App took the foreground`
+(headless-max 03); a Headed one never does, since it takes the foreground
+on purpose. **intentionally different**.
 
 ### timeouts
 

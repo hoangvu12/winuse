@@ -416,6 +416,12 @@ still the foreground window afterwards. The shared helpers are in
   `get-window <id>` finds that Window, and a Headless Escape on it prints
   `Note: window <id> closed`. The foreground stays put. Every other test
   accepts such note lines after `ok` and logs them (`assertActionOK`).
+- `TestHeadlessClickReportsSelfActivation` (`self_activation_test.go`,
+  headless-max 03): the same click on the covered fixture must end with
+  `Note: the App took the foreground` exactly when the fixture holds the
+  foreground right after it, and never otherwise. The App only takes the
+  foreground when the foreground lock has lapsed (in the probe, the
+  user's last-input process had exited), so the log says which case ran.
 - `TestHeadlessTypeTextIntoPasswordEdit`: a posted Tab moves the focus to
   the password Edit, then `type-text` fills it and the output is exactly
   `ok`, without the text.
@@ -495,7 +501,7 @@ Run only these tests:
 
 ```
 set WINUSE_E2E=1
-go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted|OpenedAndClosed" ./test/e2e
+go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted|OpenedAndClosed|SelfActivation" ./test/e2e
 ```
 
 ## The clipboard test
