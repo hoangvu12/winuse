@@ -272,6 +272,7 @@ type pageRun struct {
 // section 4), so there is no Ready or integrity refusal.
 func (s Services) runPage(ctx context.Context, run pageRun) (string, *Error) {
 	w, o := run.w, run.origin
+	noteRoute(ctx, w, protocol.RouteCDP) // trace.go
 	if locked, desktop := s.Locked(); locked {
 		return "", nothingSent(lockedDesktopFailure(desktop))
 	}
@@ -699,6 +700,7 @@ type pageInput struct {
 // Cursor, the input with its Esc checkpoints and dialog race, and the
 // ripple once something was delivered.
 func (s Services) runPageInput(ctx context.Context, w win.WindowInfo, o *page.Origin, p pageInput) (string, *Error) {
+	noteRoute(ctx, w, protocol.RouteCDP) // trace.go
 	if locked, desktop := s.Locked(); locked {
 		return "", nothingSent(lockedDesktopFailure(desktop))
 	}

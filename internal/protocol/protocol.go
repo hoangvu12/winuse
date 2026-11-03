@@ -177,6 +177,10 @@ type Request struct {
 	// Cursor and messages show. Both empty: the shared default Agent.
 	Agent      string `json:"agent,omitempty"`
 	AgentLabel string `json:"agent_label,omitempty"`
+
+	// Trace asks for Response.Trace (desktop-parity ticket 19, trace.go):
+	// the CLI sets it under --trace or WINUSE_TRACE.
+	Trace bool `json:"trace,omitempty"`
 }
 
 // ListWindowsArgs are list-windows's optional arguments (desktop-parity
@@ -527,6 +531,10 @@ type Response struct {
 	Err   string `json:"err,omitempty"`   // single-line error message
 	Hint  string `json:"hint,omitempty"`  // recovery hint printed after the error
 	Exit  int    `json:"exit,omitempty"`  // exit code the CLI should use on failure
+
+	// Trace is the helper's part of a trace line (desktop-parity ticket
+	// 19, trace.go), only when Request.Trace asked for it.
+	Trace *Trace `json:"trace,omitempty"`
 }
 
 // ErrLineTooLarge is returned when a line exceeds MaxLine.

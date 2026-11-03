@@ -317,6 +317,7 @@ func (s Services) runWindowAction(ctx context.Context, ref string, act func(ctx 
 	if rerr != nil {
 		return "", rerr
 	}
+	noteRoute(ctx, w, protocol.RouteHeadless) // trace.go
 	if locked, desktop := s.Locked(); locked {
 		return "", nothingSent(lockedDesktopFailure(desktop))
 	}

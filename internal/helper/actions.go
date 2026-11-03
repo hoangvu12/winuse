@@ -205,6 +205,7 @@ func (s Services) runAction(ctx context.Context, ref string, act func(ctx contex
 	if rerr != nil {
 		return "", rerr
 	}
+	noteRoute(ctx, w, protocol.RouteHeaded) // trace.go
 	if locked, desktop := s.Locked(); locked {
 		return "", lockedDesktopFailure(desktop)
 	}

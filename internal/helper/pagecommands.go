@@ -339,6 +339,7 @@ func (s Services) runPageWindow(ctx context.Context, ref string, run pageWindowR
 	if rerr != nil {
 		return "", nothingSent(rerr)
 	}
+	noteRoute(ctx, pw.w, protocol.RouteCDP) // trace.go
 	if pw.tab.Internal {
 		rerr := browserPageError(pw.w, pw.tab)
 		if run.browserPage != nil {

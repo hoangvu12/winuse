@@ -442,4 +442,11 @@ no `@x,y` points, which stay per Window. Codex captures Windows only.
 `maximize-window` (desktop-parity 11) maximizes a Window for real, like
 agent-desktop's `maximize`; Windows has no non-activating maximize, so it
 is the one Headed Window Action and is refused with nothing sent unless
-`--headed`. **extension**.
+`--headed`. `--trace <file>` (or `WINUSE_TRACE`, desktop-parity 19)
+appends one JSON line per command: the time, the command, the Agent, the
+Window, the arguments, the routes taken, the outcome, up to 4 KiB of
+output and the duration. Screenshots are kept by path, and a Window
+State only as its line count. Typed text, values, clipboard content and
+eval are redacted unless `--trace-unredacted`. The file rolls over at
+32 MiB, and `trace show` summarizes it, like agent-desktop's session
+traces without the HTML export. Codex keeps no trace. **extension**.
