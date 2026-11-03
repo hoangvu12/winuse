@@ -100,8 +100,8 @@ func HeadlessReady(hwnd uint64) error {
 // Activate brings hwnd to the foreground and verifies it is in front,
 // using the standard foreground-lock workarounds (win32.md §5): a no-op
 // injected move to satisfy "the caller received the last input event",
-// plus AttachThreadInput to the current foreground thread for the
-// SetForegroundWindow call.
+// and only when Windows still refuses, AttachThreadInput to the current
+// foreground thread for the SetForegroundWindow call (bringForward).
 //
 // A Window disabled by its open modal dialog fails with a
 // ModalDialogError naming the dialog. A minimized Window is restored —
@@ -140,28 +140,63 @@ func Activate(hwnd uint64) error {
 	// classic Alt trick).
 	sendInput(mouseEvent(mouseEventfMove))
 
-	// Workaround 2: attach to the current foreground thread's input queue
-	// for the call, sharing its activation permission. The queues stay
-	// attached only for the call (key state is shared while attached).
-	if fg := windows.GetForegroundWindow(); fg != 0 {
-		me := windows.GetCurrentThreadId()
-		if fgTID, err := windows.GetWindowThreadProcessId(fg, nil); err == nil && fgTID != 0 && fgTID != me {
-			procAttachThreadInput.Call(uintptr(me), uintptr(fgTID), 1)
-			defer procAttachThreadInput.Call(uintptr(me), uintptr(fgTID), 0)
-		}
+	setForeground := func() bool {
+		r, _, _ := procSetForegroundWindow.Call(uintptr(h))
+		procBringWindowToTop.Call(uintptr(h))
+		return r != 0
 	}
-	procSetForegroundWindow.Call(uintptr(h))
-	procBringWindowToTop.Call(uintptr(h))
-
 	// Verify: poll briefly for the (asynchronous) foreground change.
-	deadline := time.Now().Add(activateVerifyTimeout)
-	for time.Now().Before(deadline) {
-		if windows.GetForegroundWindow() == h {
-			return nil
+	verify := func() bool {
+		deadline := time.Now().Add(activateVerifyTimeout)
+		for time.Now().Before(deadline) {
+			if windows.GetForegroundWindow() == h {
+				return true
+			}
+			time.Sleep(activatePollInterval)
 		}
-		time.Sleep(activatePollInterval)
+		return false
+	}
+	if bringForward(setForeground, attachForeground, verify) {
+		return nil
 	}
 	return &NotForegroundError{WindowID: hwnd}
+}
+
+// bringForward makes the foreground call (setForeground reports whether
+// Windows accepted it) and verifies it; only when Windows refused it, or
+// the change did not show, it attaches to the foreground thread
+// (Workaround 2: attach returns the detach) and calls again. Attaching
+// is the last resort: the foreground thread's input queue is shared
+// while attached, and keyboard input it had not handled yet is lost when
+// the queues split again. A Headed type-text's give-back attached to the
+// target it had just typed into, and the tail of the text never reached
+// it (e2e live run, 2026-11-03); attaching to the user's own foreground
+// thread could drop their keys the same way.
+func bringForward(setForeground func() bool, attach func() (detach func()), verify func() bool) bool {
+	if setForeground() && verify() {
+		return true
+	}
+	detach := attach()
+	setForeground()
+	detach()
+	return verify()
+}
+
+// attachForeground attaches the calling (OS-locked) thread to the
+// current foreground thread's input queue, sharing its activation
+// permission, and returns the detach.
+func attachForeground() (detach func()) {
+	fg := windows.GetForegroundWindow()
+	if fg == 0 {
+		return func() {}
+	}
+	me := windows.GetCurrentThreadId()
+	fgTID, err := windows.GetWindowThreadProcessId(fg, nil)
+	if err != nil || fgTID == 0 || fgTID == me {
+		return func() {}
+	}
+	procAttachThreadInput.Call(uintptr(me), uintptr(fgTID), 1)
+	return func() { procAttachThreadInput.Call(uintptr(me), uintptr(fgTID), 0) }
 }
 
 func isEnabled(h windows.HWND) bool {
