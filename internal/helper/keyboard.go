@@ -151,6 +151,9 @@ func pressKey(s Services) Command {
 				return s.PostKeys(target, chord)
 			})
 		}
+		if out, rerr, ok := s.pressOverflowEscape(ctx, args, a.Window); ok {
+			return out, rerr // Escape on the tray overflow (shell.go)
+		}
 		if !a.Headed {
 			// The Page holds the focus: the key goes over the Browser
 			// Connection (pageactions.go).

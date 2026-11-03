@@ -31,7 +31,9 @@ func Commands() map[string]Command {
 // list_windows. With details (desktop-parity 22) each line gains the
 // details column before the title (win.FormatWindowsDetailed); with app
 // only that App's Windows are listed, matched as a Window reference
-// matches an App name, and an App with no Window fails. It only reads
+// matches an App name, and an App with no Window fails. With shell
+// (desktop-parity 09, shell.go) the shell surfaces join the listing in
+// z-order. It only reads
 // window metadata (never sends input, never activates).
 func listWindows(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
@@ -40,10 +42,13 @@ func listWindows(s Services) Command {
 			dec := json.NewDecoder(bytes.NewReader(args))
 			dec.DisallowUnknownFields()
 			if err := dec.Decode(&a); err != nil {
-				return "", Fail("list-windows: invalid arguments: "+err.Error(), "usage: winuse list-windows [--details] [--app <name>]")
+				return "", Fail("list-windows: invalid arguments: "+err.Error(), "usage: winuse list-windows [--details] [--app <name>] [--shell]")
 			}
 		}
 		ws, err := s.Windows()
+		if a.Shell {
+			ws, err = s.shellListing()
+		}
 		if err != nil {
 			return "", Fail("enumerating windows: "+err.Error(), "")
 		}

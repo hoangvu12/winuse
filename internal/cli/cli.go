@@ -51,14 +51,17 @@ headless (the default; your foreground, pointer and keyboard stay untouched):
   they name no Window and have no headed form.
 
 commands:
-  list-windows [--details] [--app <name>]
+  list-windows [--details] [--app <name>] [--shell]
                                list visible Windows: Window ID, App and title;
                                --details adds a column before the title with the
                                visible frame "x,y WxH" (what move-window and
                                resize-window take), "pid N" and the flags focused,
                                minimized, maximized and admin; --app lists one
-                               App's Windows (App name or executable name)
-  get-window <window>         print one Window's line (Window ID, App and title),
+                               App's Windows (App name or executable name);
+                               --shell adds the shell surfaces: the taskbar, and
+                               the tray overflow, Start and the Action Center
+                               while open, read and acted on by Window ID
+  get-window <window>        print one Window's line (Window ID, App and title),
                                resolved by Window ID or an unambiguous App name
   list-apps                   list running and recently used Apps, with their Windows
   launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <seconds>]
@@ -427,12 +430,14 @@ func Main(args []string) int {
 	}
 }
 
-const listWindowsUsage = "usage: winuse list-windows [--details] [--app <name>]"
+const listWindowsUsage = "usage: winuse list-windows [--details] [--app <name>] [--shell]"
 
 // listWindowsCmd prints one line per visible Window:
 // "<Window ID>\t<App>\t<title>". --details adds the details column before
-// the title; --app keeps one App's Windows (desktop-parity 22). Without
-// flags the request carries no arguments, Codex's list_windows.
+// the title; --app keeps one App's Windows (desktop-parity 22); --shell
+// adds the shell surfaces: the taskbar, and the tray overflow, Start and
+// the Action Center while open (desktop-parity 09). Without flags the
+// request carries no arguments, Codex's list_windows.
 func listWindowsCmd(args []string) int {
 	a, err := parseListWindowsArgs(args)
 	if err != nil {
@@ -452,7 +457,7 @@ func listWindowsCmd(args []string) int {
 }
 
 // parseListWindowsArgs parses list-windows's flags: --details, and
-// --app <name> or --app=<name>.
+// --app <name> or --app=<name>, and --shell.
 func parseListWindowsArgs(args []string) (protocol.ListWindowsArgs, error) {
 	var a protocol.ListWindowsArgs
 	for i := 0; i < len(args); i++ {
@@ -460,6 +465,8 @@ func parseListWindowsArgs(args []string) (protocol.ListWindowsArgs, error) {
 		switch {
 		case arg == "--details":
 			a.Details = true
+		case arg == "--shell":
+			a.Shell = true
 		case arg == "--app" || strings.HasPrefix(arg, "--app="):
 			if a.App != "" {
 				return protocol.ListWindowsArgs{}, errors.New("--app is given twice")

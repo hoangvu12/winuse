@@ -238,6 +238,17 @@ type Services struct {
 	Displays       func() ([]win.Display, error)
 	CaptureDisplay func(d win.Display) (shot.Frame, error)
 
+	// PostOverflowEscape closes the open tray overflow (desktop parity
+	// ticket 09, shell.go): Escape posted to its XAML island's input
+	// windows, returning how many messages were posted. Nil falls back to
+	// win.PostOverflowEscape; tests fake it.
+	PostOverflowEscape func(hwnd uint64) (int, error)
+	// ShellKind names the shell surface a Window ID is from its class and
+	// process ("" for any other window), the shell guard's first, cheap
+	// check. Nil falls back to win.ShellKindOf, which answers "" inside a
+	// go test binary; tests fake it.
+	ShellKind func(hwnd uint64) string
+
 	// actionGate serializes every command that activates a Window, injects
 	// input or shows the overlay (finding 11): two concurrent CLI calls
 	// must never interleave control of the desktop. It is a capacity-1
@@ -308,6 +319,7 @@ func CommandsWith(s Services) map[string]Command {
 	// (batch.go, tickets 11 and 12, finding 12). It dispatches to the raw
 	// step commands: the batch as a whole is serialized below, and the
 	// action gate is not reentrant.
+	s.guardShell(cmds) // shell.go, desktop parity ticket 09: the Batch's steps too
 	cmds["batch"] = batch(cmds, s)
 	// The Browser Connection commands (browser.go).
 	for name, cmd := range browserCommands(s) {
@@ -586,6 +598,12 @@ func defaultServices(s Services) Services {
 	}
 	if s.StartApp == nil {
 		s.StartApp = apps.StartApp
+	}
+	if s.PostOverflowEscape == nil {
+		s.PostOverflowEscape = win.PostOverflowEscape
+	}
+	if s.ShellKind == nil {
+		s.ShellKind = win.ShellKindOf
 	}
 	if s.Surfaces == nil {
 		s.Surfaces = func() ([]win.WindowInfo, error) {
