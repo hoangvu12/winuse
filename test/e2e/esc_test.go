@@ -20,10 +20,11 @@
 //     way Codex does — the app must not act on the stop key);
 //   - the in-control overlay is gone once winuse stopped.
 //
-// The injected test is self-contained: while a Batch types, a concurrent
-// `--headed press-key Escape` injects the key — it must reach the app (the fixture
-// records it) without stopping the Batch, which still prints each step's
-// ok.
+// The injected test is self-contained: while a Batch types, the test
+// injects Escape with its own SendInput — it must reach the app (the
+// fixture records it) without stopping the Batch, which still prints each
+// step's ok. (A concurrent winuse press-key cannot inject it: it waits for
+// the desktop lane the Batch holds, ADR 0014 Decision 6.)
 
 package e2e
 
@@ -36,6 +37,8 @@ import (
 	"time"
 
 	"github.com/hoangvu12/winuse/internal/fixture"
+	"github.com/hoangvu12/winuse/internal/keys"
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 // escStopMessage is the user-facing line every Esc stop must print
@@ -205,11 +208,20 @@ func TestInjectedEscDoesNotStopTheBatch(t *testing.T) {
 		t.Fatal("the batch's typing never started")
 	}
 
-	// --headed: Escape on the fixture's main window (not a classic dialog)
-	// has no Headless route (headless-max ticket 21), and the point is an
-	// injected key the hook sees.
-	stdout, stderr, exit := runWinuse(t, []string{"--headed", "press-key", window, "Escape"}, "WINUSE_HELPER_IDLE="+e2eIdle)
-	assertActionOK(t, "press-key Escape while a batch types", stdout, stderr, exit)
+	// The test injects the Esc itself, with SendInput, into the foreground
+	// (the fixture, which the Headed Batch activated). A second winuse
+	// command cannot do it: a concurrent `--headed press-key` waits for the
+	// desktop lane the Batch holds and is refused past the wait (ADR 0014
+	// Decision 6, multi-agent ticket 06), which is right, since its keys
+	// would interleave with the Batch's typing. The hook ignores every
+	// injected key (LLKHF_INJECTED), whoever injects it.
+	esc, err := keys.Parse("Escape")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := win.PressChord(esc); err != nil {
+		t.Fatalf("injecting Escape: %v", err)
+	}
 
 	// The Batch finished normally: the injected key did not stop it.
 	select {

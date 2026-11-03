@@ -40,6 +40,11 @@ const (
 	classEdit   uint16 = 0x0081
 	classStatic uint16 = 0x0082
 	classCombo  uint16 = 0x0085
+	classList   uint16 = 0x0083
+
+	lbsNotify      = 0x0001
+	lbsExtendedSel = 0x0800
+	lbAddString    = 0x0180
 
 	idOK     = 1
 	idCancel = 2
@@ -124,11 +129,14 @@ var classicItems = []dlgItem{
 	{classCombo, ClassicComboID, wsTabStop | wsVScroll | cbsDropDownList, 55, 48, 158, 70, ""},
 	{classButton, idOK, wsTabStop | bsDefPushButton, 109, 79, 50, 14, "OK"},
 	{classButton, idCancel, wsTabStop | bsPushButton, 163, 79, 50, 14, "Cancel"},
+	// Last, so the controls above keep their Element Indexes (ClassicListID).
+	{classStatic, idStatic, 0, 7, 100, 44, 8, "Fruits:"},
+	{classList, ClassicListID, wsBorder | wsTabStop | wsVScroll | lbsNotify | lbsExtendedSel, 55, 100, 158, 52, ""},
 }
 
 // classicTemplate is the Classic Dialog's template.
 func classicTemplate() []uint16 {
-	return dialogTemplate(wsPopup|wsCaption|wsSysMenu|dsModalFrame|dsSetFont, 220, 100,
+	return dialogTemplate(wsPopup|wsCaption|wsSysMenu|dsModalFrame|dsSetFont, 220, 158,
 		ClassicDialogTitle, "Segoe UI", 9, classicItems)
 }
 
@@ -207,6 +215,13 @@ func (a *app) dlgClassic(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			for _, c := range ClassicColors {
 				p := utf16Ptr(c)
 				procSendMessageW.Call(combo, cbAddString, 0, uintptr(unsafe.Pointer(p)))
+				runtime.KeepAlive(p)
+			}
+		}
+		if list, _, _ := procGetDlgItem.Call(hwnd, ClassicListID); list != 0 {
+			for _, f := range ClassicFruits {
+				p := utf16Ptr(f)
+				procSendMessageW.Call(list, lbAddString, 0, uintptr(unsafe.Pointer(p)))
 				runtime.KeepAlive(p)
 			}
 		}
