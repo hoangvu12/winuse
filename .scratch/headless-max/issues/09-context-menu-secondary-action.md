@@ -112,5 +112,14 @@ Tests:
 
 Checks: `go build ./...`, `go vet ./...`, `go test ./...` and `go vet -tags e2e ./test/e2e` all pass.
 
-Not measured: WinForms ContextMenuStrip through a posted WM_CONTEXTMENU; Escape posted to a #32768 (the mnemonic to a #32768 was measured, Escape was not); WinUI 3 live; Chrome live (the PC runs it).
+Live on the laptop: `TestContextMenuOnACoveredEdit` passed (9.5 s, run alone under `.live-lock`, test-launched fixtures only). On the covered Classic Dialog's name Edit:
+- ContextMenu opened the Edit's own #32768, a menu of the fixture's process.
+- `click <menu> name:Select All` posted the mnemonic: the menu closed and the Edit selected all 11 characters.
+- `press-key <menu> Escape` closed the second menu.
+- A click on the cover closed the third, with the Note.
+- The cover kept the foreground throughout. No visible #32768 was left afterwards.
+
+The browser leg (`TestContextMenuOnACoveredBrowserPage`) did not run here: it is left to the PC.
+
+Not measured: WinForms ContextMenuStrip through a posted WM_CONTEXTMENU; WinUI 3 live; Chrome live (the PC runs it).
 
