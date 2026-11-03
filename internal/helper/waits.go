@@ -145,25 +145,49 @@ const (
 )
 
 // pollUntil runs check every interval until it holds, the wait passes,
-// ctx ends or the user presses Esc; a check's *Error ends it at once. The
-// wait is counted in intervals slept, as pollWindow counts it, so a faked
-// Sleep runs it instantly; on the real desktop ctx bounds it in time.
-func (s Services) pollUntil(ctx context.Context, want, interval time.Duration, stopped func() bool, check func() (bool, *Error)) (waitEnd, *Error) {
+// ctx ends or the user presses Esc; a check's *Error ends it at once, and
+// last is what the last check that answered returned. The wait is counted
+// in intervals slept, as pollWindow counts it, so a faked Sleep runs it
+// instantly; on the real desktop ctx bounds it in time.
+//
+// Each check runs on a goroutine of its own, so a check that blocks (a
+// Window list read or a UIA call that does not answer) still ends the
+// wait when ctx does: it is left to finish, and what it returns is
+// dropped. A check therefore hands its results back as its return values;
+// state it shares with later checks is touched by checks alone, which run
+// one at a time.
+func pollUntil[T any](ctx context.Context, sleep func(time.Duration), want, interval time.Duration, stopped func() bool, check func() (T, bool, *Error)) (last T, end waitEnd, e *Error) {
+	type answer struct {
+		v    T
+		held bool
+		e    *Error
+	}
 	for waited := time.Duration(0); ; waited += interval {
 		if stopped() {
-			return waitStopped, nil
+			return last, waitStopped, nil
 		}
-		held, e := check()
-		if e != nil {
-			return waitTimedOut, e
+		done := make(chan answer, 1)
+		go func() {
+			v, held, e := check()
+			done <- answer{v, held, e}
+		}()
+		var a answer
+		select {
+		case a = <-done:
+		case <-ctx.Done():
+			return last, waitTimedOut, nil
 		}
-		if held {
-			return waitHeld, nil
+		last = a.v
+		if a.e != nil {
+			return last, waitTimedOut, a.e
+		}
+		if a.held {
+			return last, waitHeld, nil
 		}
 		if waited >= want || ctx.Err() != nil {
-			return waitTimedOut, nil
+			return last, waitTimedOut, nil
 		}
-		s.Sleep(interval)
+		sleep(interval)
 	}
 }
 
@@ -224,14 +248,13 @@ func (s Services) waitWindow(ctx context.Context, a protocol.WaitArgs, want time
 	if target == "" {
 		return "", Fail("wait window: an App name or a title is required", waitUsageHint)
 	}
-	var found []win.WindowInfo
-	end, e := s.pollUntil(ctx, want, windowWaitPoll, stopped, func() (bool, *Error) {
+	found, end, e := pollUntil(ctx, s.Sleep, want, windowWaitPoll, stopped, func() ([]win.WindowInfo, bool, *Error) {
 		ws, err := s.Windows()
 		if err != nil {
-			return false, Fail("enumerating windows: "+err.Error(), "")
+			return nil, false, Fail("enumerating windows: "+err.Error(), "")
 		}
-		found = windowsMatching(ws, target)
-		return (len(found) > 0) != a.Gone, nil
+		found := windowsMatching(ws, target)
+		return found, (len(found) > 0) != a.Gone, nil
 	})
 	switch {
 	case e != nil:
@@ -239,8 +262,12 @@ func (s Services) waitWindow(ctx context.Context, a protocol.WaitArgs, want time
 	case end == waitStopped:
 		return "", escStopBeforeActError()
 	case end == waitTimedOut && a.Gone:
-		return "", waitTimeoutError(fmt.Sprintf("no Window of %q to be left", target), want,
-			"still open:\n"+strings.TrimSuffix(win.FormatWindows(found), "\n"), "the Window may be asking something first; read it with winuse get-window-state <window>")
+		seen := ""
+		if len(found) > 0 {
+			seen = "still open:\n" + strings.TrimSuffix(win.FormatWindows(found), "\n")
+		}
+		return "", waitTimeoutError(fmt.Sprintf("no Window of %q to be left", target), want, seen,
+			"the Window may be asking something first; read it with winuse get-window-state <window>")
 	case end == waitTimedOut:
 		return "", waitTimeoutError(fmt.Sprintf("a Window of %q", target), want, "",
 			"an App matches by its App name or executable name, a title by any part of it; run winuse list-windows")
@@ -282,20 +309,20 @@ func (s Services) waitTreeText(ctx context.Context, a protocol.WaitArgs, want ti
 		return "", Fail("this winuse helper cannot read a tree for a wait", "")
 	}
 	what := fmt.Sprintf("text %q in window %d", a.Value, w.ID)
-	end, e := s.pollUntil(ctx, want, treeWaitPoll, stopped, func() (bool, *Error) {
+	_, end, e := pollUntil(ctx, s.Sleep, want, treeWaitPoll, stopped, func() (struct{}, bool, *Error) {
 		if !s.WindowOpen(w.ID) {
-			return false, waitWindowClosed(what)
+			return struct{}{}, false, waitWindowClosed(what)
 		}
 		tree, err := peeker.PeekTree(ctx, w.ID, w.Title, win.AppExeName(w), s.Budget)
 		switch {
 		case err == nil:
-			return treeHasText(tree, a.Value), nil
+			return struct{}{}, treeHasText(tree, a.Value), nil
 		case errors.Is(err, uia.ErrWindowGone):
-			return false, waitWindowClosed(what)
+			return struct{}{}, false, waitWindowClosed(what)
 		case ctx.Err() != nil, errors.Is(err, uia.ErrWorkerGone):
-			return false, nil // the wait's end, or a replaced worker: the next poll says
+			return struct{}{}, false, nil // the wait's end, or a replaced worker: the next poll says
 		}
-		return false, treeReadError(err)
+		return struct{}{}, false, treeReadError(err)
 	})
 	switch {
 	case e != nil:
@@ -372,38 +399,37 @@ func (s Services) waitElement(ctx context.Context, a protocol.WaitArgs, want tim
 	if state == "value" {
 		what = fmt.Sprintf("element %d of window %d to read %q", index, w.ID, a.Value)
 	}
-	var last uia.ElementState
-	read, closed := false, false
-	end, e := s.pollUntil(ctx, want, treeWaitPoll, stopped, func() (bool, *Error) {
+	// read is shared by the checks alone (pollUntil runs them one at a
+	// time): the first read refuses a state the Element lacks.
+	read := false
+	last, end, e := pollUntil(ctx, s.Sleep, want, treeWaitPoll, stopped, func() (elementPoll, bool, *Error) {
 		st, err := held.State(ctx)
 		open := s.WindowOpen(w.ID)
 		switch {
 		case err == nil && state == "gone" && !open:
-			closed = true
-			return true, nil
+			return elementPoll{closed: true}, true, nil
 		case err == nil:
 		case errors.Is(err, uia.ErrStale) && state == "gone":
-			closed = !open
-			return true, nil
+			return elementPoll{closed: !open}, true, nil
 		case !open:
-			return false, waitWindowClosed(what)
+			return elementPoll{}, false, waitWindowClosed(what)
 		case errors.Is(err, uia.ErrStale):
-			return false, elementError(err, w, index)
+			return elementPoll{}, false, elementError(err, w, index)
 		case ctx.Err() != nil, errors.Is(err, uia.ErrWorkerGone):
-			return false, nil // the wait's end, or a replaced worker: the next poll says
+			return elementPoll{}, false, nil // the wait's end, or a replaced worker: the next poll says
 		default:
-			return false, Fail(fmt.Sprintf("reading element %d of window %d failed: %v", index, w.ID, err), "retry; read winuse get-window-state "+strconv.FormatUint(w.ID, 10))
+			return elementPoll{}, false, Fail(fmt.Sprintf("reading element %d of window %d failed: %v", index, w.ID, err), "retry; read winuse get-window-state "+strconv.FormatUint(w.ID, 10))
 		}
 		if !open {
-			return false, waitWindowClosed(what)
+			return elementPoll{}, false, waitWindowClosed(what)
 		}
 		if !read {
 			if e := elementStateRefusal(state, st, w, index); e != nil {
-				return false, e
+				return elementPoll{}, false, e
 			}
 		}
-		read, last = true, st
-		return elementStateHolds(state, a.Value, st), nil
+		read = true
+		return elementPoll{st: st, read: true}, elementStateHolds(state, a.Value, st), nil
 	})
 	switch {
 	case e != nil:
@@ -412,15 +438,23 @@ func (s Services) waitElement(ctx context.Context, a protocol.WaitArgs, want tim
 		return "", escStopBeforeActError()
 	case end == waitTimedOut:
 		seen := ""
-		if read {
-			seen = "it reads " + elementStateWord(state, last)
+		if last.read {
+			seen = "it reads " + elementStateWord(state, last.st)
 		}
 		return "", waitTimeoutError(what, want, seen,
 			"the Window may need another Action first; read winuse get-window-state "+strconv.FormatUint(w.ID, 10))
-	case closed:
+	case last.closed:
 		return "ok (the Window closed)\n", nil
 	}
 	return okOutput, nil
+}
+
+// elementPoll is what one poll of an element wait read: the state, when it
+// read one, and whether a gone Element went with its Window.
+type elementPoll struct {
+	st     uia.ElementState
+	read   bool
+	closed bool
 }
 
 // pageElementWaitError refuses an element wait on a Page Element: the Page

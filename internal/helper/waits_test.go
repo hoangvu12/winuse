@@ -571,3 +571,34 @@ func TestDesktopWaitIsABatchStep(t *testing.T) {
 		t.Fatalf("batch wait = %q, %v (held %v)", out, e, d.held)
 	}
 }
+
+// TestAWaitEndsAtItsDeadlineWhenAPollBlocks: a poll that never answers (a
+// Window list read stuck on a window, a UIA read stuck in a provider) does
+// not hold the wait past its timeout.
+func TestAWaitEndsAtItsDeadlineWhenAPollBlocks(t *testing.T) {
+	block := make(chan struct{})
+	defer close(block)
+	for name, a := range map[string]protocol.WaitArgs{
+		"window":  {For: "window", Value: "Calculator", TimeoutMS: 300},
+		"text":    {Window: "101", For: "text", Value: "Done", TimeoutMS: 300},
+		"element": {Window: "101", For: "element", ElementIndex: intp(1), State: "enabled", TimeoutMS: 300},
+	} {
+		d := newWaitDesk()
+		d.windows = func(n int) []win.WindowInfo {
+			if name == "window" {
+				<-block
+			}
+			return fakeWindows()
+		}
+		d.trees = func(int) *wstate.Tree { <-block; return cannedTree() }
+		d.states = func(int) (uia.ElementState, error) { <-block; return uia.ElementState{}, nil }
+		start := time.Now()
+		_, e := runWait(t, d, a)
+		if took := time.Since(start); took > 2*time.Second {
+			t.Errorf("%s: a blocked poll held the 300 ms wait for %s", name, took)
+		}
+		if e == nil || !strings.Contains(e.Msg, "the condition did not hold within") {
+			t.Errorf("%s: %v, want the timeout", name, e)
+		}
+	}
+}
