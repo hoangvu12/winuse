@@ -70,6 +70,7 @@ Live (under the lock, on this laptop):
 - Read-only: the shell CoreWindows on this desktop. ShellExperienceHost had no CoreWindow while no toast showed, so the banner's window properties could not be read without a toast.
 - The raiser up to Show: ToastNotifier.Setting read 2 (DisabledForUser), and the XmlDocument, CreateToastNotification, put_Tag, add_Activated and add_Dismissed calls all returned S_OK. Nothing was shown or registered, and no key was left.
 - `TestListNotificationsOnlyReads` passed (6.4 s), and `TestShellReadsTheTaskbar` passed again (2.1 s) after the shellKind change.
+- Rerun on the merged head 228cfbd (origin/main 1a727cc): `TestListNotificationsOnlyReads` passed (7.5 s), `TestShellReadsTheTaskbar` passed (1.0 s).
 - Not run (they change what the user sees and wait for the user's OK): the two toast tests, which need the Settings toggle on and restored, and the two open-shell tests.
 
 Open:
