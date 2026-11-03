@@ -353,6 +353,7 @@ func CommandsWith(s Services) map[string]Command {
 		if name != StatusCommand {
 			cmd = s.tracked(name, cmd)
 		}
+		cmd = s.tracedWindow(cmd) // a traced run names its Window (trace.go, desktop-parity ticket 19)
 		out[name] = cmd
 	}
 	return out
