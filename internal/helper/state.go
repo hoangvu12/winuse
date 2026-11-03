@@ -387,23 +387,101 @@ func observationOnlyCommand(name string) bool {
 // bounded by the waiting request's own budget: a request queued behind
 // another Action until its budget expired fails instead of acting late
 // (the server's central timeout policy reports it).
+//
+// Esc stops every agent (multi-agent ticket 05, ADR 0014 Decision 5): a
+// request waiting for the gate is stopped too, with nothing sent, when the
+// user presses Esc while it waits (WaitingEscWatch). One that arrives
+// after the press runs as usual.
 func (s Services) serialized(cmd Command) Command {
 	if s.actionGate == nil {
 		return cmd // a zero Services (no defaultServices): tests wrap nothing
 	}
 	gate := s.actionGate
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
-		select {
-		case gate <- struct{}{}:
-		case <-ctx.Done():
+		wait := s.beginWait()
+		if !wait.acquire(ctx, gate) {
+			if wait.stopped() {
+				return "", escStopBeforeActError()
+			}
 			return "", queuedOutError()
 		}
 		defer func() { <-gate }()
+		if wait.stopped() {
+			// The press landed in the instant the gate opened.
+			return "", escStopBeforeActError()
+		}
 		if err := ctx.Err(); err != nil {
 			// The budget expired in the instant the gate opened.
 			return "", queuedOutError()
 		}
 		return cmd(ctx, args)
+	}
+}
+
+// WaitingEscWatch is the Esc service's side of stopping requests that wait
+// for their turn (multi-agent 05): *win.EscWatcher. An EscWatch that does
+// not implement it (the test fakes, the no-op) stops only running work.
+type WaitingEscWatch interface {
+	BeginWait() uint64
+	EndWait()
+	StoppedSince(gen uint64) bool
+}
+
+var _ WaitingEscWatch = (*win.EscWatcher)(nil)
+
+// escWaitPoll is how often a waiting request looks for the user's Esc.
+const escWaitPoll = 25 * time.Millisecond
+
+// gateWait is one request's wait for the action gate.
+type gateWait struct {
+	esc   WaitingEscWatch // nil: no waiting stops
+	gen   uint64
+	ended bool
+}
+
+// beginWait starts a request's wait: from here a press stops it.
+func (s Services) beginWait() *gateWait {
+	w := &gateWait{}
+	if ew, ok := s.Esc.(WaitingEscWatch); ok {
+		w.esc, w.gen = ew, ew.BeginWait()
+	}
+	return w
+}
+
+// acquire waits for the gate until the request's budget ends or the user
+// presses Esc (false), and ends the waiting scope either way.
+func (w *gateWait) acquire(ctx context.Context, gate chan struct{}) bool {
+	defer w.end()
+	var tick <-chan time.Time
+	if w.esc != nil {
+		t := time.NewTicker(escWaitPoll)
+		defer t.Stop()
+		tick = t.C
+	}
+	for {
+		select {
+		case gate <- struct{}{}:
+			return true
+		case <-ctx.Done():
+			return false
+		case <-tick:
+			if w.stopped() {
+				return false
+			}
+		}
+	}
+}
+
+// stopped reports whether the user pressed Esc since the wait began.
+func (w *gateWait) stopped() bool {
+	return w.esc != nil && w.esc.StoppedSince(w.gen)
+}
+
+// end leaves the waiting scope once.
+func (w *gateWait) end() {
+	if w.esc != nil && !w.ended {
+		w.ended = true
+		w.esc.EndWait()
 	}
 }
 

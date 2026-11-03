@@ -284,7 +284,10 @@ The physical Escape key stops the running Action or Batch: a
 low-level keyboard hook ignores injected keys, swallows the physical
 press (the app never sees it), and the command exits **130** with the
 message that the user stopped winuse and a stop-and-ask hint. The latch
-never leaks into the next command (winuse has no turn concept).
+never leaks into the next command (winuse has no turn concept). With
+several agents (multi-agent 05, ADR 0014 Decision 5) one press also stops
+every command waiting for its turn, with "nothing was sent"; a command
+sent after the press runs.
 **matched** for Headed Actions and any Batch with a Headed step. In a
 Headless Action or an all-Headless Batch the press still stops winuse
 (exit 130) but passes through to the user's app — winuse holds neither
