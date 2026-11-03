@@ -354,3 +354,49 @@ func TestPoliteYieldSaysTheUserTookOver(t *testing.T) {
 		t.Error("a plain Esc stop reads as a yield")
 	}
 }
+
+// flushEsc is a scope Esc that can flush the injected input, recording
+// each flush among the spy's steps.
+type flushEsc struct {
+	*scopeEsc
+	step func(string)
+}
+
+func (f flushEsc) FlushInput(time.Duration) error { f.step("flush"); return nil }
+
+func TestPoliteFlushesBeforeGivingBack(t *testing.T) {
+	spy, d := politeSpy()
+	spy.svc.Esc = flushEsc{spy.esc, spy.step}
+	if _, e := headedClick(t, spy.svc); e != nil {
+		t.Fatalf("headed click: %+v", e)
+	}
+	// The click, then the flush, then the give-back's activation of 500:
+	// the click's input reaches 101 before the foreground moves.
+	steps := spy.recorded()
+	last := func(name string) int {
+		for i := len(steps) - 1; i >= 0; i-- {
+			if steps[i] == name {
+				return i
+			}
+		}
+		return -1
+	}
+	if c, f, a := last("click"), last("flush"), last("activate"); c < 0 || !(c < f && f < a) {
+		t.Errorf("steps %v: want click, flush, then the give-back's activate", steps)
+	}
+	if d.fg != 500 {
+		t.Errorf("foreground %d, want 500", d.fg)
+	}
+
+	// Released keys are flushed too, before the give-back.
+	spy, _ = politeSpy()
+	spy.svc.Esc = flushEsc{spy.esc, spy.step}
+	spy.svc.ReleaseHeld = func() (int, error) { spy.step("release"); return 2, nil }
+	if _, e := headedClick(t, spy.svc); e != nil {
+		t.Fatalf("headed click: %+v", e)
+	}
+	steps = spy.recorded()
+	if r := last("release"); r < 0 || r+1 >= len(steps) || steps[r+1] != "flush" {
+		t.Errorf("steps %v: want a flush right after the release", steps)
+	}
+}

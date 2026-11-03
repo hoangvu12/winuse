@@ -301,7 +301,9 @@ func (s Services) runAction(ctx context.Context, ref string, act func(ctx contex
 	}
 	ctx, polite, own := s.beginPolite(ctx, w)
 	defer func() {
-		s.releaseHeld()
+		if s.releaseHeld() > 0 {
+			s.flushInput() // the releases reach the target, not the Window given back
+		}
 		if !own {
 			return
 		}
@@ -337,8 +339,9 @@ func (s Services) runAction(ctx context.Context, ref string, act func(ctx contex
 		return "", stopErrorFor(s.Esc)
 	}
 	out, err := act(ctx, w)
-	// The drain: the injected input handled before anything is given
-	// back; then where winuse left the cursor.
+	// The drain: the injected input in the target's queue and handled
+	// before anything is given back; then where winuse left the cursor.
+	s.flushInput()
 	if s.SyncWindow != nil {
 		_ = s.SyncWindow(w.ID)
 	}
