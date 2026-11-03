@@ -377,7 +377,11 @@ from the start. Each one needs `--headed` (or `--post`, where it fits);
 without it the command is refused with nothing sent.
 
 - Hover and drag in a desktop App. Only a Page with a Browser Connection
-  takes them Headless.
+  takes them Headless. With `--headed` they take an Element as well as
+  `@x,y`: `winuse --headed drag 101 id:card id:done` drags from the
+  Element's clickable point to the other's, and `--drop-delay <ms>` holds
+  the drag at its end before the drop, for a target that needs hover
+  time.
 - A minimized browser, Electron App or Store app. Run `restore-window`
   first. A Store app such as Calculator has no UI at all while minimized
   and comes to the front when restored, so tell the user before you
@@ -1014,10 +1018,10 @@ select-text <window> <ref> <start> <length> | select-text <window> <ref> all
 invoke-menu <window> "<menu> > <item>"   # a classic menu bar command, Headless
 scroll <window> <ref> <up|down|left|right> [steps] | scroll <window> <ref> into-view
 scroll <window> @x,y <dx> <dy>      # Headless on a Page, else only with --headed
-drag <window> @x,y @x,y             # --headed: left button, point to point
-drag <window> <element> <element|@x,y>   # a Page Element, Headless
+drag <window> @x,y @x,y [--drop-delay <ms>]   # --headed: left button, point to point
+drag <window> <element> <element|@x,y> [--drop-delay <ms>]   # a Page Element Headless; other Elements --headed
 hover <window> @x,y                 # --headed: moves the pointer and leaves it there, to reveal tooltips
-hover <window> <element>            # a Page Element, Headless
+hover <window> <element>            # a Page Element Headless; other Elements --headed, at the clickable point
 activate-window <window>            # takes the foreground, no flag needed
 restore-window <window> | minimize-window <window> | close-window <window>
 move-window <window> <x> <y> | resize-window <window> <width> <height>

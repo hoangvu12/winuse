@@ -215,7 +215,10 @@ Left button only, as in Codex. winuse interpolates ~16 absolute moves
 reorder) instead of a teleport — a fidelity extension on the same
 contract. The point form drags only with `--headed`; without it, it is
 refused with nothing sent (ticket 21). Hover at a point follows the same
-rule.
+rule. As winuse extensions (desktop-parity 13, as agent-desktop's refs),
+drag and hover also take an Element: a Page Element Headless, any other
+from its clickable point, again only with `--headed`; and
+`--drop-delay <ms>` holds a drag at its end before the drop.
 
 ### perform_secondary_action
 
