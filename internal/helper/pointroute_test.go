@@ -69,7 +69,7 @@ func TestClickAtAPointClicksTheWindowsOwnElement(t *testing.T) {
 	if e != nil {
 		t.Fatalf("click @40,50: %v", e.Error())
 	}
-	if want := `ok (clicked element 5 button "Save" at @40,50)` + "\n"; out != want {
+	if want := "ok\n" + `Note: clicked element 5 button "Save" at @40,50` + "\n"; out != want {
 		t.Errorf("out = %q, want %q", out, want)
 	}
 	if len(p.asked) != 1 || p.asked[0] != (uia.Point{X: 1040, Y: 550}) || p.need != uia.NeedClick {
@@ -89,14 +89,14 @@ func TestPointFormsRouteToTheirHeadlessActions(t *testing.T) {
 	p := newPointSpy()
 	p.hit = uia.PointHit{Index: 7, Role: "edit", Name: "Search"}
 	out, e := runCommand(t, CommandsWith(p.svc), "set-value", protocol.SetValueArgs{Window: "101", Point: pt(10, 20), Value: "pw"})
-	if e != nil || out != `ok (set the value of element 7 edit "Search" at @10,20)`+"\n" || p.hValue != "pw" || p.hIndex != 7 || p.need != uia.NeedValue {
+	if e != nil || out != "ok\n"+`Note: set the value of element 7 edit "Search" at @10,20`+"\n" || p.hValue != "pw" || p.hIndex != 7 || p.need != uia.NeedValue {
 		t.Errorf("set-value @10,20 = %q, %v; set %q on %d (need %d)", out, e, p.hValue, p.hIndex, p.need)
 	}
 
 	p = newPointSpy()
 	p.hit = uia.PointHit{Index: 3, Role: "tree item"}
 	out, e = runCommand(t, CommandsWith(p.svc), "perform-secondary-action", protocol.SecondaryActionArgs{Window: "101", Point: pt(1, 2), Action: "expand"})
-	if e != nil || out != "ok (performed Expand on element 3 tree item at @1,2)\n" || p.hAction != "Expand" || p.action != "Expand" || p.need != uia.NeedAction {
+	if e != nil || out != "ok\nNote: performed Expand on element 3 tree item at @1,2\n" || p.hAction != "Expand" || p.action != "Expand" || p.need != uia.NeedAction {
 		t.Errorf("perform-secondary-action @1,2 expand = %q, %v; action %q, asked for %q", out, e, p.hAction, p.action)
 	}
 }
@@ -114,7 +114,7 @@ func TestScrollAtAPointConvertsTheWheelToSteps(t *testing.T) {
 	for _, tc := range cases {
 		p := newPointSpy()
 		out, e := runCommand(t, CommandsWith(p.svc), "scroll", protocol.ScrollArgs{Window: "101", X: 5, Y: 6, ScrollX: tc.dx, ScrollY: tc.dy})
-		if e != nil || !strings.HasPrefix(out, `ok (scrolled element 5 button "Save" at @5,6)`) {
+		if e != nil || !strings.HasPrefix(out, "ok\n"+`Note: scrolled element 5 button "Save" at @5,6`) {
 			t.Errorf("scroll %d %d = %q, %v", tc.dx, tc.dy, out, e)
 		}
 		if len(p.scrolls) != len(tc.want) {
@@ -216,7 +216,7 @@ func TestBatchPointStepsKeepTheHeadlessScope(t *testing.T) {
 	}})
 	// Each step's own ok, naming the Element under its point, comes back
 	// (desktop-parity ticket 20).
-	if e != nil || out != "Action 1 (click): ok (clicked element 5 button \"Save\" at @40,50)\nAction 2 (scroll): ok (scrolled element 5 button \"Save\" at @5,6)\n" {
+	if e != nil || out != "Action 1 (click): ok\n  Note: clicked element 5 button \"Save\" at @40,50\nAction 2 (scroll): ok\n  Note: scrolled element 5 button \"Save\" at @5,6\n" {
 		t.Fatalf("batch = %q, %v", out, e)
 	}
 	if containsString(p.recorded(), "activate") || hasStepPrefix(p.recorded(), "overlay-show") {
@@ -229,9 +229,9 @@ func TestBatchPointStepsKeepTheHeadlessScope(t *testing.T) {
 
 func TestWithNote(t *testing.T) {
 	cases := []struct{ out, want string }{
-		{"ok\n", "ok (n)\n"},
-		{"ok (the App took the foreground)\n", "ok (n; the App took the foreground)\n"},
-		{"ok\nNote: a new Window opened: 7\n", "ok (n)\nNote: a new Window opened: 7\n"},
+		{"ok\n", "ok\nNote: n\n"},
+		{"ok\nNote: the App took the foreground\n", "ok\nNote: n\nNote: the App took the foreground\n"},
+		{"ok\nNote: a new Window opened: 7\n", "ok\nNote: n\nNote: a new Window opened: 7\n"},
 		{"something else\n", "something else\n"},
 	}
 	for _, tc := range cases {

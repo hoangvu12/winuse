@@ -173,7 +173,9 @@ func TestCallRestartsStaleHelper(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Call: %v", err)
 	}
-	if !resp.OK || resp.Out != "fresh" {
+	// The answer notes the restart (desktop-parity ticket 25): the old
+	// helper's Window States went with it.
+	if !resp.OK || resp.Out != "fresh\n"+restartNote {
 		t.Fatalf("response: %+v", resp)
 	}
 	if spawns != 1 {
@@ -309,5 +311,44 @@ func TestIsConnDropped(t *testing.T) {
 		if got := isConnDropped(tc.err); got != tc.drop {
 			t.Errorf("isConnDropped(%v) = %v, want %v", tc.err, got, tc.drop)
 		}
+	}
+}
+
+func TestCallWithoutARestartAddsNoNote(t *testing.T) {
+	// Only a stale restart notes lost Window States: a first start or a
+	// dropped connection's retry does not (desktop-parity ticket 25).
+	script := &dialScript{steps: []dialStep{
+		{err: notFoundErr()}, // no helper → spawn
+		{conn: respondingConn(&protocol.Response{OK: true, Out: "ok\n"})},
+	}}
+	spawns := 0
+	resp, err := testClient(script, &spawns, nil).Call(context.Background(), testRequest())
+	if err != nil || resp.Out != "ok\n" {
+		t.Fatalf("Call = %+v, %v; want ok without a note", resp, err)
+	}
+}
+
+func TestCallStaleTwiceAddsNoNote(t *testing.T) {
+	// The restarted helper is stale too: its answer is returned as is.
+	stale := &protocol.Response{OK: false, Stale: true, Err: "different build", Exit: 1}
+	script := &dialScript{steps: []dialStep{
+		{conn: respondingConn(stale)},
+		{err: notFoundErr()},
+		{conn: respondingConn(stale)},
+	}}
+	spawns := 0
+	resp, err := testClient(script, &spawns, nil).Call(context.Background(), testRequest())
+	if err != nil || !resp.Stale || resp.Out != "" {
+		t.Fatalf("Call = %+v, %v; want the stale answer without a note", resp, err)
+	}
+}
+
+func TestRequestCarriesTheBuild(t *testing.T) {
+	req, err := Request("list-windows", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Build == "" || req.Build != version.Build() || req.Ver != version.Version {
+		t.Errorf("request = %+v, want version %s build %s", req, version.Version, version.Build())
 	}
 }

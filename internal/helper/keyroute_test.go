@@ -777,7 +777,10 @@ func TestBatchTypeTextIntoAnEditKeepsTheHeadlessScope(t *testing.T) {
 }
 
 // postedOK is the output of every Posted Keys success.
-const postedOK = "ok (posted; the app may ignore posted keys, read the Window State to check)\n"
+const postedOK = "ok\nNote: posted; the app may ignore posted keys, read the Window State to check\n"
+
+// postedKeysStep is a Posted Keys success as a Batch step's lines.
+const postedKeysStep = "ok\n  Note: posted; the app may ignore posted keys, read the Window State to check\n"
 
 func TestPressKeyPostPostsToTheFocusedControl(t *testing.T) {
 	spy := newKeyRouteSpy(editTarget(plainEdit))
@@ -1032,7 +1035,7 @@ func TestBatchPostedStepsKeepTheHeadlessScope(t *testing.T) {
 			stepOf("press-key", protocol.PressKeyArgs{Key: "Return", Post: true}),
 		},
 	})
-	if cmdErr != nil || out != "Action 1 (click): ok\nAction 2 (type-text): "+postedOK+"Action 3 (press-key): "+postedOK {
+	if cmdErr != nil || out != "Action 1 (click): ok\nAction 2 (type-text): "+postedKeysStep+"Action 3 (press-key): "+postedKeysStep {
 		t.Fatalf("batch: %q, %v", out, cmdErr)
 	}
 	assertNoV1(t, spy.recorded())

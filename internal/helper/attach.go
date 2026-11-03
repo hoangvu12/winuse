@@ -61,9 +61,9 @@ func browserAttach(s Services) Command {
 		case err != nil:
 			return "", Fail(fmt.Sprintf("attaching to %s failed: %v", w.App, err), "the App stays on UI Automation; read winuse get-window-state "+fmt.Sprint(w.ID))
 		case ep.Mode == browser.ModeApp:
-			return fmt.Sprintf("ok (%s already has a Browser Connection: winuse launched it with --cdp)\n", w.App), nil
+			return fmt.Sprintf("ok\nNote: %s already has a Browser Connection: winuse launched it with --cdp\n", w.App), nil
 		}
-		return fmt.Sprintf("ok (attached to %s process %d: get-window-state %d reads its pages; winuse browser detach %d ends the attach and closes its inspector)\n",
+		return fmt.Sprintf("ok\nNote: attached to %s process %d: get-window-state %d reads its pages; winuse browser detach %d ends the attach and closes its inspector\n",
 			w.App, w.PID, w.ID, w.ID), nil
 	}
 }
@@ -87,6 +87,6 @@ func browserDetach(s Services) Command {
 			return "", Fail(fmt.Sprintf("winuse is not attached to %s (window %d)", w.App, w.ID),
 				"an App winuse launched with --cdp keeps its port until it exits; nothing to detach")
 		}
-		return "ok (detached; the App's inspector is closed)\n", nil
+		return "ok\nNote: detached; the App's inspector is closed\n", nil
 	}
 }

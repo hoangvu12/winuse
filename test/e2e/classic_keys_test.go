@@ -247,21 +247,35 @@ func TestHeadlessTypeTextIntoNotepad(t *testing.T) {
 	cover := coverWindow(t, window)
 	logKeyTarget(t, id)
 
-	// Covered, Windows 11 Notepad reports no focused control, so plain
-	// type-text has no Headless route (headless-max ticket 19). Without
-	// --headed it is refused with nothing sent, and the foreground stays
-	// with the cover (ticket 21; it used to go Headed on its own and print
-	// "ok (typed Headed: ...)").
-	const refused = "not typed without --headed"
-	stdout, stderr, exit := runTypeText(t, []string{window, refused})
-	assertHeadedRefusal(t, "plain type-text into the covered Notepad", stdout, stderr, exit,
-		"winuse --headed type-text "+window+" <text>")
-	if !strings.Contains(stderr, "--into") {
-		t.Errorf("the refusal must point at type-text --into: %q", stderr)
-	}
-	assertForeground(t, "plain type-text into the covered Notepad", cover)
-	if got := controlText(t, focus.HWND); strings.Contains(got, refused) {
-		t.Errorf("the refused text reached Notepad's editor: %q", got)
+	// Covered, Windows 11 Notepad often reports no focused control, and
+	// then plain type-text has no Headless route (headless-max ticket 19):
+	// without --headed it is refused with nothing sent, and the foreground
+	// stays with the cover (ticket 21; it used to go Headed on its own).
+	// When it does report its focused RichEditD2DPT (the 2026-11-03 live
+	// run: Notepad had just opened and kept its focus), plain type-text
+	// takes the classic edit route instead, Headless: EM_REPLACESEL, with
+	// the control's length read back.
+	if k := win.ProbeKeyTarget(id); k.Focus.Writable() {
+		const typed = "typed through the focused editor"
+		stdout, stderr, exit := runTypeText(t, []string{window, typed})
+		assertActionOK(t, "plain type-text into the covered Notepad, which reports its focused editor", stdout, stderr, exit)
+		assertForeground(t, "plain type-text into the covered Notepad", cover)
+		if got := controlText(t, focus.HWND); !strings.Contains(got, typed) {
+			t.Errorf("Notepad's editor holds %q, want it to contain %q", got, typed)
+		}
+		t.Logf("MEASURED: the covered Notepad reported its focused %s, so plain type-text went Headless through EM_REPLACESEL", k.Focus.Class)
+	} else {
+		const refused = "not typed without --headed"
+		stdout, stderr, exit := runTypeText(t, []string{window, refused})
+		assertHeadedRefusal(t, "plain type-text into the covered Notepad", stdout, stderr, exit,
+			"winuse --headed type-text "+window+" <text>")
+		if !strings.Contains(stderr, "--into") {
+			t.Errorf("the refusal must point at type-text --into: %q", stderr)
+		}
+		assertForeground(t, "plain type-text into the covered Notepad", cover)
+		if got := controlText(t, focus.HWND); strings.Contains(got, refused) {
+			t.Errorf("the refused text reached Notepad's editor: %q", got)
+		}
 	}
 
 	// --into names the editor's Element, whose own window is the

@@ -186,3 +186,23 @@ func TestUsageListsStatus(t *testing.T) {
 		t.Error("usage text does not list status")
 	}
 }
+
+func TestStatusNamesBothBuildsOfOneVersion(t *testing.T) {
+	// desktop-parity 25: a helper of this version from another build is
+	// named with both builds; the next command restarts it.
+	report := status.Report{Helper: status.Helper{State: status.HelperRunning, Version: version.Version, Build: "oldbuild", Uptime: time.Hour}, Source: status.SourceHelper}
+	raw, _ := json.Marshal(report)
+	conn := respondingConn(&protocol.Response{OK: true, Out: string(raw)})
+	got := runStatusOut(t, &dialScript{steps: []dialStep{{conn: conn}}}, localProbes{})
+	if !strings.HasPrefix(got, "winuse: "+version.Version+" build "+version.Build()+"\n") ||
+		!strings.Contains(got, "helper: running, "+version.Version+" build oldbuild (a different build; the next command restarts it), up 1h0m0s\n") {
+		t.Errorf("status = %q", got)
+	}
+	var req protocol.Request
+	if err := json.Unmarshal(bytes.TrimSpace(conn.written.Bytes()), &req); err != nil {
+		t.Fatal(err)
+	}
+	if req.Build == "" || req.Build != version.Build() {
+		t.Errorf("request build = %q, want %q", req.Build, version.Build())
+	}
+}

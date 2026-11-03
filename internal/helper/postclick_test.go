@@ -210,8 +210,8 @@ func TestBatchPostedStepsArePassive(t *testing.T) {
 		stepOf("click", protocol.ClickArgs{Point: pt(40, 50), ClickCount: 2, Post: true}),
 		stepOf("scroll", protocol.ScrollArgs{X: 5, Y: 6, ScrollY: 120, Post: true}),
 	}})
-	if e != nil || out != "Action 1 (click): ok (posted; the app may ignore posted clicks, read the Window State to check)\n"+
-		"Action 2 (scroll): ok (posted; the app may ignore posted scrolls, read the Window State to check)\n" {
+	if e != nil || out != "Action 1 (click): ok\n  Note: posted; the app may ignore posted clicks, read the Window State to check\n"+
+		"Action 2 (scroll): ok\n  Note: posted; the app may ignore posted scrolls, read the Window State to check\n" {
 		t.Fatalf("batch = %q, %v", out, e)
 	}
 	if hasStepPrefix(p.recorded(), "overlay-show") || containsString(p.recorded(), "activate") {

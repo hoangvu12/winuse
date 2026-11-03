@@ -129,7 +129,9 @@ func (s Services) pageResolve(ctx context.Context, ref string, t elementTarget) 
 	}
 	switch {
 	case t.ref != "":
-		i, rerr := resolveElementRef(ctx, s, w, t.ref)
+		// The cache alone (refs.go cacheOnly): a fresh read never finds a
+		// Page Element, and the command's own route reads afresh after.
+		i, rerr := resolveElementRef(cacheOnly(ctx), s, w, t.ref)
 		if rerr != nil {
 			return w, 0, nil, nil
 		}

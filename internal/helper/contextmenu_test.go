@@ -141,7 +141,7 @@ func TestContextMenuClassicPostsAndReportsTheMenu(t *testing.T) {
 	if e != nil {
 		t.Fatalf("ContextMenu: %v", e.Error())
 	}
-	want := "ok (the context menu opened: read it with winuse get-window-state 778, click an item, or close it with winuse press-key 778 Escape)\n" +
+	want := "ok\nNote: the context menu opened: read it with winuse get-window-state 778, click an item, or close it with winuse press-key 778 Escape\n" +
 		"Note: a new Window opened: 778 Notepad \"\"\n"
 	if out != want {
 		t.Errorf("output %q, want %q", out, want)

@@ -116,7 +116,7 @@ func TestChooserInterceptionOnlyDuringAClick(t *testing.T) {
 		t.Fatalf("interception outside an Action: %v", r.sent())
 	}
 	out, e := r.run(t, "click", protocol.ClickArgs{Window: "301", ElementIndex: idx(7)})
-	if e != nil || out != "ok (the click opened a file chooser, which the browser held back so nothing opened on the screen: answer it with winuse upload 301 <file>...)\n" {
+	if e != nil || out != "ok\nNote: the click opened a file chooser, which the browser held back so nothing opened on the screen: answer it with winuse upload 301 <file>...\n" {
 		t.Fatalf("click: %q %+v", out, e)
 	}
 	checkScoped(t, "click", r.sent())

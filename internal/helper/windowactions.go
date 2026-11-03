@@ -30,7 +30,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
@@ -109,7 +108,7 @@ func restoreWindow(s Services) Command {
 			if len(notes) == 0 {
 				return okOutput, nil
 			}
-			return "ok (" + strings.Join(notes, "; ") + ")\n", nil
+			return okWith(notes...), nil
 		})
 	}
 }
@@ -302,7 +301,7 @@ func closeWindow(s Services) Command {
 			if s.pollWindow(ctx, closeWait, func() bool { return !s.WindowOpen(w.ID) }) {
 				return okOutput, nil
 			}
-			return fmt.Sprintf("ok (the close was requested and window %d is still open; it may be asking to save: read winuse list-windows or the Window State next, winuse get-window-state %d)\n",
+			return fmt.Sprintf("ok\nNote: the close was requested and window %d is still open; it may be asking to save: read winuse list-windows or the Window State next, winuse get-window-state %d\n",
 				w.ID, w.ID), nil
 		})
 	}

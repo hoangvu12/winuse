@@ -65,7 +65,7 @@ func runStatus(w io.Writer, client *Client, local localProbes) int {
 		r.DPI = local.DPIAwareness()
 		r.Windows = local.WindowsBuild()
 	}
-	r.CLIVersion = version.Version
+	r.CLIVersion, r.CLIBuild = version.Version, version.Build()
 	io.WriteString(w, r.Format())
 	return 0
 }

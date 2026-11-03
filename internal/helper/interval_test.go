@@ -101,11 +101,11 @@ func TestHeadlessTypingSaysTheIntervalDoesNotApply(t *testing.T) {
 	spy.states = []win.EditState{{Length: 0, SelKnown: true}, {Length: 5, SelKnown: true}}
 	out, cmdErr := runCommand(t, CommandsWith(spy.svc), "type-text",
 		protocol.TypeTextArgs{Window: "101", Text: "hello", IntervalMS: 50})
-	if cmdErr != nil || out != "ok (--interval-ms does not apply: this route puts the text in at once)\n" {
+	if cmdErr != nil || out != "ok\nNote: --interval-ms does not apply: this route puts the text in at once\n" {
 		t.Errorf("Headless type-text with --interval-ms: %q, %v", out, cmdErr)
 	}
-	// The note joins a note the route already prints.
-	if got := intervalNote("ok (posted; x)\n"); got != "ok (posted; x; --interval-ms does not apply: this route puts the text in at once)\n" {
+	// The note follows a note the route already prints.
+	if got := intervalNote("ok\nNote: posted; x\n"); got != "ok\nNote: posted; x\nNote: --interval-ms does not apply: this route puts the text in at once\n" {
 		t.Errorf("intervalNote = %q", got)
 	}
 }
