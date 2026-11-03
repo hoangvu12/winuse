@@ -28,7 +28,7 @@ func (r Rect) Height() int32 { return r.Bottom - r.Top }
 // functions on this struct so they are testable offline.
 type WindowInfo struct {
 	ID      uint64 // HWND as an unsigned decimal — the Window ID
-	Title   string // window caption (GetWindowTextW: cross-process safe)
+	Title   string // window caption (GetWindowTextW, or InternalGetWindowText for this process's windows: never blocks)
 	Class   string // window class name
 	PID     uint32 // owning process (the real app process for UWP windows)
 	ExePath string // full path of the owning process, "" if unresolvable
@@ -81,13 +81,14 @@ const uwpFrameClass = "ApplicationFrameWindow"
 var coreWindowClass, _ = windows.UTF16PtrFromString("Windows.UI.Core.CoreWindow")
 
 var (
-	procGetWindowLongPtrW    = user32.NewProc("GetWindowLongPtrW")
-	procGetWindow            = user32.NewProc("GetWindow")
-	procGetWindowTextW       = user32.NewProc("GetWindowTextW")
-	procGetWindowTextLengthW = user32.NewProc("GetWindowTextLengthW")
-	procIsIconic             = user32.NewProc("IsIconic")
-	procGetWindowRect        = user32.NewProc("GetWindowRect")
-	procFindWindowExW        = user32.NewProc("FindWindowExW")
+	procGetWindowLongPtrW     = user32.NewProc("GetWindowLongPtrW")
+	procGetWindow             = user32.NewProc("GetWindow")
+	procGetWindowTextW        = user32.NewProc("GetWindowTextW")
+	procInternalGetWindowText = user32.NewProc("InternalGetWindowText")
+	procGetWindowTextLengthW  = user32.NewProc("GetWindowTextLengthW")
+	procIsIconic              = user32.NewProc("IsIconic")
+	procGetWindowRect         = user32.NewProc("GetWindowRect")
+	procFindWindowExW         = user32.NewProc("FindWindowExW")
 )
 
 // enumTarget is the slice the enumeration callback appends to. A package
@@ -167,7 +168,6 @@ func collectOne(hwnd windows.HWND, shell windows.HWND, selfExe string, apps *app
 
 	w.Style = windowLong(hwnd, gwlStyle)
 	w.ExStyle = windowLong(hwnd, gwlExStyle)
-	w.Title = windowText(hwnd)
 	w.Class = className(hwnd)
 	w.Minimized = isIconic(hwnd)
 	w.Bounds = windowBounds(hwnd)
@@ -188,6 +188,9 @@ func collectOne(hwnd windows.HWND, shell windows.HWND, selfExe string, apps *app
 		w.App = apps.Name(w.ExePath)
 	}
 	w.Shell = shellKind(w.Class, w.ExePath)
+	// The caption is read once the process is known: a window of this
+	// process takes the no-message read (windowTitle).
+	w.Title = windowTitle(hwnd, w.PID)
 	w.OwnProcess = selfExe != "" && w.ExePath == selfExe
 	return w
 }
@@ -240,9 +243,34 @@ func isIconic(hwnd windows.HWND) bool {
 	return r != 0
 }
 
+// windowTitle reads a window's caption without sending it a message.
+// GetWindowTextW reads the cached caption of another process's window, but
+// for a window of this process it sends WM_GETTEXT and waits for the
+// owning thread. The helper's own overlay and Agent Cursor windows live on
+// its UI thread, so a Window list read (a desktop wait polls one every
+// 100 ms) blocked while that thread was busy, and with it the request.
+// InternalGetWindowText reads the cached caption and sends nothing; these
+// windows are filtered out of the listings anyway (OwnProcess).
+func windowTitle(hwnd windows.HWND, pid uint32) string {
+	if pid != 0 && pid == windows.GetCurrentProcessId() {
+		return internalWindowText(hwnd)
+	}
+	return windowText(hwnd)
+}
+
+// internalWindowText reads a window's cached caption with
+// InternalGetWindowText, which never sends WM_GETTEXT (titles past 511
+// characters are cut).
+func internalWindowText(hwnd windows.HWND) string {
+	buf := make([]uint16, 512)
+	r, _, _ := procInternalGetWindowText.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	return windows.UTF16ToString(buf[:r])
+}
+
 // windowText reads a window's caption. GetWindowTextW reads the cached
 // caption for windows of other processes (no WM_GETTEXT is sent), so a hung
-// app cannot block enumeration.
+// app cannot block enumeration; a window of this process gets the message
+// (windowTitle avoids that).
 func windowText(hwnd windows.HWND) string {
 	n, _, _ := procGetWindowTextLengthW.Call(uintptr(hwnd))
 	if n == 0 {

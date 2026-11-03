@@ -410,8 +410,8 @@ clipboard's Desktop commands — through one helper-wide action gate — one
 command controls the desktop at a time, and a request
 queued behind another Action until its own budget expired fails instead
 of acting late. Observation-only commands (list-windows, get-window,
-list-apps, the plain tree read, record-tree, launch-app) may answer
-concurrently; the UIA worker serializes everything that touches
+list-apps, the plain tree read, record-tree, launch-app, and the desktop
+waits, which only read) may answer concurrently; the UIA worker serializes everything that touches
 automation. **matched**.
 
 ### stale elements
@@ -468,6 +468,11 @@ captures one without the foreground, like agent-desktop's
 `list-displays` and `screenshot --screen` (which winuse also accepts as
 an alias of `--display`); the display screenshot binds
 no `@x,y` points, which stay per Window. Codex captures Windows only.
+The desktop waits (desktop-parity 03) poll, like agent-desktop's `wait`:
+`wait window <app|title> [--gone]`, `wait <window> text` in a UI
+Automation tree, `wait <window> <ref> enabled|disabled|gone|value|
+checked|unchecked|expanded|collapsed` and `wait <ms>`, beside the Page
+waits; they only read, and never renumber Element Indexes.
 `maximize-window` (desktop-parity 11) maximizes a Window for real, like
 agent-desktop's `maximize`; Windows has no non-activating maximize, so it
 is the one Headed Window Action and is refused with nothing sent unless
