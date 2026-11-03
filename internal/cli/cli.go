@@ -46,8 +46,9 @@ headless (the default; your foreground, pointer and keyboard stay untouched):
   switches with real keys in the foreground instead). In a
   browser Window with a Browser Connection, every Action on its Page is
   headless, and so are navigate, back, forward, reload, upload, dialog,
-  wait and eval, which have no headed form. The clipboard commands are
-  headless Desktop commands: they name no Window and have no headed form.
+  wait and eval, which have no headed form. The clipboard commands,
+  list-displays and screenshot --display are headless Desktop commands:
+  they name no Window and have no headed form.
 
 commands:
   list-windows [--details] [--app <name>]
@@ -218,6 +219,12 @@ const usageTail = `);
   browser ext status [browser]
                                say whether the extension is connected, or in
                                one sentence what is missing and what to run
+  browser attach <window>     give a running Electron App's Window a Browser
+                               Connection: opens the App's Node.js inspector
+                               and runs winuse's code inside the App, so ask
+                               the user first; refused when the App turned
+                               its inspector off (nodeCliInspect fuse)
+  browser detach <window>     end the attach and close the App's inspector
   tab list <window>           list the Tabs of a browser Window with a Browser
                                Connection, one per line: * for the active
                                Tab, its id, title and URL
@@ -271,6 +278,13 @@ const usageTail = `);
                                (literal, like type-text's), a PNG image or a
                                list of existing files
   clipboard-clear             empty the clipboard
+  list-displays               list the displays, one per line: its number (0
+                               is the primary display), its rectangle "x,y WxH"
+                               in physical pixels, its scale, and primary
+  screenshot --display <n>    save a screenshot of display n from list-displays
+                               and print its path, like get-window-state
+                               --screenshot's line; it has no @x,y points or
+                               zoom, which belong to a Window's screenshot
   skill                       print the agent skill (SKILL.md) this binary
                                was built with; read it again after an upgrade
   skill install <dir>         write that SKILL.md to <dir>\winuse\SKILL.md, for
@@ -393,6 +407,10 @@ func Main(args []string) int {
 		return tabCmd(args[1:], headed)
 	case "navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval":
 		return pageCmd(args[0], args[1:]) // page.go, browser merge ticket 06
+	case "list-displays":
+		return listDisplaysCmd(args[1:]) // display.go, desktop-parity ticket 08
+	case "screenshot":
+		return screenshotCmd(args[1:])
 	case "clipboard-get":
 		return clipboardGetCmd(args[1:]) // clipboard.go, desktop-parity ticket 01
 	case "clipboard-set":

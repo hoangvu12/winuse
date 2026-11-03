@@ -97,6 +97,7 @@ func WebView2Env(port int, env []string, inherited string) []string {
 // AppEndpoint is a verified debugging endpoint of an App winuse launched.
 type AppEndpoint struct {
 	Kind  string // AppElectron or AppWebView2
+	Mode  Mode   // ModeApp (launched with --cdp) or ModeAttach (attach.go)
 	PID   uint32 // the process that owns the App's Windows
 	Owner uint32 // the process that listens on the port
 	Port  int
@@ -156,7 +157,7 @@ func (m *Manager) probeApp(ctx context.Context, kind string, launched, windowPID
 	if err != nil {
 		return AppEndpoint{}, false
 	}
-	return AppEndpoint{Kind: kind, PID: windowPID, Owner: owner, Port: port, WSURL: ws}, true
+	return AppEndpoint{Kind: kind, Mode: ModeApp, PID: windowPID, Owner: owner, Port: port, WSURL: ws}, true
 }
 
 // inTree reports whether pid is root or one of its descendants.

@@ -39,6 +39,8 @@ func (m Mode) Describe() string {
 		return "your running browser through the winuse extension"
 	case ModeApp:
 		return "an App winuse launched with --cdp"
+	case ModeAttach:
+		return "a running Electron App winuse attached to"
 	}
 	return "a debugging port on this machine"
 }

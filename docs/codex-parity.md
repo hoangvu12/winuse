@@ -90,7 +90,10 @@ agent-desktop and need an executable. `--cdp` (headless-max 15, agent-desktop's
 `launch --cdp`) starts an Electron or WebView2 executable with a loopback
 debugging port that winuse picks and verifies (its listener must be the
 launched process tree), so the App's Windows get a Browser Connection; a
-note line says whether one reaches the App.
+note line says whether one reaches the App. `browser attach <window>`
+gives a running Electron App one without a restart (its Node.js
+inspector, opt-in, refused when the nodeCliInspect fuse is off) and
+`browser detach` closes it again; agent-desktop refuses running Apps.
 
 ### get_window_state
 
@@ -431,7 +434,12 @@ foreground instead. Codex switches tabs only with keys.
 empty the clipboard (text, an image as PNG, a file list), like
 agent-desktop's: Desktop commands that name no Window, need no
 foreground and refuse a clipboard owner that does not respond. Codex has
-no clipboard tool. `maximize-window` (desktop-parity 11) maximizes a
-Window for real, like agent-desktop's `maximize`; Windows has no
-non-activating maximize, so it is the one Headed Window Action and is
-refused with nothing sent unless `--headed`. **extension**.
+no clipboard tool. `list-displays` lists the displays (rectangle in
+physical pixels, effective scale, primary) and `screenshot --display <n>`
+captures one without the foreground, like agent-desktop's
+`list-displays` and `screenshot --screen`; the display screenshot binds
+no `@x,y` points, which stay per Window. Codex captures Windows only.
+`maximize-window` (desktop-parity 11) maximizes a Window for real, like
+agent-desktop's `maximize`; Windows has no non-activating maximize, so it
+is the one Headed Window Action and is refused with nothing sent unless
+`--headed`. **extension**.

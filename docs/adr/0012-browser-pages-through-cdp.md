@@ -115,3 +115,25 @@ section 3) measured both hosts with the foreground unchanged.
   route.
 - Electron, WebView2 and Firefox otherwise stay on UI Automation, as in
   the consequences above.
+
+### Addendum: attaching to a running Electron App
+
+- `browser attach <window>` gives a running Electron App a Browser
+  Connection without a restart (probe round 3): winuse sends the App's
+  main process the Node debug signal that `process._debugProcess` sends
+  (a thread at the handler the process publishes in its
+  `node-debug-handler-<pid>` mapping), finds the inspector among the
+  loopback ports that process listens on, and installs a small shim with
+  one `Runtime.evaluate`. The shim serves browser-level CDP over Electron's
+  `webContents.debugger`, routed like the winuse extension: only
+  `Target.getTargets`, `attachToTarget` and `detachFromTarget` at browser
+  level, a page session's id is its target id, and `Page.bringToFront`
+  and `Target.activateTarget` are refused.
+- It runs winuse's code inside the user's App, so it is opt-in per App:
+  the skill tells the agent to ask the user first, and nothing attaches by
+  default. An App with the nodeCliInspect fuse off publishes no mapping
+  and is refused with nothing sent (Discord 1.0.9266).
+- Any process of the same user can reach the open inspector, so
+  `browser detach`, a dropped connection and the helper's exit all detach
+  the debuggers and close the inspector.
+- WebView2 stays launch-time only.

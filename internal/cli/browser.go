@@ -2,7 +2,7 @@ package cli
 
 // The Browser Connection commands' CLI side (browser merge tickets 01 and
 // 02): winuse browser status|use|launch|clone|connect|stop|ext install|ext
-// status. Argument parsing is
+// status, and attach|detach <window> (headless-max 15). Argument parsing is
 // local (usage errors exit 2 and never dial the helper); the helper's
 // browser-* commands do the work and keep the connections.
 
@@ -22,7 +22,9 @@ const browserUsage = `usage: winuse browser status [browser]
        winuse browser connect [browser]
        winuse browser stop [browser]
        winuse browser ext install [browser|all]
-       winuse browser ext status [browser]`
+       winuse browser ext status [browser]
+       winuse browser attach <window>
+       winuse browser detach <window>`
 
 // browserCmd implements `winuse browser <subcommand> [arguments]`.
 func browserCmd(args []string) int {
@@ -63,6 +65,11 @@ func parseBrowserArgs(args []string) (string, any, error) {
 		return "browser-clone", a, err
 	case "ext":
 		return parseBrowserExtArgs(rest)
+	case "attach", "detach":
+		if len(rest) != 1 || strings.HasPrefix(rest[0], "-") {
+			return "", nil, fmt.Errorf("browser %s takes one window: a Window of the Electron App", sub)
+		}
+		return "browser-" + sub, protocol.AttachArgs{Window: rest[0]}, nil
 	default:
 		return "", nil, fmt.Errorf("unknown browser subcommand %q", sub)
 	}

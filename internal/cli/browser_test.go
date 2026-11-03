@@ -121,3 +121,21 @@ func TestLongBrowserCommandsHaveTheirBudgets(t *testing.T) {
 		t.Error("browser use needs no longer budget")
 	}
 }
+
+// browser attach and detach (headless-max 15) take exactly one Window.
+func TestParseBrowserAttach(t *testing.T) {
+	for _, sub := range []string{"attach", "detach"} {
+		cmd, req, err := parseBrowserArgs([]string{sub, "700"})
+		if err != nil || cmd != "browser-"+sub || req.(protocol.AttachArgs).Window != "700" {
+			t.Errorf("%s: %s %+v, %v", sub, cmd, req, err)
+		}
+		for _, bad := range [][]string{{sub}, {sub, "700", "701"}, {sub, "--force"}} {
+			if _, _, err := parseBrowserArgs(bad); err == nil {
+				t.Errorf("%q parsed", bad)
+			}
+		}
+	}
+	if d, ok := protocol.CommandTimeout("browser-attach"); !ok || d != protocol.BrowserTimeout {
+		t.Errorf("browser-attach budget %v, %v", d, ok)
+	}
+}

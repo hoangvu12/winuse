@@ -27,7 +27,7 @@ The web content of a browser Window's active Tab, read and acted on through the 
 _Avoid_: Document, DOM, site
 
 **Browser Connection**:
-winuse's live link to one running Chromium browser, through the winuse extension or a browser winuse launched or cloned. The user's own Chrome and a Chrome winuse launched are two browsers with two Browser Connections, and a browser Window is always reached through the one of the browser it belongs to. Without one, that Window is read through UI Automation alone, and a cold or fully covered Chromium may expose its page there late or not at all: the read waits a few seconds for a thin tree to build, then says it is still thin.
+winuse's live link to one running Chromium browser, through the winuse extension or a browser winuse launched or cloned. An Electron or WebView2 App winuse launched with `--cdp`, or a running Electron App winuse attached to with the user's consent, has one too, reached only through its own Windows. The user's own Chrome and a Chrome winuse launched are two browsers with two Browser Connections, and a browser Window is always reached through the one of the browser it belongs to. Without one, that Window is read through UI Automation alone, and a cold or fully covered Chromium may expose its page there late or not at all: the read waits a few seconds for a thin tree to build, then says it is still thin.
 _Avoid_: CDP session, debug port, endpoint
 
 ### Observation
@@ -57,7 +57,7 @@ An Action on the Window itself rather than on one of its Elements: restore, mini
 _Avoid_: Window management, window op
 
 **Desktop command**:
-A command aimed at the desktop as a whole rather than at a Window, such as reading, setting or clearing the clipboard. It is not an Action: it shows no Agent Cursor and is not a Batch step, but it runs one at a time with the Actions.
+A command aimed at the desktop as a whole rather than at a Window, such as reading, setting or clearing the clipboard, listing the displays or capturing one. It is not an Action: it shows no Agent Cursor and is not a Batch step. One that touches the clipboard or captures the screen runs one at a time with the Actions; one that only lists, such as the displays, does not wait for them.
 _Avoid_: Global action, system command
 
 **Secondary Action**:
