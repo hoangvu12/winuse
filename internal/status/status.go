@@ -38,6 +38,19 @@ type Report struct {
 	BrowsersKnown bool     `json:"browsersKnown"`
 
 	Windows string `json:"windows"` // the Windows build, e.g. "Windows 11 25H2, build 26200.6899"
+
+	// Agents are the Agents the helper has served since it started, the
+	// most recent first (multi-agent ticket 02).
+	Agents []Agent `json:"agents,omitempty"`
+}
+
+// Agent is one Agent the helper has served: its label, its identity, its
+// last command and how long ago that command came.
+type Agent struct {
+	Label   string        `json:"label"`
+	ID      string        `json:"id"`
+	Command string        `json:"command"`
+	Ago     time.Duration `json:"ago"`
 }
 
 // Helper is the helper's line.
@@ -66,7 +79,7 @@ const (
 )
 
 // Format renders the report, one line each: winuse, helper, desktop,
-// integrity, DPI awareness, Browser Connections, Windows.
+// integrity, DPI awareness, Browser Connections, Agents, Windows.
 func (r Report) Format() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "winuse: %s\n", r.CLIVersion)
@@ -82,6 +95,7 @@ func (r Report) Format() string {
 	}
 	fmt.Fprintf(&b, "dpi awareness: %s (%s)\n", orUnknown(r.DPI), whose)
 	fmt.Fprintf(&b, "browser connections: %s\n", r.browsersLine())
+	fmt.Fprintf(&b, "agents: %s\n", r.agentsLine())
 	fmt.Fprintf(&b, "windows: %s\n", orUnknown(r.Windows))
 	return b.String()
 }
@@ -126,6 +140,20 @@ func (r Report) browsersLine() string {
 		return "none open; winuse browser status connects one"
 	}
 	return strings.Join(r.Browsers, "; ")
+}
+
+func (r Report) agentsLine() string {
+	if r.Helper.State != HelperRunning {
+		return "none; only a running helper sees them"
+	}
+	if len(r.Agents) == 0 {
+		return "none since the helper started"
+	}
+	parts := make([]string, len(r.Agents))
+	for i, a := range r.Agents {
+		parts[i] = fmt.Sprintf("%s (%s, %s ago)", orUnknown(a.Label), orUnknown(a.Command), FormatUptime(a.Ago))
+	}
+	return strings.Join(parts, "; ")
 }
 
 // FormatUptime renders an uptime to the second ("4m12s"; "0s" under one).

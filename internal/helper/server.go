@@ -214,6 +214,8 @@ func (s *Server) handle(req *protocol.Request) protocol.Response {
 	// caller-set --timeout (desktop-parity ticket 14).
 	ctx, cancel := context.WithTimeout(context.Background(), protocol.Budget(req, s.requestTimeout))
 	defer cancel()
+	// The Agent the request comes from (agents.go, multi-agent ticket 02).
+	ctx = withAgent(ctx, requestAgent(req))
 	out, cmdErr := cmd(ctx, req.Args)
 	// Timeout policy (orchestrator decision): a command that failed or
 	// produced nothing while its budget expired is reported centrally as

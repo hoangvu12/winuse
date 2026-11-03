@@ -167,6 +167,12 @@ type Request struct {
 	Cmd       string          `json:"cmd"`                  // command name, e.g. "list-windows"
 	Args      json.RawMessage `json:"args,omitempty"`       // command arguments, command-specific JSON
 	TimeoutMS int             `json:"timeout_ms,omitempty"` // the caller-set budget (--timeout) of a command in MaxTimeout, clamped to its cap; 0: the command's own
+
+	// The Agent the request comes from (multi-agent ticket 02, ADR 0014
+	// Decision 3; internal/agent): its identity and the label the Agent
+	// Cursor and messages show. Both empty: the shared default Agent.
+	Agent      string `json:"agent,omitempty"`
+	AgentLabel string `json:"agent_label,omitempty"`
 }
 
 // ListWindowsArgs are list-windows's optional arguments (desktop-parity

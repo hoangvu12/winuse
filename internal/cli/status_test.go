@@ -62,6 +62,7 @@ func TestStatusWithNoHelperSaysNotRunningAndStartsNothing(t *testing.T) {
 		"integrity: medium (this CLI's; a helper it starts runs at the same level)\n" +
 		"dpi awareness: per-monitor v2 (this CLI's)\n" +
 		"browser connections: none; only a running helper holds them\n" +
+		"agents: none; only a running helper sees them\n" +
 		"windows: Windows 11 25H2, build 26200.6899\n"
 	if got != want {
 		t.Errorf("status =\n%s\nwant\n%s", got, want)
@@ -96,6 +97,7 @@ func TestStatusPrintsTheRunningHelpersReport(t *testing.T) {
 		"integrity: medium (the helper's)\n" +
 		"dpi awareness: per-monitor v2 (the helper's)\n" +
 		"browser connections: none open; winuse browser status connects one\n" +
+		"agents: none since the helper started\n" +
 		"windows: Windows 11 25H2, build 26200.6899\n"
 	if got != want {
 		t.Errorf("status =\n%s\nwant\n%s", got, want)

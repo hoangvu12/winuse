@@ -108,7 +108,7 @@ _Avoid_: Client, agent, host
 ### Agents
 
 **Agent**:
-Planned (ADR 0014). One caller of winuse, with an identity: by default the Harness process the command came from, or the name in `WINUSE_AGENT`. Several Agents can run at once, each with its own Window States and Agent Cursor.
+One caller of winuse, with an identity: by default the Harness process the command came from, or the name in `WINUSE_AGENT`; a command with neither belongs to one shared default Agent. Every request names its Agent, and `winuse status` lists the Agents the helper served. Planned (ADR 0014): several Agents run at once, each with its own Window States and Agent Cursor.
 _Avoid_: Session, client, user
 
 **Lane**:

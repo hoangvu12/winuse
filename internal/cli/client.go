@@ -13,9 +13,11 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
+	"github.com/hoangvu12/winuse/internal/agent"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/version"
 	"github.com/hoangvu12/winuse/internal/win"
@@ -245,9 +247,16 @@ func isConnDropped(err error) bool {
 		strings.Contains(msg, "connection reset")
 }
 
-// Request builds a protocol request for a command.
+// callingAgent is the Agent this CLI process runs for, resolved once per
+// process (multi-agent ticket 02): WINUSE_AGENT, or the Harness found by
+// walking up the parent processes. Tests replace it.
+var callingAgent = sync.OnceValue(agent.Resolve)
+
+// Request builds a protocol request for a command, naming the calling
+// Agent.
 func Request(cmd string, args any) (*protocol.Request, error) {
-	req := &protocol.Request{V: protocol.Version, Ver: version.Version, Cmd: cmd}
+	who := callingAgent()
+	req := &protocol.Request{V: protocol.Version, Ver: version.Version, Cmd: cmd, Agent: who.ID, AgentLabel: who.Label}
 	if args != nil {
 		raw, err := json.Marshal(args)
 		if err != nil {
