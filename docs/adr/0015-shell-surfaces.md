@@ -127,9 +127,27 @@ the notification commands see the showing banners only, and older
 notifications are read in the panel after `--headed open-shell
 notifications`. Acting on the panel's Elements stays Headed (decision 4).
 
-Unmeasured when this was written: Show and the press on a live toast
-from winuse itself (toasts are off on the laptop, the e2e tests wait for
-the user's approval), the panel's tree, and the quick settings host,
+Measured live on the laptop (Windows 11 25H2, with the user's approval):
+
+- A toast raised by the e2e test lists, presses (its process hears the
+  button) and dismisses as decision 10 says, the foreground unchanged.
+- **The shell's CoreWindows are immersive: EnumWindows leaves them out**
+  (since Windows 8 it lists desktop apps' top-level windows only), so
+  before this the banner, Start and the Action Center were never listed,
+  and decision 1's flyouts never showed in `--shell`. `win.Collect` now
+  adds the top-level CoreWindows of the three flyout hosts through
+  FindWindowEx, topmost first. This changes ticket 09's listing: an open
+  Start, Action Center or banner now joins `list-windows --shell`, while
+  the plain `list-windows` still drops every shell surface (KeepWindow).
+- **An injected Win+N opened nothing**, from the helper and from a bare
+  SendInput alike, and the foreground did not move. Why is unknown (the
+  shell ignoring injected accelerators there, or another keyboard hook).
+  `open-shell notifications` keeps the accelerator and fails honestly
+  ("did not show", the keys sent), with a hint that some setups ignore it
+  and the user can open the panel (decided by the orchestrators,
+  2026-11-03). Win+A and Ctrl+Esc were not tried live.
+
+Still unmeasured: the panel's tree, and the quick settings host,
 recognised as ShellHost.
 
 ## Consequences

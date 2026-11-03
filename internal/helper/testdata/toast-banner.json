@@ -1,19 +1,87 @@
 {
   "format": 1,
-  "source": "hand-authored from the toast tree measured in .scratch/headless-gaps/probes-round5.md section 7 (Windows 11, English, a toast raised for the Windows PowerShell AUMID with two action buttons): ScrollViewer ToastCenterScrollViewer > FlexibleToastView NormalToastView > SenderName, SettingsButton, DismissButton, Title, MessageText, VerbButton x2. The probe kept the Element names and roles, not a record-tree file; replace this with a record-tree capture once a live toast run is approved.",
+  "source": "recorded by winuse record-tree from \"New notification\" (Window 30017542)",
+  "captured": "2026-11-03T10:17:04.5050077+07:00",
   "title": "New notification",
   "app": "ShellExperienceHost.exe",
-  "focusedIndex": -1,
   "elements": [
-    { "depth": 0, "role": "window", "name": "New notification" },
-    { "depth": 1, "role": "pane", "automationId": "ToastCenterScrollViewer", "secondaryActions": ["Scroll Down"] },
-    { "depth": 2, "role": "button", "name": "New notification from Windows PowerShell, winuse probe, Pick one.", "automationId": "NormalToastView" },
-    { "depth": 3, "role": "text", "name": "Windows PowerShell", "automationId": "SenderName" },
-    { "depth": 3, "role": "button", "name": "Settings", "automationId": "SettingsButton" },
-    { "depth": 3, "role": "button", "name": "Move this notification to Notification Center", "automationId": "DismissButton" },
-    { "depth": 3, "role": "text", "name": "winuse probe", "automationId": "Title" },
-    { "depth": 3, "role": "text", "name": "Pick one.", "automationId": "MessageText" },
-    { "depth": 3, "role": "button", "name": "Alpha", "automationId": "VerbButton" },
-    { "depth": 3, "role": "button", "name": "Beta", "automationId": "VerbButton" }
-  ]
+    {
+      "depth": 0,
+      "role": "window",
+      "name": "New notification",
+      "secondaryActions": [
+        "Raise"
+      ]
+    },
+    {
+      "depth": 1,
+      "role": "pane",
+      "automationId": "ToastCenterScrollViewer",
+      "secondaryActions": [
+        "Scroll Up",
+        "Scroll Down"
+      ]
+    },
+    {
+      "depth": 2,
+      "role": "window",
+      "name": "New notification from Windows PowerShell, winuse probe, Pick one... . Actions. 1 of 1",
+      "automationId": "NormalToastView"
+    },
+    {
+      "depth": 3,
+      "role": "text",
+      "name": "Windows PowerShell",
+      "automationId": "SenderName"
+    },
+    {
+      "depth": 3,
+      "role": "button",
+      "name": "Settings for this notification",
+      "automationId": "SettingsButton"
+    },
+    {
+      "depth": 3,
+      "role": "button",
+      "name": "Move this notification to Notification Center",
+      "automationId": "DismissButton"
+    },
+    {
+      "depth": 3,
+      "role": "text",
+      "name": "winuse probe",
+      "automationId": "Title"
+    },
+    {
+      "depth": 3,
+      "role": "text",
+      "name": "Pick one.",
+      "automationId": "MessageText"
+    },
+    {
+      "depth": 3,
+      "role": "button",
+      "name": "Alpha",
+      "automationId": "VerbButton"
+    },
+    {
+      "depth": 4,
+      "role": "text",
+      "name": "Alpha",
+      "automationId": "VerbText"
+    },
+    {
+      "depth": 3,
+      "role": "button",
+      "name": "Beta",
+      "automationId": "VerbButton"
+    },
+    {
+      "depth": 4,
+      "role": "text",
+      "name": "Beta",
+      "automationId": "VerbText"
+    }
+  ],
+  "focusedIndex": 0
 }

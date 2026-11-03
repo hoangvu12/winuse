@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -56,6 +57,58 @@ var shellFlyoutHosts = map[string]string{
 	"startmenuexperiencehost.exe": ShellStart,
 	"shellexperiencehost.exe":     ShellActionCenter,
 	"shellhost.exe":               ShellActionCenter,
+}
+
+// topLevelCoreWindows lists every top-level UWP CoreWindow in z-order,
+// topmost first, through FindWindowEx: unlike EnumWindows, which on
+// Windows 8 and later enumerates the top-level windows of desktop apps
+// only, it reaches the shell's immersive CoreWindows (desktop-parity 18:
+// the toast banner, Start and the Action Center were never listed).
+func topLevelCoreWindows() []uintptr {
+	var out []uintptr
+	var prev uintptr
+	for len(out) < 1024 {
+		h, _, _ := procFindWindowExW.Call(0, prev, uintptr(unsafe.Pointer(coreWindowClass)), 0)
+		if h == 0 {
+			break
+		}
+		out = append(out, h)
+		prev = h
+	}
+	return out
+}
+
+// isShellFlyoutHost reports whether a window belongs to one of the
+// shellFlyoutHosts processes.
+func isShellFlyoutHost(hwnd uintptr) bool {
+	var pid uint32
+	if _, err := windows.GetWindowThreadProcessId(windows.HWND(hwnd), &pid); err != nil || pid == 0 {
+		return false
+	}
+	path, _ := exePath(pid)
+	_, ok := shellFlyoutHosts[strings.ToLower(filepath.Base(path))]
+	return ok
+}
+
+// withShellCoreWindows adds to an EnumWindows enumeration the CoreWindows
+// of the shell flyout hosts it left out, before it: they sit in the
+// immersive bands above the desktop's windows, in their own z-order. Pure
+// given shellHost: offline-testable.
+func withShellCoreWindows(enumerated, coreWindows []uintptr, shellHost func(uintptr) bool) []uintptr {
+	known := make(map[uintptr]bool, len(enumerated))
+	for _, h := range enumerated {
+		known[h] = true
+	}
+	var extra []uintptr
+	for _, h := range coreWindows {
+		if !known[h] && shellHost(h) {
+			extra = append(extra, h)
+		}
+	}
+	if len(extra) == 0 {
+		return enumerated
+	}
+	return append(extra, enumerated...)
 }
 
 // shellKind names the shell surface a window is, from its class, the

@@ -60,7 +60,7 @@ Details are in each ticket's Comments.
 | 15 | `winuse skill` prints the embedded skill | P2 | S | done |
 | 16 | `status` | P2 | S | done |
 | 17 | Live re-resolution of `name:`/`id:` | P2 | M | done (live e2e run still to do) |
-| 18 | Notifications | P3 | M | done (live toast and open-shell e2e runs still to do) |
+| 18 | Notifications | P3 | M | done (toasts pass live; an injected Win+N opened nothing on the laptop) |
 | 19 | Session traces with redaction | P3 | M-L | done |
 | 20 | Batch improvements | P3 | S-M | done |
 | 21 | Agent Cursor polish | P3 | S | wontfix (folded into multi-agent 04) |

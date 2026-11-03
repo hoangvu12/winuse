@@ -167,8 +167,10 @@ battery, Show Desktop) and one button per running App.
   note after `ok` says where the foreground went.
 - `winuse --headed open-shell start|notifications|quick-settings|overflow`
   opens one and prints its line, to read next; Start and the overflow keep
-  the foreground. `winuse press-key <overflow> Escape` closes the overflow
-  Headless; the foreground then stays on the taskbar.
+  the foreground. Some setups ignore the injected Win+N or Win+A: then it
+  fails with "did not show", and you ask the user to open the panel.
+  `winuse press-key <overflow> Escape` closes the overflow Headless; the
+  foreground then stays on the taskbar.
 - Toasts: `winuse list-notifications [--app <a>] [--text <t>]` numbers
   the showing banners, `notification-action <n> <button>` and
   `notification-dismiss <n>` press them Headless (refused when it

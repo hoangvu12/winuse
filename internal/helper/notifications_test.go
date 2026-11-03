@@ -29,8 +29,9 @@ const (
 	shellHost2Exe = `C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\ShellHost.exe`
 )
 
-// recordedBanner loads the recorded toast banner: one notification from
-// Windows PowerShell, "winuse probe", with Alpha and Beta.
+// recordedBanner loads the toast banner recorded live with record-tree
+// (Windows 11 25H2, English): one notification from Windows PowerShell,
+// "winuse probe", with Alpha and Beta, each button holding a VerbText.
 func recordedBanner(t *testing.T) *wstate.Tree {
 	t.Helper()
 	tree, err := wstate.LoadFixture("testdata/toast-banner.json")
@@ -108,8 +109,8 @@ func TestToastsInTheRecordedBanner(t *testing.T) {
 	if n.App != "Windows PowerShell" || n.Title != "winuse probe" || n.Text != "Pick one." || n.Window != bannerID {
 		t.Errorf("notification = %+v", n)
 	}
-	if strings.Join(n.Buttons, ",") != "Alpha,Beta" || n.buttons[0] != 8 || n.buttons[1] != 9 || n.dismiss != 5 {
-		t.Errorf("buttons %v at %v, dismiss at %d; want Alpha 8, Beta 9, dismiss 5", n.Buttons, n.buttons, n.dismiss)
+	if strings.Join(n.Buttons, ",") != "Alpha,Beta" || n.buttons[0] != 8 || n.buttons[1] != 10 || n.dismiss != 5 {
+		t.Errorf("buttons %v at %v, dismiss at %d; want Alpha 8, Beta 10, dismiss 5", n.Buttons, n.buttons, n.dismiss)
 	}
 }
 
@@ -189,8 +190,8 @@ func TestNotificationActionInvokesTheButton(t *testing.T) {
 	if out != "ok\n" {
 		t.Errorf("output = %q, want ok with no note (the foreground stayed)", out)
 	}
-	if d.hIndex != 9 {
-		t.Errorf("clicked element %d, want Beta (9)", d.hIndex)
+	if d.hIndex != 10 {
+		t.Errorf("clicked element %d, want Beta (10)", d.hIndex)
 	}
 	if hasStep(d.recorded(), "activate") || hasStep(d.recorded(), "click") {
 		t.Errorf("steps = %v: a notification's button is pressed Headless", d.recorded())
@@ -466,7 +467,7 @@ func TestOpenShellSurfaceThatDoesNotShow(t *testing.T) {
 	d := openShellDesk(t)
 	d.surfaces = func() []win.WindowInfo { return shellDesktop(false, false) } // nothing opens
 	_, cmdErr := runCommand(t, d.cmds(), "open-shell", protocol.OpenShellArgs{Surface: "notifications", Headed: true})
-	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "sent Win+N and the notification panel did not show") || strings.Contains(cmdErr.Msg, nothingSentNote) {
+	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "sent Win+N and the notification panel did not show") || strings.Contains(cmdErr.Msg, nothingSentNote) || !strings.Contains(cmdErr.Hint, "ignore an injected shell accelerator") {
 		t.Errorf("a panel that did not open: %v", cmdErr)
 	}
 }

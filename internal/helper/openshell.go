@@ -21,7 +21,10 @@ package helper
 //     notification-area button (AutomationId SystemTrayIcon) whose name
 //     starts with "Show Hidden Icons".
 //
-// The surface showing is the read-back (openShellBudget). A surface that
+// The surface showing is the read-back (openShellBudget): some setups
+// ignore an injected Win+N (measured on the 25H2 laptop: it opened
+// nothing, from the helper or a bare SendInput), and open-shell then fails
+// with "did not show", the keys sent. A surface that
 // is open already is printed with nothing sent: the accelerators toggle,
 // so pressing one again would close it. The output says where the
 // foreground went: Start and the overflow take it.
@@ -134,7 +137,7 @@ func openShell(s Services) Command {
 		w, shown := s.awaitShellSurface(ctx, o, open)
 		if !shown {
 			return "", Fail(fmt.Sprintf("open-shell %s sent %s and %s did not show within %s", surface, o.how, o.what, openShellBudget),
-				"read winuse list-windows --shell; the shell may have opened something else, or this Windows has no such surface")
+				"some setups ignore an injected shell accelerator (on the laptop it was measured on, Win+N opened nothing); read winuse list-windows --shell, the shell may have opened something else; or ask the user to open it")
 		}
 		return win.FormatWindows([]win.WindowInfo{w}) + s.foregroundNote(fg, s.Foreground()), nil
 	}

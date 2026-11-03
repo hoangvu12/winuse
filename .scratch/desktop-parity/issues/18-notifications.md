@@ -9,12 +9,12 @@
 
 **Blocked by:** 01 (Desktop command term), 09 (shell surfaces)
 
-**Status:** done (the live toast and open-shell e2e runs wait for the user's OK)
+**Status:** done (live: the toast tests pass; `open-shell notifications` fails on the laptop, an injected Win+N opens nothing)
 
 - [x] Probe: toast and Action Center trees, Invoke on toast buttons, foreground before and after (round 5; the panel's tree is out of reach)
 - [x] Commands and the identity guard
-- [x] Offline tests over recorded trees (the banner tree from the probe's notes; a record-tree capture waits for the live run)
-- [x] Opt-in e2e: a toast raised by the e2e test itself (written; not run live, toasts are off)
+- [x] Offline tests over recorded trees (a record-tree capture of a live banner)
+- [x] Opt-in e2e: a toast raised by the e2e test itself (run live, passes)
 - [x] SKILL.md
 
 ## Comments
@@ -78,3 +78,29 @@ Open:
 - Unmeasured: Show, the activation and History.Clear from this raiser, and whether a registry-registered AUMID's toast shows "winuse e2e" as its sender. The tests match the toast by its unique title, so they do not depend on the sender name. Also unmeasured: the panel's tree and quick settings' host, recognised as ShellHost.
 - `testdata/toast-banner.json` should be replaced by a record-tree capture at the first live toast run.
 - SKILL.md: re-fitted after the PC's trim (1a727cc). Two bullets in "The taskbar and the shell", the shell line of "What winuse cannot do headless", and four lines in the command reference (54.9 KB).
+
+### 2026-11-03: live runs (user approved, under the lock)
+
+On 92d7fa2 plus the fixes below. With notifications on (the Settings toggle, then back Off):
+
+- **(A) toasts: pass.** `TestNotificationsPressAndDismissARaisedToast` passed (3.4 s): listed as `1	Windows PowerShell	winuse e2e …	Pick one.	buttons: Alpha, Beta`; `notification-action 1 Beta` gave `ok` and the raising process heard `beta`; the foreground stayed on the user's Window; the dismiss gave UserCanceled. `TestNotificationIdentityGuardRefusesAGoneToast` passed (1.7 s). A live banner was recorded with record-tree into `internal/helper/testdata/toast-banner.json` (12 Elements; each VerbButton holds a VerbText, so Beta is Element 10), replacing the hand-authored tree.
+- **(B) open-shell:** `TestOpenShellRefusesWithoutHeaded` passed (4.5 s). `TestOpenShellOpensTheNotificationPanel` **failed: an injected Win+N opened nothing.** It was tried twice through the helper and once through a bare SendInput (`win.PressChord`) outside winuse; every uncloaked top-level window was listed 1.2 s later. There was no panel, and the foreground did not move. The cause is unknown: the shell may ignore injected accelerators there, or another keyboard hook may eat them. Decided by the orchestrators (option i): `open-shell notifications` keeps Win+N and fails honestly ("did not show", the keys sent), with a hint that some setups ignore an injected accelerator and that the user can open the panel; SKILL.md and ADR 0015 say so. Not rerun. Win+A and Ctrl+Esc were not tried live.
+
+Fixes the runs needed:
+
+- **The shell's CoreWindows were never enumerated.** On Windows 8 and later, EnumWindows lists only desktop apps' top-level windows. So `win.Collect` never saw the toast banner, Start or the Action Center (the probe found the banner through UIA's root), and 09's `TestShellRefusesWithoutHeaded` check "Start did not open" could not fail. `Collect` now adds the top-level CoreWindows of the flyout hosts (StartMenuExperienceHost, ShellExperienceHost, ShellHost) through FindWindowEx, topmost first (`withShellCoreWindows`, `internal/win/shell.go`). **This changes ticket 09's listing:** an open Start, Action Center or banner now joins `list-windows --shell`. `KeepWindow` now drops every shell surface, so the plain `list-windows` still lists none (`TestWithShellCoreWindows`, `TestKeepWindowDropsShellSurfaces`). ShellExperienceHost also hosts a taskbar Jump List ("Jump List for <App>") and its own "Windows Shell Experience Host" window; while one is open it is listed as the Action Center.
+- **The raiser's App User Model ID.** An ID registered only under HKCU\Software\Classes\AppUserModelId cannot raise toasts: CreateToastNotifier, Setting and History return 0x80070490. The raiser now uses the Windows PowerShell ID, as the probe did. Every toast is in the group `winuse-e2e`. Close removes only that group (RemoveGroupWithId), so the user's own PowerShell notifications stay, plus the levels of PowerShell's per-App settings key that were absent when the toaster opened. `Toaster.Setting` reads the setting after the notifier opens.
+- **A wrong History slot.** Close called slot 10, which is Remove(tag), with the group name. It matched nothing and failed harmlessly. The order is RemoveGroup, RemoveGroupWithId, RemoveGroupedTagWithId, RemoveGroupedTag, Remove, Clear, ClearWithId; RemoveGroupWithId is slot 7, now verified (it empties our group).
+- **A stale helper.** A helper started by an earlier build of the same version (0.1.0) kept serving the e2e binary after a rebuild, so the first rerun hit the old code. It was this run's own helper, and I stopped it. A rebuilt binary does not replace a helper of the same version.
+- **open-shell's keys are polite (ma-08):** they wait for quiet input and release held keys (92d7fa2).
+
+Restore:
+
+- The toggle is back Off: ToastEnabled 0, Setting DisabledForUser.
+- Windows had created PowerShell's per-App settings key (Notifications\Settings\{1AC14E77…}\WindowsPowerShell\v1.0\powershell.exe) for a PowerShell diagnostic toast. It was absent before; deleted.
+- None of the e2e toasts are left in the Notification Center.
+- PushNotifications, Notifications\Settings and all 28 Do Not Disturb CloudStore keys exported before and after: 0 differing lines.
+- The Settings window was the user's, already on the Notifications page (left there by the probe). It was not opened or navigated, and it stays open.
+- Nothing was left open, and the foreground is where it was.
+
+One slip: after the bare Win+N test I sent one Escape (SendInput) without first checking that a panel had opened. None had, so the Escape went to the user's foreground Window (Zeron). Rule from the orchestrator since: during a live run, no key or click outside winuse's own checked routes.

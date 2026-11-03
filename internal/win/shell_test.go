@@ -116,3 +116,33 @@ func TestShellKindOfRefusesInATestBinary(t *testing.T) {
 		t.Error("PostOverflowEscape posted inside a test")
 	}
 }
+
+// The shell's immersive CoreWindows, which EnumWindows leaves out, join the
+// enumeration before it; other Apps' CoreWindows and the ones it already
+// has do not (desktop-parity 18).
+func TestWithShellCoreWindows(t *testing.T) {
+	shellHost := func(h uintptr) bool { return h == 10 || h == 11 || h == 3 }
+	got := withShellCoreWindows([]uintptr{1, 2, 3}, []uintptr{10, 20, 3, 11}, shellHost)
+	want := []uintptr{10, 11, 1, 2, 3}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+	if got := withShellCoreWindows([]uintptr{1}, []uintptr{20}, shellHost); len(got) != 1 {
+		t.Errorf("an App's CoreWindow joined: %v", got)
+	}
+}
+
+// An open Start or toast banner stays out of the plain listing.
+func TestKeepWindowDropsShellSurfaces(t *testing.T) {
+	b := Rect{0, 0, 100, 100}
+	for _, kind := range []string{ShellStart, ShellActionCenter, ShellNotification, ShellTrayOverflow} {
+		if KeepWindow(WindowInfo{Title: "x", Shell: kind, Visible: true, Bounds: b}) {
+			t.Errorf("KeepWindow kept an open %s", kind)
+		}
+	}
+}

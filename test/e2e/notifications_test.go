@@ -3,10 +3,11 @@
 // Notifications and open-shell (desktop-parity 18, with 09's open-shell)
 // against the user's own shell, which no test can replace with a fixture.
 //
-// The toast tests raise their own toasts from winuse's e2e App User Model
-// ID (fixture.Toaster: registered for the run, removed with its
-// Notification Center entries after) and hear their buttons in this
-// process, so they never act on a notification of the user's. They show
+// The toast tests raise their own toasts from Windows PowerShell's App
+// User Model ID, in their own group (fixture.Toaster: the group is removed
+// from the Notification Center after, and so is the settings key Windows
+// adds when it was not there), and hear their buttons in this process, so
+// they never act on a notification of the user's. They show
 // toasts on the user's screen and need the user's notifications turned on
 // (Settings > System > Notifications), so they skip unless
 // WINUSE_E2E_TOASTS=1 is set as well, and skip when the notifications are
@@ -37,13 +38,6 @@ func optInToasts(t *testing.T) *fixture.Toaster {
 	if os.Getenv("WINUSE_E2E_TOASTS") != "1" {
 		t.Skip("raises toasts on the user's screen: set WINUSE_E2E_TOASTS=1 only when the user agreed to it, with their notifications on")
 	}
-	setting, err := fixture.ToastSetting()
-	if err != nil {
-		t.Fatalf("reading the toast setting: %v", err)
-	}
-	if setting != fixture.ToastEnabled {
-		t.Skipf("toasts are off for this user (ToastNotifier.Setting %d); turn notifications on in Settings > System > Notifications", setting)
-	}
 	toaster, err := fixture.NewToaster()
 	if err != nil {
 		t.Fatalf("NewToaster: %v", err)
@@ -53,6 +47,13 @@ func optInToasts(t *testing.T) *fixture.Toaster {
 			t.Errorf("cleaning the e2e toasts up: %v", err)
 		}
 	})
+	setting, err := toaster.Setting()
+	if err != nil {
+		t.Fatalf("reading the toast setting: %v", err)
+	}
+	if setting != fixture.ToastEnabled {
+		t.Skipf("toasts are off for this user (ToastNotifier.Setting %d); turn notifications on in Settings > System > Notifications", setting)
+	}
 	return toaster
 }
 

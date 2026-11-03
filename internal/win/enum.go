@@ -121,6 +121,9 @@ func Collect() ([]WindowInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("EnumWindows: %w", err)
 	}
+	// The shell's own CoreWindows (Start, the Action Center, the toast
+	// banner) are immersive: EnumWindows leaves them out (shell.go).
+	hwnds = withShellCoreWindows(hwnds, topLevelCoreWindows(), isShellFlyoutHost)
 	shell := windows.GetShellWindow()
 	selfExe, _ := os.Executable()
 	apps := newAppNames()

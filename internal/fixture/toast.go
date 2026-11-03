@@ -7,14 +7,18 @@ package fixture
 // WinRT from Go: combase's activation factories and the toast interfaces
 // by vtable slot, no cgo and no new dependency.
 //
-// The toasts come from winuse's own App User Model ID (ToastAUMID),
-// registered under HKCU\Software\Classes\AppUserModelId while a Toaster is
-// open and removed by Close, together with the per-App settings key
-// Windows creates on the first toast and the notifications left in the
-// Notification Center. Nothing of the user's is read or changed, except
-// that a toast shows on their screen: the tests are opt-in, and they need
-// the user's notifications turned on (ToastsEnabled), which only the
-// Settings toggle does.
+// The toasts come from Windows PowerShell's App User Model ID
+// (ToastAUMID), as the probe's did: ToastNotificationManager takes an
+// unpackaged ID only when a Start menu shortcut registers it, and an ID
+// registered under HKCU\Software\Classes\AppUserModelId alone fails
+// (HRESULT 0x80070490, measured). Every toast carries the group
+// ToastGroup, and Close removes that group alone from the Notification
+// Center, so the user's own PowerShell notifications stay; it also removes
+// the levels of the per-App settings key that Windows created for the
+// first toast, when they were not there before. Nothing else of the user's
+// is read or changed, except that a toast shows on their screen: the tests
+// are opt-in, and they need the user's notifications turned on
+// (Toaster.Setting), which only the Settings toggle does.
 //
 // Interface IIDs and vtable slots are the Windows SDK 10.0.26100.0
 // windows.ui.notifications.h and windows.data.xml.dom.h ones. Slots 0-5 of
@@ -37,11 +41,13 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-// ToastAUMID is the App User Model ID the e2e toasts come from, and
-// ToastAppName the App name a toast banner shows for it.
+// ToastAUMID is the App User Model ID the e2e toasts come from,
+// ToastAppName the App name a toast banner shows for it, and ToastGroup
+// the Notification Center group every e2e toast is in.
 const (
-	ToastAUMID   = "winuse.e2e.toast"
-	ToastAppName = "winuse e2e"
+	ToastAUMID   = `{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe`
+	ToastAppName = "Windows PowerShell"
+	ToastGroup   = "winuse-e2e"
 )
 
 // The NotificationSetting values (ToastNotifier.Setting).
@@ -96,7 +102,7 @@ const (
 
 	slotCreateNotifierWithID = 7 // IToastNotificationManagerStatics
 	slotGetHistory           = 6 // IToastNotificationManagerStatics2
-	slotHistoryClearWithID   = 11
+	slotHistoryRemoveGroupID = 7 // IToastNotificationHistory.RemoveGroupWithId (after RemoveGroup)
 	slotCreateNotification   = 6 // IToastNotificationFactory
 	slotNotifierShow         = 6 // IToastNotifier
 	slotNotifierHide         = 7
@@ -104,6 +110,7 @@ const (
 	slotAddDismissed         = 9 // IToastNotification
 	slotAddActivated         = 11
 	slotPutTag               = 6 // IToastNotification2
+	slotPutGroup             = 8
 	slotLoadXML              = 6 // IXmlDocumentIO
 	slotActivatedArguments   = 6 // IToastActivatedEventArgs
 	slotDismissedReason      = 6 // IToastDismissedEventArgs
@@ -215,19 +222,15 @@ func notifierFor(aumid string) (uintptr, error) {
 	return notifier, nil
 }
 
-// ToastSetting reads ToastNotifier.Setting for ToastAUMID without
-// registering anything: ToastDisabledForUser while the user's
-// notifications are off. Read-only.
-func ToastSetting() (int, error) {
+// Setting reads the notifier's ToastNotifier.Setting: ToastEnabled, or
+// ToastDisabledForUser while the user's notifications are off. It needs
+// the registration NewToaster writes: with notifications on, an
+// unregistered ID's Setting fails (HRESULT 0x80070490).
+func (t *Toaster) Setting() (int, error) {
 	setting := -1
 	err := withWinRT(func() error {
-		notifier, err := notifierFor(ToastAUMID)
-		if err != nil {
-			return err
-		}
-		defer winrtRelease(notifier)
 		var v int32
-		if err := winrtCall(notifier, slotNotifierSetting, uintptr(unsafe.Pointer(&v))); err != nil {
+		if err := winrtCall(t.notifier, slotNotifierSetting, uintptr(unsafe.Pointer(&v))); err != nil {
 			return fmt.Errorf("ToastNotifier.Setting: %w", err)
 		}
 		setting = int(v)
@@ -236,19 +239,18 @@ func ToastSetting() (int, error) {
 	return setting, err
 }
 
-// The registry keys a Toaster creates and Close removes.
-const (
-	aumidKey        = `Software\Classes\AppUserModelId\` + ToastAUMID
-	toastSettingKey = `Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\` + ToastAUMID
-)
+// toastSettingsRoot is where Windows keeps each App's notification
+// settings; the first toast of an App adds its key there, one level per
+// part of the ID.
+const toastSettingsRoot = `Software\Microsoft\Windows\CurrentVersion\Notifications\Settings`
 
-// Toaster raises toasts from ToastAUMID. Close it: it removes the
-// registration, the settings key and the toasts left in the Notification
-// Center.
+// Toaster raises toasts from ToastAUMID. Close it: it removes ToastGroup
+// from the Notification Center and the settings key levels Windows added.
 type Toaster struct {
 	notifier uintptr
 	mu       sync.Mutex
 	toasts   []*Toast
+	absent   []string // the settings key levels that did not exist at NewToaster, deepest first
 }
 
 // Toast is one raised toast. Activated receives the arguments of the
@@ -261,28 +263,35 @@ type Toast struct {
 	obj       uintptr // IToastNotification
 }
 
-// NewToaster registers ToastAUMID for the current user (its display name
-// ToastAppName) and opens its notifier.
+// NewToaster opens ToastAUMID's notifier, noting which levels of its
+// settings key are absent (Close removes them again).
 func NewToaster() (*Toaster, error) {
-	k, _, err := registry.CreateKey(registry.CURRENT_USER, aumidKey, registry.SET_VALUE)
-	if err != nil {
-		return nil, fmt.Errorf("registering %s: %w", ToastAUMID, err)
-	}
-	err = k.SetStringValue("DisplayName", ToastAppName)
-	k.Close()
-	if err != nil {
-		removeToastKeys()
-		return nil, fmt.Errorf("registering %s: %w", ToastAUMID, err)
-	}
-	t := &Toaster{}
-	if err := withWinRT(func() error {
+	t := &Toaster{absent: absentSettingLevels()}
+	err := withWinRT(func() error {
+		var err error
 		t.notifier, err = notifierFor(ToastAUMID)
 		return err
-	}); err != nil {
-		removeToastKeys()
+	})
+	if err != nil {
 		return nil, err
 	}
 	return t, nil
+}
+
+// absentSettingLevels lists the levels of ToastAUMID's settings key that do
+// not exist, deepest first.
+func absentSettingLevels() []string {
+	var absent []string
+	key := toastSettingsRoot
+	for _, part := range strings.Split(ToastAUMID, `\`) {
+		key += `\` + part
+		if k, err := registry.OpenKey(registry.CURRENT_USER, key, registry.QUERY_VALUE); err == nil {
+			k.Close()
+			continue
+		}
+		absent = append([]string{key}, absent...)
+	}
+	return absent
 }
 
 // toastXML is a toast's document: the title and text, then one
@@ -355,6 +364,10 @@ func newToast(tag, title, text string, buttons []string) (*Toast, error) {
 				winrtCall(n2, slotPutTag, h)
 				deleteHString(h)
 			}
+			if h, err := hstring(ToastGroup); err == nil {
+				winrtCall(n2, slotPutGroup, h)
+				deleteHString(h)
+			}
 			winrtRelease(n2)
 		}
 		var cookie int64
@@ -404,8 +417,8 @@ func (t *Toaster) Hide(toast *Toast) error {
 	return withWinRT(func() error { return winrtCall(t.notifier, slotNotifierHide, toast.obj) })
 }
 
-// Close clears ToastAUMID's notifications from the Notification Center,
-// releases the toasts and removes the registry keys.
+// Close removes ToastGroup's notifications from the Notification Center,
+// releases the toasts and removes the settings key levels Windows added.
 func (t *Toaster) Close() error {
 	var errs []error
 	errs = append(errs, withWinRT(func() error {
@@ -419,13 +432,18 @@ func (t *Toaster) Close() error {
 			return fmt.Errorf("ToastNotificationManager.History: %w", err)
 		}
 		defer winrtRelease(history)
-		h, err := hstring(ToastAUMID)
+		group, err := hstring(ToastGroup)
 		if err != nil {
 			return err
 		}
-		defer deleteHString(h)
-		if err := winrtCall(history, slotHistoryClearWithID, h); err != nil {
-			return fmt.Errorf("History.Clear(%s): %w", ToastAUMID, err)
+		defer deleteHString(group)
+		id, err := hstring(ToastAUMID)
+		if err != nil {
+			return err
+		}
+		defer deleteHString(id)
+		if err := winrtCall(history, slotHistoryRemoveGroupID, group, id); err != nil {
+			return fmt.Errorf("History.RemoveGroup(%s): %w", ToastGroup, err)
 		}
 		return nil
 	}))
@@ -437,15 +455,7 @@ func (t *Toaster) Close() error {
 	t.mu.Unlock()
 	winrtRelease(t.notifier)
 	t.notifier = 0
-	errs = append(errs, removeToastKeys())
-	return errors.Join(errs...)
-}
-
-// removeToastKeys deletes the registration and the settings key Windows
-// made for ToastAUMID; a key that is not there is no error.
-func removeToastKeys() error {
-	var errs []error
-	for _, key := range []string{aumidKey, toastSettingKey} {
+	for _, key := range t.absent {
 		if err := registry.DeleteKey(registry.CURRENT_USER, key); err != nil && !errors.Is(err, registry.ErrNotExist) && !errors.Is(err, windows.ERROR_FILE_NOT_FOUND) {
 			errs = append(errs, fmt.Errorf("removing HKCU\\%s: %w", key, err))
 		}
