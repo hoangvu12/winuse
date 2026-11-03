@@ -81,13 +81,20 @@ func TestLaunchAppKeepsTheForeground(t *testing.T) {
 		t.Errorf("unexpected stderr: %q", stderr)
 	}
 	assertForeground(t, "launch-app", cover)
-	fb, err := win.FrameBounds(id)
-	cb, cerr := win.FrameBounds(cover)
-	if err != nil || cerr != nil {
-		t.Fatalf("reading the frames: %v, %v", err, cerr)
+	// The origin is CreateWindowEx's, so it places the window rect, which
+	// holds the invisible frame borders that the frame bounds leave out
+	// (9 px on the left at 150 %, past near's 8). GetWindowRect reads
+	// physical pixels only in a DPI-aware process.
+	if err := win.SetPerMonitorV2DPIAwareness(); err != nil {
+		t.Logf("per-monitor DPI awareness: %v", err)
 	}
-	if !near(fb.Left, cb.Left+40) || !near(fb.Top, cb.Top+40) {
-		t.Errorf("the launched fixture is at %d,%d, want --env's origin %d,%d", fb.Left, fb.Top, cb.Left+40, cb.Top+40)
+	r, ok := win.WindowRect(id)
+	cb, cerr := win.FrameBounds(cover)
+	if !ok || cerr != nil {
+		t.Fatalf("reading the launched fixture's rect (ok %v) and the cover's frame: %v", ok, cerr)
+	}
+	if !near(r.Left, cb.Left+40) || !near(r.Top, cb.Top+40) {
+		t.Errorf("the launched fixture is at %d,%d, want --env's origin %d,%d", r.Left, r.Top, cb.Left+40, cb.Top+40)
 	}
 	time.Sleep(time.Second) // an App that activates late would show here
 	assertForeground(t, "launch-app, a second later", cover)

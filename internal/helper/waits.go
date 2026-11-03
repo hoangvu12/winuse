@@ -412,11 +412,13 @@ func (s Services) waitElement(ctx context.Context, a protocol.WaitArgs, want tim
 		st, err := held.State(ctx)
 		open := s.WindowOpen(w.ID)
 		switch {
-		case err == nil && state == "gone" && !open:
-			return elementPoll{closed: true}, true, nil
-		case err == nil:
-		case errors.Is(err, uia.ErrStale) && state == "gone":
+		case state == "gone" && (!open || errors.Is(err, uia.ErrStale)):
+			// An Element of a closed Window is gone with it, whatever its
+			// read answered: stale, a read that still succeeds, or another
+			// failure, such as a replaced worker's (once live, a closed
+			// classic dialog's Edit answered neither stale nor ok).
 			return elementPoll{closed: !open}, true, nil
+		case err == nil:
 		case !open:
 			return elementPoll{}, false, waitWindowClosed(what)
 		case errors.Is(err, uia.ErrStale):
