@@ -189,6 +189,7 @@ func maximizeWindow(s Services) Command {
 					"; or keep the foreground and fill the monitor's work area with winuse move-window and winuse resize-window, which looks maximized but leaves the Window in its normal state"))
 		}
 		return s.runAction(ctx, id, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
+			keepForegroundHere(ctx) // a maximized Window stays in front
 			if err := s.MaximizeWindow(w.ID); err != nil {
 				return "", Fail(err.Error(), "the Window was brought to the foreground and not maximized; it may have closed, run winuse list-windows")
 			}
