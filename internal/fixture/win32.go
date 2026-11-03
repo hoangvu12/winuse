@@ -18,6 +18,7 @@ var (
 	kernel32 = windows.NewLazySystemDLL("kernel32.dll")
 	uiaCore  = windows.NewLazySystemDLL("UIAutomationCore.dll")
 	oleaut32 = windows.NewLazySystemDLL("oleaut32.dll")
+	comctl32 = windows.NewLazySystemDLL("comctl32.dll")
 
 	procGetModuleHandleW    = kernel32.NewProc("GetModuleHandleW")
 	procGlobalAlloc         = kernel32.NewProc("GlobalAlloc")
@@ -54,6 +55,7 @@ var (
 	procAllowSetForegroundWindow = user32.NewProc("AllowSetForegroundWindow")
 
 	procCreateDialogIndirectParamW = user32.NewProc("CreateDialogIndirectParamW")
+	procInitCommonControlsEx       = comctl32.NewProc("InitCommonControlsEx")
 	procIsDialogMessageW           = user32.NewProc("IsDialogMessageW")
 	procGetDlgItem                 = user32.NewProc("GetDlgItem")
 	procGetWindowTextW             = user32.NewProc("GetWindowTextW")

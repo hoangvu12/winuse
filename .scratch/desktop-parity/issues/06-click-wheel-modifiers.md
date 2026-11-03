@@ -69,3 +69,8 @@ AddToSelection read back correctly, Headless and covered, on WPF ListBox (Extend
 - The fixture's Classic Dialog gained a multi-select list box (`fixture.ClassicListID`, LBS_EXTENDEDSEL, items `fixture.ClassicFruits`) as its last control, with a "Fruits:" label, so no earlier Element Index moves; the dialog grew to 158 dialog units high.
 - `TestCtrlAndShiftClickSelectInAMultiSelectList`: Ctrl+click Apple, Ctrl+click Cherry, Shift+click Elder (Cherry to Elder), Ctrl+click Apple again (deselected), covered, with the selection read back by LB_GETSEL. `TestCtrlClickOnASingleSelectListIsRefused` stays.
 - Not measured yet: that UI Automation's Win32 ListBox proxy reports CanSelectMultiple and implements AddToSelection for LBS_EXTENDEDSEL. If the live run says no, switch the control to a SysListView32 without LVS_SINGLESEL (measured in probes round 4).
+
+### 2026-11-03: live run (branch e2e-live-fixes-2)
+
+- Measured: UI Automation's Win32 ListBox proxy reports Selection.CanSelectMultiple false for an LBS_EXTENDEDSEL list box, so the route refuses it with nothing sent and the `--headed` retry (fail-closed, correct). The fixture's Fruits list is now a SysListView32 (LVS_LIST without LVS_SINGLESEL; the dialog template takes a class by name, and the fixture calls InitCommonControlsEx), and the e2e test reads the selection with LVM_GETITEMSTATE.
+- `TestCtrlAndShiftClickSelectInAMultiSelectList` and `TestCtrlClickOnASingleSelectListIsRefused` pass live, covered. A Headless Ctrl/Shift+click on a multi-select Win32 list box would need another route (LB_SETSEL, or MSAA selection flags); not planned.

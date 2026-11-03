@@ -87,7 +87,10 @@ func mouseLParam(x, y int32) uintptr {
 // then for each click the button down and up, the second click of a
 // double as the button's double-click message, as Windows delivers a
 // real double click to a CS_DBLCLKS control; then WM_CANCELMODE, so a
-// control that took mouse capture on the down drops it.
+// control that took mouse capture on the down drops it. A right click
+// ends at its up: the up opens the control's context menu, whose modal
+// loop would dispatch the queued WM_CANCELMODE and close the menu at once
+// (measured on a covered Edit, e2e live run 2026-11-03).
 func clickMessages(button MouseButton, count int, x, y int32) []postedMessage {
 	down, up, dbl, mk := uint32(wmLButtonDown), uint32(wmLButtonUp), uint32(wmLButtonDbl), uintptr(mkLButton)
 	switch button {
@@ -104,6 +107,9 @@ func clickMessages(button MouseButton, count int, x, y int32) []postedMessage {
 			first = dbl
 		}
 		msgs = append(msgs, postedMessage{first, mk, lp}, postedMessage{up, 0, lp})
+	}
+	if button == MouseRight {
+		return msgs
 	}
 	return append(msgs, postedMessage{wmCancelMode, 0, 0})
 }

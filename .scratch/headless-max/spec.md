@@ -44,7 +44,7 @@ Close every gap that has a route, and say plainly where none exists.
 | 09 | ContextMenu Secondary Action | M | done |
 | 10 | select-text | S | done |
 | 11 | Point forms resolve to an Element in the target Window | M | done (live e2e not run yet) |
-| 12 | Posted Clicks (opt-in) | M | done (live e2e not run yet) |
+| 12 | Posted Clicks (opt-in) | M | done |
 | 13 | Caret-aware typing into Text-pattern fields (and the `type-text --into` Text-pattern leg, from desktop-parity 23) | M | done (live e2e pending) |
 | 14 | Headless Actions on minimized Windows | S | done (live e2e pending) |
 | 15 | Electron and WebView2 Browser Connections at launch, and attach to a running Electron (opt-in) | L | done (live e2e runs still to do) |
