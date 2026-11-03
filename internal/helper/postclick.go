@@ -40,6 +40,13 @@ func postMouseFlagsError(cmd string) *Error {
 		"--post posts the mouse messages to the Window's control without the foreground; --headed uses the real pointer in the foreground; pass one of them")
 }
 
+// postAltRefusal refuses --modifiers alt with --post: a posted mouse
+// message carries Ctrl and Shift in its key state, and nothing for Alt.
+func postAltRefusal(cmd string) *Error {
+	return nothingSent(Fail(cmd+" --post cannot carry Alt: a posted mouse message holds only Ctrl and Shift",
+		"drop alt, or pass --headed instead of --post to hold the real Alt key"))
+}
+
 // postedRun is one posted mouse Action on a resolved Window.
 type postedRun struct {
 	cmd   string // "click" or "scroll", for the messages
@@ -113,10 +120,14 @@ func (s Services) runPosted(ctx context.Context, ref string, run postedRun) (str
 
 // postClick runs `click ... --post`: at a point, the point maps through
 // the latest screenshot; on an Element, the centre of its live bounds is
-// the point. Any button and count.
-func (s Services) postClick(ctx context.Context, a protocol.ClickArgs, target elementTarget, button win.MouseButton, count int) (string, *Error) {
+// the point. Any button and count, with Ctrl and Shift as MK_* key state
+// (desktop-parity ticket 06).
+func (s Services) postClick(ctx context.Context, a protocol.ClickArgs, target elementTarget, button win.MouseButton, count int, mods win.Modifiers) (string, *Error) {
 	if a.Headed {
 		return "", postMouseFlagsError("click")
+	}
+	if mods.Alt {
+		return "", postAltRefusal("click")
 	}
 	at := ""
 	run := postedRun{
@@ -124,7 +135,7 @@ func (s Services) postClick(ctx context.Context, a protocol.ClickArgs, target el
 		label:  "post " + strings.TrimPrefix(clickDescription(button, count), "a "), // "post click", "post double click"
 		output: postedClickOutput,
 		post: func(t uint64, cx, cy, _, _ int32) (int, error) {
-			return s.PostClick(t, cx, cy, button, count)
+			return s.PostClick(t, cx, cy, button, count, mods)
 		},
 	}
 	if target.point != nil {
@@ -174,9 +185,12 @@ func (s Services) elementCentre(ctx context.Context, w win.WindowInfo, target el
 // postScroll runs `scroll @x,y <dx> <dy> --post`: posted WM_MOUSEWHEEL
 // (vertical) and WM_MOUSEHWHEEL (horizontal) at the point, which the wheel
 // messages carry in screen coordinates.
-func (s Services) postScroll(ctx context.Context, a protocol.ScrollArgs) (string, *Error) {
+func (s Services) postScroll(ctx context.Context, a protocol.ScrollArgs, mods win.Modifiers) (string, *Error) {
 	if a.Headed {
 		return "", postMouseFlagsError("scroll")
+	}
+	if mods.Alt {
+		return "", postAltRefusal("scroll")
 	}
 	x, y, dx, dy := a.X, a.Y, a.ScrollX, a.ScrollY
 	at := pointToken(x, y)
@@ -194,7 +208,7 @@ func (s Services) postScroll(ctx context.Context, a protocol.ScrollArgs) (string
 			return int32(pt.X), int32(pt.Y), win.Rect{Left: int32(pt.X) - 4, Top: int32(pt.Y) - 4, Right: int32(pt.X) + 4, Bottom: int32(pt.Y) + 4}, nil
 		},
 		post: func(t uint64, _, _, sx, sy int32) (int, error) {
-			return s.PostWheel(t, sx, sy, int32(dx), int32(dy))
+			return s.PostWheel(t, sx, sy, int32(dx), int32(dy), mods)
 		},
 	})
 }

@@ -16,7 +16,7 @@ import (
 )
 
 // clickUsage is the click command's usage line.
-const clickUsage = "usage: winuse click <window> <element index | name:<text> | id:<id> | @x,y> [--count 1|2|3] [--button left|middle|right] [--post]"
+const clickUsage = "usage: winuse click <window> <element index | name:<text> | id:<id> | @x,y> [--count 1|2|3] [--button left|middle|right] [--modifiers ctrl,shift,alt] [--post]"
 
 // errPostHeadedClick is the usage error for --post together with --headed
 // on click and scroll (headless-max ticket 12).
@@ -24,9 +24,10 @@ var errPostHeadedClick = errors.New("--post and --headed cannot be combined: --p
 
 // clickOptions carries click's flags.
 type clickOptions struct {
-	count  int    // --count: 1, 2 (double) or 3 (triple)
-	button string // --button: left, middle or right (canonicalized by the helper)
-	post   bool   // --post: post the mouse messages to the classic control there (headless-max ticket 12)
+	count  int      // --count: 1, 2 (double) or 3 (triple)
+	button string   // --button: left, middle or right (canonicalized by the helper)
+	post   bool     // --post: post the mouse messages to the classic control there (headless-max ticket 12)
+	mods   []string // --modifiers: ctrl, shift, alt held during the click (desktop-parity ticket 06)
 }
 
 // clickTarget is the Element Reference to click: an Element Index, a
@@ -116,6 +117,15 @@ func parseClickFlags(args []string) (pos []string, o clickOptions, err error) {
 				value = args[i]
 			}
 			o.button = value
+		case "modifiers":
+			if !hasValue {
+				if i+1 >= len(args) {
+					return pos, o, errors.New("--modifiers needs a value such as ctrl or ctrl,shift")
+				}
+				i++
+				value = args[i]
+			}
+			o.mods = strings.Split(value, ",")
 		case "post":
 			if hasValue {
 				return pos, o, errors.New("--post takes no value")
@@ -177,6 +187,7 @@ func clickCmd(args []string, headed bool) int {
 		MouseButton:  opts.button,
 		Headed:       headed,
 		Post:         opts.post,
+		Modifiers:    opts.mods,
 	}); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)

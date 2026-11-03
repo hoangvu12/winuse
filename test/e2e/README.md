@@ -422,6 +422,13 @@ Control_L+a` and a second `type-text` each print their window-messages
 `ok`, the Window State shows the input's value after each typing, and
 the cover stays the foreground window with no banner.
 
+`TestCtrlClickOnASingleSelectListIsRefused` (`modifiers_test.go`,
+desktop-parity ticket 06): `click <item> --modifiers ctrl` on an item of
+the covered fixture's list, which is single-select, is refused with
+nothing sent and the exact `--headed` retry; the selection is unchanged
+and the cover keeps the foreground. The positive multi-select leg needs a
+multi-select list in the fixture and is not run.
+
 Run only these tests:
 
 ```
