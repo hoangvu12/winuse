@@ -240,7 +240,8 @@ default:
 - `invoke-menu`, a command of a classic menu bar, which has no Headed
   form either.
 - Every Window Action: `restore-window`, `minimize-window`, `move-window`,
-  `resize-window` and `close-window`.
+  `resize-window` and `close-window`, and `close-app`, which closes every
+  Window of an App the way `close-window` closes one.
 - `press-key` Return or Escape on a classic dialog, `type-text` into a
   focused classic edit box, and `type-text --into` a classic edit box or a
   Page field you name, as described in "Fill in fields, keys and text".
@@ -521,6 +522,7 @@ winuse minimize-window <window>
 winuse move-window <window> <x> <y>              # visible frame top-left, screen physical pixels
 winuse resize-window <window> <width> <height>   # visible frame size, physical pixels
 winuse close-window <window>                     # the same request as the close button
+winuse close-app <app> [--force]                 # every Window of the App, then waits for it to exit
 ```
 
 Window Actions change the Window without bringing it to the front, read it
@@ -545,8 +547,19 @@ back, and print `ok`. They are not Batch steps.
   new screenshot line rather than repeating it.
 - `close-window` asks the Window to close and waits up to two seconds. If it
   stays open, the output says so: the app may be asking to save. Read
-  `list-windows` or the Window State and handle that prompt. winuse never
-  ends a process.
+  `list-windows` or the Window State and handle that prompt.
+- `close-app` names the App as `list-windows` prints it, or by its
+  executable name, and asks every one of its Windows to close, then waits
+  up to five seconds for it to exit. One still running gets `ok (the close
+  was requested; <App> is still running, it may be asking to save: ...)`:
+  handle its prompt as for `close-window`. It refuses administrator Apps,
+  a locked desktop and Windows' own processes (explorer, dwm, csrss,
+  winlogon and the like) with nothing sent.
+- Only `close-app --force` ends a process: after the same request and
+  wait, it ends the App's processes still running, and their unsaved work
+  is lost. Use it only when the user asked for the App to be ended, never
+  to get past a save prompt you could answer. No other command ends a
+  process.
 
 ## Clipboard
 
@@ -864,6 +877,7 @@ winuse [--headed] <command> [arguments]
 list-windows [--details] [--app <name>]
 list-apps | get-window <window>
 launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <s>]
+close-app <app> [--force]           # --force ends what is still running: the only command that ends a process
 get-window-state <window> [--screenshot] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right]

@@ -240,7 +240,8 @@ func resizeWindow(s Services) Command {
 // the Window, the same request as its close button, and winuse waits up
 // to closeWait for it to go away. A Window still open then is not a
 // failure: the close was requested, and the app may be asking to save.
-// Nothing is ever terminated.
+// Nothing is ever terminated: only close-app --force ends a process
+// (closeapp.go).
 func closeWindow(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.WindowActionArgs

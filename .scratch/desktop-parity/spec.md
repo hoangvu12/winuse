@@ -52,7 +52,7 @@ Details are in each ticket's Comments.
 | 07 | Opt-in `--json` output with codes and delivery | P1 | L | ready-for-agent |
 | 08 | Display list and full-screen capture | P2 | S | ready-for-agent |
 | 09 | Shell surfaces | P2 | M | ready-for-agent |
-| 10 | close-app | P2 | S-M | ready-for-agent |
+| 10 | close-app | P2 | S-M | done |
 | 11 | maximize-window | P2 | S | ready-for-agent |
 | 12 | Select an option by name in UIA combos and lists | P2 | S-M | done |
 | 13 | Hover and drag by UIA Element | P2 | S | ready-for-agent |

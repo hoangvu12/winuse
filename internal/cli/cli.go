@@ -72,6 +72,14 @@ commands:
                                an Electron or WebView2 executable with a
                                loopback debugging port, so its pages are read
                                and acted on like a browser's, headless
+  close-app <app> [--force]   ask every Window of an App to close, headless,
+                               and wait up to 5 s for it to exit; one that
+                               keeps running (it may ask to save) gets an ok
+                               that says so. --force then ends the App's
+                               processes, unsaved work included: the only
+                               command that ends a process. Windows' own
+                               processes (explorer, dwm, csrss, ...) and
+                               administrator Apps are refused, nothing sent
   get-window-state <window> [--screenshot] [--timeout <seconds>]
                                print a Window's State: its Element tree as text,
                                and with --screenshot a screenshot saved to a file
@@ -348,6 +356,8 @@ func Main(args []string) int {
 		return listAppsCmd(args[1:])
 	case "launch-app":
 		return launchAppCmd(args[1:])
+	case "close-app":
+		return closeAppCmd(args[1:]) // closeapp.go, desktop-parity ticket 10
 	case "zoom":
 		return zoomCmd(args[1:], headed)
 	case "click":

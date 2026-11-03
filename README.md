@@ -120,6 +120,7 @@ at all, and winuse says so.
 | `scroll` | Scrolls an element by steps or into view, or scrolls at a point |
 | `drag`, `hover`, `zoom` | Drags or hovers at a point or on a page element, or saves a close-up of a screenshot |
 | `restore-window`, `minimize-window`, `move-window`, `resize-window`, `close-window` | Manages a window without bringing it to the front |
+| `close-app <app> [--force]` | Closes every window of an app and waits for it to exit; `--force` ends it if it stays open |
 | `batch <window> [--timeout <s>] ... then ...` | Runs several actions in one call |
 | `navigate`, `back`, `forward`, `reload` | Opens a URL or moves through a tab's history |
 | `wait`, `eval` | Waits for an element, text, URL, load or download, or runs JavaScript in the page |

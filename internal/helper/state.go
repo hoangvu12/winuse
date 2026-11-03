@@ -178,6 +178,13 @@ type Services struct {
 	// Window polls use Windows, Foreground and Sleep above.
 	StartApp func(spec apps.Spec, opts win.LaunchOptions) (pid uint32, err error)
 
+	// OpenProcess opens one process of an App for close-app (desktop-parity
+	// ticket 10, closeapp.go), to wait for its exit and, with terminate, to
+	// end it under --force. Nil falls back to win.OpenAppProcess; tests
+	// fake it so offline tests never open or end a process. close-app's
+	// closes and polls use CloseWindow, WindowOpen and Sleep above.
+	OpenProcess func(pid uint32, terminate bool) (AppProcess, error)
+
 	// The Windows an Action opened (desktop-parity 02, opened.go):
 	// Surfaces lists every visible top-level window, unfiltered, menus and
 	// popups included (win.Collect), for the before-and-after diff and for
@@ -288,6 +295,7 @@ func CommandsWith(s Services) map[string]Command {
 		"hover":                    hover(s),
 		"list-apps":                listApps(store),
 		"launch-app":               launchApp(s, store),
+		"close-app":                closeApp(s),
 		StatusCommand:              statusCommand(s),
 	}
 	// The Batch dispatches its steps to the other commands, and brackets
@@ -557,6 +565,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.StartApp == nil {
 		s.StartApp = apps.StartApp
+	}
+	if s.OpenProcess == nil {
+		s.OpenProcess = openAppProcess
 	}
 	if s.Surfaces == nil {
 		s.Surfaces = func() ([]win.WindowInfo, error) {

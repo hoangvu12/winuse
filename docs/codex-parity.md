@@ -431,4 +431,8 @@ foreground instead. Codex switches tabs only with keys.
 empty the clipboard (text, an image as PNG, a file list), like
 agent-desktop's: Desktop commands that name no Window, need no
 foreground and refuse a clipboard owner that does not respond. Codex has
-no clipboard tool. **extension**.
+no clipboard tool. `close-app` posts WM_CLOSE to every Window of an App
+and waits for its processes to exit, and `--force` then ends the ones
+still running, refusing agent-desktop's protected Windows processes; it
+is the only command that ends a process. Codex has no close tool.
+**extension**.
