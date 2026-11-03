@@ -455,6 +455,13 @@ type ClipboardSetArgs struct {
 	Files []string `json:"files,omitempty"`
 }
 
+// ScreenshotArgs are screenshot's arguments (desktop-parity ticket 08, a
+// Desktop command): the index of the display to capture, from
+// list-displays (0 is the primary display).
+type ScreenshotArgs struct {
+	Display *int `json:"display"`
+}
+
 // BatchArgs are batch's arguments (ticket 11): several Actions on one
 // Window in a single call, run in order, stopping at the first failure.
 type BatchArgs struct {

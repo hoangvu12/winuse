@@ -523,6 +523,26 @@ set WINUSE_E2E=1
 go test -tags e2e -v -run "^TestClipboard$" ./test/e2e
 ```
 
+## The display tests
+
+`displays_test.go` (desktop-parity ticket 08) launches nothing and sends
+no input. `TestListDisplaysAndCapturePrimary` checks `list-displays`
+against the system's own metrics, read per-monitor DPI aware: as many
+lines as `SM_CMONITORS`, one primary, numbered 0 and at 0,0 with the
+`SM_CXSCREEN` x `SM_CYSCREEN` size. Then `screenshot --display 0` must
+print the Screenshot line for that rectangle and the no-`@x,y` note, save
+a JPEG of the printed size with its long edge at most 1568 px and not one
+colour, log a Windows.Graphics.Capture display capture (unless this
+Windows has none), and leave the foreground where it was. A display past
+the last one is refused. `TestDisplayScreenshotFallsBackToTheScreenRegion`
+restarts the helper with `WINUSE_WGC=off`, so the display is captured
+through its screen region, and restarts it again afterwards.
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -run "Displays|DisplayScreenshot" ./test/e2e
+```
+
 ## The browser merge probe
 
 `TestBrowserProbe` (`browser_probe_test.go`, ticket 03 of

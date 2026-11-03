@@ -208,6 +208,23 @@ cold Chromium page, pass `--timeout <seconds>` (up to 60): the read gets
 that long, and the wait for a thin Chromium tree to build gets the extra
 time too.
 
+### Displays
+
+```
+winuse list-displays                # one line per display: <n>  <x,y WxH>  scale <s>  [primary]
+winuse screenshot --display <n>     # a screenshot of the whole display
+```
+
+`list-displays` numbers the displays from 0, the primary display, and
+gives each one's rectangle in physical pixels, the coordinates of the
+screenshot line and `move-window`, and its scale (1.5 is 150%). Use it to
+see which display a Window is on, or where to move one. `screenshot
+--display <n>` captures that display as it looks, every Window on it
+included, without the foreground, and prints
+`Screenshot: <path> (WxH px, scale S, display N at X,Y WxH)`. It is for
+looking only: it has no `@x,y` points and no `zoom`. To act at a point,
+take the Window's own screenshot with `get-window-state --screenshot`.
+
 ## Name an Element
 
 An Element Reference takes one of four forms.
@@ -894,6 +911,7 @@ browser clone [browser] [--profile <folder>] [--fresh] [--close-source]
 browser ext install [browser|all] | browser ext status [browser]
 clipboard-get [--format text|image|files] [--out <path>]
 clipboard-set <text> | --image <png> | --file <path>... | clipboard-clear
+list-displays | screenshot --display <n>
 record-tree <window> <file>         # development only, records a tree fixture for winuse's own tests
 skill | skill install <dir>         # print this file from the binary, or write it to <dir>\winuse\SKILL.md
 status                              # read-only: versions, helper uptime, lock, integrity, DPI, browsers, agents, Windows build
