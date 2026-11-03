@@ -120,10 +120,13 @@ func contextMenuAppLeg(t *testing.T, exe, title string, isMenu func(win.WindowIn
 	}
 	menuRef := strconv.FormatUint(menu, 10)
 	state, stderr, exit := runAsMenuAgent(t, "get-window-state", menuRef)
-	if exit != 0 || !strings.Contains(state, "Alpha") {
-		t.Fatalf("get-window-state of the menu: exit %d, stderr %q, state:\n%s", exit, stderr, state)
+	if exit != 0 {
+		t.Fatalf("get-window-state of the menu: exit %d, stderr %q", exit, stderr)
 	}
-	stdout, stderr, exit := runAsMenuAgent(t, "click", menuRef, "name:Alpha")
+	// By Element Index: a WinUI 3 item holds a TextBlock of the same
+	// name, so name:Alpha is ambiguous there (refused, nothing sent).
+	alpha := strconv.Itoa(webElementIndex(t, state, "menu item", "Alpha"))
+	stdout, stderr, exit := runAsMenuAgent(t, "click", menuRef, alpha)
 	assertActionOK(t, "click Alpha in the menu", stdout, stderr, exit)
 	waitMenuClosed(t, "click Alpha", menu)
 	assertForeground(t, "click Alpha in the menu", cover)

@@ -177,3 +177,12 @@ Tests:
 - Offline: `TestWinFormsDropDown`, `TestPressEscapeOnAWinFormsMenu`, `TestLeftWinFormsMenuClosedWithEscape`, `TestMenuEscapeStepPerMenuKind`, `TestClassicBareControlIsLastAndInside`, `TestBareProviderProperties`, `TestBareProviderInterfaces`.
 - Opt-in e2e: `TestContextMenuOnACoveredBareControl`, `TestContextMenuOnACoveredWinFormsApp`, `TestContextMenuOnACoveredWinUIApp`.
 
+Live e2e on the laptop (the orchestrator approved; run after the full run released `.live-lock`, under the lock):
+- The 3 new tests pass. They used the README's two Apps, built in the scratchpad (csc.exe, and dotnet with Windows App SDK 1.7).
+- The first WinUI 3 run failed in the test itself. In the PopupHost, each MenuFlyoutItem holds a TextBlock of the same name, so winuse refused `click <menu> name:Alpha` as ambiguous, with nothing sent. The test now clicks the menu item by Element Index, as an agent reading the Window State would.
+- Rerun after the Classic Dialog grew a control: everything matching "Classic", plus `TestContextMenuOnACoveredEdit`. These pass: `TestHeadlessReturnAndEscapeOnClassicDialog`, `TestHeadlessTypeTextIntoClassicEdit`, `TestContextMenuOnACoveredEdit`, `TestHeadlessInvokeMenuOnClassicDialog`, `TestPostedKeysIntoClassicEdit`, `TestHeadlessSelectTextInClassicEdit`.
+- Two fail on output wording that predates this branch, not on the dialog:
+  - `TestPostedChordFiresAClassicAccelerator` expects `ok\n`, but the posted output is `ok (posted; ...)`, from 93a415e.
+  - `TestShortcutRunsAClassicMenuCommand` expects `ok\n`, but the shortcut route prints `ok (invoked "Edit > Select All" through its shortcut)`, from 5c7d1cf.
+  - In both, the action itself worked. They are left for an e2e-fixes pass.
+
