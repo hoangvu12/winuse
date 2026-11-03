@@ -92,3 +92,10 @@ Build:
 - Docs: SKILL.md Posted Keys, CONTEXT.md Posted Keys, the CLI usage text, ADR 0013 route row 07 done, and the headless-max spec row.
 - Not built here: choosing an item in an open menu by its mnemonic (ticket 09's route). Alt+F opens the menu; the next key goes through ticket 09 once it lands.
 
+
+### 2026-11-03: the WPF chord's foreground (laptop/fx-gone-wait-window-closed)
+
+- Live failure (full laptop run at 0693039): after `press-key Control_L+s --post`, the foreground was the WPF window, and press-key's own watch printed `Note: the App took the foreground`. That watch reports only a move during the Action, and PostChord refuses when the target's thread owns the foreground, so WPF was not the foreground when the chord started.
+- Not decided between: (a) a late WPF start-up activation that fell inside press-key (the failing run was fast, 1.83 s for the whole test); (b) the activation pair, sent while attached to WPF's thread just after the cover's Headed activate-window gave the helper the foreground right (round 4's probe had no such right). No behavior was changed: that waits for the orchestrator's decision.
+- Test change (`test/e2e/posted_chords_test.go`): one second after the cover, the test fails before the chord if the foreground has already moved, so (a) now fails before the chord and (b) after it.
+- Live: `TestPostedChordFiresAWPFKeyBinding` passed 2 runs in a row under the lock (7.3 s, 7.2 s). The foreground stayed with the cover through the chord both times.

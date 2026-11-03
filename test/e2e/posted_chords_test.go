@@ -24,6 +24,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/hoangvu12/winuse/internal/fixture"
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 var procChordGetAsyncKeyState = windows.NewLazySystemDLL("user32.dll").NewProc("GetAsyncKeyState")
@@ -89,6 +90,12 @@ func TestPostedChordFiresAWPFKeyBinding(t *testing.T) {
 	t.Cleanup(func() { _ = cmd.Process.Kill(); _, _ = cmd.Process.Wait() })
 	window := strconv.FormatUint(findWindowByTitle(t, title, 30*time.Second), 10)
 	cover := coverWindow(t, window)
+	// A WPF window that activates itself late at start-up shows here, so a
+	// foreground lost after the chord is the chord's doing.
+	time.Sleep(time.Second)
+	if fg := win.ForegroundWindow(); fg != cover {
+		t.Fatalf("before the posted chord: the foreground window is %s, want the covering Window %d", describeWindow(t, fg), cover)
+	}
 
 	stdout, stderr, exit := runPostedChord(t, window, "Control_L+s")
 	assertActionOK(t, "press-key Control_L+s --post into WPF", stdout, stderr, exit)
