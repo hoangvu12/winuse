@@ -234,6 +234,7 @@ func batch(commands map[string]Command, s Services) Command {
 					Msg:  fmt.Sprintf("batch stopped at Action %d (%s): %s", i+1, st.kind, err.Msg),
 					Hint: err.Hint,
 					Exit: err.Exit,
+					Code: err.Code,
 				})
 			}
 			if err != nil {
