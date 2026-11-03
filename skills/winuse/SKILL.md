@@ -251,6 +251,36 @@ Pick the Headless way whenever one does the job.
   best effort, against the Headed command, which is reliable and takes the
   foreground.
 
+### What winuse cannot do headless
+
+winuse has no background route for these, so plan for the foreground
+from the start.
+
+- Hover and drag in a desktop App. Only a Page with a Browser Connection
+  takes them Headless.
+- A minimized Window, a browser's or an Electron App's included. Run
+  `restore-window` first. A Store app such as Calculator has no UI at all
+  while minimized and comes to the front when restored, so tell the user
+  before you restore one.
+- A right-click menu in a desktop App, such as a WPF App's.
+  `click --button right` is Headed.
+- The taskbar, with its hidden icons and the clock's calendar and
+  notification panel. winuse lists no taskbar Window, the hidden-icons
+  overflow takes the foreground when it opens, and the panel opens only
+  for a real click. Reach the setting through its App, such as Settings,
+  or ask the user.
+- Games, canvases and Apps that read raw input. They expose no Elements
+  and ignore posted keys, so work Headed from a screenshot with `@x,y`
+  points.
+- An administrator Window, in any mode. See "Refusals and recovery".
+
+Pick the fallback by what the step needs. `--post` fits a single key or
+plain text on `press-key` and `type-text`, when the user's foreground
+matters more than certainty; read the Window State afterwards. `--headed`
+fits the rest of this list, administrator Windows aside, and any step
+that must work the first time. It takes the foreground, so tell the user first if they are
+working in another Window.
+
 ## Fill in fields, keys and text
 
 `set-value` fills a `settable` field in one Headless Action and reads the

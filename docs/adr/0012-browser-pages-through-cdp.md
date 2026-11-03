@@ -7,6 +7,11 @@ Reverses the v1 spec's out-of-scope "Integration with use-browser or any
 browser-extension/CDP path" and its rule that the skill never mentions
 use-browser.
 
+Amended by ADR 0013: Decision 6's "Chromium browsers only" is reversed
+for Electron and WebView2 Apps that winuse launches with a debugging
+port, and for an opt-in attach to a running Electron App (headless-max
+ticket 15).
+
 ## Context
 
 winuse reads Chromium pages through UI Automation. That path is slow on

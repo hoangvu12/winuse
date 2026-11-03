@@ -20,7 +20,7 @@ Write the ADR before the tickets that reverse earlier decisions land; update CON
 
 **Status:** ready-for-agent (ADR 0013 accepted by the user)
 
-- [ ] ADR 0013 drafted and accepted by the user
+- [x] ADR 0013 drafted and accepted by the user
 - [ ] CONTEXT.md terms
 - [ ] SKILL.md impossible list and routing rules
 - [ ] codex-parity rows reworded; parity guard test passes
@@ -40,3 +40,11 @@ The policy is accepted, with two additions:
 - An exception the user chose: ticket 20's Chromium and Electron route is automatic, with no `--post`, even where no read-back exists. Its output then says the text was not verified.
 
 Update the impossible list from round 3: Chromium and Electron keys without CDP come off; a running Electron with the fuse on comes off (opt-in, ticket 15); minimized Chromium stays on.
+
+### 2026-11-03: ADR 0013 written; the doc pass continues
+
+- `docs/adr/0013-headless-by-readback-posted-by-opt-in.md`: the five policy points, the user's two additions (no UIA SetFocus in a Headless or Posted path; ticket 20 automatic), a table of routes marked done or planned, the four reversals (ADR 0010 Decision 1 for 11, the minimized refusal for 14, ADR 0011 Decision 5 for 07 and 12, ADR 0012 Decision 6 for 15) and the impossible list updated from rounds 3 to 5.
+- Pointers added to ADR 0010, 0011 and 0012, and to `../headless/spec.md` (the minimized refusal and "Headless `@x,y` actions").
+- CONTEXT.md: Posted Clicks next to Posted Keys (marked planned); the Headed Action definition notes ADR 0013.
+- SKILL.md: "What winuse cannot do headless" under "Choose Headless or Headed", with when to use `--post` or `--headed`. It describes only what winuse does today, so it names no planned route.
+- Still open, as each code ticket lands: CONTEXT.md's Headed Action narrowing and the new Actions (invoke-menu, ContextMenu), the SKILL.md routes, README's headless line, and the docs/codex-parity.md rows. Then check the whole set here.

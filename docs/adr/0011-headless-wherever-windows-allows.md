@@ -7,6 +7,11 @@ Amends ADR 0010. It reverses the v1 spec's "capturing the Window's
 screen region (after it is in the foreground)" and the headless spec's
 out-of-scope "Headless typing".
 
+Amended by ADR 0013: Decision 5's chord refusal is reversed for chords
+through attached key state (headless-max ticket 07), and `--post` gains
+Posted Clicks (ticket 12). ADR 0013 also names the general rule behind
+Decision 5: a route without a readback is opt-in.
+
 ## Context
 
 ADR 0010 made Element Actions Headless and kept every other Action

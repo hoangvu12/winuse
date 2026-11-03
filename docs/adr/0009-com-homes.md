@@ -5,6 +5,10 @@
 Accepted (the winuse-v1 review). Amends ADR 0003's "one goroutine for
 all COM".
 
+Amended by ADR 0014: the one UIA MTA thread becomes a pool of UIA MTA
+workers with per-App affinity (multi-agent ticket 07, planned). Until
+that ticket lands, Decision 1's single UIA thread is what runs.
+
 ## Context
 
 ADR 0003 said all COM work runs on one OS-locked goroutine that called

@@ -38,7 +38,7 @@ A Headless click whose Element offers no pattern route fails with nothing sent a
 - **Headless Action set:** `click` with an Element Index or `name:`/`id:` reference, left button, count 1; `set-value` and `perform-secondary-action` with an Element Index or `name:`/`id:` reference, except the Raise Secondary Action. Everything else is Headed. `@x,y` forms are always Headed: a screen point names whatever is topmost there, which for a covered Window is another Window's Element.
 - **Headless click route**, first offered pattern wins: Invoke → Toggle → SelectionItem.Select → ExpandCollapse (Expand when collapsed, Collapse when expanded) → LegacyIAccessible.DoDefaultAction when the default action is non-empty (agent-desktop findings A19-6, A15-5). None offered: fail, nothing sent, hint `--headed`.
 - **Headless set-value** skips the v1 focus-first step (UIA SetFocus moves the desktop foreground, agent-desktop A3-4). Headed set-value keeps it.
-- **Refusals stay:** locked desktop, administrator Window (UIA writes across the integrity boundary fail, agent-desktop A24-16). New: a minimized Window refuses Headless Actions with a hint to `activate-window` it or pass `--headed`.
+- **Refusals stay:** locked desktop, administrator Window (UIA writes across the integrity boundary fail, agent-desktop A24-16). New: a minimized Window refuses Headless Actions with a hint to `activate-window` it or pass `--headed`. (Narrowed 2026-11-03 by ADR 0013: classic Win32, WPF and WinUI 3 Desktop Windows take UIA pattern Actions while minimized; `../headless-max/issues/14-minimized-windows.md`.)
 - **Verification:** after a Headless Toggle, Select, Expand, Collapse or set-value (Value pattern, non-password), the Element's state is read back live. A mismatch fails with the observed state and "the Action was delivered; do not repeat it, read the Window State". Invoke and Legacy default actions have no readable outcome and report `ok`.
 - **Retry safety in failures:** failures raised before any pattern call or input say "nothing was sent", so the agent knows a retry is safe.
 - **No banner for Headless Actions.** The Agent Cursor replaces it. Headed Actions keep the banner and the Esc stop unchanged.
@@ -53,7 +53,7 @@ A Headless click whose Element offers no pattern route fails with nothing sent a
 
 ## Out of Scope
 
-- Per-agent cursors and a machine-wide input lease for several agents (merge work).
+- ~~Per-agent cursors and a machine-wide input lease for several agents (merge work).~~ Reversed 2026-11-03 by ADR 0014: a cursor per agent, and lanes instead of one lease (`../multi-agent/spec.md`).
 - Headless typing (UIA has no insert-at-caret write; agent-desktop's Windows `type` is Headed too).
-- Headless `@x,y` actions.
+- ~~Headless `@x,y` actions.~~ Reversed 2026-11-03 by ADR 0013 for points that resolve to an Element in the target Window (`../headless-max/issues/11-point-forms-to-element.md`).
 - Notifications, shell surfaces, clipboard.

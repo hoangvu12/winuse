@@ -6,6 +6,12 @@ Accepted (headless spec, `.scratch/headless/spec.md`). Reverses the v1
 spec's "Every Action activates its target Window first" and its
 out-of-scope "Background operation".
 
+Amended by ADR 0013: Decision 1's "`@x,y` forms are not Headless" is
+reversed for point forms that resolve to an Element inside the target
+Window (headless-max ticket 11), and the minimized refusal of the
+headless spec is lifted for classic Win32, WPF and WinUI 3 Desktop
+Windows (ticket 14).
+
 ## Context
 
 v1 copied Codex's Windows model: every Action activates the Window,
