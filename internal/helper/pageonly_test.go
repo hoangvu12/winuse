@@ -778,10 +778,23 @@ func TestPageHoverAndDrag(t *testing.T) {
 	if r.cursor.labels[0] != `hover "Sign in"` {
 		t.Errorf("label %q", r.cursor.labels)
 	}
+	// A UIA Element is hovered Headed (desktop-parity 13): refused without
+	// --headed, nothing sent.
 	_, e := r.run(t, "hover", protocol.HoverArgs{Window: "301", ElementIndex: idx(2)})
-	if e == nil || e.Msg != "hover takes an element only in a browser Window's Page, and element 2 of window 301 is not in one; nothing was sent" ||
-		e.Hint != "hover reaches other Elements by a point: run winuse get-window-state 301 --screenshot, then winuse hover 301 @x,y" {
+	if e == nil || e.Msg != "hover on an Element has no background route outside a Page: hovering moves the real pointer and leaves it there; nothing was sent" ||
+		!strings.HasSuffix(e.Hint, "winuse --headed hover 301 2") {
 		t.Errorf("UIA hover: %+v", e)
+	}
+	// The Batch's scope: only the Page Element forms are Headless.
+	w := win.WindowInfo{ID: 301}
+	raw := func(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
+	if !r.svc.stepHeadless(context.Background(), "hover", raw(protocol.HoverArgs{ElementIndex: idx(7)}), &w) ||
+		!r.svc.stepHeadless(context.Background(), "drag", raw(protocol.DragArgs{FromIndex: idx(7), ToX: 3, Headed: true}), &w) {
+		t.Error("a Page Element form is not Headless")
+	}
+	if r.svc.stepHeadless(context.Background(), "hover", raw(protocol.HoverArgs{ElementIndex: idx(2)}), &w) ||
+		r.svc.stepHeadless(context.Background(), "drag", raw(protocol.DragArgs{FromIndex: idx(2), ToIndex: idx(7)}), &w) {
+		t.Error("a UIA Element form is Headless")
 	}
 
 	r.set(func() { r.inputs = nil })
@@ -795,6 +808,15 @@ func TestPageHoverAndDrag(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(r.srv.Methods(), ","), "Input.setInterceptDrags") {
 		t.Error("HTML5 drags not intercepted")
+	}
+	// --drop-delay holds the Page's drag before its release (desktop-parity
+	// 13).
+	start := time.Now()
+	if _, e := r.run(t, "drag", protocol.DragArgs{Window: "301", FromIndex: idx(7), ToIndex: idx(8), DropDelayMS: 150}); e != nil {
+		t.Fatal(e.Error())
+	}
+	if took := time.Since(start); took < 150*time.Millisecond {
+		t.Errorf("a drag with --drop-delay 150 took %s", took)
 	}
 	_, e = r.run(t, "drag", protocol.DragArgs{Window: "301", FromIndex: idx(7), ToIndex: idx(2)})
 	if e == nil || !strings.HasPrefix(e.Msg, "a drag from element 7 ends in the same Page, and the target 2 is not in it") {
@@ -978,8 +1000,10 @@ func TestPageOnlyStepsAreHeadless(t *testing.T) {
 	if r.svc.stepHeadless(context.Background(), "hover", raw(protocol.HoverArgs{X: 1, Y: 2}), &w) || r.svc.stepHeadless(context.Background(), "drag", raw(protocol.DragArgs{ToX: 3}), &w) {
 		t.Error("a point form is Headless")
 	}
-	if !r.svc.stepHeadless(context.Background(), "hover", raw(protocol.HoverArgs{ElementIndex: idx(4)}), &w) || !r.svc.stepHeadless(context.Background(), "drag", raw(protocol.DragArgs{FromRef: "name:a", ToX: 3}), &w) {
-		t.Error("a Page Element form is not Headless")
+	// No Page Element here: the Element forms are Headed (desktop-parity
+	// 13; TestPageHoverAndDrag pins the Page forms).
+	if r.svc.stepHeadless(context.Background(), "hover", raw(protocol.HoverArgs{ElementIndex: idx(4)}), &w) || r.svc.stepHeadless(context.Background(), "drag", raw(protocol.DragArgs{FromRef: "name:a", ToX: 3}), &w) {
+		t.Error("a UIA Element form is Headless")
 	}
 	r.waitAfter = 1
 	out, e := r.run(t, "batch", protocol.BatchArgs{Window: "301", Steps: []protocol.Step{

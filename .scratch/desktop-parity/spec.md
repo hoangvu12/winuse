@@ -55,7 +55,7 @@ Details are in each ticket's Comments.
 | 10 | close-app | P2 | S-M | done |
 | 11 | maximize-window | P2 | S | done |
 | 12 | Select an option by name in UIA combos and lists | P2 | S-M | done |
-| 13 | Hover and drag by UIA Element | P2 | S | ready-for-agent |
+| 13 | Hover and drag by UIA Element | P2 | S | done |
 | 14 | Caller-set timeouts | P2 | S | done |
 | 15 | `winuse skill` prints the embedded skill | P2 | S | done |
 | 16 | `status` | P2 | S | done |

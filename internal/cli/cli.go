@@ -221,11 +221,16 @@ const usageTail = `);
   drag <window> @x,y @x,y     drag the pointer from one point to another,
                                both in the Window's latest screenshot's pixels;
                                drag <window> <element> <element | @x,y> drags
-                               a Page Element headless
+                               a Page Element headless, and any other Element
+                               from its clickable point with --headed;
+                               --drop-delay <ms> holds at the end before the
+                               drop
   hover <window> @x,y         move the pointer to a point of the Window's
                                latest screenshot and leave it there (reveals
                                hover-only UI and tooltips); hover <window>
-                               <element> hovers a Page Element headless
+                               <element> hovers a Page Element headless, and
+                               any other Element at its clickable point with
+                               --headed
   activate-window <window>    bring a Window to the foreground
   restore-window <window>     restore a minimized or maximized Window to its
                                normal size without activating it (the output

@@ -76,7 +76,10 @@ const (
 // Drag drags from one point to another. HTML5 drags are intercepted and
 // dropped at to through CDP's drag events (dragEnter, dragOver, drop),
 // then the button is released; any other drag is the mouse events alone.
-func (in *Input) Drag(ctx context.Context, from, to Point) (DragKind, error) {
+// hold is how long the drag holds at to before it drops (desktop-parity
+// 13's --drop-delay): after dragOver for an HTML5 drag, before the
+// release otherwise.
+func (in *Input) Drag(ctx context.Context, from, to Point, hold time.Duration) (DragKind, error) {
 	sub := in.c.Subscribe(in.session, "Input.dragIntercepted")
 	defer sub.Close()
 	intercept := func(on bool) {
@@ -96,6 +99,11 @@ func (in *Input) Drag(ctx context.Context, from, to Point) (DragKind, error) {
 			p.Data = json.RawMessage(`{"items":[],"dragOperationsMask":1}`)
 		}
 		for _, typ := range []string{"dragEnter", "dragOver", "drop"} {
+			if typ == "drop" {
+				if err := dropPause(ctx, hold); err != nil {
+					return DragHTML5, err
+				}
+			}
 			if err := in.send(ctx, "Input.dispatchDragEvent", map[string]any{"type": typ, "x": to.X, "y": to.Y, "data": p.Data}); err != nil {
 				return DragHTML5, err
 			}
@@ -126,9 +134,25 @@ func (in *Input) Drag(ctx context.Context, from, to Point) (DragKind, error) {
 		return drop(got)
 	case <-time.After(dragSettle):
 	}
+	if err := dropPause(ctx, hold); err != nil {
+		return DragMouse, err
+	}
 	return DragMouse, in.send(ctx, "Input.dispatchMouseEvent", release)
 }
 
 // dragSettle is how long a drag waits after its last move for the browser
 // to report an HTML5 drag.
 var dragSettle = 50 * time.Millisecond
+
+// dropPause waits a drag's drop delay, or until ctx ends.
+func dropPause(ctx context.Context, drop time.Duration) error {
+	if drop <= 0 {
+		return nil
+	}
+	select {
+	case <-time.After(drop):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}

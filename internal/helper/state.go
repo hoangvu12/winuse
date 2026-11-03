@@ -162,10 +162,11 @@ type Services struct {
 	// scroll amounts (positive right/down, wheel units — the win layer
 	// flips the vertical to wheel semantics). Drag's stopped is the abort
 	// checkpoint between its interpolation steps (the Esc stop or the
-	// request's deadline, finding 10).
-	Scroll func(target uint64, x, y, dx, dy int32) error                        // wheel scroll at a point
-	Drag   func(target uint64, fx, fy, tx, ty int32, stopped func() bool) error // left-button drag, from point to point
-	Hover  func(target uint64, x, y int32) error                                // move the pointer and leave it there
+	// request's deadline, finding 10); drop holds the button down at the
+	// end point first (--drop-delay, desktop-parity 13).
+	Scroll func(target uint64, x, y, dx, dy int32) error                                            // wheel scroll at a point
+	Drag   func(target uint64, fx, fy, tx, ty int32, drop time.Duration, stopped func() bool) error // left-button drag, from point to point
+	Hover  func(target uint64, x, y int32) error                                                    // move the pointer and leave it there
 
 	// The Window Actions (ADR 0011, windowactions.go). Nil values fall
 	// back to the real non-activating Win32 calls; tests fake them so
