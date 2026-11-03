@@ -319,8 +319,9 @@ func (p *pageRun) dragAndCapture(t *testing.T) {
 	}
 }
 
-// dialogs: alert, confirm and prompt through `winuse dialog`, other
-// Actions failing fast with nothing sent while one is open, and the
+// dialogs: alert, confirm and prompt through `winuse dialog`, the click
+// that opened each one reported as `ok` with a note (desktop-parity 02),
+// other Actions failing fast with nothing sent while one is open, and the
 // Window State's note.
 func (p *pageRun) dialogs(t *testing.T) {
 	st := p.open(t, p.srv.mainURL(false, ""), "")
@@ -330,8 +331,8 @@ func (p *pageRun) dialogs(t *testing.T) {
 	text := pageIndex(t, st, "edit", "e2e text")
 	alertB := pageIndex(t, st, "button", "e2e alert")
 
-	out, _ := p.failing(t, "click", p.window, alertB)
-	expectContains(t, "the click that opened an alert", out, "alert dialog")
+	out := p.act(t, "click", p.window, alertB)
+	expectContains(t, "the click that opened an alert", out, "ok\nNote: the Page opened an alert dialog")
 	expectContains(t, "the click that opened an alert", out, "e2e alert message")
 
 	// Before any new Window State read: the Page indexes above stay
@@ -365,13 +366,13 @@ func (p *pageRun) dialogs(t *testing.T) {
 	p.expectEval(t, "String(document.getElementById('count').dataset.count || 0)", "0")
 	p.expectEval(t, "document.getElementById('text').value", "")
 
-	out, _ = p.failing(t, "click", p.window, pageIndex(t, st, "button", "e2e confirm"))
-	expectContains(t, "the click that opened a confirm", out, "confirm dialog")
+	out = p.act(t, "click", p.window, pageIndex(t, st, "button", "e2e confirm"))
+	expectContains(t, "the click that opened a confirm", out, "Note: the Page opened a confirm dialog")
 	p.actOK(t, "dialog", p.window, "dismiss")
 	p.expectEval(t, "String(window.e2eConfirm)", "false")
 
-	out, _ = p.failing(t, "click", p.window, pageIndex(t, st, "button", "e2e prompt"))
-	expectContains(t, "the click that opened a prompt", out, "prompt dialog")
+	out = p.act(t, "click", p.window, pageIndex(t, st, "button", "e2e prompt"))
+	expectContains(t, "the click that opened a prompt", out, "Note: the Page opened a prompt dialog")
 	p.actOK(t, "dialog", p.window, "accept", "e2e answer")
 	p.expectEval(t, "String(window.e2ePrompt)", "e2e answer")
 
@@ -483,9 +484,8 @@ func (p *pageRun) navigation(t *testing.T) {
 
 // tabs: tab new opens a background tab (the Window keeps showing its
 // page), tab list lists it, tab close closes it. tab switch on a launched
-// browser is Headed (ticket 07) and refused without --headed (headless-max
-// ticket 21), so it is not run here; TestBrowserPagesExtension runs the
-// Headless one.
+// browser is Headed (ticket 07), so it is not run here;
+// TestBrowserPagesExtension runs the Headless one.
 func (p *pageRun) tabs(t *testing.T) {
 	p.open(t, p.srv.mainURL(false, ""), "")
 	_, before := p.tabList(t)
@@ -511,7 +511,20 @@ func (p *pageRun) tabs(t *testing.T) {
 	if title := windowTitle(t, p.main); !strings.HasPrefix(title, pagesTitle) {
 		t.Errorf("the Window's title is %q after tab new, want it to start with %q", title, pagesTitle)
 	}
-	t.Log("tab switch on a launched browser is Headed (ticket 07), only with --headed: not run here; TestBrowserPagesExtension runs the Headless one")
+	// tab switch on a launched browser is Headless too (headless-max 05):
+	// the Tab's item in the covered Window's tab strip is selected through
+	// UI Automation. p.act's guard checks the foreground and the z-order.
+	p.actOK(t, "tab", "switch", p.window, tab)
+	if _, now := p.tabList(t); now != tab {
+		t.Errorf("after tab switch %s the active tab is %q", tab, now)
+	}
+	if title := windowTitle(t, p.main); !strings.HasPrefix(title, pagesNextTitle) {
+		t.Errorf("the Window's title is %q after tab switch, want it to start with %q", title, pagesNextTitle)
+	}
+	p.actOK(t, "tab", "switch", p.window, before)
+	if _, now := p.tabList(t); now != before {
+		t.Errorf("after switching back to %s the active tab is %q", before, now)
+	}
 
 	p.actOK(t, "tab", "close", p.window, tab)
 	closed = true
@@ -660,11 +673,17 @@ func (p *pageRun) act(t *testing.T, args ...string) string {
 	return stdout
 }
 
-// actOK is act for an Action whose whole output is "ok".
+// actOK is act for an Action whose output is "ok", with any note lines
+// logged (assertActionOK).
 func (p *pageRun) actOK(t *testing.T, args ...string) {
 	t.Helper()
-	if out := p.act(t, args...); out != "ok\n" {
-		t.Errorf("winuse %s: stdout %q, want %q", strings.Join(args, " "), out, "ok\n")
+	out := p.act(t, args...)
+	notes, ok := actionNotes(out)
+	if !ok {
+		t.Errorf("winuse %s: stdout %q, want %q and any note lines", strings.Join(args, " "), out, "ok\n")
+	}
+	for _, n := range notes {
+		t.Logf("winuse %s: %s", strings.Join(args, " "), n)
 	}
 }
 

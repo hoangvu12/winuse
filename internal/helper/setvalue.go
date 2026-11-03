@@ -96,9 +96,10 @@ func setValue(s Services) Command {
 		}
 		if ha, ok := s.headless("set-value", args); ok {
 			return s.runHeadless(ctx, a.Window, ha, headlessRun{
-				cmd:    "set-value",
-				verb:   "set value", // never the value: it could be a password
-				target: target,
+				cmd:       "set-value",
+				verb:      "set value", // never the value: it could be a password
+				target:    target,
+				minimized: true,
 				act: func(ctx context.Context, w win.WindowInfo, index int) error {
 					return ha.SetValueHeadless(ctx, w.ID, index, a.Value)
 				},
@@ -189,9 +190,10 @@ func performSecondaryAction(s Services) Command {
 		}
 		if ha, ok := s.headless("perform-secondary-action", args); ok {
 			return s.runHeadless(ctx, a.Window, ha, headlessRun{
-				cmd:    "perform-secondary-action",
-				verb:   strings.ToLower(action),
-				target: target,
+				cmd:       "perform-secondary-action",
+				verb:      strings.ToLower(action),
+				target:    target,
+				minimized: true,
 				act: func(ctx context.Context, w win.WindowInfo, index int) error {
 					return ha.PerformSecondaryActionHeadless(ctx, w.ID, index, action)
 				},

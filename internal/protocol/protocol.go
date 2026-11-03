@@ -167,6 +167,12 @@ type Request struct {
 	Cmd       string          `json:"cmd"`                  // command name, e.g. "list-windows"
 	Args      json.RawMessage `json:"args,omitempty"`       // command arguments, command-specific JSON
 	TimeoutMS int             `json:"timeout_ms,omitempty"` // the caller-set budget (--timeout) of a command in MaxTimeout, clamped to its cap; 0: the command's own
+
+	// The Agent the request comes from (multi-agent ticket 02, ADR 0014
+	// Decision 3; internal/agent): its identity and the label the Agent
+	// Cursor and messages show. Both empty: the shared default Agent.
+	Agent      string `json:"agent,omitempty"`
+	AgentLabel string `json:"agent_label,omitempty"`
 }
 
 // ListWindowsArgs are list-windows's optional arguments (desktop-parity
@@ -196,6 +202,7 @@ type LaunchArgs struct {
 	Args      []string `json:"args,omitempty"`      // command-line arguments, one per --arg, quoted by the helper
 	Cwd       string   `json:"cwd,omitempty"`       // the working directory, absolute (the CLI resolves it)
 	Env       []string `json:"env,omitempty"`       // KEY=VALUE entries over the helper's environment
+	CDP       bool     `json:"cdp,omitempty"`       // an Electron or WebView2 App with a loopback debugging port (headless-max 15)
 }
 
 // BrowserArgs are the arguments of browser status, use, launch, connect
@@ -432,6 +439,40 @@ type SelectTextArgs struct {
 	All          bool   `json:"all,omitempty"` // select the whole text (Start and Length stay 0)
 }
 
+// InvokeMenuArgs are invoke-menu's arguments (headless-max ticket 08):
+// the path of a classic menu bar command, one item name per level, such as
+// ["File", "Save As..."]. Always Headless: there is no headed form.
+type InvokeMenuArgs struct {
+	Window string   `json:"window"` // Window ID, or an App name when that App has exactly one Window
+	Path   []string `json:"path"`   // the item names from the menu bar down to the command
+}
+
+// ClipboardGetArgs are clipboard-get's arguments (desktop-parity ticket
+// 01, a Desktop command): the format to read, text (the default), image
+// or files, and for an image the absolute path the PNG is written to
+// (the CLI resolves it; empty: a new file in %TEMP%\winuse).
+type ClipboardGetArgs struct {
+	Format string `json:"format,omitempty"`
+	Out    string `json:"out,omitempty"`
+}
+
+// ClipboardSetArgs are clipboard-set's arguments (desktop-parity ticket
+// 01): exactly one representation, the text (empty text included), an
+// absolute PNG path or absolute file paths. It replaces everything on the
+// clipboard.
+type ClipboardSetArgs struct {
+	Text  *string  `json:"text,omitempty"`
+	Image string   `json:"image,omitempty"`
+	Files []string `json:"files,omitempty"`
+}
+
+// ScreenshotArgs are screenshot's arguments (desktop-parity ticket 08, a
+// Desktop command): the index of the display to capture, from
+// list-displays (0 is the primary display).
+type ScreenshotArgs struct {
+	Display *int `json:"display"`
+}
+
 // BatchArgs are batch's arguments (ticket 11): several Actions on one
 // Window in a single call, run in order, stopping at the first failure.
 type BatchArgs struct {
@@ -467,6 +508,8 @@ var BatchStepKinds = append(append([]string{
 	// Headless-max ticket 10: select-text, so a Batch can select a word
 	// and type its replacement.
 	"select-text",
+	// Headless-max ticket 08: invoke-menu.
+	"invoke-menu",
 )
 
 // Response is the helper's answer.

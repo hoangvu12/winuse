@@ -56,6 +56,18 @@ Element Index fails with an instruction to read the Window State again;
 follow it. `name:` and `id:` survive re-reads better than indexes, because
 an Element keeps its name and ID while its index shifts.
 
+### Several agents
+
+winuse names each caller after the program that ran it, your Harness
+session, and `winuse status` lists the agents it served. Sub-agents of one
+session share that program, so give each one its own name in
+`WINUSE_AGENT`. Set it on every winuse command, because a Harness often
+starts a fresh shell per command: in PowerShell,
+`$env:WINUSE_AGENT = "reviewer"; winuse click 101 3`. The agents still share
+each Window's Element Indexes: another agent's read of the same Window
+renumbers them, so prefer `name:` and `id:` while another agent works in
+that Window.
+
 ## Find the Window
 
 ```
@@ -92,6 +104,7 @@ seconds for the Window; for an App you know starts slowly, pass
 winuse launch-app <app> --minimized                  # open its Window minimized
 winuse launch-app <exe path> --arg <a> --arg <b>     # one --arg per argument
 winuse launch-app <exe path> --cwd <dir> --env KEY=VALUE
+winuse launch-app <exe path> --cdp                   # an Electron or WebView2 App, read like a browser
 ```
 
 The App starts without taking the user's foreground, so its Window may
@@ -108,10 +121,22 @@ refused with nothing started, and the hint names the executable to launch
 instead when winuse knows it. `--minimized` works for every App, but an
 App can ignore it.
 
+`--cdp` starts an Electron App (VS Code, Slack, Discord, Teams) or an App
+that shows web content in WebView2 with a loopback debugging port. It needs
+the executable too. A second line then says
+`Note: a Browser Connection reaches the App's pages`, and from there the
+App's Windows work like a browser Window with a Browser Connection: the
+Window State reads the page whole even while the Window is covered, and
+every Action on the page is Headless. When the line says no debugging port
+appeared, the App ignored the port and stays on UI Automation. `--cdp`
+works only at launch: winuse never restarts an App that is already
+running. Ask the user before you close one to relaunch it with `--cdp`.
+
 A dialog such as Save As, a file picker or a message box is its own Window
-of the same App. Target it directly. If a dialog you expect is missing from
-the Window State, look for it in `list-windows`. Listings already leave out
-hidden, cloaked and tool windows.
+of the same App. Target it directly. An Action that opens one names it in a
+note after its `ok` (see "Read the result"). If a dialog you expect is
+missing from the Window State, look for it in `list-windows`. Listings
+already leave out hidden, cloaked and tool windows.
 
 ## Read the Window State
 
@@ -156,8 +181,9 @@ the Window is fully covered. winuse waits the full time only once per
 Window: later reads of a Window that stayed thin take about half a second
 and repeat the note, until a read finds the page built. Connect the browser (`winuse browser status`
 says how) or ask the user to uncover the Window. For an Electron or WebView2
-app, take a screenshot instead. winuse never uncovers or activates the
-Window itself.
+app, take a screenshot instead, or launch it with `launch-app --cdp` when
+you start it yourself. winuse never uncovers or activates the Window
+itself.
 
 The screenshot comes after the tree as
 `Screenshot: <path> (WxH px, scale S, window at X,Y WxH)`: the image's size
@@ -170,7 +196,8 @@ rather than guessing.
 Screenshots and `zoom` capture the Window where it is, even behind other
 Windows, and leave the foreground alone. They show the Window alone: a menu,
 dropdown or popup that opens outside its frame is a Window of its own, so
-find it in `list-windows` and screenshot it by its Window ID. A minimized
+screenshot it by the Window ID that the Action's note gave, or find it in
+`list-windows`. A minimized
 Window is refused, because nothing of it is on screen; run `restore-window`
 first. `--headed` activates the Window and captures it the old way, for an
 app whose headless capture comes out blank.
@@ -180,6 +207,23 @@ failure. A read has 10 seconds. For a slow Electron or Office tree, or a
 cold Chromium page, pass `--timeout <seconds>` (up to 60): the read gets
 that long, and the wait for a thin Chromium tree to build gets the extra
 time too.
+
+### Displays
+
+```
+winuse list-displays                # one line per display: <n>  <x,y WxH>  scale <s>  [primary]
+winuse screenshot --display <n>     # a screenshot of the whole display
+```
+
+`list-displays` numbers the displays from 0, the primary display, and
+gives each one's rectangle in physical pixels, the coordinates of the
+screenshot line and `move-window`, and its scale (1.5 is 150%). Use it to
+see which display a Window is on, or where to move one. `screenshot
+--display <n>` captures that display as it looks, every Window on it
+included, without the foreground, and prints
+`Screenshot: <path> (WxH px, scale S, display N at X,Y WxH)`. It is for
+looking only: it has no `@x,y` points and no `zoom`. To act at a point,
+take the Window's own screenshot with `get-window-state --screenshot`.
 
 ## Name an Element
 
@@ -210,6 +254,8 @@ default:
 - With an Element Index, `name:` or `id:`: `click` with the left button and
   a single click, `set-value`, `perform-secondary-action` except Raise,
   `scroll`, and `select-text`, which has no Headed form.
+- `invoke-menu`, a command of a classic menu bar, which has no Headed
+  form either.
 - Every Window Action: `restore-window`, `minimize-window`, `move-window`,
   `resize-window` and `close-window`.
 - `press-key` Return or Escape on a classic dialog, `type-text` into a
@@ -223,8 +269,8 @@ Every other Action is a Headed Action, and it runs only when you pass
 pointer and keyboard, and frames the Window with a banner telling the user
 that winuse is in control and Esc stops it. Headed covers every `@x,y` form
 outside a Page, `--count 2|3`, `--button right|middle`, `drag`, `hover`,
-Raise, `press-key` and `type-text` anywhere the routes below do not reach,
-and `tab switch` on a browser winuse launched or cloned. Sent without
+Raise, and `press-key` and `type-text` anywhere the routes below do not
+reach. Sent without
 `--headed`, these are refused: the line says why there is no background
 route and ends in `nothing was sent`, and the hint gives the exact
 `--headed` command, with `--post` or `--into` where they fit.
@@ -250,9 +296,9 @@ Window State.
 runs the Actions above that have no other route, and forces the Headed way
 for an Action that has a Headless form. On a Batch it makes every step
 Headed. Window Actions have no Headed form. It goes before the command or
-anywhere after it, except inside `type-text`'s text and `set-value`'s
-value, where a `--headed` token is literal text. Put the flag before the
-command there. Use `--headed` in these cases.
+anywhere after it, except inside `type-text`'s text, `set-value`'s value
+and `clipboard-set`'s text, where a `--headed` token is literal text. Put
+the flag before the command there. Use `--headed` in these cases.
 
 - A command was refused with `nothing was sent` and a `--headed` retry in
   its hint, and the step needs the real pointer or keyboard.
@@ -271,7 +317,9 @@ Pick the Headless way whenever one does the job.
   combo box or list item by name with `set-value`, rather than a click and
   `type-text`, a click that flips it, or clicks that open a list.
 - Confirm or cancel a dialog with a Headless click on its button by `name:`.
-- Open menus, trees and combo boxes with a Headless click or
+- Run a command of a classic menu bar with `invoke-menu` rather than
+  opening the menu.
+- Open other menus, trees and combo boxes with a Headless click or
   `perform-secondary-action <ref> Expand`.
 - Scroll by Element rather than at an `@x,y` point.
 - Show, hide, place and close Windows with the Window Actions rather than
@@ -288,10 +336,13 @@ without it the command is refused with nothing sent.
 
 - Hover and drag in a desktop App. Only a Page with a Browser Connection
   takes them Headless.
-- A minimized Window, a browser's or an Electron App's included. Run
-  `restore-window` first. A Store app such as Calculator has no UI at all
-  while minimized and comes to the front when restored, so tell the user
-  before you restore one.
+- A minimized browser, Electron App or Store app. Run `restore-window`
+  first. A Store app such as Calculator has no UI at all while minimized
+  and comes to the front when restored, so tell the user before you
+  restore one. Other minimized Windows still take `click`,
+  `set-value`, `perform-secondary-action` and `select-text` by Element;
+  scrolling, keys, `invoke-menu` and screenshots need `restore-window`
+  first.
 - A right-click menu in a desktop App, such as a WPF App's.
   `click --button right` needs `--headed`.
 - The taskbar, with its hidden icons and the clock's calendar and
@@ -446,6 +497,33 @@ effort.
 Use `--post` for a single key or plain text on a Window with no Headless
 route, when the user's foreground matters more than certainty.
 
+## Run a menu command
+
+```
+winuse invoke-menu <window> "File > Save As..."
+```
+
+`invoke-menu` runs a command of a classic Win32 menu bar without opening
+the menu: the menus of older Windows tools, of Win32 and MFC Apps and of
+their dialogs. It is always Headless. Name one item per level, separated
+by `>`, and quote the path, because PowerShell reads a bare `>` as a
+redirect. When the Window State shows a menu bar, try `invoke-menu` first.
+
+- Names match without case, `&` markers or the shortcut, and a trailing
+  `...` is optional, so `"file > save as"` finds `Save &As...`.
+- winuse lets the App update the menu as opening it would, then checks the
+  item. A greyed item, a name that matches no item or several, a path that
+  ends at a submenu, and a Window with no classic menu bar are refused
+  with nothing sent. A classic submenu's items are missing from the
+  Window State, so read them from the failure, which lists the items at
+  that level.
+- `ok` means the command was sent. Read the Window State to see its
+  effect. A command that opens a dialog opens a new Window; find it with
+  `list-windows`.
+- WinUI, WPF, WinForms, Office ribbons and browsers draw their own menus,
+  and `invoke-menu` refuses them. Click their menu Elements by `name:`
+  instead.
+
 ## Scroll
 
 ```
@@ -498,6 +576,35 @@ back, and print `ok`. They are not Batch steps.
   stays open, the output says so: the app may be asking to save. Read
   `list-windows` or the Window State and handle that prompt. winuse never
   ends a process.
+
+## Clipboard
+
+```
+winuse clipboard-get                                  # the clipboard's text
+winuse clipboard-get --format files                   # copied files, one path per line
+winuse clipboard-get --format image [--out <path>]    # saves the image as a PNG, prints its path and size
+winuse clipboard-set <text>                           # or --image <png>, or --file <path>...
+winuse clipboard-clear
+```
+
+The clipboard commands are Desktop commands: they name no Window, need no
+foreground, show no Agent Cursor and are not Batch steps. `clipboard-get`
+prints the text exactly as it is, with no newline added. Without `--out`,
+the image goes to a new file in `%TEMP%\winuse`. When the clipboard holds
+nothing in the format you asked for, the command fails and its hint says
+what the clipboard holds.
+
+`clipboard-set` replaces everything on the clipboard with one thing: its
+arguments as literal text joined by spaces, like `type-text`, or a PNG
+file, or a list of files that exist. Paths are taken from your working
+directory. To put a long text into a field that has no Headless route,
+`clipboard-set` it, then paste it with `press-key <window> Control_L+v`,
+which is Headed.
+
+A program that put something on the clipboard and stopped responding can
+make the clipboard wait on it. winuse refuses such a clipboard with
+nothing sent, and gives up on a program that is too slow to hand its
+content over. Wait until that program responds, then retry.
 
 ## Browser Windows
 
@@ -585,11 +692,14 @@ winuse drag <window> <element> <element|@x,y>
   banner. Deal with that Element, then read the Window State again.
 - A Page Element goes stale when the Page navigates or the node goes away.
   Read the Window State again.
-- A click that opens a JavaScript dialog, such as an alert, confirm, prompt
-  or leave-this-page dialog, fails with the dialog's text. winuse delivered
-  the click, so do not repeat it. While a dialog shows, every Page Action
-  fails and names it. Answer it with `dialog`, and give a prompt its text
-  after `accept`.
+- A click or key that opens a JavaScript dialog, such as an alert,
+  confirm, prompt or leave-this-page dialog, prints `ok` and a `Note:` line
+  with the dialog's text. winuse delivered the click, so do not repeat it.
+  While a dialog shows, every Page Action fails and names it. Answer it
+  with `dialog` next, and give a prompt its text after `accept`.
+- A click or key that opens a new Tab adds
+  `Note: a new Tab opened: <tab> "<title>" <url>`. `tab list` shows which
+  Window holds it, and `tab switch` makes it the Tab you read and act on.
 - A click that opens a file chooser says that winuse held it back, so no
   file dialog opens on the screen. Answer it with
   `winuse upload <window> <file>...`, or give files to a file input
@@ -623,11 +733,11 @@ winuse tab close <window> <tab>
 
 Page commands act on the Window's active Tab, and `tab new` opens a Tab in
 the background, so `tab switch` to the new Tab before you act in it.
-`tab new` and `tab close` are Headless. `tab switch` is Headless through
-the extension. On a browser winuse launched or cloned it presses keys in
-the foreground, so it needs `--headed`; to stay in the background there,
-`navigate` the active Tab instead. Name a Tab
-by its id from `tab list`. In the user's own browser, work in Tabs you
+`tab new`, `tab close` and `tab switch` are Headless. On a browser winuse
+launched or cloned, `tab switch` selects the Tab in the Window's tab strip
+by its title. When two Tabs share a title, or the strip does not show it,
+it sends nothing and prints the `--headed` retry, which switches with real
+keys and takes the foreground. Name a Tab by its id from `tab list`. In the user's own browser, work in Tabs you
 opened and close only those. winuse refuses to close a Window's last Tab,
 so use `close-window` to close the Window.
 
@@ -660,8 +770,8 @@ without it, the click would not move focus to the field and the typing
 would be refused.
 
 The Page commands and `tab new`, `tab close` and `tab switch` are Batch
-steps too. A Batch prints only `ok`, so run `eval` and `tab list` on their
-own when you need their output.
+steps too. A Batch prints only `ok` and the note lines below, so run `eval`
+and `tab list` on their own when you need their output.
 
 ## Read the result
 
@@ -683,7 +793,8 @@ anything reached the app.
   from it, because repeating could act twice.
 - `may have taken effect` means the write failed part way. Read the Window
   State before you repeat anything.
-- `is minimized` means a Headless Action cannot reach the Window. Run
+- `is minimized` means this Headless Action cannot reach the minimized
+  Window. Run
   `restore-window`, which does not take the foreground (some Apps bring
   themselves to the front, and the output says so), or `activate-window`,
   which takes it, or pass `--headed`, then read the Window State and retry
@@ -691,6 +802,23 @@ anything reached the app.
 
 When a failure does not say whether anything was sent, treat the outcome as
 unknown, read the Window State, and decide from it.
+
+After `click`, `perform-secondary-action` Expand or Select, `press-key`,
+`set-value` and a Batch, winuse watches the App's Windows for a moment and
+adds a line after `ok` for each change:
+
+- `Note: a new Window opened: <id> <App> "<title>"` for a dialog, menu or
+  popup the Action opened. Read that Window next with
+  `get-window-state <id>`, before you act on the Window you clicked. A menu
+  has no title and is left out of `list-windows`, but its Window ID works
+  in every command.
+- `Note: window <id> closed` when the Window you acted on closed, such as a
+  dialog after its OK button. Go back to its owner.
+
+Tooltips are never reported, and neither are notifications, which belong to
+Windows rather than the App. No note does not prove nothing opened: a slow
+App can open its dialog later, so check `list-windows` when you expected
+one.
 
 ## When the user presses Esc
 
@@ -736,7 +864,8 @@ ordinary Escape sent to the app; only the physical key stops winuse.
 - When failures make no sense, run `winuse status`. It prints the winuse
   and helper versions, whether the helper is running and for how long,
   whether the desktop is locked, the integrity level, DPI awareness, the
-  Browser Connections and the Windows build. It only reads and never
+  Browser Connections, the agents it served and the Windows build. It
+  only reads and never
   starts the helper, so it is safe at any time; include its output when
   you report a problem to the user.
 
@@ -767,7 +896,7 @@ winuse [--headed] <command> [arguments]
 
 list-windows [--details] [--app <name>]
 list-apps | get-window <window>
-launch-app <name|exe path> [--minimized] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <s>]
+launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <s>]
 get-window-state <window> [--screenshot] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right]
@@ -776,6 +905,7 @@ perform-secondary-action <window> <ref> <action>   # Raise, Scroll Up/Down/Left/
 type-text <window> [--post | --into <ref>] <text>
 press-key <window> <key> [--post] [--force]
 select-text <window> <ref> <start> <length> | select-text <window> <ref> all
+invoke-menu <window> "<menu> > <item>"   # a classic menu bar command, Headless
 scroll <window> <ref> <up|down|left|right> [steps] | scroll <window> <ref> into-view
 scroll <window> @x,y <dx> <dy>      # Headless on a Page, else only with --headed
 drag <window> @x,y @x,y             # --headed: left button, point to point
@@ -795,9 +925,12 @@ browser status | launch | connect | stop [browser]
 browser use [browser|auto]          # pin a browser (it persists); auto removes the pin
 browser clone [browser] [--profile <folder>] [--fresh] [--close-source]
 browser ext install [browser|all] | browser ext status [browser]
+clipboard-get [--format text|image|files] [--out <path>]
+clipboard-set <text> | --image <png> | --file <path>... | clipboard-clear
+list-displays | screenshot --display <n>
 record-tree <window> <file>         # development only, records a tree fixture for winuse's own tests
 skill | skill install <dir>         # print this file from the binary, or write it to <dir>\winuse\SKILL.md
-status                              # read-only: versions, helper uptime, lock, integrity, DPI, browsers, Windows build
+status                              # read-only: versions, helper uptime, lock, integrity, DPI, browsers, agents, Windows build
 version
 ```
 

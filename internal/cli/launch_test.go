@@ -84,3 +84,19 @@ func TestHeadedIsNotTakenFromALaunchOption(t *testing.T) {
 		t.Errorf("rest = %q, headed %v: --arg's value is the App's", rest, headed)
 	}
 }
+
+// --cdp (headless-max 15) is a plain flag anywhere around the App, and the
+// token after --arg stays the App's own even when it is --cdp.
+func TestParseLaunchArgsCDP(t *testing.T) {
+	a, _, err := parseLaunchArgs([]string{`C:\Apps\demo.exe`, "--cdp", "--arg", "."})
+	if err != nil || !a.CDP || !slices.Equal(a.Args, []string{"."}) {
+		t.Errorf("--cdp: %+v, %v", a, err)
+	}
+	a, _, err = parseLaunchArgs([]string{"--arg", "--cdp", `C:\Apps\demo.exe`})
+	if err != nil || a.CDP || !slices.Equal(a.Args, []string{"--cdp"}) {
+		t.Errorf("--arg --cdp: %+v, %v", a, err)
+	}
+	if a, _, _ := parseLaunchArgs([]string{"Excel"}); a.CDP {
+		t.Error("--cdp is off by default")
+	}
+}

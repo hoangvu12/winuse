@@ -47,6 +47,13 @@ type State struct {
 
 	ClassicComboDrops int `json:"classicComboDrops"`
 
+	// ClassicMenu names the last command of the Classic Dialog's menu bar
+	// ("fill-name", "select-all", "clear-name" or "locked"; "" since the
+	// dialog opened), and ClassicMenuInits counts the WM_INITMENUPOPUP
+	// messages its menus received since it opened (see ClassicMenuFillID).
+	ClassicMenu      string `json:"classicMenu"`
+	ClassicMenuInits int    `json:"classicMenuInits"`
+
 	// The MessageBox (see MessageBoxTitle): MessageBoxOpen while it is up,
 	// MessageBoxResult the button that closed it last ("ok" or "cancel",
 	// "" while open or never opened).

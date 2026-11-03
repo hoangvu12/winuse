@@ -190,6 +190,26 @@ func TestCommandResultAndFocusNames(t *testing.T) {
 	}
 }
 
+func TestClassicMenuNames(t *testing.T) {
+	// The state file's classicMenu names each menu command, and nothing
+	// else: OK, Cancel and the controls' notifications are not menu
+	// commands.
+	want := map[uint16]string{
+		ClassicMenuFillID:      "fill-name",
+		ClassicMenuSelectAllID: "select-all",
+		ClassicMenuClearID:     "clear-name",
+		ClassicMenuLockedID:    "locked",
+		idOK:                   "",
+		idCancel:               "",
+		ClassicEditID:          "",
+	}
+	for id, name := range want {
+		if got := classicMenuName(id); got != name {
+			t.Errorf("classicMenuName(%d) = %q, want %q", id, got, name)
+		}
+	}
+}
+
 func TestClassicButtonsInTheMainWindow(t *testing.T) {
 	m := NewTreeMap(BuildTree(initial()))
 	for _, e := range []Elem{ElemButtonClassic, ElemButtonMessageBox} {

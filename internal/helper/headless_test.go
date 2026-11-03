@@ -457,8 +457,10 @@ func TestHeadlessRefusalsBeforeAnyPatternCall(t *testing.T) {
 			"Windows desktop is locked; unlock before using winuse; nothing was sent", "unlock", true},
 		{"administrator window", func(s *headlessSpy) { s.refuse = &win.AdminWindowError{WindowID: 101, App: "Notepad.exe"} },
 			"window 101 (Notepad.exe) is running as administrator; winuse cannot send it input; nothing was sent", "elevated", true},
-		{"minimized", func(s *headlessSpy) { s.readyErr = &win.MinimizedError{WindowID: 101} },
+		{"minimized", func(s *headlessSpy) { s.readyErr = &win.MinimizedError{WindowID: 101, Class: "Chrome_WidgetWin_1"} },
 			"window 101 is minimized; nothing was sent", "winuse activate-window 101", true},
+		{"minimized Store app", func(s *headlessSpy) { s.readyErr = &win.MinimizedError{WindowID: 101, Class: "ApplicationFrameWindow"} },
+			"window 101 is minimized, and a minimized Store app has no UI to act on; nothing was sent", "comes to the front when restored", true},
 		{"modal dialog", func(s *headlessSpy) { s.readyErr = &win.ModalDialogError{WindowID: 101, DialogID: 202} },
 			"window 101 has a modal dialog open (window 202); act on the dialog instead; nothing was sent", "get-window-state 202", true},
 		{"stale index", func(s *headlessSpy) {
@@ -480,7 +482,7 @@ func TestHeadlessRefusalsBeforeAnyPatternCall(t *testing.T) {
 			if !strings.Contains(cmdErr.Hint, tc.wantHint) {
 				t.Errorf("hint = %q, want it to mention %q", cmdErr.Hint, tc.wantHint)
 			}
-			if tc.name == "minimized" && !strings.Contains(cmdErr.Hint, "--headed") {
+			if strings.HasPrefix(tc.name, "minimized") && !strings.Contains(cmdErr.Hint, "--headed") {
 				t.Errorf("hint = %q, want the --headed alternative", cmdErr.Hint)
 			}
 			if tc.noArm {

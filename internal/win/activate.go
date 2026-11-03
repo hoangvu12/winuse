@@ -55,9 +55,18 @@ func (e *ModalDialogError) Error() string {
 
 // MinimizedError reports a minimized Window refused by a Headless Action:
 // its Elements are offscreen, and restoring it would take the foreground.
-type MinimizedError struct{ WindowID uint64 }
+// Class is the Window's class, which decides whether UI Automation
+// patterns still reach it (MinimizedPatterns); a minimized Store app says
+// why it is refused.
+type MinimizedError struct {
+	WindowID uint64
+	Class    string
+}
 
 func (e *MinimizedError) Error() string {
+	if StoreAppFrame(e.Class) {
+		return fmt.Sprintf("window %d is minimized, and a minimized Store app has no UI to act on", e.WindowID)
+	}
 	return fmt.Sprintf("window %d is minimized", e.WindowID)
 }
 
@@ -83,7 +92,7 @@ func HeadlessReady(hwnd uint64) error {
 		}
 	}
 	if isIconic(h) {
-		return &MinimizedError{WindowID: hwnd}
+		return &MinimizedError{WindowID: hwnd, Class: className(h)}
 	}
 	return nil
 }

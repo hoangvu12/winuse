@@ -147,6 +147,12 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 			return protocol.Step{}, fmt.Errorf("a batch select-text Action: %v", err)
 		}
 		args = sa
+	case "invoke-menu":
+		ma, err := parseMenuPathTokens(rest)
+		if err != nil {
+			return protocol.Step{}, fmt.Errorf("a batch invoke-menu Action: %v", err)
+		}
+		args = ma
 	case "activate-window":
 		if len(rest) != 0 {
 			return protocol.Step{}, errors.New("a batch activate-window Action takes no arguments")

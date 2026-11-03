@@ -26,29 +26,34 @@ global options:
   --headed                    run an Action the v1 way: bring the Window to the
                                foreground, use the real pointer and keyboard,
                                and show the in-control banner. Accepted before
-                               or after the command; inside type-text's text
-                               or set-value's value it is literal text
+                               or after the command; inside type-text's text,
+                               set-value's value or clipboard-set's text it is
+                               literal text
 
 headless (the default; your foreground, pointer and keyboard stay untouched):
   click (left, single), set-value, perform-secondary-action (except Raise)
-  and scroll on an element index, name: or id:; select-text, which has no
-  headed form; press-key Return or Escape
+  and scroll on an element index, name: or id:; select-text and
+  invoke-menu, which have no headed form; press-key Return or Escape
   on a classic dialog; type-text into a focused classic edit control, or
   with --into into a classic edit control or Page field it names, for
   text with no newline, tab or other control character; screenshots from
   get-window-state --screenshot and zoom (--headed activates the Window
   first); and the Window Actions restore-, minimize-, move-, resize- and
-  close-window, which have no headed form. tab new and tab close are
-  headless; tab switch is headless through the winuse extension. In a
+  close-window, which have no headed form. tab new, tab close and tab
+  switch are headless (on a launched or cloned browser, tab switch selects
+  the Tab in the Window's tab strip; --headed switches with real keys in
+  the foreground instead). In a
   browser Window with a Browser Connection, every Action on its Page is
   headless, and so are navigate, back, forward, reload, upload, dialog,
-  wait and eval, which have no headed form.
+  wait and eval, which have no headed form. The clipboard commands,
+  list-displays and screenshot --display are headless Desktop commands:
+  they name no Window and have no headed form.
 
 headed only with --headed: every other Action (@x,y forms, double, right
   and middle clicks, drag, hover, Raise, press-key and type-text with no
-  headless route, tab switch on a launched or cloned browser) is refused
-  with "nothing was sent" and the exact --headed retry. activate-window
-  always takes the foreground: that is what it is for.
+  headless route) is refused with "nothing was sent" and the exact
+  --headed retry. activate-window always takes the foreground: that is
+  what it is for.
 
 commands:
   list-windows [--details] [--app <name>]
@@ -61,7 +66,7 @@ commands:
   get-window <window>         print one Window's line (Window ID, App and title),
                                resolved by Window ID or an unambiguous App name
   list-apps                   list running and recently used Apps, with their Windows
-  launch-app <name|exe path> [--minimized] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <seconds>]
+  launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <seconds>]
                                start an App by name or executable path, report
                                its Window; waits 15 s, --timeout up to 120 for
                                a slow App. The App starts without taking the
@@ -70,7 +75,10 @@ commands:
                                a "Note: the App took the foreground" line.
                                --arg (one per argument, quoted for you),
                                --cwd and --env (over the helper's
-                               environment) need an executable
+                               environment) need an executable. --cdp starts
+                               an Electron or WebView2 executable with a
+                               loopback debugging port, so its pages are read
+                               and acted on like a browser's, headless
   get-window-state <window> [--screenshot] [--timeout <seconds>]
                                print a Window's State: its Element tree as text,
                                and with --screenshot a screenshot saved to a file
@@ -155,6 +163,12 @@ const usageTail = `);
                                mouse: length characters (UTF-16 units) from
                                start, counting from 0, or all of it; a
                                type-text afterwards replaces the selection
+  invoke-menu <window> "<menu> > <item>"
+                               run a command of a classic (Win32) menu bar
+                               without opening the menu, such as
+                               "File > Save As..."; names match without case,
+                               & and the shortcut; a greyed item is refused
+                               with nothing sent
   drag <window> @x,y @x,y     drag the pointer from one point to another,
                                both in the Window's latest screenshot's pixels;
                                drag <window> <element> <element | @x,y> drags
@@ -215,7 +229,8 @@ const usageTail = `);
                                characters of it); the last Tab is refused,
                                run close-window to close the Window
   tab switch <window> <tab>   make a Tab the active one in its Window (the
-                               Page commands act on the active Tab)
+                               Page commands act on the active Tab); headless,
+                               --headed switches with real keys
   navigate <window> <url> [--wait load|domcontentloaded|none]
                                open a URL in the Window's active Tab, wait for
                                it to load (default load), and print the URL it
@@ -246,6 +261,25 @@ const usageTail = `);
   eval <window> <expression>  run a JavaScript expression in the Page and
                                print its value (JSON for objects, cut at 4000
                                characters)
+  clipboard-get [--format text|image|files] [--out <path>]
+                               print the clipboard's text exactly as it is
+                               (the default), its files one path per line, or
+                               write its image to a PNG (--out, or a new file
+                               in %TEMP%\winuse) and print the path and size;
+                               a clipboard without that format fails and says
+                               what it holds
+  clipboard-set <text> | --image <png> | --file <path>...
+                               replace the clipboard's content with the text
+                               (literal, like type-text's), a PNG image or a
+                               list of existing files
+  clipboard-clear             empty the clipboard
+  list-displays               list the displays, one per line: its number (0
+                               is the primary display), its rectangle "x,y WxH"
+                               in physical pixels, its scale, and primary
+  screenshot --display <n>    save a screenshot of display n from list-displays
+                               and print its path, like get-window-state
+                               --screenshot's line; it has no @x,y points or
+                               zoom, which belong to a Window's screenshot
   skill                       print the agent skill (SKILL.md) this binary
                                was built with; read it again after an upgrade
   skill install <dir>         write that SKILL.md to <dir>\winuse\SKILL.md, for
@@ -346,6 +380,8 @@ func Main(args []string) int {
 		return scrollCmd(args[1:], headed)
 	case "select-text":
 		return selectTextCmd(args[1:])
+	case "invoke-menu":
+		return invokeMenuCmd(args[1:])
 	case "drag":
 		return dragCmd(args[1:], headed)
 	case "hover":
@@ -364,6 +400,16 @@ func Main(args []string) int {
 		return tabCmd(args[1:], headed)
 	case "navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval":
 		return pageCmd(args[0], args[1:]) // page.go, browser merge ticket 06
+	case "list-displays":
+		return listDisplaysCmd(args[1:]) // display.go, desktop-parity ticket 08
+	case "screenshot":
+		return screenshotCmd(args[1:])
+	case "clipboard-get":
+		return clipboardGetCmd(args[1:]) // clipboard.go, desktop-parity ticket 01
+	case "clipboard-set":
+		return clipboardSetCmd(args[1:])
+	case "clipboard-clear":
+		return clipboardClearCmd(args[1:])
 	case "skill":
 		return skillCmd(args[1:])
 	case "status":
@@ -522,7 +568,7 @@ func listAppsCmd(args []string) int {
 // against the CLI's working directory: the helper cannot see it.
 // --timeout widens the 15 s launch budget (up to 120 s) for a slow App.
 func launchAppCmd(args []string) int {
-	const usage = "usage: winuse launch-app <name|exe path> [--minimized] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <seconds>]"
+	const usage = "usage: winuse launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <seconds>]"
 	a, timeout, err := parseLaunchArgs(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, usage)
@@ -564,6 +610,10 @@ func parseLaunchArgs(args []string) (protocol.LaunchArgs, time.Duration, error) 
 		}
 		if tok == "--minimized" {
 			a.Minimized = true
+			continue
+		}
+		if tok == "--cdp" {
+			a.CDP = true
 			continue
 		}
 		name, value, inline := strings.Cut(tok, "=")

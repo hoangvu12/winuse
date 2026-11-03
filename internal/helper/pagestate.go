@@ -414,7 +414,21 @@ func newLivePages(b BrowserService, maximized func(uint64) bool) PageReader {
 	}}
 }
 
+// appKinds is the optional side of pageBrowsers that knows the Apps
+// launch-app --cdp started (headless-max 15): *browser.Manager.
+type appKinds interface {
+	AppKind(pid uint32) string
+}
+
+// Browser names a browser Window's browser, or the App kind
+// (browser.AppElectron, browser.AppWebView2) of a Window whose process
+// winuse launched with --cdp, whatever its window class.
 func (p *livePages) Browser(w win.WindowInfo) string {
+	if a, ok := p.browsers.(appKinds); ok && w.PID != 0 {
+		if kind := a.AppKind(w.PID); kind != "" {
+			return kind
+		}
+	}
 	if w.Class != chromiumWindowClass {
 		return ""
 	}

@@ -30,8 +30,8 @@ ticket 21).** Codex's activate-and-inject is winuse's Headed pipeline, and
 winuse runs it only when the agent passes `--headed`. An Action with no
 Headless or Posted route sent without it — `@x,y` forms outside a Page,
 double/triple and right/middle clicks outside a Page, drag, hover, Raise,
-`press-key` and `type-text` with no Headless route, `tab switch` outside
-the extension — is refused with "nothing was sent" and the exact
+`press-key` and `type-text` with no Headless route, and a `tab switch`
+whose Tab the tab strip cannot select (headless-max 05) — is refused with "nothing was sent" and the exact
 `--headed` retry. `activate-window` keeps Codex's behaviour unflagged.
 This is the **intentionally different** row behind every "activates the
 Window" delivery below.
@@ -97,7 +97,11 @@ non-activating show state (`--minimized`: minimized), and a
 `Note: the App took the foreground` line follows the Window line when it
 took the foreground anyway (a packaged App's activation always can).
 `--arg` (repeatable), `--cwd` and `--env KEY=VALUE` (repeatable) come from
-agent-desktop and need an executable.
+agent-desktop and need an executable. `--cdp` (headless-max 15, agent-desktop's
+`launch --cdp`) starts an Electron or WebView2 executable with a loopback
+debugging port that winuse picks and verifies (its listener must be the
+launched process tree), so the App's Windows get a Browser Connection; a
+note line says whether one reaches the App.
 
 ### get_window_state
 
@@ -242,8 +246,14 @@ background helper over a named pipe restricted to the user's SID,
 version-checked (a stale helper exits so upgrades never act through an
 old one; only the read-only `status` is answered across builds, naming
 both versions), idle-exiting after 5 minutes. The observable contract — one
-request at a time, `ok` or a one-line failure, no state echo — is
-preserved. **intentionally different**.
+request at a time, `ok` or a one-line failure, no Window State echoed back
+— is preserved. After `click`, `perform-secondary-action` Expand or
+Select, `press-key`, `set-value` and a Batch, the `ok` may be followed by
+`Note:` lines naming a Window the Action opened (a dialog, a menu or a
+popup of the same App, with its Window ID) or the target Window closing,
+and a Page Action's JavaScript dialog or new Tab (desktop-parity 02,
+agent-desktop's `data.surfaces`); Codex finds a new Window only through
+the next `list_windows`. **intentionally different**.
 
 ### timeouts
 
@@ -386,8 +396,9 @@ AUMIDs — `launch-app` never guesses between several distinct matches.
 Codex's helper rejects concurrent requests ("already has an active
 request"); winuse's helper serializes every command that activates a
 Window, injects input or shows the overlay — and every Headless Action,
-which writes into an app and drives the one Agent Cursor — through one
-helper-wide action gate — one command controls the desktop at a time, and a request
+which writes into an app and drives the one Agent Cursor, and the
+clipboard's Desktop commands — through one helper-wide action gate — one
+command controls the desktop at a time, and a request
 queued behind another Action until its own budget expired fails instead
 of acting late. Observation-only commands (list-windows, get-window,
 list-apps, the plain tree read, record-tree, launch-app) may answer
@@ -415,9 +426,27 @@ winuse's own captures. `select-text` selects a span of a field's text, or
 all of it, with no keys and no foreground (a classic edit control's
 EM_SETSEL, a UI Automation Text pattern, or a Page field through the
 Browser Connection), read back; Codex selects text only with real keys
-or a drag. `list-windows --details` and `--app` add a Window's frame,
+or a drag. `invoke-menu` runs a classic (HMENU) menu bar command by its
+path, such as "File > Save As...", with no menu opened and no foreground:
+it reads the menu, refuses a greyed item, and posts the item's
+WM_COMMAND; Codex opens menus with real clicks. `list-windows --details` and `--app` add a Window's frame,
 pid and state flags and an App filter to Codex's plain listing. `status`
 prints the winuse and helper versions, the helper's uptime, the desktop's
 lock state, the integrity level, DPI awareness, the Browser Connections
-and the Windows build; it only reads and never starts the helper.
+and the Windows build; it only reads and never starts the helper. The
+notes after an Action's `ok` (see process model) report the Windows and
+Tabs it opened. The tab commands (`tab list|new|close|switch`) are
+Headless; `tab switch` on a browser winuse launched or cloned selects the
+Tab's item in the Window's UIA tab strip and reads IsSelected back
+(headless-max 05), and `--headed` switches with real keys in the
+foreground instead. Codex switches tabs only with keys.
+`clipboard-get`, `clipboard-set` and `clipboard-clear` read, replace and
+empty the clipboard (text, an image as PNG, a file list), like
+agent-desktop's: Desktop commands that name no Window, need no
+foreground and refuse a clipboard owner that does not respond. Codex has
+no clipboard tool. `list-displays` lists the displays (rectangle in
+physical pixels, effective scale, primary) and `screenshot --display <n>`
+captures one without the foreground, like agent-desktop's
+`list-displays` and `screenshot --screen`; the display screenshot binds
+no `@x,y` points, which stay per Window. Codex captures Windows only.
 **extension**.

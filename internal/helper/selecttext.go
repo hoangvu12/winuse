@@ -105,9 +105,10 @@ func selectText(s Services) Command {
 			return "", Fail("select-text is unavailable: no UIA client", "")
 		}
 		return s.runHeadless(ctx, a.Window, ha, headlessRun{
-			cmd:    "select-text",
-			verb:   "select text",
-			target: target,
+			cmd:       "select-text",
+			verb:      "select text",
+			target:    target,
+			minimized: true,
 			act: func(ctx context.Context, w win.WindowInfo, index int) error {
 				native, err := ts.ElementWindow(ctx, w.ID, index)
 				if err != nil {

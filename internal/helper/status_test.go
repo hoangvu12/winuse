@@ -68,6 +68,7 @@ func TestStatusReportsTheHelperAndMachine(t *testing.T) {
 		"integrity: medium (the helper's)\n" +
 		"dpi awareness: per-monitor v2 (the helper's)\n" +
 		"browser connections: chrome process 1234, your running browser through the winuse extension\n" +
+		"agents: none since the helper started\n" +
 		"windows: Windows 11 25H2, build 26200.6899\n"
 	if got := r.Format(); got != want {
 		t.Errorf("report =\n%s\nwant\n%s", got, want)

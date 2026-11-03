@@ -119,6 +119,7 @@ at all, and winuse says so.
 | `click`, `set-value`, `perform-secondary-action` | Clicks, fills in, picks a list item, expands or toggles an element |
 | `type-text`, `press-key` | Types text or presses keys such as `Control_L+a` |
 | `select-text` | Selects text in a field without keys or the mouse |
+| `invoke-menu` | Runs a command of a classic menu bar, such as `"File > Save As..."`, without opening the menu |
 | `scroll` | Scrolls an element by steps or into view, or scrolls at a point |
 | `drag`, `hover`, `zoom` | Drags or hovers at a point or on a page element, or saves a close-up of a screenshot |
 | `restore-window`, `minimize-window`, `move-window`, `resize-window`, `close-window` | Manages a window without bringing it to the front |
@@ -127,6 +128,8 @@ at all, and winuse says so.
 | `wait`, `eval` | Waits for an element, text, URL, load or download, or runs JavaScript in the page |
 | `dialog`, `upload` | Answers a JavaScript dialog, or gives files to a file input |
 | `tab list`, `tab new`, `tab switch`, `tab close` | Manages a browser window's tabs |
+| `clipboard-get`, `clipboard-set`, `clipboard-clear` | Reads, replaces or empties the clipboard: text, an image as a PNG file, or a list of files |
+| `list-displays`, `screenshot --display <n>` | Lists the displays with their position, size and scale, or takes a screenshot of one |
 | `browser status`, `browser ext install`, `browser launch`, `browser clone`, `browser connect` | Connects to a browser and reports how |
 | `status` | Prints the versions, whether the helper runs, the lock state, integrity level, DPI awareness, browser connections and Windows build, without starting anything |
 

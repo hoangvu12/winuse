@@ -49,12 +49,16 @@ _Avoid_: Element ID, ref
 ### Operation
 
 **Action**:
-A single operation the agent performs on a Window: click, set value, secondary action, scroll, drag, hover, press key, type text, select text, or a Window Action.
+A single operation the agent performs on a Window: click, set value, secondary action, scroll, drag, hover, press key, type text, select text, invoke a menu command, or a Window Action.
 _Avoid_: Command, step, tool call
 
 **Window Action**:
 An Action on the Window itself rather than on one of its Elements: restore, minimize, move, resize or close.
 _Avoid_: Window management, window op
+
+**Desktop command**:
+A command aimed at the desktop as a whole rather than at a Window, such as reading, setting or clearing the clipboard, listing the displays or capturing one. It is not an Action: it shows no Agent Cursor and is not a Batch step. One that touches the clipboard or captures the screen runs one at a time with the Actions; one that only lists, such as the displays, does not wait for them.
+_Avoid_: Global action, system command
 
 **Secondary Action**:
 An operation an Element offers besides a plain click, such as Expand, Collapse, Toggle or Scroll Down, listed next to that Element in the Window State.
@@ -69,7 +73,7 @@ Several Actions sent in one call and run in order, stopping at the first one tha
 _Avoid_: Script, macro, sequence
 
 **Headless Action**:
-An Action that winuse can deliver reliably without the foreground: no foreground change, no pointer, no real keys, no banner. Every Window Action is always Headless, and so is selecting text in a field. These are Headless unless the agent asks for Headed: a click on an Element (left button, single), a set value, every Secondary Action except Raise, scrolling an Element, Return or Escape on a classic dialog, and typing into a classic edit box that has the focus or that the agent names as the Element to type into. Actions on a Page Element through a Browser Connection are Headless too, whatever the button or click count, and so are keys and typing while the Page has the focus and scrolling at a point of the Page. The Actions on a Tab's Page as a whole (navigate, back, forward, reload, upload, dialog, wait and eval) are always Headless.
+An Action that winuse can deliver reliably without the foreground: no foreground change, no pointer, no real keys, no banner. Every Window Action is always Headless, and so are selecting text in a field and running a command of a classic menu bar. These are Headless unless the agent asks for Headed: a click on an Element (left button, single), a set value, every Secondary Action except Raise, scrolling an Element, Return or Escape on a classic dialog, and typing into a classic edit box that has the focus or that the agent names as the Element to type into. Actions on a Page Element through a Browser Connection are Headless too, whatever the button or click count, and so are keys and typing while the Page has the focus and scrolling at a point of the Page. The Actions on a Tab's Page as a whole (navigate, back, forward, reload, upload, dialog, wait and eval) are always Headless.
 _Avoid_: Background action, silent action, pattern action
 
 **Headed Action**:
@@ -104,7 +108,7 @@ _Avoid_: Client, agent, host
 ### Agents
 
 **Agent**:
-Planned (ADR 0014). One caller of winuse, with an identity: by default the Harness process the command came from, or the name in `WINUSE_AGENT`. Several Agents can run at once, each with its own Window States and Agent Cursor.
+One caller of winuse, with an identity: by default the Harness process the command came from, or the name in `WINUSE_AGENT`; a command with neither belongs to one shared default Agent. Every request names its Agent, and `winuse status` lists the Agents the helper served. Planned (ADR 0014): several Agents run at once, each with its own Window States and Agent Cursor.
 _Avoid_: Session, client, user
 
 **Lane**:

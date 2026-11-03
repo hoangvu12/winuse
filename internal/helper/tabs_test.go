@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -136,6 +137,7 @@ type tabRig struct {
 	mu      sync.Mutex
 	steps   []string
 	browser *pagetest.Browser // the launched browser, or nil
+	ready   error             // Services.Ready's refusal (the Headless switch's)
 }
 
 func (r *tabRig) step(s string) {
@@ -179,6 +181,7 @@ func newTabRig(t *testing.T, conn *browser.Connection, connErr error, b *pagetes
 			t.Error("the tab commands never click")
 			return nil
 		},
+		Ready:   func(uint64) error { return r.ready },
 		Actions: actions,
 		Cursor:  r.cursor,
 		Esc:     r.esc,
@@ -486,26 +489,11 @@ func TestTabSwitchThroughTheExtensionStoppedDuringTravel(t *testing.T) {
 	}
 }
 
-// TestTabSwitchOnALaunchedBrowserNeedsHeaded: on a launched browser the
-// switch has only the Headed route. Without --headed it is refused with
-// nothing sent (headless-max ticket 21); with it, the Headed pipeline.
-func TestTabSwitchOnALaunchedBrowserNeedsHeaded(t *testing.T) {
+func TestTabSwitchOnALaunchedBrowserWithHeaded(t *testing.T) {
 	b := launchedBrowser(t)
 	r := newTabRig(t, b.Connection(t), nil, b, nil)
-	out, e := r.run(t, "tab-switch", protocol.TabArgs{Window: "301", Tab: "aaaa"})
-	wantHeadedRefusal(t, "tab-switch on a launched browser", out, e)
-	if got := r.log(); len(got) != 0 {
-		t.Errorf("a refused switch ran %v", got)
-	}
-	if b.ActiveTab(1) == tInbox {
-		t.Error("a refused switch changed the active tab")
-	}
-	noForegroundCalls(t, b.Methods())
-
-	b = launchedBrowser(t)
-	r = newTabRig(t, b.Connection(t), nil, b, nil)
 	// No Window State: Ctrl+Tab steps from Docs, checked one by one.
-	out, e = r.run(t, "tab-switch", protocol.TabArgs{Window: "301", Tab: "aaaa", Headed: true})
+	out, e := r.run(t, "tab-switch", protocol.TabArgs{Window: "301", Tab: "aaaa", Headed: true})
 	if e != nil || out != okOutput {
 		t.Fatalf("switch = %q, %+v", out, e)
 	}
@@ -623,36 +611,40 @@ func TestTabStepsInABatch(t *testing.T) {
 		t.Errorf("activated %v", ext.Activated())
 	}
 
-	// On a launched browser tab switch is Headed, and only with --headed:
-	// without it the step is refused at its turn with nothing sent
-	// (headless-max ticket 21) and the scope stays passive. Sent with
-	// `headed`, the Batch takes the swallowing scope up front; tab new
-	// alone stays Headless.
+	// On a launched browser a headed tab switch is Headed: the Batch takes
+	// the swallowing scope up front; tab new alone stays Headless.
 	b := launchedBrowser(t)
 	r = newTabRig(t, b.Connection(t), nil, b, nil)
 	w := tabTestWindows[0]
-	if !r.svc.stepHeadless("tab-new", nil, &w) || !r.svc.stepHeadless("tab-close", nil, &w) || r.svc.stepHeadless("tab-switch", nil, &w) {
-		t.Error("launched: tab-new and tab-close Headless, tab-switch Headed")
+	headed := json.RawMessage(`{"tab":"cccc","headed":true}`)
+	if !r.svc.stepHeadless("tab-new", nil, &w) || !r.svc.stepHeadless("tab-close", nil, &w) || r.svc.stepHeadless("tab-switch", headed, &w) {
+		t.Error("launched: tab-new and tab-close Headless, a headed tab-switch Headed")
 	}
-	_, e = r.run(t, "batch", protocol.BatchArgs{Window: "301", Steps: []protocol.Step{
+	_, e = r.run(t, "batch", protocol.BatchArgs{Window: "301", Headed: true, Steps: []protocol.Step{
 		{Kind: "tab-switch", Args: json.RawMessage(`{"tab":"cccc"}`)},
 	}})
-	if e == nil || !strings.HasPrefix(e.Msg, "batch stopped at Action 1 (tab-switch): ") ||
-		!strings.HasSuffix(e.Msg, "; nothing was sent") || !strings.Contains(e.Hint, "winuse --headed ") {
-		t.Errorf("unheaded launched batch: %+v, want the --headed refusal", e)
-	}
-	if got := r.log(); len(got) != 0 {
-		t.Errorf("a refused switch ran %v", got)
-	}
-	if br := r.esc.brackets(); containsStep(br, "arm") || len(br) == 0 || br[0] != "arm-passive" {
-		t.Errorf("unheaded launched batch: Esc brackets = %v, want the passive scope", br)
-	}
-	r = newTabRig(t, b.Connection(t), nil, b, nil)
-	_, e = r.run(t, "batch", protocol.BatchArgs{Window: "301", Steps: []protocol.Step{
-		{Kind: "tab-switch", Args: json.RawMessage(`{"tab":"cccc","headed":true}`)},
-	}})
 	if e != nil || r.esc.brackets()[0] != "arm" {
-		t.Errorf("launched batch: %+v, %v", e, r.esc.brackets())
+		t.Errorf("launched headed batch: %+v, %v", e, r.esc.brackets())
+	}
+	if b.ActiveTab(1) != tNews {
+		t.Errorf("launched headed batch: active %s", b.ActiveTab(1))
+	}
+
+	// Unheaded, the switch goes through the tab strip: an all-Headless
+	// Batch, one passive scope, no keys.
+	sel := &stripSelector{names: []string{"Inbox", "Docs", "News"}}
+	r = newTabRig(t, b.Connection(t), nil, b, sel)
+	if !r.svc.stepHeadless("tab-switch", json.RawMessage(`{"tab":"aaaa"}`), &w) {
+		t.Error("launched, unheaded: tab-switch Headless")
+	}
+	out, e = r.run(t, "batch", protocol.BatchArgs{Window: "301", Steps: []protocol.Step{
+		{Kind: "tab-switch", Args: json.RawMessage(`{"tab":"aaaa"}`)},
+	}})
+	if e != nil || out != okOutput || strings.Join(r.esc.brackets(), ",") != "arm-passive,arm-passive,disarm-passive,disarm-passive" {
+		t.Errorf("launched batch: %q, %+v, %v", out, e, r.esc.brackets())
+	}
+	if sel.picked != 0 || strings.Contains(strings.Join(r.log(), ","), "press") {
+		t.Errorf("launched batch: picked %d, steps %v", sel.picked, r.log())
 	}
 	extRig := newTabRig(t, conn, nil, nil, nil)
 	if !extRig.svc.stepHeadless("tab-switch", nil, &w) {
@@ -673,10 +665,8 @@ func TestTabCommandsRegisteredAndGated(t *testing.T) {
 		if _, ok := protocol.CommandTimeout(name); !ok {
 			t.Errorf("%s has no budget", name)
 		}
-		// tab-switch takes --headed where it is Headed (outside the
-		// extension, headless-max ticket 21); the others never are.
-		if got, want := takesHeaded(name), name == "tab-switch"; got != want {
-			t.Errorf("%s: takesHeaded = %v, want %v", name, got, want)
+		if takesHeaded(name) != (name == "tab-switch") {
+			t.Errorf("%s: takesHeaded = %v; only tab-switch takes --headed", name, takesHeaded(name))
 		}
 	}
 	if !observationOnlyCommand("tab-list") {
@@ -778,5 +768,153 @@ func TestTabCommandsRememberTheWindow(t *testing.T) {
 	}
 	if _, err := page.FindTab(context.Background(), conn, tabGeometry(tabTestWindows[1])); err == nil || !strings.Contains(err.Error(), "several Tabs match") {
 		t.Errorf("without the memory: %v", err)
+	}
+}
+
+// stripSelector is a TabSelector over window 301's tab strip: the items'
+// names, and what the Select reads back. picked is the item chosen, -1
+// before any.
+type stripSelector struct {
+	stripActions
+	names    []string
+	noStrip  bool
+	selErr   error
+	selCalls int
+	picked   int
+}
+
+func (f *stripSelector) SelectTab(ctx context.Context, hwnd uint64, pick func([]string) (int, error)) error {
+	f.selCalls++
+	f.picked = -1
+	if hwnd != 301 {
+		return fmt.Errorf("selected in window %d", hwnd)
+	}
+	if f.noStrip {
+		return uia.ErrNoTabStrip
+	}
+	i, err := pick(f.names)
+	if err != nil {
+		return err
+	}
+	f.picked = i
+	return f.selErr
+}
+
+func TestTabSwitchOnALaunchedBrowserIsHeadless(t *testing.T) {
+	b := launchedBrowser(t)
+	sel := &stripSelector{stripActions: *stripOf301(), names: []string{"Inbox", "Docs - Memory usage - 17.3 MB", "News"}}
+	r := newTabRig(t, b.Connection(t), nil, b, sel)
+	out, e := r.run(t, "tab-switch", protocol.TabArgs{Window: "301", Tab: "aaaa"})
+	if e != nil || out != okOutput {
+		t.Fatalf("switch = %q, %+v", out, e)
+	}
+	if sel.picked != 0 {
+		t.Errorf("picked item %d, want Inbox (0)", sel.picked)
+	}
+	// No activation, no keys, no banner: the cursor to the strip item and a
+	// passive scope.
+	if got := strings.Join(r.log(), ","); got != "cursor-travel,cursor-click" {
+		t.Errorf("steps = %s", got)
+	}
+	if got := strings.Join(r.esc.brackets(), ","); got != "arm-passive,disarm-passive" {
+		t.Errorf("esc = %s", got)
+	}
+	if r.cursor.labels[0] != `switch to "Inbox"` || r.cursor.targets[0] != (win.Rect{Left: 110, Top: 66, Right: 300, Bottom: 96}) {
+		t.Errorf("cursor %q to %+v", r.cursor.labels[0], r.cursor.targets[0])
+	}
+	// The title matches with the state Chrome appends.
+	if out, e = r.run(t, "tab-switch", protocol.TabArgs{Window: "301", Tab: "cccc"}); e != nil || sel.picked != 2 {
+		t.Errorf("News: %q, %+v, picked %d", out, e, sel.picked)
+	}
+	noForegroundCalls(t, b.Methods())
+}
+
+// A switch with no Headless route sends nothing and gives the --headed
+// retry: winuse never switches to the keys on its own.
+func TestTabSwitchStripRefusals(t *testing.T) {
+	retry := "retry with --headed to switch with real keys (this brings the Window to the foreground): winuse --headed tab switch 301 aaaa0000"
+	for _, c := range []struct {
+		name string
+		set  func(r *tabRig, sel *stripSelector)
+		msg  string
+	}{
+		{"no item", func(r *tabRig, sel *stripSelector) { sel.names = []string{"Docs", "News"} },
+			`tab aaaa0000 cannot be switched to headless: no item of the tab strip is named "Inbox"; nothing was sent`},
+		{"two items", func(r *tabRig, sel *stripSelector) { sel.names = []string{"Inbox", "Inbox - Audio playing", "News"} },
+			`tab aaaa0000 cannot be switched to headless: 2 items of the tab strip are named "Inbox"; nothing was sent`},
+		{"no tab strip", func(r *tabRig, sel *stripSelector) { sel.noStrip = true },
+			"tab aaaa0000 cannot be switched to headless: the Window shows no tab strip through UI Automation; nothing was sent"},
+	} {
+		b := launchedBrowser(t)
+		sel := &stripSelector{names: []string{"Inbox", "Docs", "News"}}
+		r := newTabRig(t, b.Connection(t), nil, b, sel)
+		c.set(r, sel)
+		_, e := r.run(t, "tab-switch", protocol.TabArgs{Window: "301", Tab: "aaaa"})
+		if e == nil || e.Msg != c.msg || e.Hint != retry {
+			t.Errorf("%s: %+v", c.name, e)
+		}
+		if got := strings.Join(r.log(), ","); got != "cursor-travel" {
+			t.Errorf("%s: steps = %s, want the cursor's travel alone", c.name, got)
+		}
+		if b.ActiveTab(1) != tDocs {
+			t.Errorf("%s: the Tab changed", c.name)
+		}
+	}
+
+	// A minimized Window and a helper without the tab strip's side refuse
+	// before the cursor moves.
+	b := launchedBrowser(t)
+	sel := &stripSelector{names: []string{"Inbox"}}
+	r := newTabRig(t, b.Connection(t), nil, b, sel)
+	r.ready = &win.MinimizedError{WindowID: 301}
+	_, e := r.run(t, "tab-switch", protocol.TabArgs{Window: "301", Tab: "aaaa"})
+	if e == nil || !strings.HasSuffix(e.Msg, nothingSentNote) || !strings.Contains(e.Hint, "restore-window 301") || sel.selCalls != 0 {
+		t.Errorf("minimized: %+v, %d selects", e, sel.selCalls)
+	}
+	r = newTabRig(t, b.Connection(t), nil, b, nil)
+	_, e = r.run(t, "tab-switch", protocol.TabArgs{Window: "301", Tab: "aaaa"})
+	if e == nil || e.Msg != "tab switch is unavailable: no UIA client; nothing was sent" || e.Hint != retry {
+		t.Errorf("no TabSelector: %+v", e)
+	}
+	if len(r.log()) != 0 {
+		t.Errorf("steps %v", r.log())
+	}
+}
+
+func TestTabSwitchStripFailuresAfterTheSelect(t *testing.T) {
+	b := launchedBrowser(t)
+	sel := &stripSelector{names: []string{"Inbox", "Docs", "News"}, selErr: &uia.VerifyError{Action: "selecting the tab", Expected: "selected"}}
+	r := newTabRig(t, b.Connection(t), nil, b, sel)
+	_, e := r.run(t, "tab-switch", protocol.TabArgs{Window: "301", Tab: "aaaa"})
+	if e == nil || e.Msg != "tab aaaa0000 is not the active tab of window 301 after the switch" ||
+		e.Hint != "the switch was delivered; read winuse tab list 301 before repeating it" {
+		t.Errorf("not selected: %+v", e)
+	}
+	if got := strings.Join(r.log(), ","); got != "cursor-travel,cursor-click" {
+		t.Errorf("a delivered switch ripples: %s", got)
+	}
+	sel.selErr = &uia.WriteError{What: "selecting the tab", Err: errors.New("E_FAIL")}
+	_, e = r.run(t, "tab-switch", protocol.TabArgs{Window: "301", Tab: "aaaa"})
+	if e == nil || strings.Contains(e.Msg, "nothing was sent") || !strings.Contains(e.Hint, "may have taken effect") {
+		t.Errorf("failed Select: %+v", e)
+	}
+}
+
+func TestStripMatches(t *testing.T) {
+	names := []string{"Inbox - Memory usage - 17.3 MB", "Inbox (2)", "Docs, Audio playing", "Docs2", "  News  "}
+	for _, c := range []struct {
+		title string
+		want  []int
+	}{
+		{"Inbox", []int{0, 1}}, // "Inbox (2)" carries the title too: ambiguous, refused
+		{"Docs", []int{2}},
+		{"News", []int{4}},
+		{"Inbox (2)", []int{1}},
+		{"", nil},
+		{"Shop", nil},
+	} {
+		if got := stripMatches(names, c.title); fmt.Sprint(got) != fmt.Sprint(c.want) {
+			t.Errorf("%q: %v, want %v", c.title, got, c.want)
+		}
 	}
 }

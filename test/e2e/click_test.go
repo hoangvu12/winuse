@@ -105,19 +105,41 @@ func startFixtureWithState(t *testing.T) (*fixtureProc, string) {
 	return fix, window
 }
 
-// assertActionOK pins the Action output contract: exactly "ok" on stdout,
-// nothing on stderr, exit 0.
+// assertActionOK pins the Action output contract: "ok" on stdout, nothing
+// on stderr, exit 0. The "Note: " lines an Action adds after its ok (a
+// Window it opened or closed, desktop-parity 02) are logged, not failed:
+// tests that expect one assert it with actionNotes.
 func assertActionOK(t *testing.T, what, stdout, stderr string, exit int) {
 	t.Helper()
 	if exit != 0 {
 		t.Fatalf("%s: exit %d, stderr:\n%s", what, exit, stderr)
 	}
-	if stdout != "ok\n" {
-		t.Errorf("%s: stdout = %q, want %q", what, stdout, "ok\n")
+	notes, ok := actionNotes(stdout)
+	if !ok {
+		t.Errorf("%s: stdout = %q, want %q and any note lines", what, stdout, "ok\n")
+	}
+	for _, n := range notes {
+		t.Logf("%s: %s", what, n)
 	}
 	if stderr != "" {
 		t.Errorf("%s: unexpected stderr: %q", what, stderr)
 	}
+}
+
+// actionNotes splits an Action's stdout into its "ok" line and the note
+// lines after it; ok is false when the output is anything else.
+func actionNotes(stdout string) (notes []string, ok bool) {
+	lines := strings.Split(strings.TrimSuffix(stdout, "\n"), "\n")
+	if !strings.HasSuffix(stdout, "\n") || lines[0] != "ok" {
+		return nil, false
+	}
+	for _, l := range lines[1:] {
+		if !strings.HasPrefix(l, "Note: ") {
+			return nil, false
+		}
+		notes = append(notes, l)
+	}
+	return notes, true
 }
 
 // assertActionFailed pins the failed-Action contract: nothing on stdout,

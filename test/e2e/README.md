@@ -397,6 +397,11 @@ still the foreground window afterwards. The shared helpers are in
   the screenshot and zoom fail with "is minimized; there is nothing on
   screen to capture" and the `restore-window` hint. The Window stays
   minimized and the foreground does not change.
+- `TestHeadlessActionsOnMinimizedWindow` (`minimized_test.go`,
+  headless-max ticket 14): on the minimized fixture, a Headless `click`
+  toggles the checkbox and `set-value` fills the text field, while Element
+  `scroll` and the screenshot are refused with "is minimized". The Window
+  stays minimized, and the foreground and the pointer do not change.
 - `TestSetValueOnOffTheCheckbox`: `set-value` with `on`, `ON`, `checked`,
   `off`, `unchecked`, `True` and `false` on the covered checkbox. Setting
   the state it already has sends nothing (the fixture's generation stays
@@ -448,6 +453,12 @@ still the foreground window afterwards. The shared helpers are in
   "ok", and `press-key Escape` with "cancel".
 - `TestHeadlessTypeTextIntoClassicEdit`: `type-text` into the Classic
   Dialog's Edit (non-ASCII text, then an appended character).
+- `TestActionReportsOpenedAndClosedWindows` (`opened_windows_test.go`,
+  desktop-parity 02): the Headless click on "Classic Dialog..." prints
+  `ok` and `Note: a new Window opened: <id> <App> "Classic Dialog"`,
+  `get-window <id>` finds that Window, and a Headless Escape on it prints
+  `Note: window <id> closed`. The foreground stays put. Every other test
+  accepts such note lines after `ok` and logs them (`assertActionOK`).
 - `TestHeadlessTypeTextIntoPasswordEdit`: a posted Tab moves the focus to
   the password Edit, then `type-text` fills it and the output is exactly
   `ok`, without the text.
@@ -485,6 +496,16 @@ still the foreground window afterwards. The shared helpers are in
   `select-text` 6 4 on the text field, read back through its own
   `selectionStart` and `selectionEnd`, then `type-text` replaces it, then
   `all`. The UI Automation Text pattern route has no e2e target yet.
+- `TestHeadlessInvokeMenuOnClassicDialog` (`invoke_menu_test.go`): the
+  covered Classic Dialog has a real menu bar. `invoke-menu "Edit > Select
+  All"` selects the name Edit's text, which a `type-text` then replaces;
+  `Edit > Clear Name`, greyed until the dialog's WM_INITMENUPOPUP enables
+  it, empties the Edit (`classicMenuInits` must be above 0); `Edit >
+  Locked`, always greyed, is refused with "nothing was sent"; `file >
+  FILL NAME` matches without case and &; a Batch step runs Select All
+  before a `type-text`; and the main window's drawn menu bar is refused
+  as "no classic menu bar". The foreground and the pointer stay put, and
+  no banner shows.
 - `TestPostedKeysIntoClassicEdit` (`posted_keys_test.go`):
   `type-text --post` and `press-key BackSpace --post` reach the Classic
   Dialog's Edit, the output starts with `ok (posted;`, and
@@ -523,7 +544,52 @@ Run only these tests:
 
 ```
 set WINUSE_E2E=1
-go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted" ./test/e2e
+go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted|OpenedAndClosed" ./test/e2e
+```
+
+## The clipboard test
+
+`TestClipboard` (`clipboard_test.go`, desktop-parity ticket 01) runs
+`clipboard-set`, then `clipboard-get`, for text, an image and files, and
+`clipboard-clear`, through the real binary. Windows PowerShell is the
+program on the other side: it reads the text, the image (through the
+CF_DIB winuse writes beside the PNG) and the file list winuse wrote, and
+puts a .NET bitmap on the clipboard that winuse reads back (the CF_DIBV5
+Windows synthesizes from it). A missing `--file` is refused with nothing
+changed, and the foreground must not move.
+
+The clipboard is the user's. The test saves its text first and puts it
+back at the end, or empties it again if it was empty. It skips when the
+clipboard holds any format beyond plain text, which it could not put
+back: an image, files, or text with extra formats, such as what a
+browser, .NET's `Set-Clipboard` or a password manager copies (the last
+marks it `ExcludeClipboardContentFromMonitorProcessing`). Copy plain text
+from Notepad, or empty the clipboard, to run it. Its writes land in the
+clipboard history (Win+V) when that is on.
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -run "^TestClipboard$" ./test/e2e
+```
+
+## The display tests
+
+`displays_test.go` (desktop-parity ticket 08) launches nothing and sends
+no input. `TestListDisplaysAndCapturePrimary` checks `list-displays`
+against the system's own metrics, read per-monitor DPI aware: as many
+lines as `SM_CMONITORS`, one primary, numbered 0 and at 0,0 with the
+`SM_CXSCREEN` x `SM_CYSCREEN` size. Then `screenshot --display 0` must
+print the Screenshot line for that rectangle and the no-`@x,y` note, save
+a JPEG of the printed size with its long edge at most 1568 px and not one
+colour, log a Windows.Graphics.Capture display capture (unless this
+Windows has none), and leave the foreground where it was. A display past
+the last one is refused. `TestDisplayScreenshotFallsBackToTheScreenRegion`
+restarts the helper with `WINUSE_WGC=off`, so the display is captured
+through its screen region, and restarts it again afterwards.
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -run "Displays|DisplayScreenshot" ./test/e2e
 ```
 
 ## The browser merge probe
@@ -648,9 +714,10 @@ later subtests still run. Its subtests:
   (a value set by eval is gone after the reload); `wait` for a selector,
   text, a URL pattern and the load; and `eval`.
 - `tabs`: `tab new` opens a background tab (the active tab and the
-  Window's title stay), `tab list` lists it, and `tab close` closes it.
-  `tab switch` is Headed on a launched browser, and refused without
-  `--headed` (headless-max ticket 21), so it is not run here.
+  Window's title stay), `tab list` lists it, `tab switch` makes it the
+  active tab and back through the covered Window's tab strip (Headless,
+  headless-max 05: the foreground, the z-order and the Window's title are
+  checked), and `tab close` closes it.
 
 `TestBrowserPagesExtension` runs a short subset in the user's real browser
 through the winuse extension. It runs only when
@@ -743,4 +810,28 @@ Get the binary from an official Electron release, outside the repository
 set WINUSE_E2E=1
 set WINUSE_E2E_ELECTRON=C:\electron-dist\electron-vX.Y.Z-win32-x64\electron.exe
 go test -tags e2e -v -timeout 5m -run TestCoveredElectronReadCold ./test/e2e
+```
+
+## Electron and WebView2 Apps launched with --cdp
+
+`app_cdp_test.go` (ticket 15 of `.scratch/headless-max/`).
+`TestLaunchAppCDPOnCoveredElectron` uses the same `WINUSE_E2E_ELECTRON`
+binary: `winuse launch-app <electron.exe> --cdp` on the fixture page with
+an isolated profile must print the Window line and
+`Note: a Browser Connection reaches the App's pages (Electron App, port
+<n>)`. The fixture then covers the Window; get-window-state must show the
+page's "winuse e2e input" field read over CDP (no "the Page is read
+through UI Automation" note), a `set-value` on it must answer `ok`, and
+`winuse eval` must read the value back. The cover keeps the foreground
+throughout. `TestLaunchAppCDPOnWebView2` needs `WINUSE_E2E_WEBVIEW2`, an
+executable that hosts a WebView2 control (it skips without it): the
+launch must print the WebView2 note, and the covered Window's State must
+come over CDP; the test logs it. Both end the App, the fixture and the
+helper.
+
+```
+set WINUSE_E2E=1
+set WINUSE_E2E_ELECTRON=C:\electron-dist\electron-vX.Y.Z-win32-x64\electron.exe
+set WINUSE_E2E_WEBVIEW2=C:\path\to\WebView2App.exe
+go test -tags e2e -v -timeout 5m -run TestLaunchAppCDP ./test/e2e
 ```

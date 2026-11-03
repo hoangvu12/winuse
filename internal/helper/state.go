@@ -111,6 +111,18 @@ type Services struct {
 	EditControl func(hwnd uint64) win.Control           // class, style and enabled state, never the text
 	SetEditSel  func(edit uint64, start, end int) error // SendMessageTimeout(EM_SETSEL, start, end)
 
+	// invoke-menu's classic menu bar route (headless-max ticket 08,
+	// invokemenu.go): MenuBar reads the Window's menu bar, ReadMenu one
+	// menu's items, InitMenuPopup lets the App update a submenu before it
+	// is read, MenuItemRect places the Agent Cursor on the bar item, and
+	// MenuCommand posts the command. Nil values fall back to the real
+	// calls; tests fake them so offline tests never send a message.
+	MenuBar       func(hwnd uint64) uint64                    // GetMenu: 0 when the Window has no classic menu bar
+	ReadMenu      func(menu uint64) ([]win.MenuItem, error)   // the items of one HMENU, by position
+	InitMenuPopup func(hwnd, submenu uint64, pos int) error   // SendMessageTimeout(WM_INITMENUPOPUP)
+	MenuItemRect  func(hwnd uint64, pos int) (win.Rect, bool) // GetMenuItemRect of a menu bar item
+	MenuCommand   func(hwnd uint64, id uint16) error          // PostMessage(WM_COMMAND, MAKEWPARAM(id, 0))
+
 	// Posted Keys (ADR 0011, Decision 5; keyroute.go): press-key and
 	// type-text with `post`. Each returns how many messages it posted, so
 	// a failure can tell "nothing was sent" from a partial post. Nil values
@@ -166,6 +178,14 @@ type Services struct {
 	// Window polls use Windows, Foreground and Sleep above.
 	StartApp func(spec apps.Spec, opts win.LaunchOptions) (pid uint32, err error)
 
+	// The Windows an Action opened (desktop-parity 02, opened.go):
+	// Surfaces lists every visible top-level window, unfiltered, menus and
+	// popups included (win.Collect), for the before-and-after diff and for
+	// resolving a reported menu's Window ID. Nil falls back to win.Collect,
+	// which refuses inside an offline test binary (the diff is then
+	// skipped); tests fake it.
+	Surfaces func() ([]win.WindowInfo, error)
+
 	// The in-control indicator (ticket 13): raised over the target Window
 	// for the duration of every Action, click-through, never focused, and
 	// hidden around every capture. Nil means no indicator (offline tests;
@@ -197,6 +217,22 @@ type Services struct {
 	OwnIntegrity func() (uint32, error) // the helper's integrity level RID
 	DPIAwareness func() string          // the helper's DPI awareness, named
 	WindowsBuild func() string          // the Windows build, named
+	// Agents remembers the Agents the helper served (agents.go,
+	// multi-agent ticket 02) for the status report; nil: a fresh log.
+	Agents *agentLog
+
+	// The clipboard (desktop parity ticket 01, clipboard.go). Nil falls
+	// back to the live *win.Clipboard, one per helper, so an abandoned
+	// read refuses the clipboard commands after it; tests fake it.
+	Clipboard ClipboardService
+
+	// The displays (desktop parity ticket 08, display.go). Displays lists
+	// the monitors; CaptureDisplay captures one, through
+	// Windows.Graphics.Capture, then its screen region, with the indicator
+	// and the Agent Cursor hidden. Nil falls back to the real ones; tests
+	// fake them so offline tests never capture the screen.
+	Displays       func() ([]win.Display, error)
+	CaptureDisplay func(d win.Display) (shot.Frame, error)
 
 	// actionGate serializes every command that activates a Window, injects
 	// input or shows the overlay (finding 11): two concurrent CLI calls
@@ -207,7 +243,9 @@ type Services struct {
 	// (ADR 0010) stay serialized too: they write into apps and drive the
 	// one Agent Cursor, and one command at a time is the promise either
 	// way. The Window Actions (ADR 0011) are serialized as well: they
-	// place and close the Windows that other Actions act in.
+	// place and close the Windows that other Actions act in, and so are
+	// the Desktop commands (the clipboard's): a paste in a Batch must not
+	// see the clipboard change halfway.
 	actionGate chan struct{}
 }
 
@@ -219,7 +257,7 @@ type Services struct {
 // command controls the desktop at a time, exactly what codex-parity's
 // "one request at a time" promises. Observation-only commands —
 // list-windows, get-window, list-apps, the plain tree read, record-tree,
-// launch-app, status — stay concurrent; get-window-state's --screenshot branch
+// launch-app, list-displays, status — stay concurrent; get-window-state's --screenshot branch
 // and zoom join the serialized set inside their handlers.
 func CommandsWith(s Services) map[string]Command {
 	s = defaultServices(s)
@@ -253,6 +291,7 @@ func CommandsWith(s Services) map[string]Command {
 		"perform-secondary-action": performSecondaryAction(s),
 		"scroll":                   scroll(s),
 		"select-text":              selectText(s),
+		"invoke-menu":              invokeMenu(s),
 		"drag":                     drag(s),
 		"hover":                    hover(s),
 		"list-apps":                listApps(store),
@@ -277,15 +316,30 @@ func CommandsWith(s Services) map[string]Command {
 	for name, cmd := range pageCommands(s) {
 		cmds[name] = cmd
 	}
+	// The clipboard's Desktop commands (clipboard.go, desktop parity
+	// ticket 01): serialized below like the Actions.
+	for name, cmd := range clipboardCommands(s) {
+		cmds[name] = cmd
+	}
+	// The displays' Desktop commands (display.go, desktop parity ticket
+	// 08): list-displays only reads; screenshot is serialized like the
+	// Window screenshot, since it hides the indicator and the cursor.
+	cmds["list-displays"] = listDisplays(s)
+	cmds["screenshot"] = displayScreenshot(s)
 
-	// The serialized registry: every control-path command runs alone.
+	// The serialized registry: every control-path command runs alone, and
+	// the Actions that can open a Window report it (opened.go). The Batch
+	// keeps the raw step commands, so it diffs once around all its steps.
+	// Every command but status records the Agent it ran for (agents.go).
 	out := make(map[string]Command, len(cmds))
 	for name, cmd := range cmds {
-		if observationOnlyCommand(name) {
-			out[name] = cmd
-			continue
+		if !observationOnlyCommand(name) {
+			cmd = s.serialized(s.reportOpened(name, cmd))
 		}
-		out[name] = s.serialized(cmd)
+		if name != StatusCommand {
+			cmd = s.tracked(name, cmd)
+		}
+		out[name] = cmd
 	}
 	return out
 }
@@ -303,8 +357,9 @@ func CommandsWith(s Services) map[string]Command {
 func observationOnlyCommand(name string) bool {
 	switch name {
 	case "list-windows", "get-window", "list-apps", "get-window-state", "record-tree", "launch-app",
-		"tab-list",    // reads a browser Window's Tabs only (tabs.go)
-		StatusCommand: // read-only probes (status.go): never waits behind an Action
+		"tab-list",      // reads a browser Window's Tabs only (tabs.go)
+		"list-displays", // a Desktop command that only reads the monitors (display.go)
+		StatusCommand:   // read-only probes (status.go): never waits behind an Action
 		return true
 	}
 	return strings.HasPrefix(name, "browser-")
@@ -417,6 +472,21 @@ func defaultServices(s Services) Services {
 	if s.SetEditSel == nil {
 		s.SetEditSel = win.SetEditSelection
 	}
+	if s.MenuBar == nil {
+		s.MenuBar = win.MenuBar
+	}
+	if s.ReadMenu == nil {
+		s.ReadMenu = win.ReadMenu
+	}
+	if s.InitMenuPopup == nil {
+		s.InitMenuPopup = win.InitMenuPopup
+	}
+	if s.MenuItemRect == nil {
+		s.MenuItemRect = win.MenuBarItemRect
+	}
+	if s.MenuCommand == nil {
+		s.MenuCommand = win.PostMenuCommand
+	}
 	if s.PostKeys == nil {
 		s.PostKeys = win.PostKeys
 	}
@@ -438,16 +508,17 @@ func defaultServices(s Services) Services {
 	if s.Shots == nil {
 		s.Shots = shot.NewStore()
 	}
-	if s.Capture == nil || s.CaptureHeadless == nil {
+	if s.Capture == nil || s.CaptureHeadless == nil || s.CaptureDisplay == nil {
 		// The capture chains (spec, Observation details): Windows.Graphics
 		// Capture first (ticket 09, Codex's method — falling back on any
 		// failure, black frame or timeout), then the GDI fallbacks. The full
 		// chain (--headed) tries the Window's screen region, then
-		// PrintWindow; the headless chain (ADR 0011) only PrintWindow. Both
-		// share one wgc method, which logs its captures into the helper log.
-		// With an indicator or an Agent Cursor wired, every method captures
-		// with them hidden (ticket 13, ADR 0010), so winuse's own
-		// screenshots never contain them.
+		// PrintWindow; the headless chain (ADR 0011) only PrintWindow; a
+		// display (desktop-parity ticket 08) falls back to its screen
+		// region. All share one wgc method, which logs its captures into
+		// the helper log. With an indicator or an Agent Cursor wired, every
+		// method captures with them hidden (ticket 13, ADR 0010), so
+		// winuse's own screenshots never contain them.
 		wgcCapture := wgc.New()
 		wgcCapture.Log = log.Printf
 		if s.Capture == nil {
@@ -456,6 +527,12 @@ func defaultServices(s Services) Services {
 		if s.CaptureHeadless == nil {
 			s.CaptureHeadless = shot.Chain{Methods: headlessCaptureMethods(s.Overlay, s.Cursor, wgcCapture)}.CaptureWindow
 		}
+		if s.CaptureDisplay == nil {
+			s.CaptureDisplay = displayCapture(s.Overlay, s.Cursor, wgcCapture)
+		}
+	}
+	if s.Displays == nil {
+		s.Displays = win.ListDisplays
 	}
 	if s.Minimized == nil {
 		s.Minimized = win.IsMinimized
@@ -502,6 +579,16 @@ func defaultServices(s Services) Services {
 	if s.StartApp == nil {
 		s.StartApp = apps.StartApp
 	}
+	if s.Surfaces == nil {
+		s.Surfaces = func() ([]win.WindowInfo, error) {
+			// Read-only, but an offline test must not depend on the
+			// user's desktop: the diff is skipped there.
+			if err := win.LiveDesktopGuard(); err != nil {
+				return nil, err
+			}
+			return win.Collect()
+		}
+	}
 	if s.Browser == nil {
 		s.Browser = browser.NewManager(browser.Live())
 	}
@@ -510,6 +597,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.Now == nil {
 		s.Now = time.Now
+	}
+	if s.Agents == nil {
+		s.Agents = newAgentLog()
 	}
 	if s.Started.IsZero() {
 		s.Started = s.Now()
@@ -522,6 +612,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.WindowsBuild == nil {
 		s.WindowsBuild = win.WindowsBuild
+	}
+	if s.Clipboard == nil {
+		s.Clipboard = win.NewClipboard()
 	}
 	if s.actionGate == nil {
 		s.actionGate = make(chan struct{}, 1)
@@ -641,7 +734,10 @@ func parseArgs(args json.RawMessage, v any) error {
 }
 
 // resolveWindow names a Window by Window ID or App name over the live
-// desktop (see win.ResolveWindow for the matching rules).
+// desktop (see win.ResolveWindow for the matching rules). A Window ID
+// that list-windows drops resolves too when it is an open menu or popup
+// (win.OpenedSurface), so the agent can read the Window an Action
+// reported opening.
 func resolveWindow(s Services, ref string) (win.WindowInfo, *Error) {
 	ws, err := s.Windows()
 	if err != nil {
@@ -649,6 +745,9 @@ func resolveWindow(s Services, ref string) (win.WindowInfo, *Error) {
 	}
 	w, rerr := win.ResolveWindow(ws, ref)
 	if rerr != nil {
+		if popup, ok := s.popupByID(ref); ok {
+			return popup, nil // a menu or popup an Action reported (opened.go)
+		}
 		var re *win.ResolveError
 		if errors.As(rerr, &re) {
 			return win.WindowInfo{}, &Error{Msg: re.Msg, Hint: re.Hint, Exit: 1}

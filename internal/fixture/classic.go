@@ -55,7 +55,13 @@ const (
 
 	mbOKCancel = 0x0001
 
+	mfGrayed        = 0x0001
+	mfPopup         = 0x0010
+	wmInitMenuPopup = 0x0117
+	emSetSel        = 0x00B1
+
 	swpNoSize     = 0x0001
+	swpNoMove     = 0x0002
 	swpNoZOrder   = 0x0004
 	swpNoActivate = 0x0010
 )
@@ -165,6 +171,8 @@ func (a *app) openClassic() {
 	a.state.ClassicFocus = ""
 	a.state.ClassicColor = ""
 	a.state.ClassicComboDrops = 0
+	a.state.ClassicMenu = ""
+	a.state.ClassicMenuInits = 0
 	tmpl := classicTemplate()
 	h, _, _ := procCreateDialogIndirectParamW.Call(a.instance, uintptr(unsafe.Pointer(&tmpl[0])), a.mainHwnd, a.classicProc, 0)
 	runtime.KeepAlive(tmpl)
@@ -202,12 +210,28 @@ func (a *app) dlgClassic(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 				runtime.KeepAlive(p)
 			}
 		}
+		a.addClassicMenu(hwnd)
 		return 1 // the dialog manager focuses the first tab stop, the name Edit
+	case wmInitMenuPopup:
+		a.state.ClassicMenuInits++
+		if wp == a.classicEdit {
+			ctl, _, _ := procGetDlgItem.Call(hwnd, ClassicEditID)
+			state := uintptr(mfGrayed)
+			if windowText(ctl) != "" {
+				state = 0 // MF_ENABLED
+			}
+			procEnableMenuItem.Call(a.classicEdit, ClassicMenuClearID, state)
+		}
+		a.changed()
+		return 0
 	case wmCommand:
 		id, code := uint16(wp), uint16(wp>>16)
 		switch {
 		case id == idOK || id == idCancel:
 			a.closeClassic(hwnd, commandResult(uintptr(id)))
+			return 1
+		case code == 0 && classicMenuName(id) != "":
+			a.classicMenuCommand(hwnd, id)
 			return 1
 		case id == ClassicComboID && code == cbnSelChange:
 			ctl, _, _ := procGetDlgItem.Call(hwnd, ClassicComboID)
@@ -236,6 +260,80 @@ func (a *app) dlgClassic(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 	return 0
 }
 
+// addClassicMenu gives the Classic Dialog its menu bar (see
+// ClassicMenuFillID) and grows the window by the bar's height, so the
+// controls keep their client area.
+func (a *app) addClassicMenu(hwnd uintptr) {
+	bar, _, _ := procCreateMenu.Call()
+	file, _, _ := procCreatePopupMenu.Call()
+	edit, _, _ := procCreatePopupMenu.Call()
+	if bar == 0 || file == 0 || edit == 0 {
+		return
+	}
+	appendMenu(file, 0, ClassicMenuFillID, "&Fill Name")
+	appendMenu(edit, 0, ClassicMenuSelectAllID, "Select &All\tCtrl+A")
+	appendMenu(edit, mfGrayed, ClassicMenuClearID, "&Clear Name")
+	appendMenu(edit, mfGrayed, ClassicMenuLockedID, "&Locked")
+	appendMenu(bar, mfPopup, file, "&File")
+	appendMenu(bar, mfPopup, edit, "&Edit")
+
+	var before, after win.Rect
+	procGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&before)))
+	procSetMenu.Call(hwnd, bar)
+	procGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&after)))
+	a.classicEdit = edit
+	if grow := before.Height() - after.Height(); grow > 0 {
+		var r win.Rect
+		procGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&r)))
+		procSetWindowPos.Call(hwnd, 0, 0, 0, uintptr(r.Width()), uintptr(r.Height()+grow), swpNoMove|swpNoZOrder|swpNoActivate)
+	}
+}
+
+// appendMenu appends one item to a menu: a command (id) or, with
+// MF_POPUP, a submenu (id is its HMENU).
+func appendMenu(menu uintptr, flags uint32, id uintptr, text string) {
+	p := utf16Ptr(text)
+	procAppendMenuW.Call(menu, uintptr(flags), id, uintptr(unsafe.Pointer(p)))
+	runtime.KeepAlive(p)
+}
+
+// classicMenuName names a Classic Dialog menu command for the state
+// file's classicMenu ("" for any other ID).
+func classicMenuName(id uint16) string {
+	switch id {
+	case ClassicMenuFillID:
+		return "fill-name"
+	case ClassicMenuSelectAllID:
+		return "select-all"
+	case ClassicMenuClearID:
+		return "clear-name"
+	case ClassicMenuLockedID:
+		return "locked"
+	}
+	return ""
+}
+
+// classicMenuCommand runs a Classic Dialog menu command on the name Edit
+// and records it.
+func (a *app) classicMenuCommand(hwnd uintptr, id uint16) {
+	ctl, _, _ := procGetDlgItem.Call(hwnd, ClassicEditID)
+	switch id {
+	case ClassicMenuFillID:
+		p := utf16Ptr(ClassicFillText)
+		procSetWindowTextW.Call(ctl, uintptr(unsafe.Pointer(p)))
+		runtime.KeepAlive(p)
+	case ClassicMenuSelectAllID:
+		sendMessage(ctl, emSetSel, 0, ^uintptr(0))
+	case ClassicMenuClearID:
+		p := utf16Ptr("")
+		procSetWindowTextW.Call(ctl, uintptr(unsafe.Pointer(p)))
+		runtime.KeepAlive(p)
+	}
+	a.state.ClassicMenu = classicMenuName(id)
+	a.setStatus("classic menu: " + a.state.ClassicMenu)
+	a.changed()
+}
+
 // classicColor names the combo item at index sel for the state file's
 // classicColor ("" for CB_ERR or an index out of range).
 func classicColor(sel int32) string {
@@ -255,6 +353,7 @@ func sendMessage(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 func (a *app) closeClassic(hwnd uintptr, result string) {
 	procDestroyWindow.Call(hwnd)
 	a.classicHwnd = 0
+	a.classicEdit = 0
 	a.state.ClassicOpen = false
 	a.state.ClassicResult = result
 	a.setStatus("classic dialog closed: " + result)

@@ -203,6 +203,14 @@ func launchApp(s Services, store *apps.StoreSource) Command {
 		if spec.Kind != apps.IDExe && apps.ExeOnlyOptions(opts) {
 			return "", exeOnlyRefusal(a.App, spec)
 		}
+		var cdp *cdpLaunch // launchcdp.go, headless-max 15
+		if a.CDP {
+			c, cerr := s.prepareCDP(a.App, spec, &opts)
+			if cerr != nil {
+				return "", cerr
+			}
+			cdp = c
+		}
 
 		fgBefore := s.Foreground()
 		// The checkpoint before the App starts: a stop during the name
@@ -211,11 +219,13 @@ func launchApp(s Services, store *apps.StoreSource) Command {
 		if esc.Stopped() {
 			return "", escStopError()
 		}
+		budget := launchPoll(ctx)
+		deadline := time.Now().Add(budget)
 		pid, err := s.StartApp(spec, opts)
 		if err != nil {
 			return "", Fail(fmt.Sprintf("failed to launch app %s: %v", a.App, err), "")
 		}
-		window, err := apps.WaitForWindow(ctx, spec, pid, before, fgBefore, launchPoll(ctx),
+		window, err := apps.WaitForWindow(ctx, spec, pid, before, fgBefore, budget,
 			s.Windows, s.Foreground, s.Sleep, esc.Stopped)
 		if err != nil {
 			return "", launchError(err)
@@ -223,6 +233,11 @@ func launchApp(s Services, store *apps.StoreSource) Command {
 		out := win.FormatWindows([]win.WindowInfo{window})
 		if s.selfActivated(window.ID, fgBefore) {
 			out += launchForegroundNote
+		}
+		if cdp != nil {
+			// What is left of the launch budget: the port answers a moment
+			// after the Window (about 3 s for Electron, round 5).
+			out += cdp.note(ctx, pid, window, time.Until(deadline))
 		}
 		return out, nil
 	}
@@ -237,7 +252,7 @@ const launchForegroundNote = "Note: the App took the foreground; winuse does not
 // folder named by an absolute path (the CLI resolves a relative one). A
 // refusal starts nothing.
 func launchOptions(a protocol.LaunchArgs) (win.LaunchOptions, *Error) {
-	const usage = "usage: winuse launch-app <name|exe path> [--minimized] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <seconds>]"
+	const usage = "usage: winuse launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <seconds>]"
 	for _, e := range a.Env {
 		if _, _, err := win.ParseEnvEntry(e); err != nil {
 			return win.LaunchOptions{}, Fail(err.Error()+"; nothing was started", usage)

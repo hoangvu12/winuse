@@ -147,9 +147,10 @@ func click(s Services) Command {
 		// shared predicate says so (headlessStep), Headed otherwise.
 		if actor, ok := s.headless("click", args); ok {
 			return s.runHeadless(ctx, a.Window, actor, headlessRun{
-				cmd:    "click",
-				verb:   "click",
-				target: target,
+				cmd:       "click",
+				verb:      "click",
+				target:    target,
+				minimized: true,
 				act: func(ctx context.Context, w win.WindowInfo, index int) error {
 					_, err := actor.HeadlessClick(ctx, w.ID, index)
 					return err

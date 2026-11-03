@@ -272,7 +272,7 @@ func TestBatchStepKindsAreBatchableActions(t *testing.T) {
 	want := []string{"click", "type-text", "press-key", "set-value", "perform-secondary-action", "activate-window", "scroll", "drag", "hover",
 		"tab-new", "tab-close", "tab-switch",
 		"navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval",
-		"select-text"}
+		"select-text", "invoke-menu"}
 	if len(BatchStepKinds) != len(want) {
 		t.Fatalf("BatchStepKinds = %q, want %q", BatchStepKinds, want)
 	}
