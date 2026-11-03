@@ -79,7 +79,7 @@ func (s Services) reportAfter(name string, cmd Command) Command {
 // the Action, and after it (and its settle) adds the note when the
 // target's App took the foreground. A Window that does not resolve, or
 // whose process cannot be read, is not watched; a failed Action keeps its
-// error alone.
+// error alone, except the steps' output a failed Batch carries (ranOn).
 func (s Services) watchForeground(name string, cmd Command) Command {
 	if !watchesForeground(name) {
 		return cmd
@@ -92,8 +92,11 @@ func (s Services) watchForeground(name string, cmd Command) Command {
 		fgBefore := s.Foreground()
 		w := &fgWatch{}
 		out, err := cmd(context.WithValue(ctx, fgWatchKey{}, w), args)
-		if err != nil || w.wasHeaded() {
+		if (err != nil && !ranOn(err)) || w.wasHeaded() {
 			return out, err
+		}
+		if err != nil {
+			out = err.Out // a Batch that ran past a failed step (opened.go)
 		}
 		took := s.tookForeground(pid, fgBefore)
 		if !took && strings.Contains(out, notePrefix+"a new Window opened") {
@@ -104,6 +107,10 @@ func (s Services) watchForeground(name string, cmd Command) Command {
 		}
 		if took {
 			out = withNotes(out, launchForegroundNote)
+		}
+		if err != nil {
+			err.Out = out
+			return "", err
 		}
 		return out, nil
 	}

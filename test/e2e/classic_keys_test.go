@@ -319,7 +319,7 @@ func TestHeadlessTypeTextIntoElement(t *testing.T) {
 	// A Batch step, by the name Edit's ID.
 	name := "id:" + strconv.Itoa(fixture.ClassicEditID)
 	stdout, stderr, exit := runWinuse(t, []string{"batch", dialog, "type-text", "--into", name, "hello", "into"}, "WINUSE_HELPER_IDLE="+e2eIdle)
-	assertActionOK(t, "batch type-text --into the name Edit", stdout, stderr, exit)
+	assertBatchOK(t, "batch type-text --into the name Edit", stdout, stderr, exit, 1)
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.ClassicText == "hello into" && s.ClassicPassword == secret })
 	assertForeground(t, "batch type-text --into the name Edit", cover)
 

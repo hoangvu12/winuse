@@ -23,10 +23,13 @@ import (
 
 // Error is a command failure with the process exit code the CLI should use
 // (1 for ordinary failures, protocol.ExitEsc when the user pressed Esc).
+// Out is what the CLI prints on stdout before the failure: the steps a
+// failed Batch ran (batch.go, desktop-parity ticket 20); empty otherwise.
 type Error struct {
 	Msg  string
 	Hint string
 	Exit int
+	Out  string
 }
 
 func (e *Error) Error() string { return e.Msg }
@@ -229,17 +232,22 @@ func (s *Server) handle(req *protocol.Request) (resp protocol.Response) {
 	// stop outranks the timeout: a press in the budget's last moment is
 	// the user's signal, and reporting it keeps exit 130 and its message
 	// instead of a timeout the user did not cause.
+	// A failure's Out (the steps a Batch ran) travels with it either way.
 	if cmdErr != nil && cmdErr.Exit == protocol.ExitEsc {
 		resp := protocol.Errorf(cmdErr.Exit, "%s", cmdErr.Msg)
-		resp.Hint = cmdErr.Hint
+		resp.Hint, resp.Out = cmdErr.Hint, cmdErr.Out
 		return resp
 	}
 	if ctx.Err() != nil && (cmdErr != nil || out == "") {
-		return timeoutResponse(req.Cmd)
+		resp := timeoutResponse(req.Cmd)
+		if cmdErr != nil {
+			resp.Out = cmdErr.Out
+		}
+		return resp
 	}
 	if cmdErr != nil {
 		resp := protocol.Errorf(cmdErr.Exit, "%s", cmdErr.Msg)
-		resp.Hint = cmdErr.Hint
+		resp.Hint, resp.Out = cmdErr.Hint, cmdErr.Out
 		if resp.Exit == 0 {
 			resp.Exit = 1
 		}

@@ -713,7 +713,7 @@ func TestBatchPageStepsArePassive(t *testing.T) {
 		stepOf("press-key", protocol.PressKeyArgs{Key: "Return"}),
 		stepOf("scroll", protocol.ScrollArgs{ElementIndex: idx(7), Direction: "down"}),
 	}})
-	if e != nil || out != okOutput {
+	if e != nil || out != "Action 1 (click): ok\nAction 2 (type-text): ok\nAction 3 (press-key): ok\nAction 4 (scroll): ok\n" {
 		t.Fatalf("batch: %q %+v", out, e)
 	}
 	if got := strings.Join(r.esc.brackets(), ","); strings.Contains(got, "arm,") || !strings.HasPrefix(got, "arm-passive") {
@@ -729,8 +729,7 @@ func TestBatchPageStepsArePassive(t *testing.T) {
 		stepOf("click", protocol.ClickArgs{ElementIndex: idx(7)}),
 		stepOf("click", protocol.ClickArgs{ElementIndex: idx(2), ClickCount: 2}),
 	}})
-	if e == nil || !strings.HasPrefix(e.Msg, "batch stopped at Action 2 (click): ") ||
-		!strings.HasSuffix(e.Msg, "; nothing was sent") || !strings.Contains(e.Hint, "winuse --headed ") {
+	if msg, hint, ok := failedStep(e, 2, "click"); !ok || !strings.HasSuffix(msg, "; nothing was sent") || !strings.Contains(hint, "winuse --headed ") {
 		t.Errorf("unheaded UIA step: %+v, want the --headed refusal", e)
 	}
 	if got := strings.Join(r.esc.brackets(), ","); strings.Contains(got, "arm,") || !strings.HasPrefix(got, "arm-passive") {

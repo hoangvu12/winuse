@@ -987,7 +987,9 @@ func TestPageOnlyStepsAreHeadless(t *testing.T) {
 		stepOf("wait", protocol.WaitArgs{For: "text", Value: "Hello"}),
 		stepOf("eval", protocol.EvalArgs{Expression: "1"}),
 	}})
-	if e != nil || out != okOutput {
+	// Each step prints its own output (desktop-parity ticket 20): what
+	// navigate and eval print comes back.
+	if e != nil || out != "Action 1 (navigate): ok https://b.test/\nAction 2 (wait): ok\nAction 3 (eval): null\n" {
 		t.Fatalf("batch: %q %+v", out, e)
 	}
 	r.passiveOnly(t)

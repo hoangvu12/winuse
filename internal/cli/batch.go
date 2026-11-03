@@ -21,7 +21,37 @@ import (
 )
 
 // batchUsage is the batch command's usage line.
-const batchUsage = "usage: winuse batch <window> [--timeout <seconds>] <action> [arguments] [then <action> [arguments]] ..."
+const batchUsage = "usage: winuse batch <window> [--timeout <seconds>] [--stop-on-error] <action> [arguments] [then <action> [arguments]] ..."
+
+// stopOnErrorFlag stops a Batch at its first failed Action
+// (desktop-parity ticket 20); without it the Batch runs on.
+const stopOnErrorFlag = "--stop-on-error"
+
+// takeBatchStopOnError removes batch's --stop-on-error, which goes before
+// the first Action (before or after the Window, among --timeout): a later
+// one is a step's argument, such as literal text.
+func takeBatchStopOnError(args []string) ([]string, bool) {
+	var rest []string
+	stop := false
+	i := 0
+	for plain := 0; i < len(args) && plain < 2; i++ {
+		switch tok := args[i]; {
+		case tok == stopOnErrorFlag:
+			stop = true
+			continue
+		case tok == "--timeout" && i+1 < len(args):
+			rest = append(rest, tok, args[i+1]) // takeBatchTimeout's
+			i++
+			continue
+		case isTimeoutFlag(tok):
+			rest = append(rest, tok)
+			continue
+		}
+		rest = append(rest, args[i])
+		plain++ // the Window, then the first Action's name
+	}
+	return append(rest, args[i:]...), stop
+}
 
 // batchKindsWord renders the batchable Actions for usage errors.
 func batchKindsWord() string {
@@ -230,8 +260,8 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 			return protocol.Step{}, err
 		}
 		args = protocol.HoverArgs{X: x, Y: y}
-	case "tab", "tab-new", "tab-close", "tab-switch":
-		return parseBatchTabStep(kind, rest) // tab.go: tab new|close|switch
+	case "tab", "tab-list", "tab-new", "tab-close", "tab-switch":
+		return parseBatchTabStep(kind, rest) // tab.go: tab list|new|close|switch
 	case "navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval":
 		return parseBatchPageStep(kind, rest) // page.go: the page-only Actions
 	default:
@@ -260,12 +290,15 @@ func batchPosts(steps []protocol.Step) bool {
 
 // batchCmd implements `winuse batch <window> <action> [arguments]
 // [then <action> [arguments]]...`: run several Actions on one Window in
-// order, stopping at the first failure (which names the failed Action). A
-// successful Batch prints `ok`, Codex-style. headed (the global --headed
-// flag, anywhere on a batch line outside literal text) runs every step the
-// v1 way (ADR 0010). --timeout before the first Action widens the 60 s
-// budget (up to 300 s).
+// order and print each one's output under its number. A failed Action
+// does not stop the Batch unless --stop-on-error; a Batch with a failed
+// Action prints its steps' lines, then fails naming every failed Action
+// (desktop-parity ticket 20). headed (the global --headed flag, anywhere
+// on a batch line outside literal text) runs every step the v1 way (ADR
+// 0010). --timeout before the first Action widens the 60 s budget (up to
+// 300 s).
 func batchCmd(args []string, headed bool) int {
+	args, stopOnError := takeBatchStopOnError(args)
 	args, timeout, err := takeBatchTimeout(args)
 	var window string
 	var steps []protocol.Step
@@ -279,7 +312,7 @@ func batchCmd(args []string, headed bool) int {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, batchUsage)
 		return 2
 	}
-	if err := runWithTimeout("batch", protocol.BatchArgs{Window: window, Steps: steps, Headed: headed}, timeout); err != nil {
+	if err := runWithTimeout("batch", protocol.BatchArgs{Window: window, Steps: steps, Headed: headed, StopOnError: stopOnError}, timeout); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}

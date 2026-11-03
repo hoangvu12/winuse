@@ -71,7 +71,7 @@ func TestTabUsageErrorsExit2(t *testing.T) {
 }
 
 func TestBatchTabSteps(t *testing.T) {
-	_, steps, err := parseBatchArgs([]string{"301", "tab", "new", "a.test", "then", "tab", "switch", "1a2b", "then", "tab-close", "9f2c61ab", "then", "tab", "new"})
+	_, steps, err := parseBatchArgs([]string{"301", "tab", "new", "a.test", "then", "tab", "switch", "1a2b", "then", "tab-close", "9f2c61ab", "then", "tab", "new", "then", "tab", "list"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,6 +80,7 @@ func TestBatchTabSteps(t *testing.T) {
 		{"tab-switch", `{"window":"","tab":"1a2b"}`},
 		{"tab-close", `{"window":"","tab":"9f2c61ab"}`},
 		{"tab-new", `{"window":""}`},
+		{"tab-list", `{"window":""}`}, // a step since desktop-parity ticket 20
 	}
 	if len(steps) != len(want) {
 		t.Fatalf("steps = %+v", steps)
@@ -96,8 +97,8 @@ func TestBatchTabSteps(t *testing.T) {
 		args []string
 		err  string
 	}{
-		{[]string{"301", "tab", "list"}, "tab list is not a batch Action"},
-		{[]string{"301", "tab"}, "a batch tab Action needs new, close or switch"},
+		{[]string{"301", "tab", "list", "x"}, "a batch tab list Action takes no arguments"},
+		{[]string{"301", "tab"}, "a batch tab Action needs list, new, close or switch"},
 		{[]string{"301", "tab", "switch"}, "a batch tab switch Action takes a tab id"},
 		{[]string{"301", "tab", "close", "ab"}, "is too short"},
 		{[]string{"301", "tab", "move", "1a2b"}, `unknown batch tab Action "move"`},
@@ -107,7 +108,7 @@ func TestBatchTabSteps(t *testing.T) {
 		}
 	}
 	// Every wire kind a tab step produces is one the helper takes.
-	for _, kind := range []string{"tab-new", "tab-close", "tab-switch"} {
+	for _, kind := range []string{"tab-new", "tab-close", "tab-switch", "tab-list"} {
 		found := false
 		for _, k := range protocol.BatchStepKinds {
 			found = found || k == kind

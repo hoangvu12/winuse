@@ -830,34 +830,77 @@ so use `close-window` to close the Window.
 ## Batches
 
 A Batch runs a routine sequence on one Window in one call. It runs the
-Actions in order, stops at the first failure and names the Action that
-failed.
+Actions in order and prints each one's output on its own line, numbered.
 
 ```
 winuse --headed batch 101 click id:field then type-text hello world then press-key Return then click name:OK
 ```
 
+```
+Action 1 (click): ok
+Action 2 (type-text): ok
+Action 3 (press-key): ok
+Action 4 (click): ok
+Note: window 101 closed
+```
+
+A step's output starts after `Action N (<action>): `, and any further lines
+of it are indented two spaces, so `eval` results, `tab list` and the Tab
+id from `tab new` come back in the Batch. The `Note:` lines at the left
+margin come after all the steps and cover the whole Batch (see "Read the
+result").
+
+A failed step does not stop the Batch. Its line reads
+`Action N (<action>): failed: <message>` with its `hint:` indented under
+it, and the next step runs. After the last step the Batch fails with exit
+1 and one line naming every failed step:
+
+```
+Action 1 (click): ok
+Action 2 (press-key): failed: press-key Control_L+a has no background route in window 101: ...; nothing was sent
+  hint: pass --headed to do it with the real pointer and keyboard, ...: winuse --headed press-key 101 Control_L+a
+Action 3 (click): ok
+batch: 1 of 3 Actions failed: Action 2 (press-key)
+hint: each failed Action's line in the output names its cause and hint; the other Actions took effect
+```
+
+A step whose failure says `may have taken effect` or `do not repeat it` is
+marked `uncertain` in that line, as in `Action 2 (set-value, uncertain)`,
+and the hint names it. Read the Window State before you repeat an uncertain
+step, because it may have acted. Retry only the failed steps, after you
+fix their cause, and never resend the whole Batch: the other steps took
+effect.
+
+Put `--stop-on-error` right after the Window, before the first Action, when
+a later step only makes sense after the earlier ones succeed, such as typing
+into a field a click must focus first. The first failure then stops the
+Batch with `batch stopped at Action N (<action>): <message>` and that step's
+hint; the steps before it printed their lines and took effect, and the steps
+after it did not run. An Esc stop or a spent budget always stops a Batch
+this way.
+
 Each step takes the same arguments as the standalone command, without the
 Window, including `--post` on `press-key` and `type-text`. A separate `then`
 argument, in any case, always starts a new step, so quote text that contains
-the word as one argument. winuse refuses a malformed Batch before it sends
-anything. Batch only sequences you understand well, and go back to one
-Action at a time when anything is uncertain. A Batch has 60 seconds in all;
-for a long one, put `--timeout <seconds>` (up to 300) right after the
-Window, before the first Action. A `--timeout` later on the line belongs to
-a `wait` step, and the Batch's budget bounds that wait.
+the word as one argument. winuse refuses a malformed Batch, or a Window that
+does not resolve, before it sends anything. Batch only sequences you
+understand well, and go back to one Action at a time when anything is
+uncertain. A Batch has 60 seconds in all; for a long one, put
+`--timeout <seconds>` (up to 300) right after the Window, before the first
+Action. A `--timeout` later on the line belongs to a `wait` step, and the
+Batch's budget bounds that wait.
 
 Without `--headed`, a Batch runs Headless, with no banner, and a step with
 no Headless route, such as `type-text` outside a classic edit box, is
-refused at its turn with nothing sent for that step. The Batch stops there,
-and the steps before it took effect. `--headed` makes every step Headed
-under one banner and the Headed Esc stop. That is why the example needs it:
-without it, the click would not move focus to the field and the typing
-would be refused.
+refused at its turn with nothing sent for that step. `--headed` makes every
+step Headed under one banner and the Headed Esc stop. That is why the
+example needs it: without it, the click would not move focus to the field,
+the typing would be refused, and the steps after it would still run. Steps
+that depend on each other like that need `--headed`, and `--stop-on-error`
+when a failed step must stop the rest.
 
-The Page commands and `tab new`, `tab close` and `tab switch` are Batch
-steps too. A Batch prints only `ok` and the note lines below, so run `eval`
-and `tab list` on their own when you need their output.
+The Page commands and `tab list`, `tab new`, `tab close` and `tab switch`
+are Batch steps too.
 
 ## Read the result
 
@@ -891,7 +934,8 @@ unknown, read the Window State, and decide from it.
 
 After `click`, `perform-secondary-action` Expand or Select, `press-key`,
 `set-value` and a Batch, winuse watches the App's Windows for a moment and
-adds a line after `ok` for each change:
+adds a line after `ok` (after a Batch's step lines, failed steps included)
+for each change:
 
 - `Note: a new Window opened: <id> <App> "<title>"` for a dialog, menu or
   popup the Action opened. Read that Window next with
@@ -1022,7 +1066,7 @@ activate-window <window>            # takes the foreground, no flag needed
 restore-window <window> | minimize-window <window> | close-window <window>
 move-window <window> <x> <y> | resize-window <window> <width> <height>
 maximize-window <window>            # needs --headed: takes the foreground
-batch <window> [--timeout <s>] <action> [args] [then <action> [args]] ...
+batch <window> [--timeout <s>] [--stop-on-error] <action> [args] [then <action> [args]] ...
 navigate <window> <url> [--wait load|domcontentloaded|none] | back | forward | reload <window>
 wait <window> selector <css> | text <text> | url <url> | load | download [--timeout <s>]
 eval <window> <expression> | dialog <window> accept|dismiss [text]

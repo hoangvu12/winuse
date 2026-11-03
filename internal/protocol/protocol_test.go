@@ -261,6 +261,11 @@ func TestBatchArgsJSONShape(t *testing.T) {
 	if got.Steps[1].Kind != "activate-window" || got.Steps[1].Args != nil {
 		t.Errorf("step 1 = %+v, want no arguments", got.Steps[1])
 	}
+	// --stop-on-error travels as stop_on_error (desktop-parity ticket 20).
+	b, err = json.Marshal(BatchArgs{Window: "101", StopOnError: true})
+	if err != nil || string(b) != `{"window":"101","steps":null,"stop_on_error":true}` {
+		t.Errorf("stop_on_error JSON = %s, %v", b, err)
+	}
 }
 
 func TestBatchStepKindsAreBatchableActions(t *testing.T) {
@@ -268,9 +273,9 @@ func TestBatchStepKindsAreBatchableActions(t *testing.T) {
 	// step parser and the helper's step dispatch): every entry is an
 	// Action command, and the set is exactly today's Actions (the ticket-10
 	// pointer Actions became steps in ticket 12; browser merge ticket 07
-	// adds the acting tab commands).
+	// adds the acting tab commands, desktop-parity ticket 20 tab-list).
 	want := []string{"click", "type-text", "press-key", "set-value", "perform-secondary-action", "activate-window", "scroll", "drag", "hover",
-		"tab-new", "tab-close", "tab-switch",
+		"tab-new", "tab-close", "tab-switch", "tab-list",
 		"navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval",
 		"select-text", "invoke-menu"}
 	if len(BatchStepKinds) != len(want) {

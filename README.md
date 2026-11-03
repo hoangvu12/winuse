@@ -51,7 +51,10 @@ Window: "Calculator", App: CalculatorApp.exe.
 						46 button Seven ID: num7Button
 
 > winuse batch 19203320 click name:Seven then click name:Plus then click name:Two then click name:Equals
-ok
+Action 1 (click): ok
+Action 2 (click): ok
+Action 3 (click): ok
+Action 4 (click): ok
 ```
 
 Add `--screenshot` when the tree is not enough. winuse captures the
@@ -125,7 +128,7 @@ at all, and winuse says so.
 | `restore-window`, `minimize-window`, `move-window`, `resize-window`, `close-window` | Manages a window without bringing it to the front |
 | `--headed maximize-window` | Maximizes a window; it comes to the front, because Windows cannot maximize a window behind others |
 | `close-app <app> [--force]` | Closes every window of an app and waits for it to exit; `--force` ends it if it stays open |
-| `batch <window> [--timeout <s>] ... then ...` | Runs several actions in one call |
+| `batch <window> [--timeout <s>] [--stop-on-error] ... then ...` | Runs several actions in one call and prints each one's output; a failed action does not stop the rest unless `--stop-on-error` |
 | `navigate`, `back`, `forward`, `reload` | Opens a URL or moves through a tab's history |
 | `wait`, `eval` | Waits for an element, text, URL, load or download, or runs JavaScript in the page |
 | `dialog`, `upload` | Answers a JavaScript dialog, or gives files to a file input |

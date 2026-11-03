@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
 )
@@ -329,8 +330,38 @@ func TestBatchUsageErrorsExit2WithoutDialing(t *testing.T) {
 	}
 }
 
+func TestTakeBatchStopOnError(t *testing.T) {
+	// --stop-on-error goes before the first Action, before or after the
+	// Window and among --timeout (desktop-parity ticket 20); later it is a
+	// step's argument.
+	cases := []struct {
+		args []string
+		rest []string
+		stop bool
+	}{
+		{[]string{"101", "click", "1"}, []string{"101", "click", "1"}, false},
+		{[]string{"--stop-on-error", "101", "click", "1"}, []string{"101", "click", "1"}, true},
+		{[]string{"101", "--stop-on-error", "click", "1"}, []string{"101", "click", "1"}, true},
+		{[]string{"101", "--timeout", "30", "--stop-on-error", "click", "1"}, []string{"101", "--timeout", "30", "click", "1"}, true},
+		{[]string{"101", "--timeout=30", "--stop-on-error", "click", "1"}, []string{"101", "--timeout=30", "click", "1"}, true},
+		{[]string{"101", "type-text", "--stop-on-error"}, []string{"101", "type-text", "--stop-on-error"}, false},
+	}
+	for _, c := range cases {
+		rest, stop := takeBatchStopOnError(c.args)
+		if stop != c.stop || !reflect.DeepEqual(rest, c.rest) {
+			t.Errorf("%q: %q, %v; want %q, %v", c.args, rest, stop, c.rest, c.stop)
+		}
+	}
+	// What follows still parses: the --timeout, then the steps.
+	rest, _ := takeBatchStopOnError([]string{"101", "--timeout", "30", "--stop-on-error", "click", "1"})
+	rest, timeout, err := takeBatchTimeout(rest)
+	if err != nil || timeout != 30*time.Second || !reflect.DeepEqual(rest, []string{"101", "click", "1"}) {
+		t.Errorf("after --stop-on-error: %q, %v, %v", rest, timeout, err)
+	}
+}
+
 func TestUsageMentionsBatch(t *testing.T) {
-	for _, want := range []string{"batch", "then"} {
+	for _, want := range []string{"batch", "then", "--stop-on-error"} {
 		if !strings.Contains(Usage, want) {
 			t.Errorf("usage text missing %q", want)
 		}

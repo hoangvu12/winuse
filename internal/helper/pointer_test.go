@@ -424,8 +424,8 @@ func TestBatchRunsThePointerSteps(t *testing.T) {
 	if cmdErr != nil {
 		t.Fatalf("batch: %v", cmdErr.Error())
 	}
-	if out != "ok\n" {
-		t.Errorf("output = %q, want ok", out)
+	if want := "Action 1 (scroll): ok\nAction 2 (drag): ok\nAction 3 (hover): ok\n"; out != want {
+		t.Errorf("output = %q, want %q", out, want)
 	}
 	// All three ran on window 101, at the screen points the screenshot
 	// pixels map to with the frame bounds re-read at (150, 260):

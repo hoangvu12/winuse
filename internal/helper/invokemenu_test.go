@@ -333,7 +333,7 @@ func TestBatchInvokeMenuKeepsTheHeadlessScope(t *testing.T) {
 			stepOf("invoke-menu", protocol.InvokeMenuArgs{Path: []string{"Edit", "Select All"}}),
 		},
 	})
-	if cmdErr != nil || out != "ok\n" {
+	if cmdErr != nil || out != "Action 1 (click): ok\nAction 2 (invoke-menu): ok\n" {
 		t.Fatalf("batch: %q, %v", out, cmdErr)
 	}
 	assertNoV1(t, spy.recorded())

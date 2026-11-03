@@ -109,8 +109,18 @@ func TestHeadedActionReportsNothing(t *testing.T) {
 	out, e = runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{Window: "101", Steps: []protocol.Step{
 		stepOf("click", protocol.ClickArgs{ElementIndex: idx(2)}),
 	}})
-	if e != nil || out != "ok\n"+launchForegroundNote {
+	if e != nil || out != "Action 1 (click): ok\n"+launchForegroundNote {
 		t.Errorf("headless batch: %q, %+v", out, e)
+	}
+	// A Batch that ran past a failed step gets the note after its steps'
+	// lines (desktop-parity ticket 20).
+	spy, _ = fgSpy(777)
+	_, e = runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{Window: "101", Steps: []protocol.Step{
+		stepOf("click", protocol.ClickArgs{ElementIndex: idx(2), ClickCount: 2}), // Headed only: refused
+		stepOf("click", protocol.ClickArgs{ElementIndex: idx(2)}),
+	}})
+	if e == nil || !strings.HasPrefix(e.Out, "Action 1 (click): failed: ") || !strings.HasSuffix(e.Out, "Action 2 (click): ok\n"+launchForegroundNote) {
+		t.Errorf("batch past a failed step: %+v", e)
 	}
 }
 

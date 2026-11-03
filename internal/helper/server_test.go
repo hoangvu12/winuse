@@ -149,6 +149,52 @@ func TestServeCommandErrorCarriesHintAndExit(t *testing.T) {
 	}
 }
 
+// A failure's Out (the steps a Batch ran, desktop-parity ticket 20)
+// reaches the CLI with the failure: an ordinary one, an Esc stop and a
+// spent budget alike.
+func TestServeFailureCarriesItsOutput(t *testing.T) {
+	steps := "Action 1 (click): ok\n"
+	s := New("0.1.0", time.Hour, 100*time.Millisecond, map[string]Command{
+		"failed": func(ctx context.Context, args json.RawMessage) (string, *Error) {
+			return "", &Error{Msg: "batch: 1 of 2 Actions failed: Action 2 (click)", Exit: 1, Out: steps}
+		},
+		"stopped": func(ctx context.Context, args json.RawMessage) (string, *Error) {
+			return "", &Error{Msg: "stopped", Exit: protocol.ExitEsc, Out: steps}
+		},
+		"slow": func(ctx context.Context, args json.RawMessage) (string, *Error) {
+			<-ctx.Done()
+			return "", &Error{Msg: "budget", Exit: 1, Out: steps}
+		},
+	}, discardLogger())
+	ln := newFakeListener()
+	defer ln.Close()
+	done := make(chan error, 1)
+	go func() { done <- s.Serve(ln) }()
+	for _, c := range []struct {
+		cmd, err string
+		exit     int
+	}{
+		{"failed", "batch: 1 of 2 Actions failed: Action 2 (click)", 1},
+		{"stopped", "stopped", protocol.ExitEsc},
+		{"slow", "winuse request timed out: slow", 1},
+	} {
+		client := ln.push()
+		client.SetDeadline(time.Now().Add(5 * time.Second))
+		resp, err := call(client, testRequest(c.cmd))
+		client.Close()
+		if err != nil {
+			t.Fatalf("%s: call: %v", c.cmd, err)
+		}
+		if resp.OK || resp.Err != c.err || resp.Exit != c.exit || resp.Out != steps {
+			t.Errorf("%s: response %+v, want the failure with the steps' output", c.cmd, resp)
+		}
+	}
+	s.Shutdown()
+	if err := <-done; err != nil {
+		t.Fatalf("Serve returned %v", err)
+	}
+}
+
 func TestServeRejectsForeignProtocolVersion(t *testing.T) {
 	_, ln := startServer(t, time.Minute, map[string]Command{"x": echoCommand("")})
 	client := ln.push()

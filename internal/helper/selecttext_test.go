@@ -395,7 +395,7 @@ func TestSelectTextRouting(t *testing.T) {
 		{Kind: "select-text", Args: batchStepArgs(protocol.SelectTextArgs{ElementIndex: intPtrBatch(2), Start: 6, Length: 5})},
 	}
 	out, cmdErr := runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{Window: "101", Steps: steps})
-	if cmdErr != nil || out != okOutput {
+	if cmdErr != nil || out != "Action 1 (select-text): "+okOutput {
 		t.Fatalf("batch: %q, %+v", out, cmdErr)
 	}
 	if !reflect.DeepEqual(spy.text.sel, [][2]int{{6, 11}}) {
