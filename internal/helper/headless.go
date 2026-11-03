@@ -299,6 +299,12 @@ type headlessRun struct {
 	// (elementError, valueError, secondaryError), reused for the
 	// refusals both modes share.
 	refusal func(err error, w win.WindowInfo, index int) *Error
+	// minimized lets the act reach a minimized Window whose class still
+	// takes UI Automation pattern calls (headless-max ticket 14,
+	// win.MinimizedPatterns): click, set-value, the Secondary Actions and
+	// select-text. Element scroll stays refused: its into-view read-back
+	// needs the Element on screen, and scrolling minimized is unmeasured.
+	minimized bool
 }
 
 // runHeadless is the Headless Action pipeline beside runAction (ADR
@@ -306,10 +312,12 @@ type headlessRun struct {
 // Window (UIA writes across the integrity boundary fail, agent-desktop
 // A24-16); refuse a Window that cannot take a pattern call without the
 // foreground (Services.Ready: a modal dialog blocks it, or it is
+// minimized, unless run.minimized and its class takes pattern calls
 // minimized); then, inside a passive Esc scope, resolve the Element
 // Index, glide the Agent Cursor to the Element, act through its
-// patterns, and ripple the cursor on a delivered Action. No activation,
-// no banner, no pointer, no keys.
+// patterns, and ripple the cursor on a delivered Action. A minimized
+// Window has no rectangle on screen, so the cursor stays hidden there. No
+// activation, no banner, no pointer, no keys.
 //
 // Every refusal before the pattern call says "nothing was sent", so the
 // agent knows a retry is safe; a failed write says it may have taken
@@ -321,7 +329,8 @@ func (s Services) runHeadless(ctx context.Context, ref string, actor HeadlessAct
 	if rerr != nil {
 		return "", rerr
 	}
-	if rerr := s.headlessRefusals(w, adminPatternHint); rerr != nil {
+	iconic, rerr := s.refusals(w, adminPatternHint, run.minimized)
+	if rerr != nil {
 		return "", rerr
 	}
 
@@ -337,7 +346,11 @@ func (s Services) runHeadless(ctx context.Context, ref string, actor HeadlessAct
 	if rerr != nil {
 		return "", nothingSent(rerr)
 	}
-	rect, shown := s.cursorTravel(ctx, actor, w, index, run.verb)
+	var rect win.Rect
+	var shown bool
+	if !iconic {
+		rect, shown = s.cursorTravel(ctx, actor, w, index, run.verb)
+	}
 	if esc.Stopped() {
 		// The user pressed Esc during the cursor's travel: stop before the
 		// pattern call.
@@ -372,24 +385,38 @@ const (
 // Action without the foreground (Services.Ready: a modal dialog blocks it,
 // or it is minimized).
 func (s Services) headlessRefusals(w win.WindowInfo, adminHint string) *Error {
+	_, rerr := s.refusals(w, adminHint, false)
+	return rerr
+}
+
+// refusals are headlessRefusals for an Action that may reach a minimized
+// Window (headless-max ticket 14): with minimizedOK, a minimized Window
+// whose class still takes UI Automation pattern calls
+// (win.MinimizedPatterns) passes, and iconic reports it. A Store app,
+// Chromium and the unmeasured frameworks stay refused.
+func (s Services) refusals(w win.WindowInfo, adminHint string, minimizedOK bool) (iconic bool, rerr *Error) {
 	if locked, desktop := s.Locked(); locked {
-		return nothingSent(lockedDesktopFailure(desktop))
+		return false, nothingSent(lockedDesktopFailure(desktop))
 	}
 	if err := s.Integrity(w); err != nil {
 		var admin *win.AdminWindowError
 		if errors.As(err, &admin) {
-			return nothingSent(Fail(err.Error(), adminHint))
+			return false, nothingSent(Fail(err.Error(), adminHint))
 		}
-		return nothingSent(Fail(err.Error(), ""))
+		return false, nothingSent(Fail(err.Error(), ""))
 	}
 	check := s.Ready
 	if check == nil {
 		check = win.HeadlessReady
 	}
 	if err := check(w.ID); err != nil {
-		return readyError(err, w)
+		var minimized *win.MinimizedError
+		if minimizedOK && errors.As(err, &minimized) && win.MinimizedPatterns(minimized.Class) {
+			return true, nil
+		}
+		return false, readyError(err, w)
 	}
-	return nil
+	return false, nil
 }
 
 // cursorTravelRect glides the Agent Cursor from the Window to a screen
@@ -493,8 +520,9 @@ func escStopBeforeActError() *Error {
 // readyError maps Services.Ready's refusal: a modal dialog points at the
 // dialog (activationError's hint); a minimized Window points at
 // restore-window (headless, ADR 0011), activate-window (the foreground
-// way) or --headed (its Elements are offscreen, and restoring it is the
-// agent's call, not winuse's).
+// way) or --headed (restoring it is the agent's call, not winuse's). A
+// Store app comes to the front when restored (probes round 5), and the
+// hint says so.
 func readyError(err error, w win.WindowInfo) *Error {
 	var modal *win.ModalDialogError
 	if errors.As(err, &modal) {
@@ -503,9 +531,13 @@ func readyError(err error, w win.WindowInfo) *Error {
 	var minimized *win.MinimizedError
 	if errors.As(err, &minimized) {
 		id := strconv.FormatUint(w.ID, 10)
+		restore := " (headless)"
+		if win.StoreAppFrame(minimized.Class) {
+			restore = " (a Store app comes to the front when restored, so tell the user first)"
+		}
 		return nothingSent(Fail(err.Error(),
-			"a minimized Window's Elements cannot be acted on headless; restore it with winuse restore-window "+id+
-				" (headless), or with winuse activate-window "+id+
+			"this Action cannot reach a minimized Window headless; restore it with winuse restore-window "+id+
+				restore+", or with winuse activate-window "+id+
 				" (this takes the foreground), or pass --headed to act the v1 way"))
 	}
 	return nothingSent(Fail(err.Error(), ""))
