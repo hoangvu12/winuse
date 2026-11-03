@@ -16,12 +16,14 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
 )
 
 // batchUsage is the batch command's usage line.
-const batchUsage = "usage: winuse batch <window> [--timeout <seconds>] [--stop-on-error] <action> [arguments] [then <action> [arguments]] ..."
+const batchUsage = "usage: winuse batch <window> [--timeout <seconds>] [--stop-on-error] <action> [arguments] [then <action> [arguments]] ...\n" +
+	"       winuse batch -   (stdin: the Window and the Batch flags, then one Action per line)"
 
 // stopOnErrorFlag stops a Batch at its first failed Action
 // (desktop-parity ticket 20); without it the Batch runs on.
@@ -310,14 +312,21 @@ func batchPosts(steps []protocol.Step) bool {
 // (desktop-parity ticket 20). headed (the global --headed flag, anywhere
 // on a batch line outside literal text) runs every step the v1 way (ADR
 // 0010). --timeout before the first Action widens the 60 s budget (up to
-// 300 s).
+// 300 s). `winuse batch -` reads the Batch from stdin (batchstdin.go).
 func batchCmd(args []string, headed bool) int {
-	args, stopOnError := takeBatchStopOnError(args)
-	args, timeout, err := takeBatchTimeout(args)
 	var window string
 	var steps []protocol.Step
-	if err == nil {
-		window, steps, err = parseBatchArgs(args)
+	var timeout time.Duration
+	var stopOnError bool
+	var err error
+	if len(args) > 0 && args[0] == batchStdinArg {
+		window, steps, timeout, stopOnError, err = batchFromStdin(args[1:], os.Stdin)
+	} else {
+		args, stopOnError = takeBatchStopOnError(args)
+		args, timeout, err = takeBatchTimeout(args)
+		if err == nil {
+			window, steps, err = parseBatchArgs(args)
+		}
 	}
 	if err == nil && headed && batchPosts(steps) {
 		err = errPostHeaded

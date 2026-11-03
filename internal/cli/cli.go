@@ -198,6 +198,12 @@ const usageTail = `);
                                marked; --stop-on-error stops at the first.
                                A Batch has 60 s; --timeout before the first
                                Action gives it up to 300
+  batch -                      the same Batch read from stdin: the Window and
+                               the Batch flags on the first line, then one
+                               Action per line with no then; double quotes
+                               group words (\" is a quote inside them), and
+                               blank lines and lines starting with # are
+                               skipped
   scroll <window> <element index | name: | id:> <up|down|left|right> [steps]
                                scroll the list or page holding an Element by
                                steps (1 to 50, default 3)

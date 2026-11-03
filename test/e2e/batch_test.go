@@ -13,6 +13,8 @@
 package e2e
 
 import (
+	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -298,6 +300,36 @@ func TestBatchStopOnErrorStopsAtTheFirstFailure(t *testing.T) {
 	if st = fix.waitState(t, time.Second, func(*fixture.State) bool { return true }); st.Text != "" {
 		t.Errorf("steps after the failure must not run; text = %q", st.Text)
 	}
+}
+
+func TestBatchFromStdin(t *testing.T) {
+	// `winuse batch -` (desktop-parity ticket 20): the Window and the Batch
+	// flags on the first line, one step per line, a comment and a blank
+	// line skipped, and quoted text that holds `then` and quotes arrives
+	// whole.
+	optIn(t)
+	fix, window := startFixtureWithState(t)
+
+	const text = `from stdin: then "quoted"`
+	cmd := exec.Command(winuseBinary(t), "batch", "-")
+	cmd.Env = append(os.Environ(), "WINUSE_HELPER_IDLE="+e2eIdle)
+	cmd.Stdin = strings.NewReader("# the e2e stdin Batch\r\n" + window + " --stop-on-error\r\n\r\n" +
+		"click id:button-click\r\n" +
+		`set-value id:text-field "from stdin: then \"quoted\""` + "\r\n")
+	var stdout, stderr strings.Builder
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	exit := 0
+	if err := cmd.Run(); err != nil {
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("running winuse: %v", err)
+		}
+		exit = exitErr.ExitCode()
+	}
+	assertBatchOK(t, "batch - from stdin", stdout.String(), stderr.String(), exit, 2)
+	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool {
+		return s.LastButton == "Click Me" && s.Text == text
+	})
 }
 
 func TestBatchUnknownWindowFailsBeforeAnyStep(t *testing.T) {

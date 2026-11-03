@@ -454,7 +454,8 @@ agent-desktop's (desktop-parity 20): each step's output on its own
 numbered line (`Action N (<action>): ...`), a failed step does not stop
 the rest, and the Batch then fails naming every failed step, the ones
 that may have taken effect marked uncertain; `--stop-on-error` stops at
-the first failure instead. Headless Actions bring two
+the first failure instead. `winuse batch -` reads the Batch from stdin,
+one step per line (agent-desktop's PR #439 reads its JSON there). Headless Actions bring two
 more: the global `--headed` flag (before or after the command, and on a
 Batch) that restores Codex's foreground, real-input behaviour for any
 Action, and the Agent Cursor — a presentation-only second cursor that
