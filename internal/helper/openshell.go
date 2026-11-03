@@ -143,22 +143,29 @@ func openShell(s Services) Command {
 // pressShellAccelerator presses a shell accelerator with the real
 // keyboard: Headed, under the in-control indicator over the taskbar and an
 // armed Esc scope. No Window is activated: the shell takes the keys
-// whatever has the foreground.
+// whatever has the foreground. It is polite like the Headed pipeline
+// (polite.go): it waits for the user's input to go quiet and releases
+// what it holds on every exit, and the surface it opens keeps the
+// foreground, as a shell surface does after runAction.
 func (s Services) pressShellAccelerator(ctx context.Context, taskbar win.WindowInfo, chord keys.Chord) *Error {
 	noteRoute(ctx, taskbar, protocol.RouteHeaded) // trace.go
+	if rerr := s.waitForQuietInput(ctx); rerr != nil {
+		return rerr
+	}
+	defer s.releaseHeld()
 	s.showOverlay(taskbar)
 	defer s.hideOverlay()
 	s.Esc.Arm()
 	defer s.Esc.Disarm()
 	markHeaded(ctx) // selfactivation.go: the foreground moves on purpose
 	if s.Esc.Stopped() {
-		return escStopError()
+		return stopErrorFor(s.Esc)
 	}
 	if err := s.PressKeys(chord); err != nil {
 		return inputError(err)
 	}
 	if s.Esc.Stopped() {
-		return escStopError()
+		return stopErrorFor(s.Esc)
 	}
 	return nil
 }

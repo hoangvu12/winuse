@@ -499,3 +499,20 @@ func TestOpenShellOverflowClicksTheChevron(t *testing.T) {
 		t.Errorf("no chevron: %v, steps %v", cmdErr, d.recorded())
 	}
 }
+
+// open-shell's keys are polite like any Headed Action (polite.go): while
+// the user is typing, nothing is pressed and the refusal says why.
+func TestOpenShellWaitsForTheUsersInput(t *testing.T) {
+	d := openShellDesk(t)
+	d.svc.InputIdle = func() time.Duration { return 10 * time.Millisecond }
+	now := time.Unix(1000, 0)
+	d.svc.Now = func() time.Time { return now }
+	d.svc.Sleep = func(dt time.Duration) { now = now.Add(dt) }
+	_, cmdErr := runCommand(t, d.cmds(), "open-shell", protocol.OpenShellArgs{Surface: "notifications", Headed: true})
+	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "the user is typing") || !strings.HasSuffix(cmdErr.Msg, nothingSentNote) {
+		t.Errorf("open-shell while the user types: %v", cmdErr)
+	}
+	if len(d.pressedKeys()) > 0 {
+		t.Errorf("keys pressed: %v", d.pressedKeys())
+	}
+}
