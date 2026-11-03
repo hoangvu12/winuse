@@ -76,4 +76,4 @@ Open:
 
 - Unmeasured: Show, the activation and History.Clear from this raiser, and whether a registry-registered AUMID's toast shows "winuse e2e" as its sender. The tests match the toast by its unique title, so they do not depend on the sender name. Also unmeasured: the panel's tree and quick settings' host, recognised as ShellHost.
 - `testdata/toast-banner.json` should be replaced by a record-tree capture at the first live toast run.
-- SKILL.md has only the short bullets: it is at the 64 KB guard until the PC's trim lands.
+- SKILL.md: re-fitted after the PC's trim (1a727cc). Two bullets in "The taskbar and the shell", the shell line of "What winuse cannot do headless", and four lines in the command reference (54.9 KB).
