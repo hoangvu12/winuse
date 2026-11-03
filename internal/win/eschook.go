@@ -58,6 +58,7 @@ import (
 	"fmt"
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -134,7 +135,16 @@ type escLatch struct {
 	// armed scope (a key or a mouse button), not Esc; it clears with the
 	// latch.
 	yielded atomic.Bool
+	// flushes counts the flush sentinels the hook swallowed (FlushInput).
+	flushes atomic.Uint64
 }
+
+// The flush sentinel (FlushInput): an unassigned virtual key injected with
+// its own extra-info tag. The hook swallows it, so no App ever sees it.
+const (
+	flushVK  = 0xE8
+	flushTag = 0x57494E46
+)
 
 // beginWait enters a waiting scope and returns the stop generation now.
 func (l *escLatch) beginWait() uint64 {
@@ -276,6 +286,12 @@ const (
 func escHookEvent(nCode int32, msg uint32, k kbdllHookStruct, l *escLatch) escHookResult {
 	if nCode < 0 {
 		return escPass
+	}
+	if k.VkCode == flushVK && k.ExtraInfo == flushTag {
+		if msg == wmKeyUp || msg == wmSysKeyUp {
+			l.flushes.Add(1)
+		}
+		return escSwallow
 	}
 	if l.onKey(msg, k.VkCode, k.Flags) {
 		return escSwallow
@@ -460,6 +476,44 @@ func (w *EscWatcher) Stopped() bool {
 		return false
 	}
 	return w.latch.stopped()
+}
+
+// FlushInput waits until every event winuse injected before the call has
+// passed the low-level hooks (polite real input, multi-agent 08). The
+// system's raw input thread runs the hooks in order and then queues each
+// event to the thread that owned the focus at that moment, so once the
+// hook has swallowed a sentinel injected after them, the earlier events
+// sit in their target's queue: the foreground can move without carrying
+// keys typed for the target into another Window. It fails when the hook is
+// not installed or the sentinel does not come through within timeout.
+func (w *EscWatcher) FlushInput(timeout time.Duration) error {
+	if w == nil || w.hook == 0 {
+		return errors.New("no keyboard hook to flush the input through")
+	}
+	before := w.latch.flushes.Load()
+	if err := sendInput(flushEvent(false), flushEvent(true)); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(timeout)
+	for w.latch.flushes.Load() == before {
+		if time.Now().After(deadline) {
+			return fmt.Errorf("the injected input did not come through the hooks within %v", timeout)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return nil
+}
+
+// flushEvent is one half of the flush sentinel.
+func flushEvent(up bool) input {
+	var flags uint32
+	if up {
+		flags = keyEventfKeyUp
+	}
+	var in input
+	in.Type = inputTypeKeyboard
+	*(*keybdInput)(unsafe.Pointer(&in.U)) = keybdInput{Vk: flushVK, Flags: flags, ExtraInfo: flushTag}
+	return in
 }
 
 // Yielded reports whether the latched stop was the user's own key or

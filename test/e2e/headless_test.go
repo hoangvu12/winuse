@@ -260,7 +260,8 @@ func TestHeadlessSetValueKeepsFocusAndForeground(t *testing.T) {
 
 	// The focus counter is live: a Headed set-value focuses its Element
 	// first (v1's order) and takes the foreground — so the zero above is a
-	// real observation, not a counter that never moves.
+	// real observation, not a counter that never moves. Afterwards it gives
+	// the foreground back to the cover (polite real input, multi-agent 08).
 	stdout, stderr, exit = runWinuse(t, []string{"--headed", "set-value", window, strconv.Itoa(idx), "set headed"},
 		"WINUSE_HELPER_IDLE="+e2eIdle)
 	assertActionOK(t, "--headed set-value", stdout, stderr, exit)
@@ -269,7 +270,7 @@ func TestHeadlessSetValueKeepsFocusAndForeground(t *testing.T) {
 		t.Errorf("a Headed set-value did not reach the provider's SetFocus (focusRequests %d); the Headless check above proves nothing",
 			st.FocusRequests)
 	}
-	waitForeground(t, mustWindowID(t, window), 2*time.Second)
+	waitForeground(t, cover, 2*time.Second)
 }
 
 func TestHeadlessClickWithoutPatternRouteFails(t *testing.T) {
@@ -308,12 +309,13 @@ func TestHeadlessClickWithoutPatternRouteFails(t *testing.T) {
 func TestHeadedClickBringsTheWindowForward(t *testing.T) {
 	optIn(t)
 	fix, window := startFixtureWithState(t)
-	id := mustWindowID(t, window)
 	cover := coverWindow(t, window)
 	indexes := mainElementIndexes()
 
 	// --headed is global: before the command and after it both force v1's
-	// pipeline (activate, real pointer, banner).
+	// pipeline (activate, real pointer, banner). The real click lands on the
+	// covered fixture only if winuse brought it forward; afterwards the
+	// cover has the foreground again (polite real input, multi-agent 08).
 	cases := []struct {
 		name string
 		args []string
@@ -324,17 +326,11 @@ func TestHeadedClickBringsTheWindowForward(t *testing.T) {
 		{"--headed after the command", []string{"click", window, strconv.Itoa(indexes[fixture.ElemCheckboxNotify]), "--headed"},
 			func(s *fixture.State) bool { return s.Checkbox }},
 	}
-	for i, c := range cases {
-		if i > 0 {
-			// Put the covering Window back in front.
-			stdout, stderr, exit := runActivateWindow(t, strconv.FormatUint(cover, 10))
-			assertActionOK(t, "activate-window (the covering Window)", stdout, stderr, exit)
-			waitForeground(t, cover, 5*time.Second)
-		}
+	for _, c := range cases {
 		stdout, stderr, exit := runWinuse(t, c.args, "WINUSE_HELPER_IDLE="+e2eIdle)
 		assertActionOK(t, c.name, stdout, stderr, exit)
 		fix.waitState(t, 5*time.Second, c.done)
-		waitForeground(t, id, 2*time.Second)
+		waitForeground(t, cover, 2*time.Second)
 	}
 }
 
