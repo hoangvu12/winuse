@@ -111,6 +111,10 @@ func windowTab(ctx context.Context, conn *browser.Connection, g Geometry) (Tab, 
 	if err != nil {
 		return Tab{}, nil, err
 	}
+	if conn.Mode == browser.ModeApp {
+		tab, err := MatchAppTab(g, tabs)
+		return tab, tabs, err
+	}
 	if conn.Mode == browser.ModeExtension {
 		windows, err := extensionWindows(ctx, conn.Client)
 		if err != nil {

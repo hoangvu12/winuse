@@ -104,6 +104,7 @@ seconds for the Window; for an App you know starts slowly, pass
 winuse launch-app <app> --minimized                  # open its Window minimized
 winuse launch-app <exe path> --arg <a> --arg <b>     # one --arg per argument
 winuse launch-app <exe path> --cwd <dir> --env KEY=VALUE
+winuse launch-app <exe path> --cdp                   # an Electron or WebView2 App, read like a browser
 ```
 
 The App starts without taking the user's foreground, so its Window may
@@ -119,6 +120,17 @@ executable. A name that resolves to a shortcut or a packaged App is
 refused with nothing started, and the hint names the executable to launch
 instead when winuse knows it. `--minimized` works for every App, but an
 App can ignore it.
+
+`--cdp` starts an Electron App (VS Code, Slack, Discord, Teams) or an App
+that shows web content in WebView2 with a loopback debugging port. It needs
+the executable too. A second line then says
+`Note: a Browser Connection reaches the App's pages`, and from there the
+App's Windows work like a browser Window with a Browser Connection: the
+Window State reads the page whole even while the Window is covered, and
+every Action on the page is Headless. When the line says no debugging port
+appeared, the App ignored the port and stays on UI Automation. `--cdp`
+works only at launch: winuse never restarts an App that is already
+running. Ask the user before you close one to relaunch it with `--cdp`.
 
 A dialog such as Save As, a file picker or a message box is its own Window
 of the same App. Target it directly. An Action that opens one names it in a
@@ -169,8 +181,9 @@ the Window is fully covered. winuse waits the full time only once per
 Window: later reads of a Window that stayed thin take about half a second
 and repeat the note, until a read finds the page built. Connect the browser (`winuse browser status`
 says how) or ask the user to uncover the Window. For an Electron or WebView2
-app, take a screenshot instead. winuse never uncovers or activates the
-Window itself.
+app, take a screenshot instead, or launch it with `launch-app --cdp` when
+you start it yourself. winuse never uncovers or activates the Window
+itself.
 
 The screenshot comes after the tree as
 `Screenshot: <path> (WxH px, scale S, window at X,Y WxH)`: the image's size
@@ -850,7 +863,7 @@ winuse [--headed] <command> [arguments]
 
 list-windows [--details] [--app <name>]
 list-apps | get-window <window>
-launch-app <name|exe path> [--minimized] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <s>]
+launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <s>]
 get-window-state <window> [--screenshot] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right]

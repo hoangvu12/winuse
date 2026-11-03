@@ -124,6 +124,43 @@ func MatchTab(g Geometry, browserName string, tabs []Tab) (Tab, error) {
 	return Tab{}, &AmbiguousTabError{Candidates: found}
 }
 
+// MatchAppTab picks the page of an App's Window (headless-max 15): an
+// Electron or WebView2 App winuse launched with --cdp has no tab strip, and
+// its DevTools may not answer Browser.getWindowForTarget. The App's one
+// page is the answer when it has one; otherwise the pages whose title the
+// Window title shows (TitleMatches, any suffix of one or two parts). One
+// candidate is the answer; none is a *NoTabError and several an
+// *AmbiguousTabError, as in MatchTab.
+func MatchAppTab(g Geometry, tabs []Tab) (Tab, error) {
+	var pages []Tab
+	for _, t := range tabs {
+		if !t.Internal {
+			pages = append(pages, t)
+		}
+	}
+	if len(pages) == 1 {
+		return pages[0], nil
+	}
+	var found []Tab
+	for _, t := range pages {
+		if TitleMatches(g.Title, t.Title, "") {
+			found = append(found, t)
+		}
+	}
+	switch len(found) {
+	case 1:
+		return found[0], nil
+	case 0:
+		var titles []string
+		for _, t := range pages {
+			titles = append(titles, Collapse(t.Title))
+		}
+		sort.Strings(titles)
+		return Tab{}, &NoTabError{Titles: titles}
+	}
+	return Tab{}, &AmbiguousTabError{Candidates: found}
+}
+
 // boundsMatch compares a browser window's DIP bounds with the Window.
 func boundsMatch(g Geometry, b DIPBounds) bool {
 	switch {

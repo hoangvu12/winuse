@@ -84,3 +84,34 @@ the extension cannot be loaded into a launched profile instead.
 - Through the extension the switch stays `chrome.tabs.update`, with or
   without `--headed`.
 - `Target.activateTarget` and `Page.bringToFront` stay forbidden.
+
+## Amendment: Electron and WebView2 Apps at launch (2026-11-03)
+
+Ticket 15 of `.scratch/headless-max/`, under ADR 0013 ("Reversals",
+Decision 6). Probe round 5 (`.scratch/headless-gaps/probes-round5.md`
+section 3) measured both hosts with the foreground unchanged.
+
+- `launch-app <exe> --cdp` starts the App with a loopback debugging port
+  that winuse picks: an ephemeral port, never one of the 9222 to 9224
+  ports browser discovery probes. An Electron App (an `.asar` in the
+  `resources` folder next to the executable) gets
+  `--remote-debugging-port=<port>` in front of its own arguments, and
+  native occlusion tracking off as `browser launch` does. Any other
+  executable gets `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` in its own
+  environment only, never the machine-wide policy.
+- The port is accepted only when its listener is the launched process or
+  one of its descendants (an Electron main process, or WebView2's
+  `msedgewebview2.exe` child), and it is registered for the process that
+  owns the App's Windows. Those Windows then reach it through
+  `WindowConnection`, whatever their window class. The browser commands
+  and the commands without a Window never pick it.
+- An App's Window maps to its page by the App's one page, else by title
+  (`page.MatchAppTab`): Electron's DevTools may not answer
+  `Browser.getWindowForTarget`, and a WebView2 page's title is not the
+  Window's.
+- A port that never appears within the launch budget leaves the App on
+  UI Automation, said in a note. An App that is already running is never
+  restarted; attaching to a running Electron App is a separate, opt-in
+  route.
+- Electron, WebView2 and Firefox otherwise stay on UI Automation, as in
+  the consequences above.

@@ -49,6 +49,8 @@ func Live() *System {
 		Foreground:   foregroundOwner,
 		CloseApp:     closeApp,
 		FreePort:     freeDebugPort,
+		AppPort:      ephemeralPort,
+		ParentPID:    parentPID,
 		Dial:         liveDial,
 		OpenBridge:   liveOpenBridge,
 		Registry:     liveRegistry{},
@@ -336,4 +338,32 @@ func freeDebugPort() int {
 		return port
 	}
 	return 9222
+}
+
+// ephemeralPort is a free loopback port the system hands out: listen on
+// port 0, read the port, close.
+func ephemeralPort() (int, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
+}
+
+// parentPID is a process's parent from a process snapshot.
+func parentPID(pid uint32) (uint32, bool) {
+	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return 0, false
+	}
+	defer windows.CloseHandle(snap)
+	var e windows.ProcessEntry32
+	e.Size = uint32(unsafe.Sizeof(e))
+	for err = windows.Process32First(snap, &e); err == nil; err = windows.Process32Next(snap, &e) {
+		if e.ProcessID == pid {
+			return e.ParentProcessID, true
+		}
+	}
+	return 0, false
 }
