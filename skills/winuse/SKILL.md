@@ -802,6 +802,9 @@ background, so `tab switch` to it before you act in it. These are
 Headless. On a browser winuse launched or cloned, `tab switch` selects the
 Tab in the tab strip by its title; when two Tabs share a title, or the
 strip does not show it, it sends nothing and prints the `--headed` retry.
+A tab strip that "did not answer" means the browser's UI Automation
+failed; after a download Chrome can stay that way, its Window State
+failing too, so use the `--headed` retry or work through the Page.
 In the user's own browser, work in Tabs you opened and close only those.
 winuse refuses to close a Window's last Tab; use `close-window`.
 
