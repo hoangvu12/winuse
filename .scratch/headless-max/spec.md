@@ -33,7 +33,7 @@ Close every gap that has a route, and say plainly where none exists.
 
 | # | Title | Effort | Status |
 |---|---|---|---|
-| 01 | Launch without the foreground, and launch options | S | ready-for-agent |
+| 01 | Launch without the foreground, and launch options | S | done (live e2e not run yet) |
 | 02 | restore-window reports self-activation | S | done |
 | 03 | EnableWindow guard against self-activation | S | ready-for-agent (detect and report) |
 | 04 | Occlusion flag for launched browsers | S | done |
@@ -55,7 +55,7 @@ Close every gap that has a route, and say plainly where none exists.
 | 20 | Background typing, keys and clicks for Chromium and Electron without CDP | M | ready-for-agent |
 | 21 | No Headed Action without `--headed` | M | ready-for-agent (build before the click and typing chains) |
 
-21 tickets: 10 S, 1 S-M, 9 M (one spike), 1 L. Done: 02, 04, 10, 18, 19.
+21 tickets: 10 S, 1 S-M, 9 M (one spike), 1 L. Done: 01, 02, 04, 10, 18, 19.
 
 ## Impossible headless (stays a refusal with a `--headed` hint)
 

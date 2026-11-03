@@ -75,6 +75,45 @@ func TestLaunchStartsAWinuseProfileAndConnects(t *testing.T) {
 	}
 }
 
+// TestLaunchReportsTheForeground (headless-max ticket 01): the browser
+// starts with a non-activating show state, and when its process holds the
+// foreground after the launch, and did not before, the output says so.
+func TestLaunchReportsTheForeground(t *testing.T) {
+	cases := []struct {
+		name          string
+		before, after [2]uint64 // the foreground Window and its process
+		note          bool
+	}{
+		{"the user's Window stays in front", [2]uint64{500, 9}, [2]uint64{500, 9}, false},
+		{"the browser took it", [2]uint64{500, 9}, [2]uint64{700, 200}, true},
+		{"another App took it", [2]uint64{500, 9}, [2]uint64{800, 31}, false},
+	}
+	for _, tc := range cases {
+		f := newFake(t)
+		f.install("edge")
+		f.process("edge", 200)
+		s := cdptest.NewServer()
+		startsServer(f, s, 200)
+		fg := tc.before
+		started := f.onStart
+		f.onStart = func(call startCall) int {
+			fg = tc.after
+			return started(call)
+		}
+		f.sys.Foreground = func() (uint64, uint32) { return fg[0], uint32(fg[1]) }
+		m := NewManager(f.sys)
+		out, err := m.Launch(context.Background(), "edge")
+		m.Close()
+		s.Close()
+		if err != nil {
+			t.Fatalf("%s: Launch: %v", tc.name, err)
+		}
+		if got := strings.HasSuffix(out, " (the browser took the foreground)\n"); got != tc.note {
+			t.Errorf("%s: out = %q, note %v, want %v", tc.name, out, got, tc.note)
+		}
+	}
+}
+
 func TestLaunchArgsTurnOffNativeOcclusion(t *testing.T) {
 	const flag = "--disable-features=CalculateNativeWinOcclusion"
 	for _, args := range [][]string{launchArgs(9222, `C:\p`), cloneArgs(9222, `C:\p`, "Default", true)} {

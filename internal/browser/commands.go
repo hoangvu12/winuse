@@ -173,6 +173,7 @@ func (m *Manager) Launch(ctx context.Context, name string) (string, error) {
 	if err := writePortFile(dir, port); err != nil {
 		return "", err
 	}
+	fgBefore := m.foreground()
 	pid, err := m.sys.Start(b.Path, launchArgs(port, dir))
 	if err != nil {
 		return "", fmt.Errorf("starting %s: %w", b.Path, err)
@@ -184,7 +185,42 @@ func (m *Manager) Launch(ctx context.Context, name string) (string, error) {
 	if _, err := m.dial(ctx, ep); err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("ok %s launched: pid %d, port %d, profile %s\n", b.Name, pid, port, dir), nil
+	note := ""
+	if m.tookForeground(fgBefore, pid) {
+		note = " (the browser took the foreground)"
+	}
+	return fmt.Sprintf("ok %s launched: pid %d, port %d, profile %s%s\n", b.Name, pid, port, dir, note), nil
+}
+
+// foreground is the foreground Window and its process, or zeros without a
+// probe.
+func (m *Manager) foreground() foregroundSnapshot {
+	if m.sys.Foreground == nil {
+		return foregroundSnapshot{}
+	}
+	w, pid := m.sys.Foreground()
+	return foregroundSnapshot{window: w, pid: pid}
+}
+
+// foregroundSnapshot is the foreground Window and its process at one
+// moment.
+type foregroundSnapshot struct {
+	window uint64
+	pid    uint32
+}
+
+// tookForeground reports whether the browser started as pid took the
+// foreground during the launch (headless-max ticket 01): the foreground
+// changed since before, to a Window of that process. The browser starts
+// with a non-activating show state, but the helper can hold the right to
+// set the foreground (after a Headed Action's input, until the user's next
+// input) and its child inherits it. winuse never takes the foreground back.
+func (m *Manager) tookForeground(before foregroundSnapshot, pid int) bool {
+	if m.sys.Foreground == nil || pid <= 0 {
+		return false
+	}
+	after := m.foreground()
+	return after.window != 0 && after.window != before.window && after.pid == uint32(pid)
 }
 
 // Connect answers `winuse browser connect [browser]`: use the user's

@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 	"unsafe"
 
@@ -20,51 +18,39 @@ import (
 // StartApp starts the App described by spec and returns the new process
 // id (0 when the shell handed the start to a broker or an already running
 // instance). It never waits for the App: recognizing the Window the App
-// opens is WaitForWindow's job. Real Win32 process creation.
-func StartApp(spec Spec) (uint32, error) {
+// opens is WaitForWindow's job. Real Win32 process creation, always with a
+// non-activating show state (headless-max ticket 01): an executable through
+// win.StartProcess, a shortcut or packaged App through ShellExecuteEx with
+// SW_SHOWNOACTIVATE (SW_SHOWMINNOACTIVE when minimized). A packaged App's
+// activation has no such option and takes the foreground anyway (measured
+// on Calculator, .scratch/headless-gaps/probes-round5.md section 5).
+//
+// Arguments, a working directory and environment overrides need an
+// executable (ExeOnlyOptions): the caller refuses them for the other kinds
+// before anything starts, and StartApp refuses them again.
+func StartApp(spec Spec, opts win.LaunchOptions) (uint32, error) {
+	if spec.Kind != IDExe && ExeOnlyOptions(opts) {
+		return 0, errors.New("--arg, --cwd and --env need an executable")
+	}
 	switch spec.Kind {
 	case IDExe:
-		return startExe(spec.ID)
+		return win.StartProcess(spec.ID, opts)
 	case IDShortcut:
-		return shellExec(spec.ID, filepath.Dir(spec.ID))
+		return shellExec(spec.ID, filepath.Dir(spec.ID), opts.Minimized)
 	case IDAppUserModelID:
-		return shellExec("shell:AppsFolder\\"+spec.ID, "")
+		return shellExec("shell:AppsFolder\\"+spec.ID, "", opts.Minimized)
 	default:
 		return 0, fmt.Errorf("unknown app kind %d", spec.Kind)
 	}
 }
 
-// Process creation flags: a new process group so the App does not share
-// the helper's Ctrl-C group, and breakaway from job objects so the App
-// survives a harness job being closed (retried without breakaway when the
-// job forbids it). Unlike the helper's own spawn, no DETACHED_PROCESS and
-// no hidden window: a launched App is supposed to appear.
-const (
-	createNewProcessGroup  = 0x00000200
-	createBreakawayFromJob = 0x01000000
-)
-
-// startExe starts an executable directly.
-func startExe(path string) (uint32, error) {
-	if !filepath.IsAbs(path) {
-		if abs, err := filepath.Abs(path); err == nil {
-			path = abs
-		}
-	}
-	var lastErr error
-	for _, flags := range []uint32{createNewProcessGroup | createBreakawayFromJob, createNewProcessGroup} {
-		cmd := exec.Command(path)
-		cmd.Dir = filepath.Dir(path)
-		cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: flags}
-		if err := cmd.Start(); err != nil {
-			lastErr = err
-			continue
-		}
-		pid := uint32(cmd.Process.Pid)
-		_ = cmd.Process.Release()
-		return pid, nil
-	}
-	return 0, lastErr
+// ExeOnlyOptions reports whether opts carry anything only an executable
+// launch can apply: arguments, a working directory or environment entries.
+// The shell starts a shortcut with the shortcut's own command line and
+// directory, and a packaged App through its activation, so neither has a
+// place for them.
+func ExeOnlyOptions(opts win.LaunchOptions) bool {
+	return len(opts.Args) > 0 || opts.Dir != "" || len(opts.Env) > 0
 }
 
 // SHELLEXECUTEINFOW, hand-written (no cgo); 112 bytes on 64-bit.
@@ -91,7 +77,6 @@ const (
 	seeMaskNoCloseProcess = 0x00000040
 	seeMaskNoAsync        = 0x00000100
 	seeMaskFlagNoUI       = 0x00000400
-	swShowNormal          = 1
 )
 
 var (
@@ -105,7 +90,10 @@ var (
 // fresh locked OS thread with apartment-threaded COM initialised around it
 // (Go goroutines migrate between OS threads; COM initialization is per
 // thread).
-func shellExec(file, dir string) (pid uint32, err error) {
+func shellExec(file, dir string, minimized bool) (pid uint32, err error) {
+	if err := win.LiveDesktopGuard(); err != nil {
+		return 0, err
+	}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -114,15 +102,15 @@ func shellExec(file, dir string) (pid uint32, err error) {
 		if err := windows.CoInitializeEx(0, windows.COINIT_APARTMENTTHREADED); err == nil {
 			defer windows.CoUninitialize()
 		}
-		pid, err = shellExecute(file, dir)
+		pid, err = shellExecute(file, dir, minimized)
 	}()
 	<-done
 	return pid, err
 }
 
-// shellExecute performs one ShellExecuteExW call. hProcess may stay 0
-// (DDE, broker or Store activation) — the pid is then unknown.
-func shellExecute(file, dir string) (uint32, error) {
+// shellInfo builds the SHELLEXECUTEINFOW for one launch: no UI on failure,
+// the process handle kept for its pid, and a non-activating show state.
+func shellInfo(file, dir string, minimized bool) shellExecuteInfoW {
 	var info shellExecuteInfoW
 	info.cbSize = uint32(unsafe.Sizeof(info))
 	info.fMask = seeMaskNoCloseProcess | seeMaskNoAsync | seeMaskFlagNoUI
@@ -130,7 +118,14 @@ func shellExecute(file, dir string) (uint32, error) {
 	if dir != "" {
 		info.lpDirectory = utf16Ptr(dir)
 	}
-	info.nShow = swShowNormal
+	info.nShow = int32(win.LaunchShowState(minimized))
+	return info
+}
+
+// shellExecute performs one ShellExecuteExW call. hProcess may stay 0
+// (DDE, broker or Store activation) — the pid is then unknown.
+func shellExecute(file, dir string, minimized bool) (uint32, error) {
+	info := shellInfo(file, dir, minimized)
 	r, _, callErr := procShellExecuteExW.Call(uintptr(unsafe.Pointer(&info)))
 	if r == 0 {
 		return 0, callErr

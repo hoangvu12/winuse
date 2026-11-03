@@ -188,9 +188,14 @@ type GetWindowArgs struct {
 
 // LaunchArgs are launch-app's arguments: an App name from the catalog or
 // an explicit identifier (executable path, shortcut path, App User Model
-// ID) — Codex's launch_app "app" parameter.
+// ID) — Codex's launch_app "app" parameter — and agent-desktop's launch
+// options (headless-max ticket 01). Args, Cwd and Env need an executable.
 type LaunchArgs struct {
-	App string `json:"app"`
+	App       string   `json:"app"`
+	Minimized bool     `json:"minimized,omitempty"` // show the first Window minimized (SW_SHOWMINNOACTIVE)
+	Args      []string `json:"args,omitempty"`      // command-line arguments, one per --arg, quoted by the helper
+	Cwd       string   `json:"cwd,omitempty"`       // the working directory, absolute (the CLI resolves it)
+	Env       []string `json:"env,omitempty"`       // KEY=VALUE entries over the helper's environment
 }
 
 // BrowserArgs are the arguments of browser status, use, launch, connect

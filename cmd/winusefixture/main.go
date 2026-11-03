@@ -7,8 +7,8 @@
 // lives in internal/fixture/elements.go — the single source of truth. The
 // app reports its end state as JSON to the file given by -state, or by
 // WINUSE_FIXTURE_STATE when the flag is unset (apps started by
-// `winuse launch-app` cannot take flags; they inherit the helper's
-// environment). -origin x,y (or WINUSE_FIXTURE_ORIGIN) places the main
+// `winuse launch-app` inherit the helper's environment; `--arg` and
+// `--env` can pass either). -origin x,y (or WINUSE_FIXTURE_ORIGIN) places the main
 // window's top-left corner in screen pixels — e.g. on a secondary monitor
 // for the display acceptance runs; by default Windows places it.
 // -activate-on-restore makes it an App that brings itself to the

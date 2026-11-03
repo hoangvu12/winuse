@@ -46,6 +46,7 @@ func Live() *System {
 		ProcessImage: processImage,
 		Running:      processRunning,
 		Start:        startDetached,
+		Foreground:   foregroundOwner,
 		CloseApp:     closeApp,
 		FreePort:     freeDebugPort,
 		Dial:         liveDial,
@@ -285,34 +286,23 @@ func processRunning(exe string) bool {
 	return false
 }
 
-// Process creation flags: the browser must outlive the helper (which may
-// sit in a job and exits when idle), and taskkill must not flash a console.
-const (
-	createNewProcessGroup  = 0x00000200
-	createBreakawayFromJob = 0x01000000
-	createNoWindow         = 0x08000000
-)
+// createNoWindow keeps taskkill from flashing a console.
+const createNoWindow = 0x08000000
 
-// startDetached starts a browser outside the helper's job when allowed,
-// and lets it run on its own.
+// startDetached starts a browser the way launch-app starts an App
+// (headless-max ticket 01): win.StartProcess, outside the helper's job when
+// allowed (the browser must outlive the helper, which exits when idle), with
+// a non-activating show state for its first Window.
 func startDetached(path string, args []string) (int, error) {
-	if err := win.LiveDesktopGuard(); err != nil {
-		return 0, err
-	}
-	var lastErr error
-	for _, flags := range []uint32{createNewProcessGroup | createBreakawayFromJob, createNewProcessGroup} {
-		cmd := exec.Command(path, args...)
-		cmd.Dir = filepath.Dir(path)
-		cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: flags}
-		if err := cmd.Start(); err != nil {
-			lastErr = err
-			continue
-		}
-		pid := cmd.Process.Pid
-		cmd.Process.Release()
-		return pid, nil
-	}
-	return 0, lastErr
+	pid, err := win.StartProcess(path, win.LaunchOptions{Args: args})
+	return int(pid), err
+}
+
+// foregroundOwner is the foreground Window and its process, for browser
+// launch's foreground check.
+func foregroundOwner() (uint64, uint32) {
+	fg := win.ForegroundWindow()
+	return fg, win.WindowPID(fg)
 }
 
 // taskkillArgs closes every process of an image the clean way: without

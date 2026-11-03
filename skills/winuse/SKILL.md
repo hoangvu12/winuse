@@ -88,6 +88,26 @@ identifier `list-apps` prints, or by exe path. If it reports no Window, run
 seconds for the Window; for an App you know starts slowly, pass
 `--timeout <seconds>` (up to 120).
 
+```
+winuse launch-app <app> --minimized                  # open its Window minimized
+winuse launch-app <exe path> --arg <a> --arg <b>     # one --arg per argument
+winuse launch-app <exe path> --cwd <dir> --env KEY=VALUE
+```
+
+The App starts without taking the user's foreground, so its Window may
+open behind their work. Some Apps take the foreground anyway, and packaged
+Store Apps such as Calculator always can. A second line then says
+`Note: the App took the foreground; winuse does not take it back.` Tell
+the user if they were working elsewhere, and do not launch it again.
+
+`--arg` passes one argument each, in order, and winuse quotes it, so give
+a path with spaces as one `--arg`. `--cwd` sets the working folder, and
+`--env` adds or replaces one environment variable. These three need an
+executable. A name that resolves to a shortcut or a packaged App is
+refused with nothing started, and the hint names the executable to launch
+instead when winuse knows it. `--minimized` works for every App, but an
+App can ignore it.
+
 A dialog such as Save As, a file picker or a message box is its own Window
 of the same App. Target it directly. If a dialog you expect is missing from
 the Window State, look for it in `list-windows`. Listings already leave out
@@ -514,7 +534,9 @@ Pick the route by what the task needs.
   debugging switch. The user turns it on and clicks Allow in the browser's
   prompt, so use it only while the user is at the keyboard.
 
-`launch` and `clone` open a normal browser Window. Find it with
+`launch` and `clone` open a normal browser Window without taking the
+foreground. If the browser takes it anyway, `launch` ends its line with
+`(the browser took the foreground)`. Find the Window with
 `list-windows`. It keeps rendering and its UI Automation tree while it is
 covered, so it can stay behind the user's windows. When the job is done, `winuse browser stop [browser]`
 closes a browser winuse launched or cloned and keeps its profile.
@@ -725,7 +747,8 @@ Run `winuse` with no arguments for the full usage text.
 winuse [--headed] <command> [arguments]
 
 list-windows [--details] [--app <name>]
-list-apps | get-window <window> | launch-app <name|exe path> [--timeout <s>]
+list-apps | get-window <window>
+launch-app <name|exe path> [--minimized] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <s>]
 get-window-state <window> [--screenshot] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right]
