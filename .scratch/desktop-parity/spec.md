@@ -51,7 +51,7 @@ Details are in each ticket's Comments.
 | 06 | Modifiers on point clicks and wheel | P1 | S | ready-for-agent |
 | 07 | Opt-in `--json` output with codes and delivery | P1 | L | ready-for-agent |
 | 08 | Display list and full-screen capture | P2 | S | done |
-| 09 | Shell surfaces | P2 | M | done (`open-shell` comes with 18; overflow e2e not run yet) |
+| 09 | Shell surfaces | P2 | M | done (`open-shell` comes with 18) |
 | 10 | close-app | P2 | S-M | done |
 | 11 | maximize-window | P2 | S | done |
 | 12 | Select an option by name in UIA combos and lists | P2 | S-M | done |

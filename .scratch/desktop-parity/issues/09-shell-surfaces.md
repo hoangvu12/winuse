@@ -9,12 +9,12 @@
 
 **Blocked by:** none
 
-**Status:** done (the Win+N route, `open-shell`, is built with ticket 18; the overflow e2e waits for the user's OK)
+**Status:** done (the Win+N route, `open-shell`, is built with ticket 18)
 
 - [x] Shell Windows in the listing behind `--shell`
 - [x] Probe: Invoke on taskbar, tray and notification buttons, foreground before and after (round 5: the chevron and the clock; no running-App button was touched)
 - [x] Offline tests of the listing
-- [ ] Opt-in e2e: read the taskbar (ran live, passes), open the tray overflow (written, gated by WINUSE_E2E_SHELL=1, not run yet)
+- [x] Opt-in e2e: read the taskbar, open the tray overflow (all three ran live and pass)
 - [x] ADR, SKILL.md
 
 ## Comments
@@ -65,3 +65,12 @@ Open:
 ### 2026-11-03: decision (PC orchestrator)
 
 The Win+N fallback gets a dedicated command, `--headed open-shell start|notifications|quick-settings|overflow` (option b). press-key keeps refusing the Windows key, and CONTEXT.md is unchanged. It is built with ticket 18, not here: 09 ships as is, and ADR 0015 keeps the point open until 18 closes it.
+
+### 2026-11-03: live shell runs (user approved)
+
+Run once each, one after the other, under the live lock, with `WINUSE_E2E=1 WINUSE_E2E_SHELL=1`, on the merged head:
+
+- `TestShellRefusesWithoutHeaded`: passed (3.1 s). The Headless click on `id:StartButton` and `press-key <taskbar> Control_L+Escape` were both refused with nothing sent and the `--headed` retry. Start did not open, and the foreground did not move.
+- `TestShellOpensAndClosesTheTrayOverflow`: passed (5.5 s). The `--headed` click on the hidden-icons chevron opened the overflow, and the click's output named it as a new Window. Its Window State had buttons, and the Headless `press-key <overflow> Escape` closed it: it was gone from `list-windows --shell` and, checked afterwards, hidden (not visible, not cloaked). The cleanup re-activated the Window that was in the foreground before.
+
+Nothing was left open. `TestShellReadsTheTaskbar` passed again on the merged head too.
