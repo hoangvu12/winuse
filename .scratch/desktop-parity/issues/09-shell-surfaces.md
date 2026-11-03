@@ -90,3 +90,4 @@ Live after this change (merged with origin/main 0b31c8a, under the lock): `TestS
 Rerun after the next merges (e763607, which changed how window captions are read, and 6b4eacc, with Posted Clicks and the Window identity check): `TestShellReadsTheTaskbar` and `TestShellRefusesWithoutHeaded` passed again on both.
 
 Merging headless-max 06 (press-key runs the command a chord labels, `shortcuts.go`) opened a second way to Invoke a shell Element: its UI Automation lookup invokes an Element whose AcceleratorKey or name shows the chord, outside runHeadless. press-key now skips that lookup on a shell surface (`internal/helper/keyboard.go`), so such a chord falls to the usual refusal. `TestShellSkipsTheShortcutLookup` pins it (it fails with the check removed). ADR 0015 decision 4 says so.
+Live on 1c36749 (with headless-max 06 merged and the shortcut check): `TestShellReadsTheTaskbar` and `TestShellRefusesWithoutHeaded` passed; Start stayed closed.
