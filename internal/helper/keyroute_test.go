@@ -1063,3 +1063,18 @@ func TestBatchPostedStepsKeepTheHeadlessScope(t *testing.T) {
 		t.Errorf("headed batch: err = %v, want the --post and --headed refusal", cmdErr)
 	}
 }
+
+// A posted chord that failed before any key message went out sent
+// nothing, unless the activation pair had: then the outcome is uncertain.
+func TestPostChordFailureAfterActivationIsUncertain(t *testing.T) {
+	spy, _, _ := chordSpy(editTarget(plainEdit), errors.New("PostMessage failed"))
+	_, cmdErr := runCommand(t, CommandsWith(spy.svc), "press-key", protocol.PressKeyArgs{Window: "101", Key: "Alt_L+F5", Post: true})
+	if cmdErr == nil || !strings.HasSuffix(cmdErr.Msg, nothingSentNote) {
+		t.Errorf("a chord that sent nothing = %v, want nothing was sent", cmdErr)
+	}
+	spy, _, _ = chordSpy(editTarget(plainEdit), afterActivationErr{errors.New("PostMessage failed")})
+	_, cmdErr = runCommand(t, CommandsWith(spy.svc), "press-key", protocol.PressKeyArgs{Window: "101", Key: "Alt_L+F5", Post: true})
+	if cmdErr == nil || strings.Contains(cmdErr.Msg, "nothing was sent") || !strings.Contains(cmdErr.Hint, "may have taken effect") {
+		t.Errorf("a chord failing after the activation pair = %v, want the uncertain hint", cmdErr)
+	}
+}

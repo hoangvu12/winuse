@@ -27,6 +27,7 @@ package win
 // sending call refuses inside a go test binary; the sequences are pure.
 
 import (
+	"errors"
 	"fmt"
 	"time"
 	"unicode/utf16"
@@ -162,15 +163,41 @@ func foregroundThread(top uint64) error {
 	return nil
 }
 
+// ErrAfterActivation marks a failure after an activation message reached
+// the Window (afterActivation): the page saw a focus change, so the
+// Action may have taken effect even when no key message was sent (a
+// Chromium menu dismissed on the activation, e2e live run 2026-11-03).
+var ErrAfterActivation = errors.New("an activation message had reached the Window")
+
+// afterActivationError is a failure after the activation pair went out.
+// Its message is the failure's own.
+type afterActivationError struct{ err error }
+
+func (e *afterActivationError) Error() string   { return e.err.Error() }
+func (e *afterActivationError) Unwrap() []error { return []error{e.err, ErrAfterActivation} }
+
+// afterActivation marks err as a failure after the activation pair.
+func afterActivation(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &afterActivationError{err}
+}
+
 // withActivation sends the activation pair, runs keys, and always undoes
-// the pair. It returns how many key messages keys sent.
+// the pair. It returns how many key messages keys sent; a failure once an
+// activation message went out is marked ErrAfterActivation.
 func withActivation(top uint64, keys func() (int, error)) (int, error) {
-	if _, err := sendAll(top, activationOn); err != nil {
+	if n, err := sendAll(top, activationOn); err != nil {
 		sendAll(top, activationOff)
+		if n > 0 {
+			return 0, afterActivation(err)
+		}
 		return 0, err
 	}
 	defer sendAll(top, activationOff)
-	return keys()
+	n, err := keys()
+	return n, afterActivation(err)
 }
 
 // SendChromiumText types text into the Chromium Window top: the activation

@@ -79,3 +79,7 @@ Automatic: no `--post`. Read back through UIA Value where it exists; where it do
   - whether `FocusedValue` finds Chromium's focused input while the Window is in the background (if not, the output says "not verified");
   - Edge's and Brave's top-level class (Chromium's own, `Chrome_WidgetWin_1`, expected).
 - Docs: SKILL.md (the keyboard routes and the Headed list), CONTEXT.md (Headless Action), codex-parity (the press-key and type-text rows), the ADR 0013 table (done), test/e2e/README.
+
+### 2026-11-03: a failure after the activation pair is uncertain (branch chromium-uncertain)
+
+- A key or text send that failed with no key message sent was reported "nothing was sent", though the activation pair had already gone out: the page saw a focus change, and a Chromium menu could close on it (hm-09's comment of the same day). win now marks such a failure ErrAfterActivation (withActivation, and PostChord's pair), keeping its message; runChromium and the Posted Keys route keep "nothing was sent" only for a failure before anything went out, and otherwise give the uncertain hint ("may have taken effect", dp-07's delivery_uncertain). Offline: TestAfterActivationMarksTheFailure, TestChromiumRefusals (type-text and press-key after the pair), TestPostChordFailureAfterActivationIsUncertain.

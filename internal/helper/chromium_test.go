@@ -164,6 +164,12 @@ func TestChromiumClicks(t *testing.T) {
 	c.noInput(t, "a Chromium click")
 }
 
+// afterActivationErr is a send failure after the activation pair, as
+// win marks it (win.ErrAfterActivation), with the failure's own message.
+type afterActivationErr struct{ error }
+
+func (e afterActivationErr) Unwrap() []error { return []error{e.error, win.ErrAfterActivation} }
+
 func TestChromiumRefusals(t *testing.T) {
 	// A minimized Chromium would restore itself and take the foreground.
 	c := newChromeSpy(false)
@@ -194,6 +200,26 @@ func TestChromiumRefusals(t *testing.T) {
 	_, e = runCommand(t, CommandsWith(c.svc), "type-text", protocol.TypeTextArgs{Window: "401", Text: "abc"})
 	if e == nil || strings.Contains(e.Msg, "nothing was sent") || !strings.Contains(e.Hint, "may have taken effect") {
 		t.Errorf("a partial send = %v", e)
+	}
+	// No key message sent, but the activation pair went out: the page saw
+	// a focus change (a Chromium menu closed on it), so the outcome is
+	// uncertain, not "nothing was sent".
+	for _, cmd := range []struct {
+		name string
+		args any
+	}{
+		{"type-text", protocol.TypeTextArgs{Window: "401", Text: "abc"}},
+		{"press-key", protocol.PressKeyArgs{Window: "401", Key: "Escape"}},
+	} {
+		c = newChromeSpy(false)
+		c.sendN, c.sendErr = 0, afterActivationErr{errors.New("SendMessageTimeout(0x100) failed for window 401: Invalid window handle.")}
+		_, e = runCommand(t, CommandsWith(c.svc), cmd.name, cmd.args)
+		if e == nil || strings.Contains(e.Msg, "nothing was sent") || !strings.Contains(e.Hint, "may have taken effect") {
+			t.Errorf("%s failing after the activation pair = %v", cmd.name, e)
+		}
+		if e != nil && e.Msg != "SendMessageTimeout(0x100) failed for window 401: Invalid window handle." {
+			t.Errorf("%s: the message changed: %q", cmd.name, e.Msg)
+		}
 	}
 
 	// Not a Chromium Window: the route stays out, ticket 21's refusal holds.

@@ -227,6 +227,9 @@ func postChordOnThread(top, target uint64, p ChordPlan) (int, error) {
 	}
 	down, up := chordMessages(p, mapVirtualKeyScan)
 	if n, err := postAll(target, []postedMessage{down}); n == 0 {
+		if p.Activate {
+			return 0, afterActivation(err) // the activation pair went out
+		}
 		return 0, err
 	}
 	time.Sleep(chordHold)
