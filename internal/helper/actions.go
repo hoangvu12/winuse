@@ -143,7 +143,9 @@ func click(s Services) Command {
 				at = pointToken(target.point.X, target.point.Y)
 			}
 			return "", s.modifierRefusal(a.Window, "click", mods,
-				func(id string) string { return "click " + id + " " + at + clickOptions(button, count) + modsOption(mods) })
+				func(id string) string {
+					return "click " + id + " " + at + clickOptions(button, count) + modsOption(mods)
+				})
 		}
 
 		if target.point != nil {
