@@ -142,6 +142,7 @@ var classicItems = []dlgItem{
 	// Last, so the controls above keep their Element Indexes (ClassicListID).
 	{classStatic, idStatic, 0, 7, 100, 44, 8, "Fruits:", ""},
 	{0, ClassicListID, wsBorder | wsTabStop | lvsList | lvsShowSelAlways, 55, 100, 158, 52, "", classListView},
+	{0, ClassicBareID, wsBorder, 55, 158, 158, 14, BareControlName, BareControlClass},
 }
 
 // lvItem is LVITEMW (CommCtrl.h): the Fruits list view's items carry only
@@ -166,7 +167,7 @@ type lvItem struct {
 
 // classicTemplate is the Classic Dialog's template.
 func classicTemplate() []uint16 {
-	return dialogTemplate(wsPopup|wsCaption|wsSysMenu|dsModalFrame|dsSetFont, 220, 158,
+	return dialogTemplate(wsPopup|wsCaption|wsSysMenu|dsModalFrame|dsSetFont, 220, 178,
 		ClassicDialogTitle, "Segoe UI", 9, classicItems)
 }
 

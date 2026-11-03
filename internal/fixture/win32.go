@@ -71,6 +71,9 @@ var (
 	procAppendMenuW     = user32.NewProc("AppendMenuW")
 	procSetMenu         = user32.NewProc("SetMenu")
 	procEnableMenuItem  = user32.NewProc("EnableMenuItem")
+	procTrackPopupMenu  = user32.NewProc("TrackPopupMenu")
+	procDestroyMenu     = user32.NewProc("DestroyMenu")
+	procGetParent       = user32.NewProc("GetParent")
 
 	procCreateSolidBrush = gdi32.NewProc("CreateSolidBrush")
 	procCreatePen        = gdi32.NewProc("CreatePen")

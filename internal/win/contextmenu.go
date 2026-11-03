@@ -10,13 +10,16 @@ package win
 // TPM_RETURNCMD menu, like the Edit's, ignores the WM_COMMAND, so the
 // mnemonic comes first). WM_CANCELMODE to the owner closes it. A WinUI 3
 // menu (PopupHost) closes on Escape posted to its island's input window,
-// not to the PopupHost itself.
+// not to the PopupHost itself; a WinForms ContextMenuStrip's drop-down on
+// Escape posted to it (hm-09b).
 //
 // The sending calls refuse inside a go test binary (LiveDesktopGuard):
 // offline tests fake them through the helper's Services.
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -29,7 +32,27 @@ const (
 	PopupHostClass = "Microsoft.UI.Content.PopupWindowSiteBridge" // a WinUI 3 flyout's top-level ("PopupHost")
 )
 
+// WinFormsDropDown reports whether class is a WinForms ToolStripDropDown,
+// the window a ContextMenuStrip opens in: a WinForms window class
+// ("WindowsForms10.Window.<class style hex>.app...") whose style has
+// CS_SAVEBITS, which only the drop-downs set ("WindowsForms10.Window.20808"
+// measured, with the drop shadow). Escape posted to it closes it (hm-09b).
+func WinFormsDropDown(class string) bool {
+	rest, ok := strings.CutPrefix(class, "WindowsForms10.Window.")
+	if !ok {
+		return false
+	}
+	style, _, ok := strings.Cut(rest, ".")
+	if !ok {
+		return false
+	}
+	bits, err := strconv.ParseUint(style, 16, 32)
+	return err == nil && bits&csSaveBits != 0
+}
+
 const (
+	csSaveBits = 0x0800 // CS_SAVEBITS
+
 	wmContextMenu = 0x007B // WM_CONTEXTMENU
 	mnGetHMenu    = 0x01E1 // MN_GETHMENU
 
@@ -136,7 +159,8 @@ func CancelMenu(owner uint64) error {
 
 // PostMenuEscape posts Escape (WM_KEYDOWN, then WM_KEYUP) where an open
 // menu takes it: a WinUI 3 PopupHost's island input windows (round 5),
-// any other menu window itself (a `#32768`, a Chromium menu popup). It
+// any other menu window itself (a `#32768`, a Chromium menu popup, a
+// WinForms drop-down). It
 // returns how many messages were posted: 0 means nothing was sent. The
 // caller reads the close back.
 func PostMenuEscape(menu uint64) (int, error) {

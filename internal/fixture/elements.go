@@ -75,6 +75,16 @@ const (
 	// run, 2026-11-03).
 	ClassicListID = 1004
 
+	// ClassicBareID is the bare control (BareControlClass, bare.go), after
+	// the list view for the same reason: a child window whose own UI
+	// Automation provider reports an empty FrameworkId (headless-max 09,
+	// hm-09b). Its context menu, a `#32768` that a posted WM_CONTEXTMENU
+	// opens, holds &Fill Name and Select &All, the menu bar's commands,
+	// recorded in ClassicMenu.
+	ClassicBareID    = 1005
+	BareControlClass = "WinuseFixtureBare"
+	BareControlName  = "Bare control"
+
 	// The Classic Dialog's menu bar (headless-max ticket 08), a real HMENU:
 	//
 	//	&File > &Fill Name
