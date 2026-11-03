@@ -256,7 +256,7 @@ var callingAgent = sync.OnceValue(agent.Resolve)
 // Agent.
 func Request(cmd string, args any) (*protocol.Request, error) {
 	who := callingAgent()
-	req := &protocol.Request{V: protocol.Version, Ver: version.Version, Cmd: cmd, Agent: who.ID, AgentLabel: who.Label}
+	req := &protocol.Request{V: protocol.Version, Ver: version.Version, Cmd: cmd, Agent: who.ID, AgentLabel: who.Label, AgentColor: who.Color}
 	if args != nil {
 		raw, err := json.Marshal(args)
 		if err != nil {

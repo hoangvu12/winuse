@@ -2,6 +2,7 @@ package helper
 
 import (
 	"fmt"
+	"image/color"
 	"log"
 	"os"
 	"path/filepath"
@@ -173,9 +174,16 @@ func Main() int {
 		svc.Esc = esc
 	}
 	// Set before CommandsWith: the capture chain it builds hides the
-	// cursor around winuse's own screenshots.
+	// cursors around winuse's own screenshots. The set gives every other
+	// Agent a cursor of its own in its own colour (multi-agent ticket 04),
+	// on the same UI thread, and closes it when the Agent idles out.
 	if cursor != nil {
-		svc.Cursor = cursor
+		cursors := newCursorSet(cursor, func(accent color.RGBA) (agentCursor, error) {
+			return win.NewAgentCursorIn(overlay.Do, accent)
+		}, idle)
+		// Closed before the default cursor and the overlay's thread.
+		defer cursors.Close()
+		svc.Cursor = cursors
 	}
 	server := New(version.Version, idle, protocol.RequestTimeout, CommandsWith(svc), nil)
 	err = server.Serve(ln)

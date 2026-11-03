@@ -141,6 +141,7 @@ func (e *notSentError) Unwrap() error { return e.err }
 // target, the act, and the ripple on a delivered Action. No activation,
 // no banner, no SendInput. The Esc checkpoints match runHeadless's.
 func (s Services) runKeyHeadless(ctx context.Context, w win.WindowInfo, run keyRun) (string, *Error) {
+	noteRoute(ctx, w, keyRunRoute(run.posted)) // trace.go
 	if rerr := s.headlessRefusals(w, adminMessageHint); rerr != nil {
 		return "", rerr
 	}
@@ -155,7 +156,7 @@ func (s Services) runKeyHeadless(ctx context.Context, w win.WindowInfo, run keyR
 	}
 	defer armPassive(esc)()
 
-	rect, shown := s.cursorTravelRect(w, run.target, run.label)
+	rect, shown := s.cursorTravelRect(ctx, w, run.target, run.label)
 	if esc.Stopped() {
 		return "", escStopBeforeActError()
 	}
@@ -164,7 +165,7 @@ func (s Services) runKeyHeadless(ctx context.Context, w win.WindowInfo, run keyR
 	if shown && !errors.As(err, &notSent) {
 		// Delivered, or may have been: the ripple. A route that sent
 		// nothing shows none.
-		s.cursorClick(rect)
+		s.cursorClick(ctx, w, rect)
 	}
 	if esc.Stopped() {
 		return "", escStopError()

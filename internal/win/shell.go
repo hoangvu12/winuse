@@ -181,4 +181,3 @@ func overflowEscapeMessages() []postedMessage {
 		{wmKeyUp, vkEscape, keyLParam(scan, false, true)},
 	}
 }
-

@@ -4,9 +4,10 @@
 
 Accepted (multi-agent spec, `.scratch/multi-agent/spec.md`, decided by
 the user on 2026-11-03). Decision 3, the Agent identity on every
-request, has landed (multi-agent ticket 02), and so has Decision 2, the
-Window States and screenshot mappings per Agent (ticket 03). The rest is
-planned, and winuse still serves one Action at a time. It reverses the desktop-parity
+request, has landed (multi-agent ticket 02), and so have Decision 2, the
+Window States and screenshot mappings per Agent (ticket 03), and Decision
+4, a cursor per Agent (ticket 04). The rest is planned, and winuse still
+serves one Action at a time. It reverses the desktop-parity
 spec's "not adopted: multi-agent cursors and agent ids"
 (`.scratch/desktop-parity/spec.md:88`), the headless spec's out-of-scope
 "Per-agent cursors and a machine-wide input lease"

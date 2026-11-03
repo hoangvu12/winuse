@@ -190,7 +190,7 @@ func (s *Server) serveConn(conn net.Conn) {
 }
 
 // handle dispatches one request to its command.
-func (s *Server) handle(req *protocol.Request) protocol.Response {
+func (s *Server) handle(req *protocol.Request) (resp protocol.Response) {
 	if req.V != protocol.Version {
 		return protocol.Errorf(1, "wire protocol version %d not supported (helper speaks %d); upgrade winuse", req.V, protocol.Version)
 	}
@@ -216,6 +216,10 @@ func (s *Server) handle(req *protocol.Request) protocol.Response {
 	defer cancel()
 	// The Agent the request comes from (agents.go, multi-agent ticket 02).
 	ctx = withAgent(ctx, requestAgent(req))
+	// A traced request gets what its command noted (trace.go,
+	// desktop-parity ticket 19), whatever the outcome.
+	ctx, notes := withTraceNotes(ctx, req.Trace)
+	defer func() { resp.Trace = notes.report() }()
 	out, cmdErr := cmd(ctx, req.Args)
 	// Timeout policy (orchestrator decision): a command that failed or
 	// produced nothing while its budget expired is reported centrally as

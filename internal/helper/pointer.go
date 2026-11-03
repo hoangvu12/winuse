@@ -7,9 +7,12 @@ package helper
 // recorded Mapping to the Window's physical pixel, anchored at the
 // extended frame bounds re-read at Action time — so input lands exactly
 // where aimed at any display scaling, on any monitor, and survives the
-// Window moving since the screenshot. Like every Action they run through
-// runAction (resolve, refusals, overlay bracket, activation, then act)
-// and print `ok` or a one-line failure with a recovery hint.
+// Window moving since the screenshot. Like every Headed Action they run
+// through runAction (resolve, refusals, overlay bracket, activation, then
+// act) and print `ok` or a one-line failure with a recovery hint. Only
+// with `headed`: without it they are refused with nothing sent and the
+// --headed retry (headless-max ticket 21), except a scroll at a point of a
+// Page and the Page Element forms of drag and hover, which are Headless.
 //
 // Signs and units follow Codex's scroll: positive scrollY scrolls down,
 // positive scrollX scrolls right, amounts are in wheel units (one notch
@@ -73,6 +76,14 @@ func scroll(s Services) Command {
 		if out, rerr, ok := s.pageScrollAt(ctx, a.Window, x, y, dx, dy); ok {
 			return out, rerr
 		}
+		if !a.Headed {
+			return "", s.headedOnly(a.Window,
+				fmt.Sprintf("scroll at %s has no background route outside a Page: the wheel needs the real pointer", pointToken(x, y)),
+				func(id string) string {
+					return fmt.Sprintf("scroll %s %s %d %d", id, pointToken(x, y), dx, dy)
+				},
+				"to scroll without the foreground, name an Element inside the list or page: winuse scroll <window> <element> <up|down|left|right> [steps]")
+		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
 			pt, serr := shotPoint(ctx, s, w, x, y, "scroll")
 			if serr != nil {
@@ -104,6 +115,12 @@ func drag(s Services) Command {
 			return "", Fail("drag: the @x,y coordinates must be non-negative integers", dragUsageHint)
 		}
 		fx, fy, tx, ty := a.FromX, a.FromY, a.ToX, a.ToY
+		if !a.Headed {
+			return "", s.headedOnly(a.Window,
+				fmt.Sprintf("drag from %s to %s has no background route: a drag needs the real pointer", pointToken(fx, fy), pointToken(tx, ty)),
+				func(id string) string { return "drag " + id + " " + pointToken(fx, fy) + " " + pointToken(tx, ty) },
+				"")
+		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
 			from, serr := shotPoint(ctx, s, w, fx, fy, "drag")
 			if serr != nil {
@@ -140,6 +157,12 @@ func hover(s Services) Command {
 			return "", Fail("hover: the @x,y coordinates must be non-negative integers", hoverUsageHint)
 		}
 		x, y := a.X, a.Y
+		if !a.Headed {
+			return "", s.headedOnly(a.Window,
+				fmt.Sprintf("hover at %s has no background route: hovering moves the real pointer and leaves it there", pointToken(x, y)),
+				func(id string) string { return "hover " + id + " " + pointToken(x, y) },
+				"")
+		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
 			pt, serr := shotPoint(ctx, s, w, x, y, "hover")
 			if serr != nil {

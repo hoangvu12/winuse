@@ -160,6 +160,12 @@ func scrollElement(ctx context.Context, s Services, args json.RawMessage, a prot
 		}
 		return s.runHeadless(ctx, a.Window, ha, run)
 	}
+	if !a.Headed {
+		// Unreachable on a real helper (its UIA client is a HeadlessActor):
+		// an element side that cannot scroll headless.
+		return "", s.headedOnly(a.Window, "scroll has no background route on this helper",
+			func(id string) string { return "scroll " + id + " " + plan.target.token() + " " + plan.token() }, "")
+	}
 
 	if plan.intoView {
 		// The ScrollItem call a Headed click makes, after the activation.

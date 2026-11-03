@@ -5,7 +5,7 @@
 // test/e2e/README.md for the opt-in rules); an agent must never start
 // them.
 //
-// One long type-text Action provides the observation window. While it
+// One long --headed type-text Action provides the observation window. While it
 // runs, the tests:
 //
 //   - read the desktop's window list (win.Collect — read-only) and find
@@ -140,10 +140,12 @@ func TestOverlayDuringAction(t *testing.T) {
 	// seconds (16 runes per batch, a pause between batches, and the fixture
 	// rewrites its state file per rune), typed into the text field the
 	// fixture starts with focus in. It must still finish well inside the
-	// 10 s request budget.
+	// 10 s request budget. The in-control banner is the Headed pipeline's,
+	// and the fixture's text field is not a classic edit control, so the
+	// typing is --headed (without it, it is refused: headless-max ticket 21).
 	const words = 250 // 4500 runes
 	text := strings.Repeat("winuse in control ", words)
-	bg := runActionAsync(t, []string{"type-text", window, text}, "WINUSE_HELPER_IDLE="+e2eIdle)
+	bg := runActionAsync(t, []string{"--headed", "type-text", window, text}, "WINUSE_HELPER_IDLE="+e2eIdle)
 
 	// The overlay appears, raised over the fixture Window.
 	ov := waitOverlay(t, 6*time.Second)

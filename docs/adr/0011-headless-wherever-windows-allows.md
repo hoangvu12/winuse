@@ -10,7 +10,12 @@ out-of-scope "Headless typing".
 Amended by ADR 0013: Decision 5's chord refusal is reversed for chords
 through attached key state (headless-max ticket 07), and `--post` gains
 Posted Clicks (ticket 12). ADR 0013 also names the general rule behind
-Decision 5: a route without a readback is opt-in.
+Decision 5: a route without a readback is opt-in. ADR 0013 rule 3
+amends Decision 4 and Decision 3's "Scroll at `@x,y` stays Headed"
+(headless-max ticket 21): where no Headless route exists, `press-key`,
+`type-text` and a scroll at `@x,y` are refused with "nothing was sent"
+and the `--headed` retry unless the agent passed `--headed`. They no
+longer go Headed on their own.
 
 Amended on 2026-11-03 (desktop-parity ticket 11): Decision 2 gains
 `maximize-window`, the one Headed Window Action. See the amendment at
@@ -53,7 +58,8 @@ The user asked for everything to be as headless as possible.
    focused classic edit control are Headless. Anywhere else they stay
    Headed, as before. The route is decided from the Window before
    anything is sent. "winuse never switches mode on its own" now means:
-   never after something was sent.
+   never after something was sent. (Amended by ADR 0013 rule 3: anywhere
+   else they are refused unless the agent passed `--headed`.)
 5. Posted Keys (`--post`) are a third kind, neither Headless nor
    Headed. They post keyboard messages to a background Window's focused
    control. They are opt-in per command, because Windows does not
@@ -117,7 +123,10 @@ still decided before anything is sent.
   `set-value --headed` is: there is no UIA Element to click.
 - Plain `type-text` keeps its Headed fallback. When it goes Headed
   because the Window reports no focused control, its `ok` says so and
-  points at `--into`.
+  points at `--into`. (Amended by ADR 0013 rule 3, headless-max ticket
+  21: without `--headed` there is no fallback. The text is refused with
+  nothing sent, and the refusal says the Window reports no focused
+  control and points at `--into` and `--post`.)
 
 Remembering a Window's last focused edit control from an earlier read
 was rejected: a stale handle could type into the wrong tab.
@@ -147,3 +156,28 @@ Headless; maximize is a Headed Window Action.
 
 The headless "fill the work area" form (`resize-window --fill`, the
 ticket's option 2) was not built.
+
+## Amendment: self-activation is reported after every Headless Action (2026-11-03)
+
+Ticket 03 of `.scratch/headless-max/`, decided by the user as "detect and
+report". Decision 2's report for `restore-window` now covers the other
+Actions that run without the foreground. In the safe probe batch, an App
+took the foreground by itself after a Headless click: the fixture's
+dialog, 19 ms after a UIA Invoke opened it, while the foreground lock had
+lapsed.
+
+- After every Element, keyboard, Window and Page Action, and after a
+  Batch, winuse compares the foreground with the one before the Action,
+  after the Action's settle. If it moved from another process's Window to
+  a Window of the target's process (the target, or a dialog it opened),
+  the output ends with `Note: the App took the foreground; winuse does
+  not take it back.`, the line `launch-app` prints. When the Action
+  opened a Window, winuse looks once more a moment later.
+- A request that ran a Headed Action took the foreground on purpose and
+  reports nothing, and neither does a Batch with a Headed step.
+  `restore-window` keeps its own wording, and `activate-window` asks for
+  the foreground.
+- The EnableWindow guard is not built. It cannot cover a dialog shown
+  after the pattern call returns, and LockSetForegroundWindow fails
+  without foreground rights (probe round 3). winuse still never takes the
+  foreground back.

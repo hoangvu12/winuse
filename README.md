@@ -68,10 +68,13 @@ the window to the front, so you can keep working in another window. A
 second cursor shows where the agent acts.
 
 Other typing and key presses, dragging, hovering and clicks at screen
-coordinates need the real mouse and keyboard. For those, winuse brings the
-window to the front and frames it with a banner. Pass `--headed` to make
-any action other than a window action work this way. Pass `--post` to send
-keys and text to a background window instead, which some apps ignore.
+coordinates need the real mouse and keyboard. winuse does those only when
+the agent passes `--headed`: it then brings the window to the front and
+frames it with a banner. Without the flag it refuses, sends nothing and
+names the `--headed` command, so it never takes your screen on its own.
+`--headed` also makes any other action except a window action work this
+way. Pass `--post` to send keys and text to a background window instead,
+which some apps ignore.
 
 Press Esc at any time to stop winuse. It refuses to act on administrator
 windows or a locked screen, and it never presses the Windows key. It also
@@ -121,6 +124,7 @@ at all, and winuse says so.
 | `drag`, `hover`, `zoom` | Drags or hovers at a point or on a page element, or saves a close-up of a screenshot |
 | `restore-window`, `minimize-window`, `move-window`, `resize-window`, `close-window` | Manages a window without bringing it to the front |
 | `--headed maximize-window` | Maximizes a window; it comes to the front, because Windows cannot maximize a window behind others |
+| `close-app <app> [--force]` | Closes every window of an app and waits for it to exit; `--force` ends it if it stays open |
 | `batch <window> [--timeout <s>] ... then ...` | Runs several actions in one call |
 | `navigate`, `back`, `forward`, `reload` | Opens a URL or moves through a tab's history |
 | `wait`, `eval` | Waits for an element, text, URL, load or download, or runs JavaScript in the page |
@@ -130,6 +134,7 @@ at all, and winuse says so.
 | `list-displays`, `screenshot --display <n>` | Lists the displays with their position, size and scale, or takes a screenshot of one |
 | `browser status`, `browser ext install`, `browser launch`, `browser clone`, `browser connect` | Connects to a browser and reports how |
 | `status` | Prints the versions, whether the helper runs, the lock state, integrity level, DPI awareness, browser connections and Windows build, without starting anything |
+| `--trace <file>`, `trace show <file>` | Records one JSON line per command (or set `WINUSE_TRACE`), with typed text, values, clipboard content and eval redacted unless `--trace-unredacted`, rolling over at 32 MiB; `trace show` prints a summary |
 
 [SKILL.md](skills/winuse/SKILL.md) is the full guide your agent loads.
 `winuse skill` prints the copy built into your binary, so it always

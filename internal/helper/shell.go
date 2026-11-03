@@ -23,10 +23,10 @@ package helper
 //   - Escape on the open tray overflow is Headless: posted to the XAML
 //     island's input windows, read back by the overflow hiding.
 //   - Any other Action on a shell surface that would go Headed (a key or
-//     text the Window has no Headless route for, a point form, a double,
-//     right or middle click) is refused without --headed, so nothing
-//     opens on the user's shell unless the agent asked for it (ADR 0013
-//     rule 3, ahead of headless-max ticket 21 for the rest).
+//     text with no Headless route, a point form, a double, right or middle
+//     click) is refused without --headed like everywhere (headless-max
+//     ticket 21), so nothing opens on the user's shell unless the agent
+//     asked for it.
 
 import (
 	"context"
@@ -43,9 +43,9 @@ import (
 	"github.com/hoangvu12/winuse/internal/win"
 )
 
-// shellGuarded are the commands guardShell wraps: the Actions with a
-// Headless and a Headed form.
-var shellGuarded = []string{"click", "set-value", "perform-secondary-action", "scroll", "press-key", "type-text"}
+// shellNoted are the commands noteShell wraps: the Element Actions and
+// keys an agent sends to a shell surface.
+var shellNoted = []string{"click", "set-value", "perform-secondary-action", "scroll", "press-key", "type-text"}
 
 const (
 	// overflowClosePoll and overflowCloseBudget pace the read-back of the
@@ -79,60 +79,40 @@ func (s Services) shellByID(ref string) (win.WindowInfo, bool) {
 	return w, ok && w.Shell != ""
 }
 
-// guardShell wraps the Actions that have a Headless and a Headed form, so
-// that on a shell surface a request without `headed` runs only a Headless
-// route (shellGuard). The Batch dispatches to the same map, so its steps
-// are guarded too.
-func (s Services) guardShell(cmds map[string]Command) {
-	for _, name := range shellGuarded {
+// noteShell wraps the Actions an agent sends to a shell surface, so that
+// one that moved the foreground says where it went (shellNote). The Batch
+// dispatches to the same map, so its steps say it too.
+func (s Services) noteShell(cmds map[string]Command) {
+	for _, name := range shellNoted {
 		if cmd, ok := cmds[name]; ok {
-			cmds[name] = s.shellGuard(name, cmd)
+			cmds[name] = s.shellNote(cmd)
 		}
 	}
 }
 
-// shellGuard is one guarded command. On a Window that is not a shell
-// surface it changes nothing. On a shell surface, a request without
-// `headed` that has no Headless route is refused with nothing sent, and an
-// Action that ran says where the foreground went when it moved (a taskbar
-// button activates its App; a Headed Action brings the shell forward).
-func (s Services) shellGuard(name string, cmd Command) Command {
+// shellNote is one noted command. On a Window that is not a shell surface
+// it changes nothing. On a shell surface, an Action that ran says where
+// the foreground went when it moved: a taskbar button activates its App,
+// the tray overflow takes the foreground, a Headed Action brings the shell
+// forward.
+func (s Services) shellNote(cmd Command) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a struct {
 			Window string `json:"window"`
-			Headed bool   `json:"headed"`
-			Key    string `json:"key"`
 		}
-		if json.Unmarshal(args, &a) != nil {
+		if s.Foreground == nil || json.Unmarshal(args, &a) != nil {
 			return cmd(ctx, args)
 		}
-		w, ok := s.shellByID(a.Window)
-		if !ok {
+		if _, ok := s.shellByID(a.Window); !ok {
 			return cmd(ctx, args)
 		}
-		if !a.Headed && !s.shellHeadless(ctx, name, args, w) {
-			return "", shellHeadedRefusal(name, w, a.Key)
-		}
-		var before uint64
-		if s.Foreground != nil {
-			before = s.Foreground()
-		}
+		before := s.Foreground()
 		out, rerr := cmd(ctx, args)
-		if rerr != nil || s.Foreground == nil {
+		if rerr != nil {
 			return out, rerr
 		}
 		return withNotes(out, s.foregroundNote(before, s.Foreground())), nil
 	}
-}
-
-// shellHeadless reports whether a request without `headed` on a shell
-// surface runs a Headless route: the shared predicate (stepHeadless), or
-// Escape on the tray overflow.
-func (s Services) shellHeadless(ctx context.Context, name string, args json.RawMessage, w win.WindowInfo) bool {
-	if name == "press-key" && overflowEscapeStep(args, w) {
-		return true
-	}
-	return s.stepHeadless(ctx, name, args, &w)
 }
 
 // overflowEscapeStep reports whether a press-key request is the tray
@@ -145,19 +125,6 @@ func overflowEscapeStep(args json.RawMessage, w win.WindowInfo) bool {
 	}
 	chord, err := keys.Parse(a.Key)
 	return err == nil && len(chord) == 1 && chord[0].Name == "Escape"
-}
-
-// shellHeadedRefusal refuses an Action on a shell surface that would go
-// Headed without `headed`: it would bring the shell to the foreground and
-// may open Start or a flyout on the user's screen.
-func shellHeadedRefusal(name string, w win.WindowInfo, key string) *Error {
-	id := strconv.FormatUint(w.ID, 10)
-	hint := "Actions on the shell without a Headless route need --headed (it brings the " + w.Shell +
-		" to the foreground and may open Start or a flyout on the user's screen): winuse --headed " + name + " " + id + " ..."
-	if name == "press-key" && w.Shell == win.ShellTaskbar && strings.EqualFold(strings.ReplaceAll(key, " ", ""), "Control_L+Escape") {
-		hint = "Start opens only with the foreground: winuse --headed press-key " + id + " Control_L+Escape"
-	}
-	return nothingSent(Fail(fmt.Sprintf("%s on the %s (window %d) has no headless route", name, w.Shell, w.ID), hint))
 }
 
 // shellFlyoutButtons are the AutomationIds of the taskbar's buttons that

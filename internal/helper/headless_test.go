@@ -313,9 +313,11 @@ func TestHeadlessSetValueAndSecondaryActions(t *testing.T) {
 }
 
 func TestHeadedFormsKeepTheV1Pipeline(t *testing.T) {
-	// The physical forms stay Headed with no flag; `headed` forces v1 for
-	// the Headless ones. Each reaches the activation and never the
-	// Headless element side.
+	// The physical forms have only the Headed route: without `headed` they
+	// are refused with nothing sent (headless-max ticket 21), and with it
+	// they run v1; `headed` forces v1 for the Headless ones too. Each
+	// Headed run reaches the activation and never the Headless element
+	// side.
 	headed := true
 	cases := []struct {
 		name string
@@ -338,8 +340,19 @@ func TestHeadedFormsKeepTheV1Pipeline(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			raw := batchStepArgs(tc.args)
+			if !stepHeaded(raw) {
+				// A physical form without the flag: refused, nothing run.
+				spy := newHeadlessSpy()
+				out, cmdErr := runCommand(t, CommandsWith(spy.svc), tc.cmd, raw)
+				wantHeadedRefusal(t, tc.name, out, cmdErr)
+				if got := spy.recorded(); len(got) != 0 {
+					t.Errorf("a refused Action ran %v", got)
+				}
+				raw = headedArgs(raw)
+			}
 			spy := newHeadlessSpy()
-			_, _ = runCommand(t, CommandsWith(spy.svc), tc.cmd, tc.args)
+			_, _ = runCommand(t, CommandsWith(spy.svc), tc.cmd, raw)
 			got := spy.recorded()
 			if tc.want != nil && !equalStrings(got, tc.want) {
 				t.Errorf("pipeline steps = %v, want %v", got, tc.want)
@@ -663,6 +676,10 @@ func TestBatchScopeAllHeadlessIsPassiveWithNoBanner(t *testing.T) {
 }
 
 func TestBatchScopeWithAHeadedStepSwallowsWithTheBanner(t *testing.T) {
+	// Without --headed, the type-text step (no Headless route on the fake
+	// Window) is refused at its turn with nothing sent (headless-max ticket
+	// 21): it is no reason for the swallowing scope or the banner, and only
+	// the Headless click before it ran.
 	spy := newHeadlessSpy()
 	ov := &overlaySpy{share: spy.step}
 	spy.svc.Overlay = ov
@@ -671,6 +688,30 @@ func TestBatchScopeWithAHeadedStepSwallowsWithTheBanner(t *testing.T) {
 		Steps: []protocol.Step{
 			stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(2)}),
 			stepOf("type-text", protocol.TypeTextArgs{Text: "hello"}),
+		},
+	})
+	if cmdErr == nil || !strings.HasPrefix(cmdErr.Msg, "batch stopped at Action 2 (type-text): ") ||
+		!strings.HasSuffix(cmdErr.Msg, "; nothing was sent") || !strings.Contains(cmdErr.Hint, "winuse --headed ") {
+		t.Errorf("unheaded type-text step: %+v, want the --headed refusal", cmdErr)
+	}
+	if b := spy.esc.brackets(); containsStep(b, "arm") || len(b) == 0 || b[0] != "arm-passive" {
+		t.Errorf("Esc brackets = %v, want the passive scope", b)
+	}
+	assertNoV1(t, spy.recorded())
+	if !containsStep(spy.recorded(), "headless-click") {
+		t.Errorf("steps = %v, want the Headless click before the refused step", spy.recorded())
+	}
+
+	// The step sent with `headed` is Headed: the Batch swallows Esc under
+	// the banner.
+	spy = newHeadlessSpy()
+	ov = &overlaySpy{share: spy.step}
+	spy.svc.Overlay = ov
+	_, cmdErr = runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{
+		Window: "101",
+		Steps: []protocol.Step{
+			stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(2)}),
+			stepOf("type-text", protocol.TypeTextArgs{Text: "hello", Headed: true}),
 		},
 	})
 	if cmdErr != nil {

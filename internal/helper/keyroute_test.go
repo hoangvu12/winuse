@@ -271,7 +271,11 @@ func TestPressKeyEscapeOnADialogPressesCancel(t *testing.T) {
 	}
 }
 
-func TestPressKeyStaysHeadedOffTheDialogRoute(t *testing.T) {
+// TestPressKeyNeedsHeadedOffTheDialogRoute: off the dialog route a key
+// has only the Headed route. Without --headed the route is read once and
+// the key is refused with nothing sent (headless-max ticket 21); with it,
+// the press is v1's and the probe is skipped.
+func TestPressKeyNeedsHeadedOffTheDialogRoute(t *testing.T) {
 	noDefault := dialogTarget()
 	noDefault.HasDefault, noDefault.Default = false, win.Control{}
 	wantsReturn := dialogTarget()
@@ -280,7 +284,7 @@ func TestPressKeyStaysHeadedOffTheDialogRoute(t *testing.T) {
 		name   string
 		target win.KeyTarget
 		args   protocol.PressKeyArgs
-		probes int
+		probes int // without --headed
 	}{
 		{"not a dialog", win.KeyTarget{}, protocol.PressKeyArgs{Window: "101", Key: "Return"}, 1},
 		{"another key", dialogTarget(), protocol.PressKeyArgs{Window: "101", Key: "Tab"}, 1},
@@ -291,6 +295,21 @@ func TestPressKeyStaysHeadedOffTheDialogRoute(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if !tc.args.Headed {
+				spy := newKeyRouteSpy(tc.target)
+				out, cmdErr := runCommand(t, CommandsWith(spy.svc), "press-key", tc.args)
+				wantHeadedRefusal(t, "press-key", out, cmdErr)
+				if got := spy.recorded(); len(got) != 0 {
+					t.Errorf("a refused press-key ran %v", got)
+				}
+				if len(spy.posted) != 0 {
+					t.Errorf("posted %+v on a refused press-key", spy.posted)
+				}
+				if spy.probes != tc.probes {
+					t.Errorf("probed %d times, want %d", spy.probes, tc.probes)
+				}
+				tc.args.Headed = true
+			}
 			spy := newKeyRouteSpy(tc.target)
 			if _, cmdErr := runCommand(t, CommandsWith(spy.svc), "press-key", tc.args); cmdErr != nil {
 				t.Fatalf("press-key: %v", cmdErr.Error())
@@ -301,8 +320,8 @@ func TestPressKeyStaysHeadedOffTheDialogRoute(t *testing.T) {
 			if len(spy.posted) != 0 {
 				t.Errorf("posted %+v on a Headed route", spy.posted)
 			}
-			if spy.probes != tc.probes {
-				t.Errorf("probed %d times, want %d", spy.probes, tc.probes)
+			if spy.probes != 0 {
+				t.Errorf("a headed press-key probed %d times, want 0", spy.probes)
 			}
 		})
 	}
@@ -404,8 +423,31 @@ func TestBatchPicksItsScopeWithTheKeyProbe(t *testing.T) {
 		t.Errorf("probed %d times, want 2", spy.probes)
 	}
 
-	// The same Batch on a Window that is no dialog: press-key is Headed,
-	// so the whole Batch swallows Esc under the banner.
+	// The same Batch on a Window that is no dialog: press-key has only the
+	// Headed route. Without --headed it is refused at its turn with nothing
+	// sent (headless-max ticket 21), so the Batch stays one passive scope
+	// with no banner.
+	spy = newKeyRouteSpy(win.KeyTarget{})
+	ov = &overlaySpy{share: spy.step}
+	spy.svc.Overlay = ov
+	_, cmdErr = runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{
+		Window: "101",
+		Steps: []protocol.Step{
+			stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(2)}),
+			stepOf("press-key", protocol.PressKeyArgs{Key: "Return"}),
+		},
+	})
+	if cmdErr == nil || !strings.HasPrefix(cmdErr.Msg, "batch stopped at Action 2 (press-key): ") ||
+		!strings.HasSuffix(cmdErr.Msg, "; nothing was sent") || !strings.Contains(cmdErr.Hint, "winuse --headed ") {
+		t.Errorf("unheaded press-key step: %+v, want the --headed refusal", cmdErr)
+	}
+	assertNoV1(t, spy.recorded())
+	if b := spy.esc.brackets(); containsStep(b, "arm") || len(b) == 0 || b[0] != "arm-passive" {
+		t.Errorf("Esc brackets = %v, want the passive scope", b)
+	}
+
+	// Sent with `headed`, the press-key step is Headed, so the whole Batch
+	// swallows Esc under the banner.
 	spy = newKeyRouteSpy(win.KeyTarget{})
 	ov = &overlaySpy{share: spy.step}
 	spy.svc.Overlay = ov
@@ -413,7 +455,7 @@ func TestBatchPicksItsScopeWithTheKeyProbe(t *testing.T) {
 		Window: "101",
 		Steps: []protocol.Step{
 			stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(2)}),
-			stepOf("press-key", protocol.PressKeyArgs{Key: "Return"}),
+			stepOf("press-key", protocol.PressKeyArgs{Key: "Return", Headed: true}),
 		},
 	}); cmdErr != nil {
 		t.Fatalf("batch: %v", cmdErr.Error())
@@ -552,12 +594,16 @@ func TestTypeTextIntoAnEditIsHeadless(t *testing.T) {
 	}
 }
 
-func TestTypeTextStaysHeadedOffTheEditRoute(t *testing.T) {
+// TestTypeTextNeedsHeadedOffTheEditRoute: off the edit route text has only
+// the Headed route. Without --headed the route is read once and the text
+// is refused with nothing sent (headless-max ticket 21); with it, the
+// typing is v1's and the probe is skipped.
+func TestTypeTextNeedsHeadedOffTheEditRoute(t *testing.T) {
 	cases := []struct {
 		name   string
 		target win.KeyTarget
 		args   protocol.TypeTextArgs
-		probes int
+		probes int // without --headed
 	}{
 		{"no edit focus", win.KeyTarget{}, protocol.TypeTextArgs{Window: "101", Text: "hi"}, 1},
 		{"a newline", editTarget(plainEdit), protocol.TypeTextArgs{Window: "101", Text: "hi\nthere"}, 1},
@@ -566,6 +612,21 @@ func TestTypeTextStaysHeadedOffTheEditRoute(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if !tc.args.Headed {
+				spy := newKeyRouteSpy(tc.target)
+				out, cmdErr := runCommand(t, CommandsWith(spy.svc), "type-text", tc.args)
+				wantHeadedRefusal(t, "type-text", out, cmdErr)
+				if got := spy.recorded(); len(got) != 0 {
+					t.Errorf("a refused type-text ran %v", got)
+				}
+				if len(spy.inserted) != 0 {
+					t.Errorf("inserted %q on a refused type-text", spy.inserted)
+				}
+				if spy.probes != tc.probes {
+					t.Errorf("probed %d times, want %d", spy.probes, tc.probes)
+				}
+				tc.args.Headed = true
+			}
 			spy := newKeyRouteSpy(tc.target)
 			if _, cmdErr := runCommand(t, CommandsWith(spy.svc), "type-text", tc.args); cmdErr != nil {
 				t.Fatalf("type-text: %v", cmdErr.Error())
@@ -576,8 +637,8 @@ func TestTypeTextStaysHeadedOffTheEditRoute(t *testing.T) {
 			if len(spy.inserted) != 0 {
 				t.Errorf("inserted %q on a Headed route", spy.inserted)
 			}
-			if spy.probes != tc.probes {
-				t.Errorf("probed %d times, want %d", spy.probes, tc.probes)
+			if spy.probes != 0 {
+				t.Errorf("a headed type-text probed %d times, want 0", spy.probes)
 			}
 		})
 	}
@@ -685,11 +746,30 @@ func TestBatchTypeTextIntoAnEditKeepsTheHeadlessScope(t *testing.T) {
 		t.Errorf("inserted %q, want hello", spy.inserted)
 	}
 
-	// Text with a newline is a Headed step: the Batch swallows Esc.
+	// Text with a newline has only the Headed route. Without --headed the
+	// step is refused with nothing sent (headless-max ticket 21), so the
+	// scope stays passive.
+	spy = newKeyRouteSpy(editTarget(plainEdit))
+	_, cmdErr := runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{
+		Window: "101",
+		Steps:  []protocol.Step{stepOf("type-text", protocol.TypeTextArgs{Text: "a\nb"})},
+	})
+	if cmdErr == nil || !strings.HasPrefix(cmdErr.Msg, "batch stopped at Action 1 (type-text): ") ||
+		!strings.HasSuffix(cmdErr.Msg, "; nothing was sent") || !strings.Contains(cmdErr.Hint, "winuse --headed ") {
+		t.Errorf("unheaded newline step: %+v, want the --headed refusal", cmdErr)
+	}
+	if got := spy.recorded(); len(got) != 0 {
+		t.Errorf("a refused type-text ran %v", got)
+	}
+	if b := spy.esc.brackets(); containsStep(b, "arm") || len(b) == 0 || b[0] != "arm-passive" {
+		t.Errorf("Esc brackets = %v, want the passive scope", b)
+	}
+
+	// Sent with `headed` it is a Headed step: the Batch swallows Esc.
 	spy = newKeyRouteSpy(editTarget(plainEdit))
 	if _, cmdErr := runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{
 		Window: "101",
-		Steps:  []protocol.Step{stepOf("type-text", protocol.TypeTextArgs{Text: "a\nb"})},
+		Steps:  []protocol.Step{stepOf("type-text", protocol.TypeTextArgs{Text: "a\nb", Headed: true})},
 	}); cmdErr != nil {
 		t.Fatalf("batch: %v", cmdErr.Error())
 	}

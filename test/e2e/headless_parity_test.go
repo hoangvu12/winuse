@@ -110,7 +110,8 @@ func findWindowOf(t *testing.T, pid uint32, class, title string, timeout time.Du
 
 // logKeyTarget logs what winuse's keyboard routing reads off a Window
 // (read-only: classes, styles, DM_GETDEFID). When a key or text Action
-// routes Headed and takes the foreground, this line says why.
+// finds no Headless route (and is refused without --headed, headless-max
+// ticket 21), this line says why.
 func logKeyTarget(t *testing.T, id uint64) {
 	t.Helper()
 	k := win.ProbeKeyTarget(id)

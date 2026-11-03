@@ -7,7 +7,7 @@ A Windows computer-use tool that lets any coding-agent harness see and operate d
 ### Targets
 
 **App**:
-An installed or running program, identified for listing, launching and recognition. An App owns zero or more Windows; it is never the thing an Action is aimed at.
+An installed or running program, identified for listing, launching, closing and recognition. An App owns zero or more Windows; it is never the thing an Action is aimed at. Closing an App asks each of its Windows to close, as a Window Action does, and is not an Action itself.
 _Avoid_: Application, program, process
 
 **Window**:
@@ -77,7 +77,7 @@ An Action that winuse can deliver reliably without the foreground: no foreground
 _Avoid_: Background action, silent action, pattern action
 
 **Headed Action**:
-An Action performed the way a person would: the Window is brought to the foreground and real pointer or keyboard input is sent, under the in-control banner. These are always Headed: dragging, hovering, any Action aimed at screen coordinates except a scroll at a point of the Page, double, right or middle clicks outside a Page, activating a Window, maximizing a Window (Windows has no maximize that leaves the foreground alone, so it is refused with nothing sent unless the agent asks for Headed) and Raise. Keys and typing are Headed wherever they have no Headless route and are not sent as Posted Keys, except typing into a named Element, which is refused with nothing sent unless the agent asks for Headed. Any other Action is Headed when the agent asks for it. ADR 0013 narrows this set as its routes land: a route that reads its effect back becomes Headless, and one that cannot becomes opt-in Posted.
+An Action performed the way a person would: the Window is brought to the foreground and real pointer or keyboard input is sent, under the in-control banner. An Action is Headed only when the agent asks for it with `--headed`. Activating a Window is the one exception: the command itself asks for the foreground. These have no other route, so without `--headed` they are refused with nothing sent and the exact `--headed` retry: dragging, hovering, any Action aimed at screen coordinates except a scroll at a point of the Page, double, right or middle clicks outside a Page, maximizing a Window (Windows has no maximize that leaves the foreground alone), Raise, and keys and typing that have no Headless route and are not sent as Posted Keys. winuse never takes the user's screen on its own. ADR 0013 narrows this set as its routes land: a route that reads its effect back becomes Headless, and one that cannot becomes opt-in Posted.
 _Avoid_: Foreground action, physical action, v1 mode
 
 **Posted Keys**:
@@ -94,7 +94,7 @@ _Avoid_: Dangerous key, forbidden shortcut
 
 **Agent Cursor**:
 The second, presentation-only cursor that shows the user each Headless Action: it travels to the Element, says what is happening in a label and ripples on the click. It never takes the user's pointer, keyboard or foreground and never appears in winuse's own screenshots.
-Planned (ADR 0014): one Agent Cursor per Agent, with its own colour and label, placed just above the Window it acts on rather than topmost.
+Each Agent has its own Agent Cursor (ADR 0014), with its own colour and its name in the label, placed just above the Window it acts on rather than topmost; it closes when its Agent has gone idle.
 _Avoid_: Fake cursor, ghost cursor, pointer
 
 **Esc stop**:
@@ -108,7 +108,7 @@ _Avoid_: Client, agent, host
 ### Agents
 
 **Agent**:
-One caller of winuse, with an identity: by default the Harness process the command came from, or the name in `WINUSE_AGENT`; a command with neither belongs to one shared default Agent. Every request names its Agent, each Agent has its own Window States, and `winuse status` lists the Agents the helper served. Planned (ADR 0014): several Agents run at once, each with its own Agent Cursor.
+One caller of winuse, with an identity: by default the Harness process the command came from, or the name in `WINUSE_AGENT`; a command with neither belongs to one shared default Agent. Every request names its Agent, each Agent has its own Window States, and `winuse status` lists the Agents the helper served. Each Agent has its own Agent Cursor. Planned (ADR 0014): several Agents run at once.
 _Avoid_: Session, client, user
 
 **Lane**:

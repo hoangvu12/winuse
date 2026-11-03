@@ -75,6 +75,14 @@ func runClick(t *testing.T, args []string, extraEnv ...string) (string, string, 
 	return runWinuse(t, append([]string{"click"}, args...), append(extraEnv, "WINUSE_HELPER_IDLE="+e2eIdle)...)
 }
 
+// runClickHeaded invokes `winuse --headed click ...`: a double, triple,
+// right or middle click outside a Page, and a click at @x,y, have no
+// Headless route and need --headed (headless-max ticket 21).
+func runClickHeaded(t *testing.T, args []string, extraEnv ...string) (string, string, int) {
+	t.Helper()
+	return runWinuse(t, append([]string{"--headed", "click"}, args...), append(extraEnv, "WINUSE_HELPER_IDLE="+e2eIdle)...)
+}
+
 // runActivateWindow invokes `winuse activate-window <window>`.
 func runActivateWindow(t *testing.T, window string, extraEnv ...string) (string, string, int) {
 	t.Helper()
@@ -183,7 +191,10 @@ func TestDoubleClickAndRightClickCanvas(t *testing.T) {
 	fix, window := startFixtureWithState(t)
 	idx := mainElementIndexes()[fixture.ElemCanvas]
 
-	stdout, stderr, exit := runClick(t, []string{window, strconv.Itoa(idx), "--count", "2"})
+	// Double and right clicks on an Element outside a Page need the real
+	// pointer: --headed (headless-max ticket 21; headed_gate_test.go pins
+	// the refusal without it).
+	stdout, stderr, exit := runClickHeaded(t, []string{window, strconv.Itoa(idx), "--count", "2"})
 	assertActionOK(t, "double click canvas", stdout, stderr, exit)
 	// A double click records one click from the first press plus the
 	// double-click itself, marked in the counter.
@@ -191,7 +202,7 @@ func TestDoubleClickAndRightClickCanvas(t *testing.T) {
 		return s.CanvasDoubleClicks == 1 && len(s.CanvasClicks) == 2
 	})
 
-	stdout, stderr, exit = runClick(t, []string{window, strconv.Itoa(idx), "--button", "right"})
+	stdout, stderr, exit = runClickHeaded(t, []string{window, strconv.Itoa(idx), "--button", "right"})
 	assertActionOK(t, "right click canvas", stdout, stderr, exit)
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool {
 		return len(s.CanvasRightClicks) == 1

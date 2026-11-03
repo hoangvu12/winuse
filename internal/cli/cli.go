@@ -29,6 +29,16 @@ global options:
                                or after the command; inside type-text's text,
                                set-value's value or clipboard-set's text it is
                                literal text
+  --trace <file>              before the command (or WINUSE_TRACE=<file>):
+                               append one JSON line per command to the file:
+                               time, command, Agent, Window, arguments, routes
+                               (Headless, Posted, Headed, CDP), outcome,
+                               output (4 KiB; a Window State only by its line
+                               count), screenshot paths and duration. Typed
+                               text, values, clipboard content and eval are
+                               redacted; past 32 MiB the file is renamed
+                               <name>.1 and a new one started
+  --trace-unredacted          keep the redacted values, for local debugging only
 
 headless (the default; your foreground, pointer and keyboard stay untouched):
   click (left, single), set-value, perform-secondary-action (except Raise)
@@ -40,15 +50,21 @@ headless (the default; your foreground, pointer and keyboard stay untouched):
   get-window-state --screenshot and zoom (--headed activates the Window
   first); and the Window Actions restore-, minimize-, move-, resize- and
   close-window, which have no headed form (maximize-window is headed
-  only). Every other Action is headed.
-  tab new, tab close and tab switch are headless (on a launched or cloned
-  browser, tab switch selects the Tab in the Window's tab strip; --headed
-  switches with real keys in the foreground instead). In a
+  only). tab new, tab close and tab switch are headless (on a launched or
+  cloned browser, tab switch selects the Tab in the Window's tab strip;
+  --headed switches with real keys in the foreground instead). In a
   browser Window with a Browser Connection, every Action on its Page is
   headless, and so are navigate, back, forward, reload, upload, dialog,
   wait and eval, which have no headed form. The clipboard commands,
   list-displays and screenshot --display are headless Desktop commands:
   they name no Window and have no headed form.
+
+headed only with --headed: every other Action (@x,y forms, double, right
+  and middle clicks, drag, hover, Raise, maximize-window, press-key and
+  type-text with no headless route) is refused with "nothing was sent"
+  and the exact
+  --headed retry. activate-window always takes the foreground: that is
+  what it is for.
 
 commands:
   list-windows [--details] [--app <name>] [--shell]
@@ -77,6 +93,14 @@ commands:
                                an Electron or WebView2 executable with a
                                loopback debugging port, so its pages are read
                                and acted on like a browser's, headless
+  close-app <app> [--force]   ask every Window of an App to close, headless,
+                               and wait up to 5 s for it to exit; one that
+                               keeps running (it may ask to save) gets an ok
+                               that says so. --force then ends the App's
+                               processes, unsaved work included: the only
+                               command that ends a process. Windows' own
+                               processes (explorer, dwm, csrss, ...) and
+                               administrator Apps are refused, nothing sent
   get-window-state <window> [--screenshot] [--timeout <seconds>]
                                print a Window's State: its Element tree as text,
                                and with --screenshot a screenshot saved to a file
@@ -299,6 +323,9 @@ const usageTail = `);
                                holds and the Windows build. Read-only: it
                                never starts the helper (it says "not
                                running") and never connects a browser
+  trace show <file>           print a trace file readably: per command its
+                               time, Agent, Window, routes, outcome and
+                               duration, then its arguments, error and files
   version                     print the winuse version
 
 a <window> is a Window ID, or an App name when that App has exactly one Window;
@@ -348,7 +375,15 @@ func secondaryActionsPhrase() string {
 // before the command or anywhere after it outside literal text, and
 // forwarded to the Actions that have a Headless form, and to
 // get-window-state and zoom, whose captures are headless (ADR 0011).
-func Main(args []string) int {
+func Main(args []string) (code int) {
+	// The session trace (trace.go, desktop-parity ticket 19): one line per
+	// command, written when it exits.
+	args, trace, ok := startTrace(args, os.Getenv)
+	if !ok {
+		return 2
+	}
+	activeTrace = trace
+	defer func() { trace.finish(code) }()
 	args, headed := extractHeaded(args)
 	if len(args) == 0 {
 		fmt.Fprint(os.Stderr, Usage)
@@ -370,6 +405,8 @@ func Main(args []string) int {
 		return listAppsCmd(args[1:])
 	case "launch-app":
 		return launchAppCmd(args[1:])
+	case "close-app":
+		return closeAppCmd(args[1:]) // closeapp.go, desktop-parity ticket 10
 	case "zoom":
 		return zoomCmd(args[1:], headed)
 	case "click":
@@ -391,9 +428,9 @@ func Main(args []string) int {
 	case "invoke-menu":
 		return invokeMenuCmd(args[1:])
 	case "drag":
-		return dragCmd(args[1:])
+		return dragCmd(args[1:], headed)
 	case "hover":
-		return hoverCmd(args[1:])
+		return hoverCmd(args[1:], headed)
 	case "activate-window":
 		return activateWindowCmd(args[1:])
 	case "restore-window", "minimize-window", "close-window":
@@ -424,6 +461,8 @@ func Main(args []string) int {
 		return skillCmd(args[1:])
 	case "status":
 		return statusCmd(args[1:])
+	case "trace":
+		return traceCmd(args[1:]) // trace.go, desktop-parity ticket 19
 	default:
 		fmt.Fprintf(os.Stderr, "winuse: unknown command %q\n\n%s", args[0], Usage)
 		return 2
@@ -725,7 +764,9 @@ func runRequest(cmd string, args any, edit func(*protocol.Request)) error {
 	if edit != nil {
 		edit(req)
 	}
+	req.Trace = tracing()
 	resp, err := client.Call(context.Background(), req)
+	activeTrace.observe(req, resp, err) // trace.go
 	if err != nil {
 		return err
 	}

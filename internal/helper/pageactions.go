@@ -272,6 +272,7 @@ type pageRun struct {
 // section 4), so there is no Ready or integrity refusal.
 func (s Services) runPage(ctx context.Context, run pageRun) (string, *Error) {
 	w, o := run.w, run.origin
+	noteRoute(ctx, w, protocol.RouteCDP) // trace.go
 	if locked, desktop := s.Locked(); locked {
 		return "", nothingSent(lockedDesktopFailure(desktop))
 	}
@@ -299,13 +300,13 @@ func (s Services) runPage(ctx context.Context, run pageRun) (string, *Error) {
 	}
 	label := cursorLabel(run.verb, s.pageElementName(ctx, w, run.index, aim.Name))
 	rect, _ := s.pageScreenRect(ctx, w, o, aim.Rect)
-	rect, shown := s.cursorTravelRect(w, rect, label)
+	rect, shown := s.cursorTravelRect(ctx, w, rect, label)
 	if esc.Stopped() {
 		return "", escStopBeforeActError()
 	}
 	if run.act == nil {
 		if shown {
-			s.cursorClick(rect)
+			s.cursorClick(ctx, w, rect)
 		}
 		if esc.Stopped() {
 			return "", escStopError()
@@ -321,7 +322,7 @@ func (s Services) runPage(ctx context.Context, run pageRun) (string, *Error) {
 	s.watchNewTabs(ctx, o)
 	err = run.act(ctx, in, aim)
 	if shown && in.Sent > 0 {
-		s.cursorClick(rect)
+		s.cursorClick(ctx, w, rect)
 	}
 	if esc.Stopped() {
 		if in.Sent == 0 {
@@ -699,6 +700,7 @@ type pageInput struct {
 // Cursor, the input with its Esc checkpoints and dialog race, and the
 // ripple once something was delivered.
 func (s Services) runPageInput(ctx context.Context, w win.WindowInfo, o *page.Origin, p pageInput) (string, *Error) {
+	noteRoute(ctx, w, protocol.RouteCDP) // trace.go
 	if locked, desktop := s.Locked(); locked {
 		return "", nothingSent(lockedDesktopFailure(desktop))
 	}
@@ -715,7 +717,7 @@ func (s Services) runPageInput(ctx context.Context, w win.WindowInfo, o *page.Or
 			return "", nothingSent(rerr)
 		}
 	}
-	rect, shown := s.cursorTravelRect(w, p.target, p.label)
+	rect, shown := s.cursorTravelRect(ctx, w, p.target, p.label)
 	if esc.Stopped() {
 		return "", escStopBeforeActError()
 	}
@@ -729,7 +731,7 @@ func (s Services) runPageInput(ctx context.Context, w win.WindowInfo, o *page.Or
 	s.watchNewTabs(ctx, o)
 	err = p.act(ctx, in)
 	if shown && in.Sent > 0 {
-		s.cursorClick(rect)
+		s.cursorClick(ctx, w, rect)
 	}
 	if esc.Stopped() {
 		if in.Sent == 0 {

@@ -177,6 +177,11 @@ type Request struct {
 	// Cursor and messages show. Both empty: the shared default Agent.
 	Agent      string `json:"agent,omitempty"`
 	AgentLabel string `json:"agent_label,omitempty"`
+	AgentColor string `json:"agent_color,omitempty"` // WINUSE_CURSOR_COLOR, for the Agent's cursor (multi-agent ticket 04)
+
+	// Trace asks for Response.Trace (desktop-parity ticket 19, trace.go):
+	// the CLI sets it under --trace or WINUSE_TRACE.
+	Trace bool `json:"trace,omitempty"`
 }
 
 // ListWindowsArgs are list-windows's optional arguments (desktop-parity
@@ -208,6 +213,15 @@ type LaunchArgs struct {
 	Cwd       string   `json:"cwd,omitempty"`       // the working directory, absolute (the CLI resolves it)
 	Env       []string `json:"env,omitempty"`       // KEY=VALUE entries over the helper's environment
 	CDP       bool     `json:"cdp,omitempty"`       // an Electron or WebView2 App with a loopback debugging port (headless-max 15)
+}
+
+// CloseAppArgs are close-app's arguments (desktop-parity ticket 10): the
+// App whose Windows to close, named as a Window reference names an App
+// (display name or executable name), and with Force, agent-desktop's
+// --force: end the App's processes still running after the posted close.
+type CloseAppArgs struct {
+	App   string `json:"app"`
+	Force bool   `json:"force,omitempty"`
 }
 
 // AttachArgs are the arguments of browser attach and browser detach
@@ -275,9 +289,10 @@ type Region struct {
 // The Element forms (headless-parity spec, "Element scroll") name an
 // Element instead, by Element Index or name:/id: reference, with a
 // direction: up, down, left or right by steps (default 3, at most 50), or
-// into-view. They are Headless unless headed; the point form is always
-// Headed. A request uses one form: the point and amounts stay zero in an
-// Element form.
+// into-view. They are Headless unless headed. The point form is Headless
+// on a Page and Headed elsewhere, and Headed only with headed (headless-max
+// ticket 21). A request uses one form: the point and amounts stay zero in
+// an Element form.
 type ScrollArgs struct {
 	Window  string `json:"window"`
 	X       int    `json:"x"`
@@ -289,7 +304,7 @@ type ScrollArgs struct {
 	Ref          string `json:"ref,omitempty"`           // name:<text> or id:<AutomationId>: the Element to scroll
 	Direction    string `json:"direction,omitempty"`     // up, down, left, right or into-view
 	Steps        *int   `json:"steps,omitempty"`         // scroll steps for a direction (default 3, 1 to 50); none for into-view
-	Headed       bool   `json:"headed,omitempty"`        // an Element form the v1 way: activate, then the wheel at the Element (into-view: the ScrollItem call after activation)
+	Headed       bool   `json:"headed,omitempty"`        // the v1 way: activate, then the wheel at the point or the Element (into-view: the ScrollItem call after activation); without it a point outside a Page is refused
 }
 
 // DragArgs are drag's arguments — Codex's drag parameters: from and to
@@ -309,6 +324,11 @@ type DragArgs struct {
 	FromRef   string `json:"from_ref,omitempty"`
 	ToIndex   *int   `json:"to_index,omitempty"`
 	ToRef     string `json:"to_ref,omitempty"`
+
+	// Headed is the agent's --headed (headless-max ticket 21): the point
+	// form drags with the real pointer only with it, and is refused with
+	// nothing sent without it. The Page form ignores it.
+	Headed bool `json:"headed,omitempty"`
 }
 
 // HoverArgs are hover's arguments: the point to move the pointer to,
@@ -324,6 +344,11 @@ type HoverArgs struct {
 	// point, Headless over the Browser Connection.
 	ElementIndex *int   `json:"element_index,omitempty"`
 	Ref          string `json:"ref,omitempty"`
+
+	// Headed is the agent's --headed (headless-max ticket 21): the point
+	// form moves the real pointer only with it, and is refused with nothing
+	// sent without it. The Page form ignores it.
+	Headed bool `json:"headed,omitempty"`
 }
 
 // ZoomArgs are zoom's arguments.
@@ -528,6 +553,10 @@ type Response struct {
 	Err   string `json:"err,omitempty"`   // single-line error message
 	Hint  string `json:"hint,omitempty"`  // recovery hint printed after the error
 	Exit  int    `json:"exit,omitempty"`  // exit code the CLI should use on failure
+
+	// Trace is the helper's part of a trace line (desktop-parity ticket
+	// 19, trace.go), only when Request.Trace asked for it.
+	Trace *Trace `json:"trace,omitempty"`
 }
 
 // ErrLineTooLarge is returned when a line exceeds MaxLine.

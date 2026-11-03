@@ -52,7 +52,7 @@ Details are in each ticket's Comments.
 | 07 | Opt-in `--json` output with codes and delivery | P1 | L | ready-for-agent |
 | 08 | Display list and full-screen capture | P2 | S | done |
 | 09 | Shell surfaces | P2 | M | ready-for-agent |
-| 10 | close-app | P2 | S-M | ready-for-agent |
+| 10 | close-app | P2 | S-M | done |
 | 11 | maximize-window | P2 | S | done |
 | 12 | Select an option by name in UIA combos and lists | P2 | S-M | done |
 | 13 | Hover and drag by UIA Element | P2 | S | ready-for-agent |
@@ -61,7 +61,7 @@ Details are in each ticket's Comments.
 | 16 | `status` | P2 | S | done |
 | 17 | Live re-resolution of `name:`/`id:` | P2 | M | ready-for-agent |
 | 18 | Notifications | P3 | M | ready-for-agent |
-| 19 | Session traces with redaction | P3 | M-L | ready-for-agent |
+| 19 | Session traces with redaction | P3 | M-L | done |
 | 20 | Batch improvements | P3 | S-M | ready-for-agent |
 | 21 | Agent Cursor polish | P3 | S | wontfix (folded into multi-agent 04) |
 | 22 | list-windows details and filter | P2 | S | done |

@@ -16,8 +16,8 @@ import (
 	"time"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
-	"github.com/hoangvu12/winuse/internal/wstate"
 	"github.com/hoangvu12/winuse/internal/win"
+	"github.com/hoangvu12/winuse/internal/wstate"
 )
 
 const (
