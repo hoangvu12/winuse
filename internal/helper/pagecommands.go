@@ -744,12 +744,16 @@ func pageDialog(s Services) Command {
 	}
 }
 
-// pageWait runs `winuse wait <window> <for> [value] [--timeout s]`.
+// pageWait runs `winuse wait <window> <for> [value] [--timeout s]`. The
+// desktop waits (waits.go, desktop-parity ticket 03) leave here first.
 func pageWait(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.WaitArgs
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("wait: "+err.Error(), waitUsageHint)
+		}
+		if s.desktopWait(a) {
+			return s.runDesktopWait(ctx, a)
 		}
 		if strings.TrimSpace(a.Window) == "" {
 			return "", Fail("wait: a window reference is required", waitUsageHint)

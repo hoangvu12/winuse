@@ -145,7 +145,7 @@ func TestBatchPageSteps(t *testing.T) {
 }
 
 func TestPageCommandUsageErrorsExit2(t *testing.T) {
-	for _, args := range [][]string{{"navigate"}, {"navigate", "301"}, {"back", "301", "x"}, {"dialog", "301", "maybe"}, {"wait", "301"}, {"eval", "301"}, {"upload", "301"}} {
+	for _, args := range [][]string{{"navigate"}, {"navigate", "301"}, {"back", "301", "x"}, {"dialog", "301", "maybe"}, {"wait", "301", "idle"}, {"eval", "301"}, {"upload", "301"}} {
 		path := filepath.Join(t.TempDir(), "stderr")
 		f, _ := os.Create(path)
 		oldErr, oldOut := os.Stderr, os.Stdout
@@ -173,7 +173,11 @@ func TestEveryPageCommandIsDispatched(t *testing.T) {
 		os.Stderr, os.Stdout = oldErr, oldOut
 		f.Close()
 		got, _ := os.ReadFile(path)
-		if code != 2 || !strings.Contains(string(got), cmd+" takes a window reference first") {
+		want := cmd + " takes a window reference first"
+		if cmd == "wait" {
+			want = "wait takes a window reference, window <app or title>, or a number of milliseconds first" // wait.go: the desktop waits
+		}
+		if code != 2 || !strings.Contains(string(got), want) {
 			t.Errorf("%s: exit %d, %q", cmd, code, got)
 		}
 		if _, err := parseBatchStep([]string{cmd}); err != nil && strings.Contains(err.Error(), "unknown batch action") {
