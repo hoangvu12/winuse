@@ -46,7 +46,7 @@ agent-desktop and cua both serialize every input-producing action machine-wide. 
 | 04 | A cursor per agent, like cua | M | done (live e2e pending) |
 | 05 | Esc stops every agent | S | done |
 | 06 | Per-thread lanes and a desktop lane | M | done (live e2e run still to do) |
-| 07 | UIA worker pool with per-App affinity | M-L | ready-for-agent |
+| 07 | UIA worker pool with per-App affinity | M-L | done (live e2e run still to do) |
 | 08 | Polite real input | M | done (live e2e pending) |
 | 09 | Window identity check before writes | S | done |
 | 10 | Opt-in e2e for several agents | M | ready-for-agent |

@@ -36,7 +36,7 @@ var ErrSuperseded = errors.New("the Window was read again meanwhile")
 // Elements merged leaves out are released on the worker thread.
 func (c *Client) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any) error {
 	var jobErr error
-	err := c.Run(ctx, func(w *worker, r *run) {
+	err := c.RunFor(ctx, hwnd, func(w *worker, r *run) {
 		jobErr = c.store.splice(storeAgent(ctx), hwnd, base, merged, from, origins)
 	})
 	if err != nil {

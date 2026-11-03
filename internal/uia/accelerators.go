@@ -80,7 +80,7 @@ func pickAccelerator(cands []accelCand) (int, AccelResult) {
 func (c *Client) InvokeAccelerator(ctx context.Context, hwnd uint64, shown func(acceleratorKey, name string, menuItem bool) bool, expandMenus bool) (AccelResult, error) {
 	var res AccelResult
 	var jobErr error
-	err := c.Run(ctx, func(w *worker, _ *run) {
+	err := c.RunFor(ctx, hwnd, func(w *worker, _ *run) {
 		if w.thread == nil {
 			return // fake workers carry no COM thread: nothing found
 		}

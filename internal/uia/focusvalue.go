@@ -21,7 +21,7 @@ const propHasKeyboardFocus = 30008
 // when no stored Element has the focus, it has no Value pattern, or it is
 // a password field. It sends nothing to the Window.
 func (c *Client) FocusedValue(ctx context.Context, hwnd uint64) (value string, found bool, err error) {
-	err = c.Run(ctx, func(w *worker, _ *run) {
+	err = c.RunFor(ctx, hwnd, func(w *worker, _ *run) {
 		elems, _, ok := c.store.elements(storeAgent(ctx), hwnd)
 		if !ok {
 			return

@@ -66,7 +66,7 @@ func (c *Client) Find(ctx context.Context, hwnd uint64, budget time.Duration, ma
 	cfg := walkConfig(ctx, budget)
 	cfg.MaxNodes = FindMaxNodes
 	who := storeAgent(ctx)
-	err := c.Run(ctx, func(w *worker, r *run) {
+	err := c.RunFor(ctx, hwnd, func(w *worker, r *run) {
 		if w.thread == nil {
 			jobErr = ErrWindowGone // fake workers carry no COM thread
 			return
@@ -131,7 +131,7 @@ func (c *Client) ReadRegion(ctx context.Context, hwnd uint64, index, depth int, 
 		cfg.MaxDepth = depth
 	}
 	who := storeAgent(ctx)
-	err := c.Run(ctx, func(w *worker, r *run) {
+	err := c.RunFor(ctx, hwnd, func(w *worker, r *run) {
 		el, lerr := c.lookup(ctx, hwnd, index)
 		if lerr != nil {
 			jobErr = lerr
