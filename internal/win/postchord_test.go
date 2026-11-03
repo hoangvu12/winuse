@@ -1,6 +1,8 @@
 package win
 
 import (
+	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -103,5 +105,33 @@ func TestHeldStateSetsOnlyTheModifiers(t *testing.T) {
 	}
 	if saved[vkControl] != 0 {
 		t.Error("heldState changed the saved state")
+	}
+}
+
+// The activation pair goes out under the foreground lock: lock, pair,
+// keys, undo, unlock, and the undo and unlock happen when the keys fail
+// too (a WPF App took the foreground during a posted chord's pair, e2e
+// live runs 2026-11-03).
+func TestPairUnderLockOrder(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		var steps []string
+		n, err := pairUnderLock(
+			func() func() {
+				steps = append(steps, "lock")
+				return func() { steps = append(steps, "unlock") }
+			},
+			func() { steps = append(steps, "on") },
+			func() { steps = append(steps, "off") },
+			func() (int, error) {
+				steps = append(steps, "keys")
+				if fail {
+					return 0, errors.New("PostMessage failed")
+				}
+				return 2, nil
+			})
+		want := []string{"lock", "on", "keys", "off", "unlock"}
+		if !slices.Equal(steps, want) || (err != nil) != fail || (!fail && n != 2) {
+			t.Errorf("fail=%v: %d, %v, steps %v; want steps %v", fail, n, err, steps, want)
+		}
 	}
 }

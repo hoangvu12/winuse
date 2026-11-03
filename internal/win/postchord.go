@@ -19,6 +19,14 @@ package win
 //     WM_NCACTIVATE 0), the saved state restored, and the thread detached
 //     on every exit path.
 //
+// While the activation pair is out, SetForegroundWindow is locked for
+// every other process (LockSetForegroundWindow, pairUnderLock): a WPF App
+// took the foreground during a posted Ctrl+S once the helper had just
+// injected input (4 of 6 full e2e runs, 2 of 2 in a reproduction; 0 of 2
+// with the lock, the binding firing every time; a pair without
+// WM_ACTIVATE did not help). The user's own input still moves the
+// foreground: Windows lifts the lock for it.
+//
 // Measured on the laptop (probes round 4, section 5): a Win32
 // TranslateAccelerator loop, WinForms ShortcutKeys, WPF KeyBindings (with
 // the pair) and a Win32 Alt+F menu (with the pair) all fired; the user's
@@ -48,9 +56,33 @@ import (
 )
 
 var (
-	procSetKeyboardState = user32.NewProc("SetKeyboardState")
-	procGetKeyboardState = user32.NewProc("GetKeyboardState")
+	procSetKeyboardState        = user32.NewProc("SetKeyboardState")
+	procGetKeyboardState        = user32.NewProc("GetKeyboardState")
+	procLockSetForegroundWindow = user32.NewProc("LockSetForegroundWindow")
 )
+
+const lsfwLock, lsfwUnlock = 1, 2 // LockSetForegroundWindow's LSFW_LOCK and LSFW_UNLOCK
+
+// lockForeground disables SetForegroundWindow for every other process
+// and returns the unlock. Without the right to lock (the helper did not
+// receive the last input) nothing is locked and the unlock does nothing.
+func lockForeground() (unlock func()) {
+	if r, _, _ := procLockSetForegroundWindow.Call(lsfwLock); r == 0 {
+		return func() {}
+	}
+	return func() { procLockSetForegroundWindow.Call(lsfwUnlock) }
+}
+
+// pairUnderLock runs body with the activation pair around it (on, then
+// off on every exit path) and SetForegroundWindow locked from before the
+// pair until after its undo.
+func pairUnderLock(lock func() (unlock func()), on, off func(), body func() (int, error)) (int, error) {
+	unlock := lock()
+	defer unlock()
+	on()
+	defer off()
+	return body()
+}
 
 const (
 	wmNcActivate  = 0x0086
@@ -215,16 +247,27 @@ func postChordOnThread(top, target uint64, p ChordPlan) (int, error) {
 	defer procSetKeyboardState.Call(uintptr(unsafe.Pointer(&saved)))
 
 	h := windows.HWND(top)
-	if p.Activate {
-		sendMessageTimeout(h, wmNcActivate, 1, 0, chordActivateTimeout)
-		sendMessageTimeout(h, wmActivate, waActive, 0, chordActivateTimeout)
-		sendMessageTimeout(h, wmSetFocus, 0, 0, chordActivateTimeout)
-		defer func() {
+	post := func() (int, error) { return postChordKeys(target, p) }
+	if !p.Activate {
+		return post()
+	}
+	return pairUnderLock(lockForeground,
+		func() {
+			sendMessageTimeout(h, wmNcActivate, 1, 0, chordActivateTimeout)
+			sendMessageTimeout(h, wmActivate, waActive, 0, chordActivateTimeout)
+			sendMessageTimeout(h, wmSetFocus, 0, 0, chordActivateTimeout)
+		},
+		func() {
 			sendMessageTimeout(h, wmKillFocus, 0, 0, chordActivateTimeout)
 			sendMessageTimeout(h, wmActivate, 0, 0, chordActivateTimeout)
 			sendMessageTimeout(h, wmNcActivate, 0, 0, chordActivateTimeout)
-		}()
-	}
+		},
+		post)
+}
+
+// postChordKeys posts the chord's key down, holds it, and posts the key
+// up, on the attached thread with the modifiers' state set.
+func postChordKeys(target uint64, p ChordPlan) (int, error) {
 	down, up := chordMessages(p, mapVirtualKeyScan)
 	if n, err := postAll(target, []postedMessage{down}); n == 0 {
 		if p.Activate {
