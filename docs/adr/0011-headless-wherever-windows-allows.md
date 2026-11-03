@@ -18,8 +18,10 @@ and the `--headed` retry unless the agent passed `--headed`. They no
 longer go Headed on their own.
 
 Amended on 2026-11-03 (desktop-parity ticket 11): Decision 2 gains
-`maximize-window`, the one Headed Window Action. See the amendment at
-the end.
+`maximize-window`, the one Headed Window Action; (headless-max ticket 19
+and desktop-parity ticket 23) Decision 4 routes `type-text` by a named
+Element too; (headless-max ticket 03) self-activation is reported after
+every Headless Action. See the amendments at the end.
 
 ## Context
 
@@ -81,8 +83,8 @@ The user asked for everything to be as headless as possible.
   temporary WS_EX_NOACTIVATE and disabling the Window around the call
   did not), and giving the foreground back would need
   SetForegroundWindow, which winuse lacks the right to call and which
-  would fight the user. The output reports it as
-  `ok (the App brought itself to the foreground)`. Measured (headless-max
+  would fight the user. The output reports it after `ok` as
+  `Note: the App brought itself to the foreground`. Measured (headless-max
   ticket 02, 2026-11-03): on its first restore, an App that has not been
   the foreground since it started gets the foreground from Windows,
   charmap and winuse's own test fixture alike. An App started in the

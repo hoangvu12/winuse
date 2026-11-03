@@ -29,7 +29,8 @@ different**; `--headed` restores Codex's behaviour for any Action.
 ticket 21).** Codex's activate-and-inject is winuse's Headed pipeline, and
 winuse runs it only when the agent passes `--headed`. An Action with no
 Headless or Posted route sent without it — a point with no usable Element,
-double/triple and right/middle clicks outside a Page, drag, hover, Raise,
+double/triple and right/middle clicks outside a Page or a Chromium or
+Electron Window, drag, hover, Raise,
 `press-key` and `type-text` with no Headless route, and a `tab switch`
 whose Tab the tab strip cannot select (headless-max 05) — is refused with "nothing was sent" and the exact
 `--headed` retry. `activate-window` keeps Codex's behaviour unflagged.
@@ -131,7 +132,7 @@ the one frame (Codex composites several `zIndex` layers).
 |---|---|---|---|
 | `window` | the Window to click in | `<window>` | matched |
 | `element_index` | the Element Index from the last state | the Element Index, or `name:`/`id:` references resolved against the latest Window State | matched (extended) |
-| (delivery) | activates the Window and injects a real pointer click | an Element click (left, single) is **Headless**: the first pattern the Element offers (Invoke → Toggle → SelectionItem.Select → Expand/Collapse → LegacyIAccessible default action), Toggle/Select/Expand/Collapse read back; none offered fails with "nothing was sent" and the `--headed` hint, never a silent switch. with `--headed`, every click is Codex's real click; without it, a left single click at `@x,y` clicks the target Window's own Element under the point Headless and names it in the `ok` (headless-max ticket 11), and double/triple and right/middle clicks outside a Page are refused with nothing sent and the `--headed` retry (ticket 21); `--post` posts any click to the classic control there instead, best effort (ticket 12) | intentionally different |
+| (delivery) | activates the Window and injects a real pointer click | an Element click (left, single) is **Headless**: the first pattern the Element offers (Invoke → Toggle → SelectionItem.Select → Expand/Collapse → LegacyIAccessible default action), Toggle/Select/Expand/Collapse read back; none offered fails with "nothing was sent" and the `--headed` hint, never a silent switch. with `--headed`, every click is Codex's real click; without it, a left single click at `@x,y` clicks the target Window's own Element under the point Headless and names it in the `ok` (headless-max ticket 11), and double/triple and right/middle clicks outside a Page or a Chromium or Electron Window (window messages there, ticket 20) are refused with nothing sent and the `--headed` retry (ticket 21); `--post` posts any click to the classic control there instead, best effort (ticket 12) | intentionally different |
 | `x`, `y` | window-relative **logical** pixels (the 175%-scaling offset bug) | `@x,y` in the latest screenshot's pixel space, mapped back to **physical** pixels, re-anchored to the Window's live bounds at action time | intentionally different |
 | `click_count` | 1 (single) or 2 (double); right double click is not supported | `--count 1|2|3`; non-left multi-clicks are refused with Codex's message | matched |
 | `mouse_button` | `left`/`right`/`middle`, aliases `l`/`r`/`m`; unknown → `unsupported mouse_button: <v>` | `--button left|middle|right` with the same `l`/`r`/`m` aliases and the same error | matched |
@@ -148,7 +149,7 @@ retried with `--headed`.
 
 | Parameter | Codex | winuse `press-key` | Status |
 |---|---|---|---|
-| `window` | the Window receiving the key | `<window>`; with `--headed` activated first, like every Headed Action. Without it, Return or Escape on a classic dialog and Page keys are Headless, keys into a Chromium or Electron Window without a Browser Connection go as window messages (headless-max ticket 20), `--post` posts, and any other key is refused with nothing sent and the `--headed` retry (ticket 21) | intentionally different |
+| `window` | the Window receiving the key | `<window>`; with `--headed` activated first, like every Headed Action. Without it, Return or Escape on a classic dialog, a chord the Window labels as a menu or ribbon shortcut (ticket 06) and Page keys are Headless, keys into a Chromium or Electron Window without a Browser Connection go as window messages (headless-max ticket 20), `--post` posts, and any other key is refused with nothing sent and the `--headed` retry (ticket 21) | intentionally different |
 | `key` | X keysym names and `+` chords (`Return`, `Control_L+a`, `Numpad_0`), aliases, whitespace around `+` ignored; unknown → `unsupported key: <name>` | the same names, aliases and chord delivery (all key-downs in order, key-ups in reverse, scan codes filled, extended keys flagged); the same error | matched |
 
 The Windows key differs in enforcement only: Codex's guidance forbids
@@ -228,7 +229,7 @@ from its clickable point, again only with `--headed`; and
 | `window` | the Window holding the Element | `<window>` | matched |
 | `element_index` | the Element to act on | the Element Index, a `name:`/`id:` reference, or `@x,y` (as set-value's) | matched (extended) |
 | `action` | case-insensitive; only `Raise`, `Scroll Up/Down/Left/Right`, `Expand`, `Collapse`; unknown → `unsupported secondary action: {action}; expected …` | the same set and the same error listing the expected names, **plus** the `Toggle`, `Select` and `ContextMenu` extensions (ContextMenu, never listed on an Element, opens its right-click menu Headless and names the menu's Window; headless-max 09) | matched (extended) |
-| (delivery) | activates the Window first | by Element Index or reference **Headless** (no activation), Toggle/Select/Expand/Collapse read back; `--headed` is Headed; `@x,y` is Headless on the Element under the point (ticket 11); Raise (a foreground operation) runs only with `--headed` and is refused with nothing sent without it (ticket 21) | intentionally different |
+| (delivery) | activates the Window first | by Element Index or reference **Headless** (no activation), Toggle/Select/Expand/Collapse read back; `--headed` is Headed; `@x,y` is Headless on the Element under the point (ticket 11); Raise (a foreground operation) runs only with `--headed` and is refused with nothing sent without it (ticket 21); ContextMenu is Headless where a menu opening reads back (classic, WinForms, WinUI, Chromium) and refused with the `--headed` retry on a WPF Element (ticket 09) | intentionally different |
 
 An action the Element does not offer fails listing the ones it does,
 probed live — so a changed Element says so.
@@ -237,11 +238,14 @@ probed live — so a changed Element says so.
 
 | Parameter | Codex | winuse `activate-window` | Status |
 |---|---|---|---|
-| `window` | the Window to foreground; "an optional escape hatch" because input methods activate automatically | the same: every Headed Action activates and verifies its target first (Headless ones never do); the command is the escape hatch, and restores a minimized Window that Headless Actions refuse | matched |
+| `window` | the Window to foreground; "an optional escape hatch" because input methods activate automatically | the same: every Headed Action activates and verifies its target first (Headless ones never do); the command is the escape hatch, and restores a minimized Window for what still refuses one (screenshots, keys, a Store App; headless-max 14) | matched |
 
 Activation uses the foreground-lock workarounds and refuses to
 un-maximize (Codex's bug); a Window blocked by its own modal fails
-naming the dialog.
+naming the dialog. A Headed Action waits while the user is typing, and
+afterwards gives back the user's foreground and cursor unless it left a
+menu or Window of its App open (multi-agent 08, ADR 0014); Codex leaves
+the Window in front.
 
 ## Cross-cutting behaviour
 
@@ -265,7 +269,8 @@ agent-desktop's `data.surfaces`); Codex finds a new Window only through
 the next `list_windows`. A Headless, Window or Page Action whose App took
 the foreground by itself ends with `Note: the App took the foreground`
 (headless-max 03); a Headed one never does, since it takes the foreground
-on purpose. **intentionally different**.
+on purpose, but one that keeps the foreground for a menu or Window it
+left open says so in a `Note:` (multi-agent 08). **intentionally different**.
 
 ### timeouts
 
@@ -293,7 +298,9 @@ message that the user stopped winuse and a stop-and-ask hint. The latch
 never leaks into the next command (winuse has no turn concept). With
 several agents (multi-agent 05, ADR 0014 Decision 5) one press also stops
 every command waiting for its turn, with "nothing was sent"; a command
-sent after the press runs.
+sent after the press runs. The user's own key press, click or wheel turn
+during a Headed Action stops it the same way, passing through to their
+app (multi-agent 08).
 **matched** for Headed Actions and any Batch with a Headed step. In a
 Headless Action or an all-Headless Batch the press still stops winuse
 (exit 130) but passes through to the user's app — winuse holds neither
