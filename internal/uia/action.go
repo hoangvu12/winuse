@@ -25,6 +25,23 @@ type Point struct{ X, Y int32 }
 // agent never read one).
 var ErrNoState = errors.New("no cached window state")
 
+// errNoState is ErrNoState for hwnd.
+func errNoState(hwnd uint64) error {
+	return fmt.Errorf("%w: window %d", ErrNoState, hwnd)
+}
+
+// NotReadByAgentError is ErrNoState for an Agent that has not read a
+// Window another Agent has read (multi-agent ticket 03, ADR 0014 Decision
+// 2): Window States are per Agent, so this Agent reads the Window before
+// it acts on it. errors.Is matches ErrNoState.
+type NotReadByAgentError struct{ WindowID uint64 }
+
+func (e *NotReadByAgentError) Error() string {
+	return fmt.Sprintf("window %d has no Window State read by this agent (another agent read it)", e.WindowID)
+}
+
+func (e *NotReadByAgentError) Unwrap() error { return ErrNoState }
+
 // ErrStale reports that an Element Index no longer resolves to a live
 // Element: the index is not in the Window's cached Window State, or the
 // Element behind it is gone. The recovery is always to read the Window
@@ -43,7 +60,7 @@ func (c *Client) ElementPoint(ctx context.Context, hwnd uint64, index int) (Poin
 	var pt Point
 	var jobErr error
 	err := c.Run(ctx, func(w *worker, _ *run) {
-		el, lerr := c.lookup(hwnd, index)
+		el, lerr := c.lookup(ctx, hwnd, index)
 		if lerr != nil {
 			jobErr = lerr
 			return
@@ -64,15 +81,17 @@ func (c *Client) ElementPoint(ctx context.Context, hwnd uint64, index int) (Poin
 	return pt, jobErr
 }
 
-// lookup resolves an Element Index of hwnd's latest Window State to its
-// live element handle, on the worker thread, AddRef'd for the caller (the
-// store's own reference can be released by a newer install while the
-// caller uses the Element; release it through the store when done). A
-// Window with no cached state fails as ErrNoState; an index beyond the
-// stored one as ErrStale (both with the read-the-state-again recovery,
-// mapped by the helper).
-func (c *Client) lookup(hwnd uint64, index int) (comPtr, error) {
-	el, ok := c.store.element(hwnd, index)
+// lookup resolves an Element Index of the requesting Agent's latest
+// Window State of hwnd to its live element handle, on the worker thread,
+// AddRef'd for the caller (the store's own reference can be released by a
+// newer install while the caller uses the Element; release it through the
+// store when done). A Window with no cached state for the Agent fails as
+// ErrNoState (NotReadByAgentError when another Agent read it); an index
+// beyond the stored one as ErrStale (both with the read-the-state-again
+// recovery, mapped by the helper).
+func (c *Client) lookup(ctx context.Context, hwnd uint64, index int) (comPtr, error) {
+	who := storeAgent(ctx)
+	el, ok := c.store.element(who, hwnd, index)
 	if ok && el == nil {
 		// A Page Element (splice.go): it has no UIA Element behind it.
 		return nil, fmt.Errorf("%w: element %d of window %d", ErrPageElement, index, hwnd)
@@ -80,10 +99,10 @@ func (c *Client) lookup(hwnd uint64, index int) (comPtr, error) {
 	if ok {
 		return el, nil
 	}
-	if c.store.has(hwnd) {
+	if c.store.has(who, hwnd) {
 		return nil, fmt.Errorf("%w: element %d is not in the cached Window State of window %d", ErrStale, index, hwnd)
 	}
-	return nil, fmt.Errorf("%w: window %d", ErrNoState, hwnd)
+	return nil, c.store.noState(who, hwnd)
 }
 
 // elementPoint computes the point to click for one live element, on the
@@ -145,13 +164,4 @@ func scrollIntoView(el comPtr) error {
 		return err
 	}
 	return nil
-}
-
-// has reports whether hwnd has a stored Window State (distinguishing a
-// Window with no state at all from an index beyond the stored one).
-func (s *store) has(hwnd uint64) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	_, ok := s.byHwnd[hwnd]
-	return ok
 }

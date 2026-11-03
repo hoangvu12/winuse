@@ -19,6 +19,7 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -137,4 +138,28 @@ func Resolve() Identity {
 		return Identity{}
 	}
 	return FromProcess(p, start)
+}
+
+// contextKey is the context key of a request's Agent.
+type contextKey struct{}
+
+// NewContext returns ctx carrying the Agent a request comes from.
+func NewContext(ctx context.Context, id Identity) context.Context {
+	return context.WithValue(ctx, contextKey{}, id)
+}
+
+// FromContext is the Agent a request comes from, or the default Agent
+// when ctx carries none.
+func FromContext(ctx context.Context) Identity {
+	if id, ok := ctx.Value(contextKey{}).(Identity); ok && id.ID != "" {
+		return id
+	}
+	return Identity{ID: DefaultID, Label: DefaultID}
+}
+
+// Key is the store key of the Agent a request comes from: its ID, or
+// DefaultID. Every per-Agent store (the Window States, the screenshot
+// mappings) keys its entries by it.
+func Key(ctx context.Context) string {
+	return FromContext(ctx).ID
 }

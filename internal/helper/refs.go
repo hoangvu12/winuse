@@ -9,6 +9,7 @@ package helper
 // is the uia Client's.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -68,11 +69,11 @@ func parseElementTarget(cmd string, index *int, ref string, point *protocol.Poin
 // The commands route a Page Element over the Browser Connection before
 // they get here (pageactions.go); one that still arrives, by either form,
 // is refused with nothing sent (refusePageElement).
-func (t elementTarget) resolve(s Services, w win.WindowInfo) (int, *Error) {
+func (t elementTarget) resolve(ctx context.Context, s Services, w win.WindowInfo) (int, *Error) {
 	index := -1
 	switch {
 	case t.ref != "":
-		i, rerr := resolveElementRef(s, w, t.ref)
+		i, rerr := resolveElementRef(ctx, s, w, t.ref)
 		if rerr != nil {
 			return i, rerr
 		}
@@ -82,7 +83,7 @@ func (t elementTarget) resolve(s Services, w win.WindowInfo) (int, *Error) {
 	default:
 		return -1, nil
 	}
-	if perr := refusePageElement(s, w, index); perr != nil {
+	if perr := refusePageElement(ctx, s, w, index); perr != nil {
 		return 0, perr
 	}
 	return index, nil
@@ -97,7 +98,7 @@ type ElementResolver interface {
 	// "id:<AutomationId>") against hwnd's latest Window State. Exactly one
 	// match resolves to its Element Index; several matches and none are
 	// errors carrying the candidates, never a guess.
-	ResolveElementRef(hwnd uint64, ref string) (int, error)
+	ResolveElementRef(ctx context.Context, hwnd uint64, ref string) (int, error)
 }
 
 // resolveElementRef is the shared step body every Element-taking Action
@@ -105,12 +106,12 @@ type ElementResolver interface {
 // Action acts on, exactly as if the agent had passed it. Resolution
 // failures follow ticket 03's candidate pattern: ambiguity lists the
 // matching Elements' lines, a miss points at a fresh Window State read.
-func resolveElementRef(s Services, w win.WindowInfo, ref string) (int, *Error) {
+func resolveElementRef(ctx context.Context, s Services, w win.WindowInfo, ref string) (int, *Error) {
 	resolver, ok := s.Actions.(ElementResolver)
 	if !ok {
 		return 0, Fail("element references are unavailable: no UIA client", "")
 	}
-	index, err := resolver.ResolveElementRef(w.ID, ref)
+	index, err := resolver.ResolveElementRef(ctx, w.ID, ref)
 	if err != nil {
 		return 0, refError(err, w)
 	}
@@ -137,9 +138,25 @@ func refError(err error, w win.WindowInfo) *Error {
 			"an Element Reference is an Element Index, name:<text>, id:<AutomationId> or @x,y (the latest screenshot's pixels)")
 	}
 	if errors.Is(err, uia.ErrNoState) {
-		return Fail(fmt.Sprintf("no cached Window State is available for window %d", w.ID),
-			"run winuse get-window-state "+strconv.FormatUint(w.ID, 10)+
-				" to read the Window's Elements before acting on them")
+		return noStateError(err, w)
 	}
 	return Fail(err.Error(), "")
+}
+
+// noStateError maps an Element Reference into a Window with no Window
+// State for the requesting Agent. Window States are per Agent (ADR 0014
+// Decision 2, multi-agent ticket 03), so when another Agent read the
+// Window the failure says so plainly: this Agent reads it first. An Agent
+// whose identity changes on every command (a launcher between the Harness
+// and winuse that the identity walk does not skip) meets this on every
+// Action; the hint points at WINUSE_AGENT for that case.
+func noStateError(err error, w win.WindowInfo) *Error {
+	id := strconv.FormatUint(w.ID, 10)
+	var other *uia.NotReadByAgentError
+	if errors.As(err, &other) {
+		return Fail(fmt.Sprintf("window %d has not been read by this agent; another agent read it, and each agent keeps its own Window State", w.ID),
+			"run winuse get-window-state "+id+" first, then use the Element Indexes it prints; if this happens on every command, set WINUSE_AGENT to one name for all your commands (winuse status lists the agents it sees)")
+	}
+	return Fail(fmt.Sprintf("no cached Window State is available for window %d", w.ID),
+		"run winuse get-window-state "+id+" to read the Window's Elements before acting on them")
 }

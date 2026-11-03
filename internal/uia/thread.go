@@ -399,7 +399,7 @@ func (c *Client) CaptureFrame(ctx context.Context, hwnd uint64, title, app strin
 		runErr := c.Run(ctx, func(w *worker, r *run) {
 			res, jobErr = w.thread.capture(uintptr(hwnd), title, app, cfg)
 			if jobErr == nil {
-				c.installRead(hwnd, seq, res, r)
+				c.installRead(storeAgent(ctx), hwnd, seq, res, r)
 			}
 		})
 		if runErr != nil {
@@ -425,7 +425,7 @@ func (c *Client) CaptureFrame(ctx context.Context, hwnd uint64, title, app strin
 // the read releases its own Elements instead, whatever the stored
 // generation. The abandoned flag and the install decision share the run's
 // mutex, so the mark cannot land between the check and the install.
-func (c *Client) installRead(hwnd uint64, seq uint64, res *captureResult, r *run) {
+func (c *Client) installRead(agent string, hwnd uint64, seq uint64, res *captureResult, r *run) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.abandoned {
@@ -434,7 +434,7 @@ func (c *Client) installRead(hwnd uint64, seq uint64, res *captureResult, r *run
 		}
 		return
 	}
-	c.store.install(hwnd, seq, res.live, res.tree.Elements)
+	c.store.install(agent, hwnd, seq, res.live, res.tree.Elements)
 }
 
 // responseMargin is kept between the walk's budget and the request deadline
@@ -461,130 +461,4 @@ func walkConfig(ctx context.Context, budget time.Duration) WalkConfig {
 		cfg.Budget = time.Millisecond // a non-positive budget still walks the root
 	}
 	return cfg
-}
-
-// store keeps the live Elements behind each Window's latest Window State.
-// It is client-level (not worker-level): live UIA elements belong to the
-// process's MTA, so they stay valid when a wedged worker is replaced. All
-// COM calls on them still go through Run, which guarantees a live worker.
-//
-// Replacements are generation-aware: every read takes a sequence number
-// when it starts (beginRead) and may install its Elements only when it is
-// newer than what is stored (install). A read whose job completes after a
-// newer read stored its Elements — the wedged-worker case, where an
-// abandoned job's provider call eventually returns late — releases its own
-// Elements instead, so it can neither clobber the newer Window State the
-// agent actually saw nor release that state's Elements under a running
-// Action resolving an Element Index. Abandoned runs are refused outright
-// (installRead, finding 5).
-//
-// Hand-outs are AddRef'd (element): a newer install releases only the
-// stored reference, so an Element an Action is using cannot be freed
-// under it; the Action releases its own reference on the worker thread
-// when it is done (finding 4).
-type store struct {
-	mu      sync.Mutex
-	byHwnd  map[uint64]*windowState
-	next    uint64       // read sequence counter
-	addRef  func(comPtr) // addRef, injectable for tests
-	release func(comPtr) // release, injectable for tests
-}
-
-// windowState is one Window's stored live Elements, the Window State
-// they back (its Elements, the name:/id: reference space — ticket 11),
-// and the read that produced them.
-type windowState struct {
-	seq      uint64
-	elems    []comPtr
-	elements []wstate.Element
-	origins  map[int]any // the Page Elements' origins by Element Index (splice.go); nil for a UIA-only read
-}
-
-func newStore(addRef, release func(comPtr)) *store {
-	return &store{byHwnd: map[uint64]*windowState{}, addRef: addRef, release: release}
-}
-
-// beginRead allocates the sequence number of a tree read that is starting.
-func (s *store) beginRead() uint64 {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.next++
-	return s.next
-}
-
-// install stores elems (and the Window State elements they back) as
-// hwnd's live Elements when seq is newer than the stored read's,
-// releasing the previous Elements. A superseded read (an abandoned
-// worker's job completing after a newer read) has its elems released
-// instead; the newer Window State is left untouched. Callers run on a
-// COM thread — the worker whose walk produced the Elements.
-func (s *store) install(hwnd uint64, seq uint64, elems []comPtr, elements []wstate.Element) {
-	s.mu.Lock()
-	st := s.byHwnd[hwnd]
-	if st != nil && seq <= st.seq {
-		s.mu.Unlock()
-		for _, p := range elems {
-			s.release(p)
-		}
-		return
-	}
-	var old []comPtr
-	if st != nil {
-		old = st.elems
-	}
-	if len(elems) == 0 {
-		delete(s.byHwnd, hwnd)
-	} else {
-		s.byHwnd[hwnd] = &windowState{seq: seq, elems: elems, elements: elements}
-	}
-	s.mu.Unlock()
-	for _, p := range old {
-		s.release(p)
-	}
-}
-
-// element returns the live element for an Element Index of hwnd's latest
-// Window State, AddRef'd for the caller: a newer install releases the
-// stored reference, and without a reference of its own the caller's
-// Element could be freed while it still uses it. The caller releases it
-// when done (on the worker thread, through the same store).
-func (s *store) element(hwnd uint64, index int) (comPtr, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	st := s.byHwnd[hwnd]
-	if st == nil || index < 0 || index >= len(st.elems) {
-		return nil, false
-	}
-	el := st.elems[index]
-	if el != nil {
-		s.addRef(el)
-	}
-	return el, true
-}
-
-// state returns the Elements of hwnd's latest stored Window State — the
-// space name:/id: references resolve against (ticket 11). Pure metadata:
-// no COM, no worker; the live Element behind a resolved Index is probed
-// by the Action's own step.
-func (s *store) state(hwnd uint64) ([]wstate.Element, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	st := s.byHwnd[hwnd]
-	if st == nil {
-		return nil, false
-	}
-	return st.elements, true
-}
-
-// releaseAll drops every stored Window. Called on the worker thread.
-func (s *store) releaseAll() {
-	s.mu.Lock()
-	all := s.byHwnd
-	s.byHwnd = map[uint64]*windowState{}
-	s.mu.Unlock()
-	for _, st := range all {
-		for _, p := range st.elems {
-			s.release(p)
-		}
-	}
 }

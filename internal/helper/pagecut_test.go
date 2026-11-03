@@ -277,7 +277,7 @@ func TestBrowserWalkLeavesTheDocumentOut(t *testing.T) {
 				t.Fatal(err)
 			}
 			for i := range m.Origins {
-				o, perr := pageOrigin(Services{Actions: trees}, browserWindow(), m.Doc+1+i)
+				o, perr := pageOrigin(context.Background(), Services{Actions: trees}, browserWindow(), m.Doc+1+i)
 				if perr != nil || o == nil || o.BackendNodeID != m.Origins[i].BackendNodeID || o.DocIndex != 8 {
 					t.Errorf("%s: index %d origin %+v, %v", name, m.Doc+1+i, o, perr)
 				}
@@ -291,13 +291,13 @@ func TestBrowserWalkLeavesTheDocumentOut(t *testing.T) {
 	if _, cmdErr := runCommand(t, CommandsWith(s), "get-window-state", windowRef{Window: "301"}); cmdErr != nil {
 		t.Fatal(cmdErr.Error())
 	}
-	if i, err := trees.ResolveElementRef(browserWindowID, "name:Email"); err != nil || i != 10 {
+	if i, err := trees.ResolveElementRef(context.Background(), browserWindowID, "name:Email"); err != nil || i != 10 {
 		t.Errorf("name:Email = %d, %v", i, err)
 	}
-	if i, err := trees.ResolveElementRef(browserWindowID, "name:Cancel"); err != nil || i != 17 {
+	if i, err := trees.ResolveElementRef(context.Background(), browserWindowID, "name:Cancel"); err != nil || i != 17 {
 		t.Errorf("name:Cancel (the infobar, after the Page) = %d, %v", i, err)
 	}
-	if _, perr := pageOrigin(Services{Actions: trees}, browserWindow(), 18); perr == nil {
+	if _, perr := pageOrigin(context.Background(), Services{Actions: trees}, browserWindow(), 18); perr == nil {
 		t.Error("an index past the Window State resolves")
 	}
 }
@@ -410,7 +410,7 @@ func TestBrowserWalkSupersededSpliceReadsTheWindowWhole(t *testing.T) {
 	if len(trees.reads) != 2 || trees.reads[0].cut != 8 || trees.reads[1].frame || !trees.reads[1].readUnder() {
 		t.Errorf("reads %+v", trees.reads)
 	}
-	if o, err := pageOrigin(Services{Actions: trees}, browserWindow(), 10); err != nil || o != nil {
+	if o, err := pageOrigin(context.Background(), Services{Actions: trees}, browserWindow(), 10); err != nil || o != nil {
 		t.Errorf("the whole read is stored, UIA only: %+v, %v", o, err)
 	}
 }

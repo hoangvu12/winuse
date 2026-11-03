@@ -34,6 +34,9 @@ import (
 	"image"
 	"math"
 	"sync"
+	"time"
+
+	"github.com/hoangvu12/winuse/internal/agent"
 )
 
 // MaxLongEdge is the model-friendly long-edge cap for screenshots
@@ -139,33 +142,103 @@ func (m Mapping) Contains(x, y int) bool {
 	return x >= 0 && y >= 0 && x < m.Width && y < m.Height
 }
 
-// Store keeps each Window's latest screenshot Mapping. `@x,y` references
-// and zoom regions are defined in the latest screenshot's coordinate space
-// (spec), so the helper records one Mapping per Window and every new
-// screenshot replaces it — like the live-Element store, but pure data: no
+// Store keeps each Agent's latest screenshot Mapping of each Window.
+// `@x,y` references and zoom regions are defined in the latest
+// screenshot's coordinate space (spec), so the helper records one Mapping
+// per Agent and Window, and every new screenshot that Agent takes of the
+// Window replaces it (multi-agent ticket 03: another Agent's screenshot
+// never moves this Agent's points). Requests that name no Agent share the
+// default Agent's. Like the live-Element store, but pure data: no
 // handles, no COM, safe to construct and inspect in offline tests.
+//
+// Memory (ADR 0014, Consequences): an Agent other than the default one
+// idle past Idle loses its Mappings, and at most maxMappings are kept,
+// the least recently recorded dropped first.
 type Store struct {
-	mu     sync.Mutex
-	byHwnd map[uint64]Mapping
+	mu   sync.Mutex
+	maps map[storeKey]record
+	used map[string]time.Time // each Agent's last use
+
+	Now  func() time.Time // the clock; nil is time.Now
+	Idle time.Duration    // an Agent idle this long loses its Mappings; 0 never
 }
+
+// storeKey is one Agent's Window.
+type storeKey struct {
+	agent string
+	hwnd  uint64
+}
+
+// record is one stored Mapping and when it was recorded.
+type record struct {
+	m  Mapping
+	at time.Time
+}
+
+// maxMappings caps the Mappings kept across Agents.
+const maxMappings = 256
+
+// defaultIdle is how long an Agent may stay idle before its Mappings go:
+// the helper's default idle period.
+const defaultIdle = 5 * time.Minute
 
 // NewStore creates an empty store.
 func NewStore() *Store {
-	return &Store{byHwnd: map[uint64]Mapping{}}
+	return &Store{maps: map[storeKey]record{}, used: map[string]time.Time{}, Idle: defaultIdle}
 }
 
-// Record remembers m as the Mapping of hwnd's latest screenshot.
-func (s *Store) Record(hwnd uint64, m Mapping) {
-	s.mu.Lock()
-	s.byHwnd[hwnd] = m
-	s.mu.Unlock()
+func (s *Store) now() time.Time {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return time.Now()
 }
 
-// Lookup returns the Mapping of hwnd's latest screenshot, and whether one
-// was ever recorded in this helper.
-func (s *Store) Lookup(hwnd uint64) (Mapping, bool) {
+// Record remembers m as the Mapping of the Agent's latest screenshot of
+// hwnd.
+func (s *Store) Record(agentID string, hwnd uint64, m Mapping) {
 	s.mu.Lock()
-	m, ok := s.byHwnd[hwnd]
-	s.mu.Unlock()
-	return m, ok
+	defer s.mu.Unlock()
+	now := s.now()
+	key := storeKey{agentID, hwnd}
+	s.maps[key] = record{m: m, at: now}
+	s.used[agentID] = now
+	if s.Idle > 0 {
+		cutoff := now.Add(-s.Idle)
+		for a, at := range s.used {
+			if a == agent.DefaultID || a == agentID || !at.Before(cutoff) {
+				continue
+			}
+			for k := range s.maps {
+				if k.agent == a {
+					delete(s.maps, k)
+				}
+			}
+			delete(s.used, a)
+		}
+	}
+	for len(s.maps) > maxMappings {
+		var oldest storeKey
+		var oldestAt time.Time
+		found := false
+		for k, r := range s.maps {
+			if k != key && (!found || r.at.Before(oldestAt)) {
+				oldest, oldestAt, found = k, r.at, true
+			}
+		}
+		if !found {
+			break
+		}
+		delete(s.maps, oldest)
+	}
+}
+
+// Lookup returns the Mapping of the Agent's latest screenshot of hwnd,
+// and whether that Agent recorded one in this helper.
+func (s *Store) Lookup(agentID string, hwnd uint64) (Mapping, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, ok := s.maps[storeKey{agentID, hwnd}]
+	s.used[agentID] = s.now()
+	return r.m, ok
 }

@@ -971,14 +971,14 @@ func TestPageOnlyStepsAreHeadless(t *testing.T) {
 	w := tabTestWindows[0]
 	raw := func(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
 	for _, kind := range []string{"navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval"} {
-		if !r.svc.stepHeadless(kind, raw(map[string]any{}), &w) {
+		if !r.svc.stepHeadless(context.Background(), kind, raw(map[string]any{}), &w) {
 			t.Errorf("%s is not Headless", kind)
 		}
 	}
-	if r.svc.stepHeadless("hover", raw(protocol.HoverArgs{X: 1, Y: 2}), &w) || r.svc.stepHeadless("drag", raw(protocol.DragArgs{ToX: 3}), &w) {
+	if r.svc.stepHeadless(context.Background(), "hover", raw(protocol.HoverArgs{X: 1, Y: 2}), &w) || r.svc.stepHeadless(context.Background(), "drag", raw(protocol.DragArgs{ToX: 3}), &w) {
 		t.Error("a point form is Headless")
 	}
-	if !r.svc.stepHeadless("hover", raw(protocol.HoverArgs{ElementIndex: idx(4)}), &w) || !r.svc.stepHeadless("drag", raw(protocol.DragArgs{FromRef: "name:a", ToX: 3}), &w) {
+	if !r.svc.stepHeadless(context.Background(), "hover", raw(protocol.HoverArgs{ElementIndex: idx(4)}), &w) || !r.svc.stepHeadless(context.Background(), "drag", raw(protocol.DragArgs{FromRef: "name:a", ToX: 3}), &w) {
 		t.Error("a Page Element form is not Headless")
 	}
 	r.waitAfter = 1
