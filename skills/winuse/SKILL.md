@@ -594,6 +594,12 @@ effort.
 Use `--post` for a key, a chord or plain text on a Window with no Headless
 route, when the user's foreground matters more than certainty.
 
+Some Apps drop characters typed fast. `type-text <window> --interval-ms 50
+<text>` pauses that many milliseconds (0 to 1000) between characters
+when the text goes key by key, with `--headed` or `--post`; it sits with
+`--post` or `--into` right after the Window. A route that puts the text in
+at once ignores it, and its `ok` says so.
+
 ## Run a menu command
 
 ```
@@ -1092,7 +1098,7 @@ zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right] [--post]
 set-value <window> <ref> <value|on|off|item name>
 perform-secondary-action <window> <ref> <action>   # Raise, Scroll Up/Down/Left/Right, Expand, Collapse, Toggle, Select
-type-text <window> [--post | --into <ref>] <text>
+type-text <window> [--post | --into <ref>] [--interval-ms <n>] <text>
 press-key <window> <key> [--post] [--force]
 select-text <window> <ref> <start> <length> | select-text <window> <ref> all
 invoke-menu <window> "<menu> > <item>"   # a classic menu bar command, Headless

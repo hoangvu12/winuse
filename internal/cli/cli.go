@@ -135,7 +135,7 @@ commands:
                                --post (post the click to the classic
                                control there without the foreground: best
                                effort, the app may ignore it)
-  type-text <window> [--post | --into <element index | name: | id:>] <text>
+  type-text <window> [--post | --into <element index | name: | id:>] [--interval-ms <n>] <text>
                                type Unicode text into the Window's focused
                                Element (headless into a classic edit control
                                such as Notepad's or a Win32 dialog's).
@@ -148,7 +148,11 @@ commands:
                                covered Notepad's editor too) or a Page
                                field; any other Element only with --headed
                                (click it, then type), otherwise refused with
-                               nothing sent
+                               nothing sent. --interval-ms, also right after
+                               the Window, pauses that many milliseconds
+                               (0 to 1000) between characters when the text
+                               is typed key by key (--headed, --post), for
+                               Apps that drop fast input
   press-key <window> <key> [--post] [--force]
                                press a key or key combination by Codex's key
                                names, e.g. Return, Tab, Control_L+a, Numpad_0

@@ -430,6 +430,10 @@ type TypeTextArgs struct {
 	Post      bool   `json:"post,omitempty"`       // Posted Keys: post WM_CHAR to the Window's focused control (ADR 0011, Decision 5)
 	IntoIndex *int   `json:"into_index,omitempty"` // type into this Element, from the Window's latest Window State
 	IntoRef   string `json:"into_ref,omitempty"`   // name:<text> or id:<AutomationId>: type into this Element
+	// IntervalMS pauses this long between characters on the routes that
+	// type character by character (Headed, Posted); 0 to 1000
+	// (desktop-parity ticket 23).
+	IntervalMS int `json:"interval_ms,omitempty"`
 }
 
 // PressKeyArgs are press-key's arguments — Codex's press_key parameters:
