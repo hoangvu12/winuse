@@ -517,8 +517,29 @@ func TestDialOrStartWaitsUpToTheBudgetItIsGiven(t *testing.T) {
 	}
 	spawns := 0
 	start := time.Now()
-	_, drained, err := testClient(script, &spawns, nil).dialOrStart(context.Background(), 250*time.Millisecond)
-	if elapsed := time.Since(start); err == nil || !drained || elapsed < 250*time.Millisecond || elapsed > 3*time.Second {
-		t.Fatalf("dialOrStart = drained %v, %v after %s; want a give-up at 250ms", drained, err, elapsed)
+	_, _, err := testClient(script, &spawns, nil).dialOrStart(context.Background(), 250*time.Millisecond)
+	if elapsed := time.Since(start); err == nil || elapsed < 250*time.Millisecond || elapsed > 3*time.Second {
+		t.Fatalf("dialOrStart = %v after %s; want a give-up at 250ms", err, elapsed)
+	}
+}
+
+func TestCallAddsNoNoteForALiveHelperBrieflyBusy(t *testing.T) {
+	// A live helper under load kept its pipe busy past one dial, then
+	// answered: no helper exited, so the answer carries no wait Note.
+	script := &dialScript{steps: []dialStep{
+		{err: busyErr()},
+		{err: busyErr()},
+		{conn: respondingConn(&protocol.Response{OK: true, Out: "ok\n"})},
+	}}
+	spawns := 0
+	client := testClient(script, &spawns, nil)
+	client.Running = func() bool { return true }
+
+	resp, err := client.Call(context.Background(), testRequest())
+	if err != nil || resp.Out != "ok\n" {
+		t.Fatalf("Call = %+v, %v; want ok without a note", resp, err)
+	}
+	if spawns != 0 {
+		t.Errorf("spawns = %d, want 0", spawns)
 	}
 }

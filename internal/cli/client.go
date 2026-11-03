@@ -252,14 +252,18 @@ const exitPoll = 50 * time.Millisecond
 // waitExit waits, until deadline, for a helper on its way out to exit
 // (its pipe gone and the mutex free: conn and err are nil, spawn one), or
 // for a helper's pipe to come up (another CLI started one: conn). err is
-// the dial error that found it exiting.
+// the dial error that found it exiting. drained reports the pipe was busy
+// and then went away: a helper finished its requests and exited. A pipe
+// that answers after a busy dial, never gone, was a live helper under
+// load, and drained is false.
 func (c *Client) waitExit(ctx context.Context, err error, deadline time.Time) (conn net.Conn, drained bool, _ error) {
+	busy, gone := false, false
 	for {
-		if isBusy(ctx, err) {
-			drained = true
-		}
+		busy = busy || isBusy(ctx, err)
+		gone = gone || errors.Is(err, ErrNoHelper)
+		drained = busy && gone
 		if time.Now().After(deadline) {
-			return nil, drained, exitWaitError(drained)
+			return nil, drained, exitWaitError(busy)
 		}
 		select {
 		case <-ctx.Done():
@@ -272,7 +276,7 @@ func (c *Client) waitExit(ctx context.Context, err error, deadline time.Time) (c
 		}
 		if !c.exiting(ctx, err) {
 			if errors.Is(err, ErrNoHelper) {
-				return nil, drained, nil // gone: spawn a helper
+				return nil, busy, nil // gone: spawn a helper
 			}
 			return nil, drained, err
 		}
@@ -280,10 +284,11 @@ func (c *Client) waitExit(ctx context.Context, err error, deadline time.Time) (c
 }
 
 // exitWaitError is the failure of a request whose budget ran out while it
-// waited for the old helper to exit: nothing reached a helper.
-func exitWaitError(drained bool) error {
+// waited for the old helper to exit: nothing reached a helper. busy: its
+// pipe was seen busy, so it was still running requests.
+func exitWaitError(busy bool) error {
 	msg := "the old winuse helper did not exit before this request's budget expired; nothing was sent"
-	if drained {
+	if busy {
 		msg = "the old winuse helper was still finishing its requests in flight when this request's budget expired; nothing was sent"
 	}
 	return &exitError{msg: msg, hint: "retry once it has exited; winuse then starts a helper of its own build", code: 1}
