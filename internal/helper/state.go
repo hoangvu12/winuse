@@ -258,6 +258,15 @@ type Services struct {
 	// the Desktop commands (the clipboard's): a paste in a Batch must not
 	// see the clipboard change halfway.
 	actionGate chan struct{}
+
+	// The Window identity check (multi-agent ticket 09, identity.go):
+	// WindowIdentity reads what a Window ID names now (its process, that
+	// process's start time, its class); windowIDs records what each one
+	// named when it was listed or read, shared by every agent. Nil
+	// WindowIdentity falls back to win.WindowIdentity, which refuses inside
+	// an offline test binary (nothing is then checked); tests fake it.
+	WindowIdentity func(hwnd uint64) (win.WindowOwner, bool)
+	windowIDs      *windowRecords
 }
 
 // CommandsWith builds the command registry over the given services.
@@ -349,7 +358,11 @@ func CommandsWith(s Services) map[string]Command {
 	out := make(map[string]Command, len(cmds))
 	for name, cmd := range cmds {
 		if !observationOnlyCommand(name) {
-			cmd = s.serialized(s.reportAfter(name, cmd))
+			// The Window identity check runs once the command holds the
+			// gate, before anything else looks at the Window (identity.go).
+			cmd = s.serialized(s.checkWindow(s.reportAfter(name, cmd)))
+		} else {
+			cmd = s.recordReads(name, cmd) // identity.go: what a read Window ID names
 		}
 		if name != StatusCommand {
 			cmd = s.tracked(name, cmd)
@@ -637,6 +650,12 @@ func defaultServices(s Services) Services {
 	}
 	if s.Clipboard == nil {
 		s.Clipboard = win.NewClipboard()
+	}
+	if s.WindowIdentity == nil {
+		s.WindowIdentity = win.WindowIdentity
+	}
+	if s.windowIDs == nil {
+		s.windowIDs = newWindowRecords()
 	}
 	if s.actionGate == nil {
 		s.actionGate = make(chan struct{}, 1)
