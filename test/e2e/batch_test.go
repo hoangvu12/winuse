@@ -272,6 +272,30 @@ func TestBatchRunsPastAFailedStep(t *testing.T) {
 	})
 }
 
+func TestBatchPausesBetweenTwoActions(t *testing.T) {
+	// A bare number is a pause step (desktop-parity ticket 03): the Batch
+	// clicks, pauses, then sets the text, and lasts at least the pause.
+	optIn(t)
+	fix, window := startFixtureWithState(t)
+
+	const pause = 800 * time.Millisecond
+	start := time.Now()
+	stdout, stderr, exit := runBatch(t, []string{
+		window,
+		"click", "id:button-click",
+		"then", "wait", strconv.Itoa(int(pause.Milliseconds())),
+		"then", "set-value", "id:text-field", "after the pause",
+	})
+	took := time.Since(start)
+	assertBatchOK(t, "batch click, pause, set-value", stdout, stderr, exit, 3)
+	if took < pause {
+		t.Errorf("the Batch took %s, less than its %s pause", took, pause)
+	}
+	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool {
+		return s.LastButton == "Click Me" && s.Text == "after the pause"
+	})
+}
+
 func TestBatchStopOnErrorStopsAtTheFirstFailure(t *testing.T) {
 	optIn(t)
 	fix, window := startFixtureWithState(t)
@@ -306,8 +330,8 @@ func TestBatchStopOnErrorStopsAtTheFirstFailure(t *testing.T) {
 func TestBatchFromStdin(t *testing.T) {
 	// `winuse batch -` (desktop-parity ticket 20): the Window and the Batch
 	// flags on the first line, one step per line, a comment and a blank
-	// line skipped, and quoted text that holds `then` and quotes arrives
-	// whole.
+	// line skipped, a pause line between two Actions, and quoted text that
+	// holds `then` and quotes arrives whole.
 	optIn(t)
 	fix, window := startFixtureWithState(t)
 
@@ -316,6 +340,7 @@ func TestBatchFromStdin(t *testing.T) {
 	cmd.Env = append(os.Environ(), "WINUSE_HELPER_IDLE="+e2eIdle)
 	cmd.Stdin = strings.NewReader("# the e2e stdin Batch\r\n" + window + " --stop-on-error\r\n\r\n" +
 		"click id:button-click\r\n" +
+		"wait 300\r\n" +
 		`set-value id:text-field "from stdin: then \"quoted\""` + "\r\n")
 	var stdout, stderr strings.Builder
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -327,7 +352,7 @@ func TestBatchFromStdin(t *testing.T) {
 		}
 		exit = exitErr.ExitCode()
 	}
-	assertBatchOK(t, "batch - from stdin", stdout.String(), stderr.String(), exit, 2)
+	assertBatchOK(t, "batch - from stdin", stdout.String(), stderr.String(), exit, 3)
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool {
 		return s.LastButton == "Click Me" && s.Text == text
 	})
