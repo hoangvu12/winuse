@@ -359,6 +359,12 @@ still the foreground window afterwards. The shared helpers are in
   toggles the checkbox and `set-value` fills the text field, while Element
   `scroll` and the screenshot are refused with "is minimized". The Window
   stays minimized, and the foreground and the pointer do not change.
+- `TestWindowStatesArePerAgent` (`agents_test.go`, multi-agent ticket 03):
+  two Agents named by `WINUSE_AGENT` (alpha and beta) against one fixture
+  through one helper. After alpha reads the Window, beta's click is refused
+  with "has not been read by this agent" and nothing sent; after beta
+  reads too, alpha's click still lands on alpha's Element, then beta's; the
+  foreground stays put; `winuse status` lists both Agents.
 - `TestSetValueOnOffTheCheckbox`: `set-value` with `on`, `ON`, `checked`,
   `off`, `unchecked`, `True` and `false` on the covered checkbox. Setting
   the state it already has sends nothing (the fixture's generation stays
@@ -382,6 +388,12 @@ still the foreground window afterwards. The shared helpers are in
   it when it has not been the foreground since it started, and whether a
   process the test starts takes the foreground at launch depends on the
   desktop's input state, so it skipped on most runs.
+- `TestMaximizeWindowNeedsHeaded` (`window_actions_test.go`,
+  desktop-parity ticket 11): on a covered fixture, `maximize-window`
+  without `--headed` is refused with "nothing was sent" and the `--headed`
+  retry, leaving the fixture at its size and the cover in front;
+  `--headed maximize-window` brings the fixture to the foreground and
+  maximizes it (IsZoomed), and `restore-window` returns it to its size.
 - `TestLaunchAppKeepsTheForeground`, `TestLaunchAppMinimized` and
   `TestLaunchAppNotepadReportsTheForeground` (`launch_noactivate_test.go`,
   headless-max ticket 01): a cover fixture is made the foreground with
@@ -521,6 +533,26 @@ clipboard history (Win+V) when that is on.
 ```
 set WINUSE_E2E=1
 go test -tags e2e -v -run "^TestClipboard$" ./test/e2e
+```
+
+## The display tests
+
+`displays_test.go` (desktop-parity ticket 08) launches nothing and sends
+no input. `TestListDisplaysAndCapturePrimary` checks `list-displays`
+against the system's own metrics, read per-monitor DPI aware: as many
+lines as `SM_CMONITORS`, one primary, numbered 0 and at 0,0 with the
+`SM_CXSCREEN` x `SM_CYSCREEN` size. Then `screenshot --display 0` must
+print the Screenshot line for that rectangle and the no-`@x,y` note, save
+a JPEG of the printed size with its long edge at most 1568 px and not one
+colour, log a Windows.Graphics.Capture display capture (unless this
+Windows has none), and leave the foreground where it was. A display past
+the last one is refused. `TestDisplayScreenshotFallsBackToTheScreenRegion`
+restarts the helper with `WINUSE_WGC=off`, so the display is captured
+through its screen region, and restarts it again afterwards.
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -run "Displays|DisplayScreenshot" ./test/e2e
 ```
 
 ## The browser merge probe
@@ -757,12 +789,17 @@ through UI Automation" note), a `set-value` on it must answer `ok`, and
 throughout. `TestLaunchAppCDPOnWebView2` needs `WINUSE_E2E_WEBVIEW2`, an
 executable that hosts a WebView2 control (it skips without it): the
 launch must print the WebView2 note, and the covered Window's State must
-come over CDP; the test logs it. Both end the App, the fixture and the
-helper.
+come over CDP; the test logs it. `TestAttachToRunningElectron` starts
+the same electron.exe the plain way (no debugging port), covers it, and
+runs `winuse browser attach <window>`: the Window State must then show
+the field read over CDP, `set-value` must be read back by `eval`, and
+`winuse browser detach <window>` must answer `ok (detached` after which
+`eval` fails. It sends the Node debug signal into the test's own Electron
+process only. All three end the App, the fixture and the helper.
 
 ```
 set WINUSE_E2E=1
 set WINUSE_E2E_ELECTRON=C:\electron-dist\electron-vX.Y.Z-win32-x64\electron.exe
 set WINUSE_E2E_WEBVIEW2=C:\path\to\WebView2App.exe
-go test -tags e2e -v -timeout 5m -run TestLaunchAppCDP ./test/e2e
+go test -tags e2e -v -timeout 5m -run "TestLaunchAppCDP|TestAttachToRunningElectron" ./test/e2e
 ```

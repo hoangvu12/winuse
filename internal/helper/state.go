@@ -171,6 +171,10 @@ type Services struct {
 	Foreground        func() uint64                                // GetForegroundWindow: restore-window's and launch-app's self-activation check
 	WindowPID         func(hwnd uint64) uint32                     // the Window's process: another Window of the same App
 	Sleep             func(d time.Duration)                        // the verification polls' pause; nil: time.Sleep
+	// MaximizeWindow is maximize-window's call (desktop-parity ticket 11),
+	// ShowWindowAsync(SW_MAXIMIZE): it activates, so it runs only after the
+	// Headed pipeline's activation.
+	MaximizeWindow func(hwnd uint64) error
 
 	// StartApp starts a resolved App for launch-app with a non-activating
 	// show state (headless-max ticket 01). Nil falls back to apps.StartApp;
@@ -226,6 +230,14 @@ type Services struct {
 	// read refuses the clipboard commands after it; tests fake it.
 	Clipboard ClipboardService
 
+	// The displays (desktop parity ticket 08, display.go). Displays lists
+	// the monitors; CaptureDisplay captures one, through
+	// Windows.Graphics.Capture, then its screen region, with the indicator
+	// and the Agent Cursor hidden. Nil falls back to the real ones; tests
+	// fake them so offline tests never capture the screen.
+	Displays       func() ([]win.Display, error)
+	CaptureDisplay func(d win.Display) (shot.Frame, error)
+
 	// actionGate serializes every command that activates a Window, injects
 	// input or shows the overlay (finding 11): two concurrent CLI calls
 	// must never interleave control of the desktop. It is a capacity-1
@@ -249,7 +261,7 @@ type Services struct {
 // command controls the desktop at a time, exactly what codex-parity's
 // "one request at a time" promises. Observation-only commands —
 // list-windows, get-window, list-apps, the plain tree read, record-tree,
-// launch-app, status — stay concurrent; get-window-state's --screenshot branch
+// launch-app, list-displays, status — stay concurrent; get-window-state's --screenshot branch
 // and zoom join the serialized set inside their handlers.
 func CommandsWith(s Services) map[string]Command {
 	s = defaultServices(s)
@@ -289,6 +301,7 @@ func CommandsWith(s Services) map[string]Command {
 		"list-apps":                listApps(store),
 		"launch-app":               launchApp(s, store),
 		StatusCommand:              statusCommand(s),
+		"maximize-window":          maximizeWindow(s), // windowactions.go, desktop-parity ticket 11
 	}
 	// The Batch dispatches its steps to the other commands, and brackets
 	// itself as one armed Esc scope and one overlay bracket around them
@@ -313,6 +326,11 @@ func CommandsWith(s Services) map[string]Command {
 	for name, cmd := range clipboardCommands(s) {
 		cmds[name] = cmd
 	}
+	// The displays' Desktop commands (display.go, desktop parity ticket
+	// 08): list-displays only reads; screenshot is serialized like the
+	// Window screenshot, since it hides the indicator and the cursor.
+	cmds["list-displays"] = listDisplays(s)
+	cmds["screenshot"] = displayScreenshot(s)
 
 	// The serialized registry: every control-path command runs alone, and
 	// the Actions that can open a Window report it (opened.go). The Batch
@@ -347,8 +365,9 @@ func CommandsWith(s Services) map[string]Command {
 func observationOnlyCommand(name string) bool {
 	switch name {
 	case "list-windows", "get-window", "list-apps", "get-window-state", "record-tree", "launch-app",
-		"tab-list",    // reads a browser Window's Tabs only (tabs.go)
-		StatusCommand: // read-only probes (status.go): never waits behind an Action
+		"tab-list",      // reads a browser Window's Tabs only (tabs.go)
+		"list-displays", // a Desktop command that only reads the monitors (display.go)
+		StatusCommand:   // read-only probes (status.go): never waits behind an Action
 		return true
 	}
 	return strings.HasPrefix(name, "browser-")
@@ -497,16 +516,17 @@ func defaultServices(s Services) Services {
 	if s.Shots == nil {
 		s.Shots = shot.NewStore()
 	}
-	if s.Capture == nil || s.CaptureHeadless == nil {
+	if s.Capture == nil || s.CaptureHeadless == nil || s.CaptureDisplay == nil {
 		// The capture chains (spec, Observation details): Windows.Graphics
 		// Capture first (ticket 09, Codex's method — falling back on any
 		// failure, black frame or timeout), then the GDI fallbacks. The full
 		// chain (--headed) tries the Window's screen region, then
-		// PrintWindow; the headless chain (ADR 0011) only PrintWindow. Both
-		// share one wgc method, which logs its captures into the helper log.
-		// With an indicator or an Agent Cursor wired, every method captures
-		// with them hidden (ticket 13, ADR 0010), so winuse's own
-		// screenshots never contain them.
+		// PrintWindow; the headless chain (ADR 0011) only PrintWindow; a
+		// display (desktop-parity ticket 08) falls back to its screen
+		// region. All share one wgc method, which logs its captures into
+		// the helper log. With an indicator or an Agent Cursor wired, every
+		// method captures with them hidden (ticket 13, ADR 0010), so
+		// winuse's own screenshots never contain them.
 		wgcCapture := wgc.New()
 		wgcCapture.Log = log.Printf
 		if s.Capture == nil {
@@ -515,6 +535,12 @@ func defaultServices(s Services) Services {
 		if s.CaptureHeadless == nil {
 			s.CaptureHeadless = shot.Chain{Methods: headlessCaptureMethods(s.Overlay, s.Cursor, wgcCapture)}.CaptureWindow
 		}
+		if s.CaptureDisplay == nil {
+			s.CaptureDisplay = displayCapture(s.Overlay, s.Cursor, wgcCapture)
+		}
+	}
+	if s.Displays == nil {
+		s.Displays = win.ListDisplays
 	}
 	if s.Minimized == nil {
 		s.Minimized = win.IsMinimized
@@ -557,6 +583,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.Sleep == nil {
 		s.Sleep = time.Sleep
+	}
+	if s.MaximizeWindow == nil {
+		s.MaximizeWindow = win.Maximize
 	}
 	if s.StartApp == nil {
 		s.StartApp = apps.StartApp

@@ -20,9 +20,6 @@ import (
 	"github.com/hoangvu12/winuse/internal/status"
 )
 
-// agentKey is the context key of the request's Agent.
-type agentKey struct{}
-
 // requestAgent is the Agent a request names, or the default Agent.
 func requestAgent(req *protocol.Request) agent.Identity {
 	if req.Agent == "" {
@@ -35,18 +32,16 @@ func requestAgent(req *protocol.Request) agent.Identity {
 	return agent.Identity{ID: req.Agent, Label: label}
 }
 
-// withAgent puts the request's Agent on its context.
+// withAgent puts the request's Agent on its context (agent.NewContext),
+// where the per-Agent stores read it (multi-agent ticket 03).
 func withAgent(ctx context.Context, a agent.Identity) context.Context {
-	return context.WithValue(ctx, agentKey{}, a)
+	return agent.NewContext(ctx, a)
 }
 
 // AgentOf is the Agent a command runs for: the one its request named, or
 // the default Agent.
 func AgentOf(ctx context.Context) agent.Identity {
-	if a, ok := ctx.Value(agentKey{}).(agent.Identity); ok {
-		return a
-	}
-	return agent.Identity{ID: agent.DefaultID, Label: agent.DefaultID}
+	return agent.FromContext(ctx)
 }
 
 // maxAgentsSeen caps the Agents the helper remembers: the oldest goes

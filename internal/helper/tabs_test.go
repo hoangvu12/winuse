@@ -91,7 +91,7 @@ type stripActions struct {
 func (a *stripActions) ElementPoint(ctx context.Context, hwnd uint64, index int) (uia.Point, error) {
 	return uia.Point{}, errors.New("no point in these tests")
 }
-func (a *stripActions) StoredElements(hwnd uint64) ([]wstate.Element, bool) {
+func (a *stripActions) StoredElements(ctx context.Context, hwnd uint64) ([]wstate.Element, bool) {
 	els, ok := a.els[hwnd]
 	return els, ok
 }
@@ -105,7 +105,7 @@ func (a *stripActions) ElementBounds(ctx context.Context, hwnd uint64, index int
 func (a *stripActions) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any) error {
 	return nil
 }
-func (a *stripActions) ElementOrigin(hwnd uint64, index int) (any, error) {
+func (a *stripActions) ElementOrigin(ctx context.Context, hwnd uint64, index int) (any, error) {
 	if a.els[hwnd][index].Role == "tab" && a.els[hwnd][index].Name == "Page tab" {
 		return &page.Origin{}, nil // a web page's own tab widget
 	}
@@ -617,7 +617,7 @@ func TestTabStepsInABatch(t *testing.T) {
 	r = newTabRig(t, b.Connection(t), nil, b, nil)
 	w := tabTestWindows[0]
 	headed := json.RawMessage(`{"tab":"cccc","headed":true}`)
-	if !r.svc.stepHeadless("tab-new", nil, &w) || !r.svc.stepHeadless("tab-close", nil, &w) || r.svc.stepHeadless("tab-switch", headed, &w) {
+	if !r.svc.stepHeadless(context.Background(), "tab-new", nil, &w) || !r.svc.stepHeadless(context.Background(), "tab-close", nil, &w) || r.svc.stepHeadless(context.Background(), "tab-switch", headed, &w) {
 		t.Error("launched: tab-new and tab-close Headless, a headed tab-switch Headed")
 	}
 	_, e = r.run(t, "batch", protocol.BatchArgs{Window: "301", Headed: true, Steps: []protocol.Step{
@@ -634,7 +634,7 @@ func TestTabStepsInABatch(t *testing.T) {
 	// Batch, one passive scope, no keys.
 	sel := &stripSelector{names: []string{"Inbox", "Docs", "News"}}
 	r = newTabRig(t, b.Connection(t), nil, b, sel)
-	if !r.svc.stepHeadless("tab-switch", json.RawMessage(`{"tab":"aaaa"}`), &w) {
+	if !r.svc.stepHeadless(context.Background(), "tab-switch", json.RawMessage(`{"tab":"aaaa"}`), &w) {
 		t.Error("launched, unheaded: tab-switch Headless")
 	}
 	out, e = r.run(t, "batch", protocol.BatchArgs{Window: "301", Steps: []protocol.Step{
@@ -647,10 +647,10 @@ func TestTabStepsInABatch(t *testing.T) {
 		t.Errorf("launched batch: picked %d, steps %v", sel.picked, r.log())
 	}
 	extRig := newTabRig(t, conn, nil, nil, nil)
-	if !extRig.svc.stepHeadless("tab-switch", nil, &w) {
+	if !extRig.svc.stepHeadless(context.Background(), "tab-switch", nil, &w) {
 		t.Error("extension: tab-switch is Headless")
 	}
-	if extRig.svc.stepHeadless("tab-switch", nil, nil) {
+	if extRig.svc.stepHeadless(context.Background(), "tab-switch", nil, nil) {
 		t.Error("no Window: Headed, the safe side")
 	}
 	noForegroundCalls(t, b.Methods())
@@ -717,9 +717,15 @@ func TestNothingSendsActivateTargetOrBringToFront(t *testing.T) {
 		if call.MatchString(src) {
 			t.Errorf("%s sends a forbidden method", path)
 		}
-		// The method names may appear only where they are refused.
-		if method.MatchString(src) && filepath.ToSlash(path) != "../../internal/bridge/bridge.go" {
-			t.Errorf("%s names a forbidden method outside the bridge's refusal", path)
+		// The method names may appear only where they are refused: the
+		// extension bridge's refusal, and the attached Electron App's shim
+		// (headless-max 15), which refuses them the same way.
+		switch filepath.ToSlash(path) {
+		case "../../internal/bridge/bridge.go", "../../internal/browser/electron.go":
+		default:
+			if method.MatchString(src) {
+				t.Errorf("%s names a forbidden method outside the bridge's refusal", path)
+			}
 		}
 		return nil
 	})

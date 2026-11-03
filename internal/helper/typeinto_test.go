@@ -10,6 +10,7 @@ package helper
 // element-side and CDP is faked; no desktop is touched.
 
 import (
+	"context"
 	"reflect"
 	"strings"
 	"testing"
@@ -313,7 +314,7 @@ func TestPageTypeTextInto(t *testing.T) {
 		t.Errorf("headed on a Page Element activated or sent: %v %v", r.recorded(), r.sent())
 	}
 
-	if !r.svc.stepHeadless("type-text", batchStepArgs(protocol.TypeTextArgs{Window: "301", Text: "x", IntoIndex: idx(8)}), &win.WindowInfo{ID: browserWindowID}) {
+	if !r.svc.stepHeadless(context.Background(), "type-text", batchStepArgs(protocol.TypeTextArgs{Window: "301", Text: "x", IntoIndex: idx(8)}), &win.WindowInfo{ID: browserWindowID}) {
 		t.Error("a type-text --into step on a Page Element must be Headless")
 	}
 }

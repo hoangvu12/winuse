@@ -10,6 +10,11 @@ package helper
 // does not show them either: the Window itself moves visibly. They are not
 // Batch steps, because a Batch acts inside one Window.
 //
+// maximize-window (desktop-parity ticket 11) is the exception: Windows has
+// no non-activating maximize, so it is a Headed Window Action. It runs the
+// Headed pipeline (runAction) and only with --headed; without it nothing
+// is sent (ADR 0013 rule 3).
+//
 // The calls are non-activating, but the outcome is not guaranteed: an App
 // can activate itself when it is restored, and restore-window reports it.
 //
@@ -149,6 +154,47 @@ func minimizeWindow(s Services) Command {
 			if !s.pollWindow(ctx, placementVerifyWait, func() bool { return s.Minimized(w.ID) }) {
 				return "", Fail(fmt.Sprintf("window %d is not minimized after the minimize", w.ID),
 					"the minimize was delivered and the app did not minimize; read winuse list-windows before repeating it")
+			}
+			return okOutput, nil
+		})
+	}
+}
+
+// maximizeWindow runs `winuse --headed maximize-window <window>`: a real
+// maximize, as the Window's maximize button does, verified by IsZoomed
+// (agent-desktop's maximize). SW_MAXIMIZE activates, so the Window is
+// brought to the foreground first through the Headed pipeline, under the
+// banner and the swallowing Esc scope, and a minimized Window is restored
+// by that activation. Without headed it refuses with nothing sent and
+// gives the --headed retry, or move-window and resize-window to the
+// monitor's work area, which look maximized and leave the foreground
+// alone. A Window that is already maximized is left alone, headed or not.
+func maximizeWindow(s Services) Command {
+	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
+		var a protocol.MaximizeWindowArgs
+		if err := parseArgs(args, &a); err != nil {
+			return "", Fail("maximize-window: "+err.Error(), "usage: winuse --headed maximize-window <window>")
+		}
+		w, rerr := resolveWindow(s, a.Window)
+		if rerr != nil {
+			return "", rerr
+		}
+		if !s.Minimized(w.ID) && s.Maximized(w.ID) {
+			return okOutput, nil
+		}
+		id := strconv.FormatUint(w.ID, 10)
+		if !a.Headed {
+			return "", nothingSent(Fail(fmt.Sprintf("window %d cannot be maximized headless: Windows has no maximize that leaves the foreground alone", w.ID),
+				"retry with --headed to maximize it (this brings the Window to the foreground): winuse --headed maximize-window "+id+
+					"; or keep the foreground and fill the monitor's work area with winuse move-window and winuse resize-window, which looks maximized but leaves the Window in its normal state"))
+		}
+		return s.runAction(ctx, id, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
+			if err := s.MaximizeWindow(w.ID); err != nil {
+				return "", Fail(err.Error(), "the Window was brought to the foreground and not maximized; it may have closed, run winuse list-windows")
+			}
+			if !s.pollWindow(ctx, placementVerifyWait, func() bool { return !s.Minimized(w.ID) && s.Maximized(w.ID) }) {
+				return "", Fail(fmt.Sprintf("window %d is not maximized after the maximize", w.ID),
+					"the maximize was delivered and the app did not maximize; it may not allow it, read winuse list-windows --details before repeating it")
 			}
 			return okOutput, nil
 		})

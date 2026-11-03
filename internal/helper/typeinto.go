@@ -52,7 +52,7 @@ func (s Services) typeTextInto(ctx context.Context, a protocol.TypeTextArgs) (st
 	if terr != nil {
 		return "", terr
 	}
-	if out, rerr, ok := s.onPage(a.Window, target, func(w win.WindowInfo, index int, o *page.Origin) (string, *Error) {
+	if out, rerr, ok := s.onPage(ctx, a.Window, target, func(w win.WindowInfo, index int, o *page.Origin) (string, *Error) {
 		return s.pageTypeInto(ctx, w, index, o, target, a.Text, a.Headed)
 	}); ok {
 		return out, rerr
@@ -67,7 +67,7 @@ func (s Services) typeTextInto(ctx context.Context, a protocol.TypeTextArgs) (st
 	if locked, desktop := s.Locked(); locked {
 		return "", nothingSent(lockedDesktopFailure(desktop))
 	}
-	index, rerr := target.resolve(s, w)
+	index, rerr := target.resolve(ctx, s, w)
 	if rerr != nil {
 		return "", nothingSent(rerr)
 	}
@@ -123,7 +123,7 @@ func (s Services) typeIntoHeaded(ctx context.Context, ref string, target element
 		return "", Fail("type-text --into is unavailable: no UIA client", "")
 	}
 	return s.runAction(ctx, ref, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-		index, rerr := target.resolve(s, w)
+		index, rerr := target.resolve(ctx, s, w)
 		if rerr != nil {
 			return "", rerr
 		}

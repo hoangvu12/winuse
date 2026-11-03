@@ -63,10 +63,15 @@ session, and `winuse status` lists the agents it served. Sub-agents of one
 session share that program, so give each one its own name in
 `WINUSE_AGENT`. Set it on every winuse command, because a Harness often
 starts a fresh shell per command: in PowerShell,
-`$env:WINUSE_AGENT = "reviewer"; winuse click 101 3`. The agents still share
-each Window's Element Indexes: another agent's read of the same Window
-renumbers them, so prefer `name:` and `id:` while another agent works in
-that Window.
+`$env:WINUSE_AGENT = "reviewer"; winuse click 101 3`.
+
+Each agent keeps its own Window State and screenshot of each Window, so
+another agent's read never renumbers your Element Indexes or moves your
+`@x,y` points. Read a Window yourself before you act in it: until you do,
+winuse refuses with nothing sent and says the Window has not been read by
+this agent, even when another agent read it. If that refusal comes on
+every command, your identity is changing between commands; set
+`WINUSE_AGENT` to one name for all of them.
 
 ## Find the Window
 
@@ -208,6 +213,23 @@ cold Chromium page, pass `--timeout <seconds>` (up to 60): the read gets
 that long, and the wait for a thin Chromium tree to build gets the extra
 time too.
 
+### Displays
+
+```
+winuse list-displays                # one line per display: <n>  <x,y WxH>  scale <s>  [primary]
+winuse screenshot --display <n>     # a screenshot of the whole display
+```
+
+`list-displays` numbers the displays from 0, the primary display, and
+gives each one's rectangle in physical pixels, the coordinates of the
+screenshot line and `move-window`, and its scale (1.5 is 150%). Use it to
+see which display a Window is on, or where to move one. `screenshot
+--display <n>` captures that display as it looks, every Window on it
+included, without the foreground, and prints
+`Screenshot: <path> (WxH px, scale S, display N at X,Y WxH)`. It is for
+looking only: it has no `@x,y` points and no `zoom`. To act at a point,
+take the Window's own screenshot with `get-window-state --screenshot`.
+
 ## Name an Element
 
 An Element Reference takes one of four forms.
@@ -239,8 +261,9 @@ default:
   `scroll`, and `select-text`, which has no Headed form.
 - `invoke-menu`, a command of a classic menu bar, which has no Headed
   form either.
-- Every Window Action: `restore-window`, `minimize-window`, `move-window`,
-  `resize-window` and `close-window`.
+- Every Window Action but one: `restore-window`, `minimize-window`,
+  `move-window`, `resize-window` and `close-window`. `maximize-window` is
+  Headed only.
 - `press-key` Return or Escape on a classic dialog, `type-text` into a
   focused classic edit box, and `type-text --into` a classic edit box or a
   Page field you name, as described in "Fill in fields, keys and text".
@@ -251,8 +274,8 @@ Every other Action is a Headed Action. winuse brings the Window to the
 foreground, uses the real pointer and keyboard, and frames the Window with a
 banner telling the user that winuse is in control and Esc stops it. Headed
 applies to every `@x,y` form, `--count 2|3`, `--button right|middle`,
-`drag`, `hover`, `activate-window`, Raise, and `press-key` and `type-text`
-anywhere else. A Headed Action activates its Window itself, so use
+`drag`, `hover`, `activate-window`, `maximize-window`, Raise, and
+`press-key` and `type-text` anywhere else. A Headed Action activates its Window itself, so use
 `activate-window` only when focus drifted and you must restore it first.
 
 The user sees each Headless Action through the Agent Cursor, a second cursor
@@ -270,7 +293,8 @@ Window State.
 
 `--headed` forces the Headed way for any Action that has a Headless form, as
 in `winuse --headed click 101 3`. On a Batch it makes every step Headed.
-Window Actions have no Headed form. It goes before the command or anywhere
+Window Actions have no Headed form, except `maximize-window`, which has
+only one and needs `--headed`. It goes before the command or anywhere
 after it, except inside `type-text`'s text, `set-value`'s value and
 `clipboard-set`'s text, where a `--headed` token is literal text. Put the
 flag before the command there. Use
@@ -521,15 +545,25 @@ winuse minimize-window <window>
 winuse move-window <window> <x> <y>              # visible frame top-left, screen physical pixels
 winuse resize-window <window> <width> <height>   # visible frame size, physical pixels
 winuse close-window <window>                     # the same request as the close button
+winuse --headed maximize-window <window>         # a real maximize; takes the foreground
 ```
 
 Window Actions change the Window without bringing it to the front, read it
-back, and print `ok`. They are not Batch steps.
+back, and print `ok`. They are not Batch steps. `maximize-window` is the
+exception.
 
+- `maximize-window` maximizes the Window for real, as its maximize button
+  does. Windows cannot maximize a Window without bringing it to the front,
+  so it needs `--headed`: it brings the Window to the foreground under the
+  banner, maximizes it and reads the maximized state back. Without
+  `--headed` it is refused with nothing sent. Tell the user first if they
+  are working in another Window. To keep their foreground, `move-window`
+  and `resize-window` the Window to fill the monitor instead; it then looks
+  maximized but is not. A Window that is already maximized prints `ok`.
 - A Window that was maximized before it was minimized comes back at its
   normal size, because Windows cannot maximize without activating. The
-  output says so. Use `activate-window` when the user wants it maximized and
-  in front.
+  output says so. Use `winuse --headed maximize-window` when the user wants
+  it maximized again.
 - Some Apps bring themselves to the front when they are restored, even
   though winuse does not activate them. Expect it most from an App that
   has not been in front since it started, for example one launched in the
@@ -631,6 +665,18 @@ foreground. If the browser takes it anyway, `launch` ends its line with
 `list-windows`. It keeps rendering and its UI Automation tree while it is
 covered, so it can stay behind the user's windows. When the job is done, `winuse browser stop [browser]`
 closes a browser winuse launched or cloned and keeps its profile.
+
+An Electron App that is already running (Slack, Discord, VS Code) can get
+a Browser Connection without a restart: `winuse browser attach <window>`
+opens the App's Node.js inspector and runs winuse's code inside the App.
+Always ask the user first, and attach only after they agree. It works on
+Electron Apps only. winuse refuses with nothing sent when the App turned
+its inspector off, as Discord does; the App then stays on UI Automation,
+or, if the user agrees to restart it, relaunch it with
+`launch-app <exe path> --cdp`. While attached, any program the user runs
+could reach the App's inspector too, so run `winuse browser detach
+<window>` when the job is done. It closes the inspector, and so does the
+helper when it exits.
 
 Through the extension, the browser shows a "started debugging this
 browser" bar. The user turns winuse off with Cancel on that bar or with the
@@ -882,6 +928,7 @@ hover <window> <element>            # a Page Element, Headless
 activate-window <window>
 restore-window <window> | minimize-window <window> | close-window <window>
 move-window <window> <x> <y> | resize-window <window> <width> <height>
+maximize-window <window>            # needs --headed: takes the foreground
 batch <window> [--timeout <s>] <action> [args] [then <action> [args]] ...
 navigate <window> <url> [--wait load|domcontentloaded|none] | back | forward | reload <window>
 wait <window> selector <css> | text <text> | url <url> | load | download [--timeout <s>]
@@ -892,8 +939,10 @@ browser status | launch | connect | stop [browser]
 browser use [browser|auto]          # pin a browser (it persists); auto removes the pin
 browser clone [browser] [--profile <folder>] [--fresh] [--close-source]
 browser ext install [browser|all] | browser ext status [browser]
+browser attach <window> | browser detach <window>   # a running Electron App; ask the user first
 clipboard-get [--format text|image|files] [--out <path>]
 clipboard-set <text> | --image <png> | --file <path>... | clipboard-clear
+list-displays | screenshot --display <n>
 record-tree <window> <file>         # development only, records a tree fixture for winuse's own tests
 skill | skill install <dir>         # print this file from the binary, or write it to <dir>\winuse\SKILL.md
 status                              # read-only: versions, helper uptime, lock, integrity, DPI, browsers, agents, Windows build

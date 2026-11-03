@@ -9,13 +9,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
 	"io"
 	"log"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/hoangvu12/winuse/internal/agent"
 	"github.com/hoangvu12/winuse/internal/protocol"
+	"github.com/hoangvu12/winuse/internal/shot"
+	"github.com/hoangvu12/winuse/internal/uia"
 )
 
 func TestRequestAgent(t *testing.T) {
@@ -109,5 +113,42 @@ func TestAgentLogForgetsTheOldestPastTheCap(t *testing.T) {
 	}
 	if list[0].ID != fmt.Sprintf("name:a%d", maxAgentsSeen) {
 		t.Errorf("the most recent Agent is %q, want it first", list[0].ID)
+	}
+}
+
+func TestAnAgentThatHasNotReadTheWindowIsToldPlainly(t *testing.T) {
+	w := fakeWindows()[0]
+	e := elementError(&uia.NotReadByAgentError{WindowID: w.ID}, w, 2)
+	if !strings.Contains(e.Msg, "has not been read by this agent; another agent read it") {
+		t.Errorf("message = %q", e.Msg)
+	}
+	if !strings.Contains(e.Hint, "winuse get-window-state 101 first") || !strings.Contains(e.Hint, "WINUSE_AGENT") {
+		t.Errorf("hint = %q, want the read-first step and the WINUSE_AGENT advice", e.Hint)
+	}
+	// The same through a name:/id: reference, and still a refusal that
+	// says nothing was sent.
+	if r := refError(&uia.NotReadByAgentError{WindowID: w.ID}, w); r.Msg != e.Msg {
+		t.Errorf("refError = %q, want %q", r.Msg, e.Msg)
+	}
+	if !refusedBeforeCall(&uia.NotReadByAgentError{WindowID: w.ID}) {
+		t.Error("a Window this Agent has not read is a refusal before any call")
+	}
+	// Nobody read it: the plain message, as before.
+	if e := elementError(fmt.Errorf("%w: window 101", uia.ErrNoState), w, 2); !strings.HasPrefix(e.Msg, "no cached Window State is available for window 101") {
+		t.Errorf("message = %q", e.Msg)
+	}
+}
+
+func TestScreenshotPointsArePerAgent(t *testing.T) {
+	w := fakeWindows()[0]
+	s := Services{Shots: shot.NewStore()}
+	s.Shots.Record("A", w.ID, shot.Mapping{Scale: 1, Width: 100, Height: 100, Coverage: image.Rect(0, 0, 100, 100)})
+	a := agent.NewContext(context.Background(), agent.Identity{ID: "A"})
+	b := agent.NewContext(context.Background(), agent.Identity{ID: "B"})
+	if _, serr := shotPoint(b, s, w, 10, 10, "click"); serr == nil || !strings.Contains(serr.Msg, "no screenshot is available") {
+		t.Errorf("B's @10,10 = %v, want no screenshot: A's screenshot is not B's", serr)
+	}
+	if m, ok := s.Shots.Lookup(AgentOf(a).ID, w.ID); !ok || m.Width != 100 {
+		t.Errorf("A's mapping = %v, %v", m, ok)
 	}
 }

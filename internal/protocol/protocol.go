@@ -69,6 +69,10 @@ var commandTimeouts = map[string]time.Duration{
 	// waits up to 15 s for it to reconnect.
 	"browser-ext-install": BrowserTimeout,
 	"browser-ext-status":  BrowserTimeout,
+	// The attach to a running Electron App (headless-max 15): the signal,
+	// the inspector's port and the shim's install.
+	"browser-attach": BrowserTimeout,
+	"browser-detach": BrowserTimeout,
 	// The tab commands (ticket 07) may dial the Browser Connection first,
 	// which can wait for the browser's approval prompt.
 	"tab-list":   BrowserTimeout,
@@ -203,6 +207,12 @@ type LaunchArgs struct {
 	Cwd       string   `json:"cwd,omitempty"`       // the working directory, absolute (the CLI resolves it)
 	Env       []string `json:"env,omitempty"`       // KEY=VALUE entries over the helper's environment
 	CDP       bool     `json:"cdp,omitempty"`       // an Electron or WebView2 App with a loopback debugging port (headless-max 15)
+}
+
+// AttachArgs are the arguments of browser attach and browser detach
+// (headless-max 15): a Window of the running Electron App.
+type AttachArgs struct {
+	Window string `json:"window"`
 }
 
 // BrowserArgs are the arguments of browser status, use, launch, connect
@@ -350,6 +360,14 @@ type ResizeWindowArgs struct {
 	Height int    `json:"height"`
 }
 
+// MaximizeWindowArgs are maximize-window's arguments (desktop-parity
+// ticket 11): the one Headed Window Action. Windows has no non-activating
+// maximize, so without headed nothing is sent.
+type MaximizeWindowArgs struct {
+	Window string `json:"window"`
+	Headed bool   `json:"headed,omitempty"` // the global --headed flag: activate, then SW_MAXIMIZE
+}
+
 // TypeTextArgs are type-text's arguments — Codex's type_text parameters:
 // the text is typed into the Window's focused Element (the Window is
 // activated first, like every Headed Action). Text without control
@@ -453,6 +471,13 @@ type ClipboardSetArgs struct {
 	Text  *string  `json:"text,omitempty"`
 	Image string   `json:"image,omitempty"`
 	Files []string `json:"files,omitempty"`
+}
+
+// ScreenshotArgs are screenshot's arguments (desktop-parity ticket 08, a
+// Desktop command): the index of the display to capture, from
+// list-displays (0 is the primary display).
+type ScreenshotArgs struct {
+	Display *int `json:"display"`
 }
 
 // BatchArgs are batch's arguments (ticket 11): several Actions on one

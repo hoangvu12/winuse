@@ -23,7 +23,7 @@ package helper
 //
 // For ticket 05, which routes Actions by origin:
 //
-//   - pageOrigin(s, w, index) resolves an Element Index of w's latest
+//   - pageOrigin(ctx, s, w, index) resolves an Element Index of w's latest
 //     Window State: nil for a UIA Element, the *page.Origin for a Page
 //     Element, the usual no-state and stale failures otherwise;
 //   - checkPageOrigin(ctx, w, index, o) is the Page staleness check (the
@@ -83,7 +83,7 @@ type PageReader interface {
 // PageSplicer is the live-Element store's side of the merge: *uia.Client.
 type PageSplicer interface {
 	SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any) error
-	ElementOrigin(hwnd uint64, index int) (any, error)
+	ElementOrigin(ctx context.Context, hwnd uint64, index int) (any, error)
 }
 
 // readWindowTree reads a Window's State for get-window-state (with or
@@ -265,12 +265,12 @@ func withPageNote(tree *wstate.Tree, reason string) *wstate.Tree {
 // origin: nil for a UIA Element (or when the store keeps no origins), the
 // Page node for a Page Element. A Window with no stored Window State and
 // an index outside it fail with the usual read-the-State-again errors.
-func pageOrigin(s Services, w win.WindowInfo, index int) (*page.Origin, *Error) {
+func pageOrigin(ctx context.Context, s Services, w win.WindowInfo, index int) (*page.Origin, *Error) {
 	splicer, ok := s.Actions.(PageSplicer)
 	if !ok {
 		return nil, nil
 	}
-	o, err := splicer.ElementOrigin(w.ID, index)
+	o, err := splicer.ElementOrigin(ctx, w.ID, index)
 	if err != nil {
 		if errors.Is(err, uia.ErrPageElement) {
 			return nil, pageElementError(w, index)
@@ -301,12 +301,12 @@ func checkPageOrigin(ctx context.Context, w win.WindowInfo, index int, o *page.O
 // after the command picked its route (a get-window-state that ran
 // meanwhile). A UIA Element, and an index that does not resolve (the
 // Action's own step reports that), pass.
-func refusePageElement(s Services, w win.WindowInfo, index int) *Error {
+func refusePageElement(ctx context.Context, s Services, w win.WindowInfo, index int) *Error {
 	splicer, ok := s.Actions.(PageSplicer)
 	if !ok {
 		return nil
 	}
-	o, err := splicer.ElementOrigin(w.ID, index)
+	o, err := splicer.ElementOrigin(ctx, w.ID, index)
 	if errors.Is(err, uia.ErrPageElement) || (err == nil && o != nil) {
 		return pageElementError(w, index)
 	}

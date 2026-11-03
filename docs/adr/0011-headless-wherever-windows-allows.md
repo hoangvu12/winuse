@@ -12,6 +12,10 @@ through attached key state (headless-max ticket 07), and `--post` gains
 Posted Clicks (ticket 12). ADR 0013 also names the general rule behind
 Decision 5: a route without a readback is opt-in.
 
+Amended on 2026-11-03 (desktop-parity ticket 11): Decision 2 gains
+`maximize-window`, the one Headed Window Action. See the amendment at
+the end.
+
 ## Context
 
 ADR 0010 made Element Actions Headless and kept every other Action
@@ -117,3 +121,29 @@ still decided before anything is sent.
 
 Remembering a Window's last focused edit control from an earlier read
 was rejected: a stale handle could type into the wrong tab.
+
+## Amendment: maximize-window is a Headed Window Action (2026-11-03)
+
+Ticket 11 of `.scratch/desktop-parity/`, decided by the user: a real
+maximize, like agent-desktop's `maximize`. The consequence above still
+holds: Windows has no non-activating maximize (`ShowWindow(SW_MAXIMIZE)`
+activates). So `maximize-window` cannot join Decision 2's Headless set.
+
+Decision 2 now reads: restore, minimize, move, resize and close are
+Headless; maximize is a Headed Window Action.
+
+- `winuse --headed maximize-window <window>` runs the Headed pipeline:
+  the refusals, the in-control banner and the swallowing Esc scope, the
+  activation (which restores a minimized Window), then
+  `ShowWindowAsync(SW_MAXIMIZE)`, read back through `IsZoomed`. A
+  read-back that fails says the maximize was delivered.
+- Without `--headed` it is refused with "nothing was sent" (ADR 0013 rule
+  3). The hint gives the `--headed` retry, or `move-window` and
+  `resize-window` to the monitor's work area, which look maximized and
+  keep the foreground but leave the Window in its normal state.
+- A Window that is already maximized is left alone, with or without
+  `--headed`.
+- Like the other Window Actions, it is not a Batch step.
+
+The headless "fill the work area" form (`resize-window --fill`, the
+ticket's option 2) was not built.

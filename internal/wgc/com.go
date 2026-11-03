@@ -269,6 +269,16 @@ func interopCreateForWindow(interop comPtr, hwnd uintptr) (comPtr, hresult) {
 	return item, hresult(int32(r))
 }
 
+// interopCreateForMonitor is IGraphicsCaptureItemInterop::CreateForMonitor
+// (slot 4): the HMONITOR → GraphicsCaptureItem bridge for a display
+// capture (desktop-parity ticket 08).
+func interopCreateForMonitor(interop comPtr, hmon uintptr) (comPtr, hresult) {
+	var item comPtr
+	r, _, _ := syscall.SyscallN(vtable(interop, 4), uintptr(interop), hmon,
+		uintptr(unsafe.Pointer(&iidItem)), uintptr(unsafe.Pointer(&item)))
+	return item, hresult(int32(r))
+}
+
 // itemSize is IGraphicsCaptureItem::get_Size (slot 7).
 func itemSize(item comPtr) (sizeInt32, hresult) {
 	var s sizeInt32

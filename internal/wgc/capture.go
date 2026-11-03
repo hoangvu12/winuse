@@ -166,6 +166,30 @@ func (m *Method) CaptureWindow(hwnd uint64) (shot.Frame, error) {
 		m.logf("wgc: window %d fell back: %v", hwnd, err)
 		return shot.Frame{}, err
 	}
+	return m.run(fmt.Sprintf("window %d", hwnd), func(th *thread) (shot.Frame, error) {
+		return th.captureWindow(hwnd, m.budget)
+	})
+}
+
+// CaptureMonitor captures one display, the monitor hmon whose screen
+// rectangle (physical pixels) is bounds, through
+// GraphicsCaptureItemInterop::CreateForMonitor (desktop-parity ticket 08).
+// The frame is anchored at the display's top-left. Like CaptureWindow, any
+// failure means "fall back" (to the screen-region BitBlt of the display).
+func (m *Method) CaptureMonitor(hmon uintptr, bounds image.Rectangle) (shot.Frame, error) {
+	label := fmt.Sprintf("display at %d,%d %dx%d", bounds.Min.X, bounds.Min.Y, bounds.Dx(), bounds.Dy())
+	if m.disabled {
+		m.logf("wgc: %s fell back: %v", label, ErrDisabled)
+		return shot.Frame{}, ErrDisabled
+	}
+	return m.run(label, func(th *thread) (shot.Frame, error) {
+		return th.captureMonitor(hmon, bounds, m.budget)
+	})
+}
+
+// run runs one capture job on the worker thread under the watchdog, and
+// logs which way it went under label.
+func (m *Method) run(label string, capture func(th *thread) (shot.Frame, error)) (shot.Frame, error) {
 	if err := win.LiveDesktopGuard(); err != nil {
 		return shot.Frame{}, err
 	}
@@ -185,7 +209,7 @@ func (m *Method) CaptureWindow(hwnd uint64) (shot.Frame, error) {
 				m.abandon(w) // its COM state is suspect; replace it
 			}
 		}()
-		f, err := w.th.captureWindow(hwnd, m.budget)
+		f, err := capture(w.th)
 		done <- captureResult{frame: f, err: err}
 	}
 	if !w.send(job) {
@@ -194,20 +218,20 @@ func (m *Method) CaptureWindow(hwnd uint64) (shot.Frame, error) {
 	select {
 	case r := <-done:
 		if r.err == nil {
-			m.logf("wgc: captured window %d (%dx%d px)", hwnd, r.frame.Rect.Dx(), r.frame.Rect.Dy())
+			m.logf("wgc: captured %s (%dx%d px)", label, r.frame.Rect.Dx(), r.frame.Rect.Dy())
 		} else {
-			m.logf("wgc: window %d fell back: %v", hwnd, r.err)
+			m.logf("wgc: %s fell back: %v", label, r.err)
 		}
 		return r.frame, r.err
 	case <-time.After(m.budget + watchdogOverhead):
 		m.abandon(w)
 		err := fmt.Errorf("no answer within %s (the capture worker was abandoned; retrying falls back)",
 			m.budget+watchdogOverhead)
-		m.logf("wgc: window %d fell back: %v", hwnd, err)
+		m.logf("wgc: %s fell back: %v", label, err)
 		return shot.Frame{}, err
 	case <-w.exited:
 		err := errors.New("the Windows.Graphics.Capture worker exited mid-capture; capture again")
-		m.logf("wgc: window %d fell back: %v", hwnd, err)
+		m.logf("wgc: %s fell back: %v", label, err)
 		return shot.Frame{}, err
 	}
 }
@@ -537,20 +561,99 @@ func (th *thread) captureWindow(hwnd uint64, budget time.Duration) (_ shot.Frame
 		return shot.Frame{}, hr("CreateForWindow", h)
 	}
 	defer release(item)
+	img, crop, err := th.captureItem(item, deadline)
+	if err != nil {
+		return shot.Frame{}, err
+	}
+
+	// Cross-check against the Window's extended frame bounds, read fresh
+	// at frame time: the WGC texture's (0,0) is the extended frame bounds
+	// top-left, so a frame within tolerance of the bounds anchors exactly
+	// like the GDI methods and ticket 08's coordinate mapping carries
+	// over unchanged.
+	efb, err := win.FrameBounds(hwnd)
+	if err != nil {
+		return shot.Frame{}, err
+	}
+	w, hh, ok := frameSize(int(crop.W), int(crop.H), int(efb.Width()), int(efb.Height()))
+	if !ok {
+		return shot.Frame{}, fmt.Errorf("the captured frame is %dx%d px but the Window is %dx%d px",
+			crop.W, crop.H, efb.Width(), efb.Height())
+	}
+	return shot.Frame{
+		Image:  subImage(img, w, hh),
+		Rect:   image.Rect(int(efb.Left), int(efb.Top), int(efb.Left)+w, int(efb.Top)+hh),
+		Anchor: image.Point{X: int(efb.Left), Y: int(efb.Top)},
+	}, nil
+}
+
+// captureMonitor captures one display on the worker thread
+// (desktop-parity ticket 08): the same session as a Window's, from
+// CreateForMonitor, cross-checked against the display's rectangle.
+func (th *thread) captureMonitor(hmon uintptr, bounds image.Rectangle, budget time.Duration) (_ shot.Frame, err error) {
+	deadline := time.Now().Add(budget)
+	defer func() {
+		if err != nil {
+			var hrErr *hrError
+			if errors.As(err, &hrErr) && deviceLost(hrErr.hr) {
+				th.dropDevice()
+			}
+		}
+	}()
+	if err := th.supported(); err != nil {
+		return shot.Frame{}, err
+	}
+	if !th.consentRequested {
+		requestBorderlessConsent(consentBudget)
+		th.consentRequested = true
+	}
+	if err := th.ensureFactories(); err != nil {
+		return shot.Frame{}, err
+	}
+	if err := th.ensureDevice(); err != nil {
+		return shot.Frame{}, err
+	}
+	item, h := interopCreateForMonitor(th.itemFactory, hmon)
+	if h.Failed() || item == nil {
+		return shot.Frame{}, hr("CreateForMonitor", h)
+	}
+	defer release(item)
+	img, crop, err := th.captureItem(item, deadline)
+	if err != nil {
+		return shot.Frame{}, err
+	}
+	w, hh, ok := frameSize(int(crop.W), int(crop.H), bounds.Dx(), bounds.Dy())
+	if !ok {
+		return shot.Frame{}, fmt.Errorf("the captured frame is %dx%d px but the display is %dx%d px",
+			crop.W, crop.H, bounds.Dx(), bounds.Dy())
+	}
+	return shot.Frame{
+		Image:  subImage(img, w, hh),
+		Rect:   image.Rect(bounds.Min.X, bounds.Min.Y, bounds.Min.X+w, bounds.Min.Y+hh),
+		Anchor: bounds.Min,
+	}, nil
+}
+
+// captureItem runs one capture session on an item (a Window's or a
+// display's) and returns the frame's pixels and their size: the
+// free-threaded pool at the item's size, the session options, the first
+// frame within the deadline (the pool recreated once if the content grew),
+// and one retry of a near-black frame.
+func (th *thread) captureItem(item comPtr, deadline time.Time) (*image.RGBA, sizeInt32, error) {
 	sz, h := itemSize(item)
 	if h.Failed() || sz.W <= 0 || sz.H <= 0 {
-		return shot.Frame{}, hr("GraphicsCaptureItem.Size", h)
+		return nil, sizeInt32{}, hr("GraphicsCaptureItem.Size", h)
 	}
 
 	// Pool and session.
 	pool, h := createFreeThreaded(th.poolFactory, th.rtDev, dxgiFormatB8G8R8A8UNorm, poolBuffers, sz)
 	if h.Failed() || pool == nil {
-		return shot.Frame{}, hr("CreateFreeThreaded", h)
+		return nil, sizeInt32{}, hr("CreateFreeThreaded", h)
 	}
 	defer closeRelease(pool)
 	session, h := createCaptureSession(pool, item)
 	if h.Failed() || session == nil {
-		return shot.Frame{}, hr("CreateCaptureSession", h)
+		return nil, sizeInt32{}, hr("CreateCaptureSession", h)
 	}
 	defer closeRelease(session)
 
@@ -566,43 +669,43 @@ func (th *thread) captureWindow(hwnd uint64, budget time.Duration) (_ shot.Frame
 		th.includeSecondary = true
 	}
 	if h := startCapture(session); h.Failed() {
-		return shot.Frame{}, hr("StartCapture", h)
+		return nil, sizeInt32{}, hr("StartCapture", h)
 	}
 
 	// Poll for the first frame within the budget.
 	frame, err := th.pollFrame(pool, deadline)
 	if err != nil {
-		return shot.Frame{}, err
+		return nil, sizeInt32{}, err
 	}
 	defer func() { closeRelease(frame) }()
 
 	// A Window that grew between item.Size and the frame would be clipped
 	// by the pool: recreate the pool at the content size and take the
 	// next frame instead (once — a Window still growing falls back to the
-	// EFB cross-check below).
+	// caller's size cross-check).
 	content, h := frameContentSize(frame)
 	if h.Failed() {
-		return shot.Frame{}, hr("get_ContentSize", h)
+		return nil, sizeInt32{}, hr("get_ContentSize", h)
 	}
 	if (content.W > sz.W || content.H > sz.H) && content.W > 0 && content.H > 0 {
 		if h := poolRecreate(pool, th.rtDev, dxgiFormatB8G8R8A8UNorm, poolBuffers, content); h.Failed() {
-			return shot.Frame{}, hr("Recreate", h)
+			return nil, sizeInt32{}, hr("Recreate", h)
 		}
 		sz = content
 		closeRelease(frame)
 		frame, err = th.pollFrame(pool, deadline)
 		if err != nil {
-			return shot.Frame{}, err
+			return nil, sizeInt32{}, err
 		}
 		content, h = frameContentSize(frame)
 		if h.Failed() {
-			return shot.Frame{}, hr("get_ContentSize", h)
+			return nil, sizeInt32{}, hr("get_ContentSize", h)
 		}
 	}
 
 	img, crop, err := th.readFramePixels(frame, content)
 	if err != nil {
-		return shot.Frame{}, err
+		return nil, sizeInt32{}, err
 	}
 
 	// A near-black frame is the classic "nothing was rendered yet"
@@ -626,25 +729,7 @@ func (th *thread) captureWindow(hwnd uint64, budget time.Duration) (_ shot.Frame
 		}
 	}
 
-	// Cross-check against the Window's extended frame bounds, read fresh
-	// at frame time: the WGC texture's (0,0) is the extended frame bounds
-	// top-left, so a frame within tolerance of the bounds anchors exactly
-	// like the GDI methods and ticket 08's coordinate mapping carries
-	// over unchanged.
-	efb, err := win.FrameBounds(hwnd)
-	if err != nil {
-		return shot.Frame{}, err
-	}
-	w, hh, ok := frameSize(int(crop.W), int(crop.H), int(efb.Width()), int(efb.Height()))
-	if !ok {
-		return shot.Frame{}, fmt.Errorf("the captured frame is %dx%d px but the Window is %dx%d px",
-			crop.W, crop.H, efb.Width(), efb.Height())
-	}
-	return shot.Frame{
-		Image:  subImage(img, w, hh),
-		Rect:   image.Rect(int(efb.Left), int(efb.Top), int(efb.Left)+w, int(efb.Top)+hh),
-		Anchor: image.Point{X: int(efb.Left), Y: int(efb.Top)},
-	}, nil
+	return img, crop, nil
 }
 
 // pollFrame waits for the pool's next frame until the deadline.

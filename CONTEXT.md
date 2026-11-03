@@ -27,14 +27,14 @@ The web content of a browser Window's active Tab, read and acted on through the 
 _Avoid_: Document, DOM, site
 
 **Browser Connection**:
-winuse's live link to one running Chromium browser, through the winuse extension or a browser winuse launched or cloned. The user's own Chrome and a Chrome winuse launched are two browsers with two Browser Connections, and a browser Window is always reached through the one of the browser it belongs to. Without one, that Window is read through UI Automation alone, and a cold or fully covered Chromium may expose its page there late or not at all: the read waits a few seconds for a thin tree to build, then says it is still thin.
+winuse's live link to one running Chromium browser, through the winuse extension or a browser winuse launched or cloned. An Electron or WebView2 App winuse launched with `--cdp`, or a running Electron App winuse attached to with the user's consent, has one too, reached only through its own Windows. The user's own Chrome and a Chrome winuse launched are two browsers with two Browser Connections, and a browser Window is always reached through the one of the browser it belongs to. Without one, that Window is read through UI Automation alone, and a cold or fully covered Chromium may expose its page there late or not at all: the read waits a few seconds for a thin tree to build, then says it is still thin.
 _Avoid_: CDP session, debug port, endpoint
 
 ### Observation
 
 **Window State**:
 What the agent observes about one Window at one moment: its accessibility tree of Elements as text and, when requested, a screenshot.
-Planned (ADR 0014): each Agent keeps its own Window State per Window, so another Agent's read never replaces it.
+Each Agent keeps its own Window State per Window (ADR 0014), so another Agent's read never replaces it.
 _Avoid_: App state, snapshot, skyshot
 
 **Element**:
@@ -43,7 +43,7 @@ _Avoid_: Control, node, widget
 
 **Element Index**:
 The number that identifies an Element within one Window State. It is only valid for the Window State that produced it and goes stale after any change to the Window.
-Planned (ADR 0014): Element Indexes are per Agent, valid only for the Agent whose Window State produced them.
+Element Indexes are per Agent (ADR 0014), valid only for the Agent whose Window State produced them.
 _Avoid_: Element ID, ref
 
 ### Operation
@@ -53,11 +53,11 @@ A single operation the agent performs on a Window: click, set value, secondary a
 _Avoid_: Command, step, tool call
 
 **Window Action**:
-An Action on the Window itself rather than on one of its Elements: restore, minimize, move, resize or close.
+An Action on the Window itself rather than on one of its Elements: restore, minimize, maximize, move, resize or close.
 _Avoid_: Window management, window op
 
 **Desktop command**:
-A command aimed at the desktop as a whole rather than at a Window, such as reading, setting or clearing the clipboard. It is not an Action: it shows no Agent Cursor and is not a Batch step, but it runs one at a time with the Actions.
+A command aimed at the desktop as a whole rather than at a Window, such as reading, setting or clearing the clipboard, listing the displays or capturing one. It is not an Action: it shows no Agent Cursor and is not a Batch step. One that touches the clipboard or captures the screen runs one at a time with the Actions; one that only lists, such as the displays, does not wait for them.
 _Avoid_: Global action, system command
 
 **Secondary Action**:
@@ -73,11 +73,11 @@ Several Actions sent in one call and run in order, stopping at the first one tha
 _Avoid_: Script, macro, sequence
 
 **Headless Action**:
-An Action that winuse can deliver reliably without the foreground: no foreground change, no pointer, no real keys, no banner. Every Window Action is always Headless, and so are selecting text in a field and running a command of a classic menu bar. These are Headless unless the agent asks for Headed: a click on an Element (left button, single), a set value, every Secondary Action except Raise, scrolling an Element, Return or Escape on a classic dialog, and typing into a classic edit box that has the focus or that the agent names as the Element to type into. Actions on a Page Element through a Browser Connection are Headless too, whatever the button or click count, and so are keys and typing while the Page has the focus and scrolling at a point of the Page. The Actions on a Tab's Page as a whole (navigate, back, forward, reload, upload, dialog, wait and eval) are always Headless.
+An Action that winuse can deliver reliably without the foreground: no foreground change, no pointer, no real keys, no banner. Every Window Action except maximize is always Headless, and so are selecting text in a field and running a command of a classic menu bar. These are Headless unless the agent asks for Headed: a click on an Element (left button, single), a set value, every Secondary Action except Raise, scrolling an Element, Return or Escape on a classic dialog, and typing into a classic edit box that has the focus or that the agent names as the Element to type into. Actions on a Page Element through a Browser Connection are Headless too, whatever the button or click count, and so are keys and typing while the Page has the focus and scrolling at a point of the Page. The Actions on a Tab's Page as a whole (navigate, back, forward, reload, upload, dialog, wait and eval) are always Headless.
 _Avoid_: Background action, silent action, pattern action
 
 **Headed Action**:
-An Action performed the way a person would: the Window is brought to the foreground and real pointer or keyboard input is sent, under the in-control banner. These are always Headed: dragging, hovering, any Action aimed at screen coordinates except a scroll at a point of the Page, double, right or middle clicks outside a Page, activating a Window and Raise. Keys and typing are Headed wherever they have no Headless route and are not sent as Posted Keys, except typing into a named Element, which is refused with nothing sent unless the agent asks for Headed. Any other Action is Headed when the agent asks for it. ADR 0013 narrows this set as its routes land: a route that reads its effect back becomes Headless, and one that cannot becomes opt-in Posted.
+An Action performed the way a person would: the Window is brought to the foreground and real pointer or keyboard input is sent, under the in-control banner. These are always Headed: dragging, hovering, any Action aimed at screen coordinates except a scroll at a point of the Page, double, right or middle clicks outside a Page, activating a Window, maximizing a Window (Windows has no maximize that leaves the foreground alone, so it is refused with nothing sent unless the agent asks for Headed) and Raise. Keys and typing are Headed wherever they have no Headless route and are not sent as Posted Keys, except typing into a named Element, which is refused with nothing sent unless the agent asks for Headed. Any other Action is Headed when the agent asks for it. ADR 0013 narrows this set as its routes land: a route that reads its effect back becomes Headless, and one that cannot becomes opt-in Posted.
 _Avoid_: Foreground action, physical action, v1 mode
 
 **Posted Keys**:
@@ -108,7 +108,7 @@ _Avoid_: Client, agent, host
 ### Agents
 
 **Agent**:
-One caller of winuse, with an identity: by default the Harness process the command came from, or the name in `WINUSE_AGENT`; a command with neither belongs to one shared default Agent. Every request names its Agent, and `winuse status` lists the Agents the helper served. Planned (ADR 0014): several Agents run at once, each with its own Window States and Agent Cursor.
+One caller of winuse, with an identity: by default the Harness process the command came from, or the name in `WINUSE_AGENT`; a command with neither belongs to one shared default Agent. Every request names its Agent, each Agent has its own Window States, and `winuse status` lists the Agents the helper served. Planned (ADR 0014): several Agents run at once, each with its own Agent Cursor.
 _Avoid_: Session, client, user
 
 **Lane**:

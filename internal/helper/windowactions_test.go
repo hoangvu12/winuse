@@ -93,6 +93,9 @@ func newWindowSpy() *windowSpy {
 	svc.CloseWindow = func(uint64) error {
 		return s.call("close", func() { s.open = false })
 	}
+	svc.MaximizeWindow = func(uint64) error {
+		return s.call("maximize", func() { s.minimized, s.maximized = false, true })
+	}
 	svc.Sleep = func(d time.Duration) { s.sleeps = append(s.sleeps, d) }
 	s.svc = svc
 	return s
@@ -134,7 +137,7 @@ func (s *windowSpy) assertNoForeground(t *testing.T) {
 }
 
 // windowActionCalls are the recordings of the Window Actions' Win32 calls.
-var windowActionCalls = []string{"restore", "minimize", "move", "resize", "close"}
+var windowActionCalls = []string{"restore", "minimize", "move", "resize", "close", "maximize"}
 
 func (s *windowSpy) assertNothingSent(t *testing.T) {
 	t.Helper()
@@ -523,6 +526,149 @@ func TestWindowActionsAreSerializedAndNotBatchSteps(t *testing.T) {
 		if headlessStep(name, nil, nil) || takesHeaded(name) {
 			t.Errorf("%s has no headed form and no Element routing", name)
 		}
+	}
+}
+
+// maximize-window (desktop-parity ticket 11) is the one Headed Window
+// Action: without headed it sends nothing; with it, the Headed pipeline
+// activates the Window and then maximizes it.
+
+func TestMaximizeWindowWithoutHeadedSendsNothing(t *testing.T) {
+	for _, state := range []string{"normal", "minimized"} {
+		t.Run(state, func(t *testing.T) {
+			spy := newWindowSpy()
+			spy.minimized = state == "minimized"
+			_, cmdErr := runCommand(t, CommandsWith(spy.svc), "maximize-window", protocol.MaximizeWindowArgs{Window: "101"})
+			want := "window 101 cannot be maximized headless: Windows has no maximize that leaves the foreground alone; nothing was sent"
+			if cmdErr == nil || cmdErr.Msg != want {
+				t.Fatalf("message = %v, want %q", cmdErr, want)
+			}
+			for _, hint := range []string{"winuse --headed maximize-window 101", "move-window", "resize-window", "work area"} {
+				if !strings.Contains(cmdErr.Hint, hint) {
+					t.Errorf("hint = %q, want it to contain %q", cmdErr.Hint, hint)
+				}
+			}
+			spy.assertNothingSent(t)
+			spy.assertNoForeground(t)
+			if b := spy.esc.brackets(); len(b) != 0 {
+				t.Errorf("a refusal must arm nothing: %v", b)
+			}
+		})
+	}
+}
+
+func TestMaximizeWindowHeadedActivatesThenMaximizes(t *testing.T) {
+	for _, state := range []string{"normal", "minimized"} {
+		t.Run(state, func(t *testing.T) {
+			spy := newWindowSpy()
+			spy.minimized = state == "minimized"
+			out, cmdErr := runCommand(t, CommandsWith(spy.svc), "maximize-window", protocol.MaximizeWindowArgs{Window: "notepad", Headed: true})
+			if cmdErr != nil || out != "ok\n" {
+				t.Fatalf("maximize-window = %q, %v; want ok", out, cmdErr)
+			}
+			if !spy.maximized || spy.minimized {
+				t.Errorf("the Window is not maximized: %v", spy.recorded())
+			}
+			steps := spy.recorded()
+			activated, maximized := -1, -1
+			for i, s := range steps {
+				switch s {
+				case "activate":
+					activated = i
+				case "maximize":
+					maximized = i
+				}
+			}
+			if activated < 0 || maximized < activated {
+				t.Errorf("steps = %v, want the activation before the maximize", steps)
+			}
+			if !hasStepPrefix(steps, "overlay-show") {
+				t.Errorf("a Headed Window Action shows the in-control banner: %v", steps)
+			}
+			if b := spy.esc.brackets(); !equalStrings(b, []string{"arm", "disarm"}) {
+				t.Errorf("Esc scopes = %v, want the Headed swallowing scope", b)
+			}
+			if len(spy.sleeps) == 0 {
+				t.Error("the maximize must be verified by polling the Window")
+			}
+		})
+	}
+}
+
+func TestMaximizeWindowAlreadyMaximizedSendsNothing(t *testing.T) {
+	for _, headed := range []bool{false, true} {
+		spy := newWindowSpy()
+		spy.maximized = true
+		out, cmdErr := runCommand(t, CommandsWith(spy.svc), "maximize-window", protocol.MaximizeWindowArgs{Window: "101", Headed: headed})
+		if cmdErr != nil || out != "ok\n" {
+			t.Fatalf("maximize-window (maximized, headed %v) = %q, %v; want ok", headed, out, cmdErr)
+		}
+		spy.assertNothingSent(t)
+		spy.assertNoForeground(t)
+	}
+}
+
+func TestMaximizeWindowUnverified(t *testing.T) {
+	spy := newWindowSpy()
+	spy.noEffect = true
+	_, cmdErr := runCommand(t, CommandsWith(spy.svc), "maximize-window", protocol.MaximizeWindowArgs{Window: "101", Headed: true})
+	if cmdErr == nil || cmdErr.Msg != "window 101 is not maximized after the maximize" {
+		t.Fatalf("message = %v, want the not-maximized failure", cmdErr)
+	}
+	if !strings.Contains(cmdErr.Hint, "delivered") {
+		t.Errorf("a failed read-back was delivered: %q", cmdErr.Hint)
+	}
+
+	// The call itself fails after the activation: the foreground moved, so
+	// the failure does not say nothing was sent.
+	spy = newWindowSpy()
+	spy.callErr = errors.New("ShowWindowAsync(SW_MAXIMIZE) failed for window 101: invalid window handle")
+	_, cmdErr = runCommand(t, CommandsWith(spy.svc), "maximize-window", protocol.MaximizeWindowArgs{Window: "101", Headed: true})
+	if cmdErr == nil || strings.Contains(cmdErr.Msg, "nothing was sent") || !strings.Contains(cmdErr.Hint, "foreground") {
+		t.Fatalf("call failure = %v, want it without nothing-was-sent and a hint about the foreground", cmdErr)
+	}
+}
+
+func TestMaximizeWindowRefusalsComeBeforeTheActivation(t *testing.T) {
+	locked := newWindowSpy()
+	locked.locked = true
+	_, cmdErr := runCommand(t, CommandsWith(locked.svc), "maximize-window", protocol.MaximizeWindowArgs{Window: "101", Headed: true})
+	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "desktop is locked") {
+		t.Fatalf("locked: %v", cmdErr)
+	}
+	locked.assertNothingSent(t)
+	locked.assertNoForeground(t)
+
+	admin := newWindowSpy()
+	admin.refuse = &win.AdminWindowError{WindowID: 101, App: "Notepad.exe"}
+	_, cmdErr = runCommand(t, CommandsWith(admin.svc), "maximize-window", protocol.MaximizeWindowArgs{Window: "101", Headed: true})
+	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "administrator") || !strings.Contains(cmdErr.Hint, "elevated") {
+		t.Fatalf("admin: %v", cmdErr)
+	}
+	admin.assertNothingSent(t)
+	admin.assertNoForeground(t)
+
+	_, cmdErr = runCommand(t, CommandsWith(newWindowSpy().svc), "maximize-window", map[string]any{"headed": true})
+	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "a window reference is required") {
+		t.Fatalf("missing window: %v", cmdErr)
+	}
+}
+
+func TestMaximizeWindowIsSerializedAndNoBatchStep(t *testing.T) {
+	cmds := CommandsWith(Services{Trees: &fakeTrees{}})
+	if _, ok := cmds["maximize-window"]; !ok {
+		t.Fatal("maximize-window is not registered")
+	}
+	if observationOnlyCommand("maximize-window") {
+		t.Error("maximize-window must run on the action gate")
+	}
+	for _, k := range protocol.BatchStepKinds {
+		if k == "maximize-window" {
+			t.Error("maximize-window must not be a Batch step kind")
+		}
+	}
+	if headlessStep("maximize-window", nil, nil) {
+		t.Error("maximize-window has no Headless form")
 	}
 }
 

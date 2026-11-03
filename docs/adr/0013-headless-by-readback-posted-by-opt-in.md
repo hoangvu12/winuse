@@ -88,7 +88,7 @@ is not, which is why ADR 0011 made Posted Keys opt-in.
 | Posted Clicks and `scroll @x,y --post` | 2 | 12 | planned |
 | Caret-aware typing into Text-pattern fields | 1 | 13 | planned |
 | Headless Actions on minimized Windows | 1 | 14 | done |
-| Electron and WebView2 Browser Connections at launch; attach to a running Electron | 1 | 15 | launch done; attach planned |
+| Electron and WebView2 Browser Connections at launch; attach to a running Electron | 1 | 15 | done |
 | Typing, keys and clicks into Chromium and Electron without CDP | 7 | 20 | planned |
 | No Headed Action without `--headed` | 3 | 21 | planned |
 
@@ -150,7 +150,8 @@ administrator Windows, with the advice to start winuse elevated.
 - Keys into Apps that read raw input or GetAsyncKeyState, and into UWP
   Apps with keystroke semantics.
 - IME composition outside CDP.
-- activate-window, and Raise of a top-level Window.
+- activate-window, maximize-window (desktop-parity ticket 11), and Raise
+  of a top-level Window.
 - A minimized Store app: it has no UI while minimized, and restoring it
   brings it to the front. Launching one takes the foreground too.
 - A minimized Chromium or Electron Window through the message routes.

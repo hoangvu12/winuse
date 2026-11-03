@@ -81,6 +81,9 @@ func browserCommands(s Services) map[string]Command {
 		// The winuse extension (browser merge ticket 02).
 		"browser-ext-install": browserNamed("browser-ext-install", b.ExtInstall),
 		"browser-ext-status":  browserNamed("browser-ext-status", b.ExtStatus),
+		// The attach to a running Electron App (attach.go, headless-max 15).
+		"browser-attach": browserAttach(s),
+		"browser-detach": browserDetach(s),
 	}
 }
 

@@ -2,10 +2,12 @@ package shot
 
 import (
 	"fmt"
+	"github.com/hoangvu12/winuse/internal/agent"
 	"image"
 	"image/color"
 	"math"
 	"testing"
+	"time"
 )
 
 // frame builds a synthetic frame: a w×h image with a colour gradient, a
@@ -151,32 +153,61 @@ func TestContains(t *testing.T) {
 
 func TestStoreRecordsAndReplaces(t *testing.T) {
 	s := NewStore()
-	if _, ok := s.Lookup(101); ok {
+	if _, ok := s.Lookup(agent.DefaultID, 101); ok {
 		t.Fatal("a fresh store must have no mappings")
 	}
 	f1 := frame(800, 470, 0, 0, 0, 0)
-	s.Record(101, MappingFor(f1, 1))
-	s.Record(202, MappingFor(frame(3840, 2160, 0, 0, 0, 0), 0.5))
+	s.Record(agent.DefaultID, 101, MappingFor(f1, 1))
+	s.Record(agent.DefaultID, 202, MappingFor(frame(3840, 2160, 0, 0, 0, 0), 0.5))
 
-	m1, ok := s.Lookup(101)
+	m1, ok := s.Lookup(agent.DefaultID, 101)
 	if !ok || m1.Width != 800 || m1.Scale != 1 {
 		t.Fatalf("lookup 101 = %v, %v", m1, ok)
 	}
-	m2, ok := s.Lookup(202)
+	m2, ok := s.Lookup(agent.DefaultID, 202)
 	if !ok || m2.Scale != 0.5 {
 		t.Fatalf("lookup 202 = %v, %v", m2, ok)
 	}
 
 	// A new screenshot of the same Window replaces the mapping (the
 	// latest screenshot's coordinate space wins).
-	s.Record(101, MappingFor(frame(400, 300, 0, 0, 0, 0), 1))
-	m1, _ = s.Lookup(101)
+	s.Record(agent.DefaultID, 101, MappingFor(frame(400, 300, 0, 0, 0, 0), 1))
+	m1, _ = s.Lookup(agent.DefaultID, 101)
 	if m1.Width != 400 {
 		t.Errorf("after re-recording, lookup 101 = %dx%d, want 400x300", m1.Width, m1.Height)
 	}
 	// ...and other Windows are untouched.
-	if _, ok := s.Lookup(202); !ok {
+	if _, ok := s.Lookup(agent.DefaultID, 202); !ok {
 		t.Error("recording window 101 must not drop window 202's mapping")
+	}
+}
+
+func TestStoreKeepsAMappingPerAgent(t *testing.T) {
+	// Multi-agent ticket 03: another Agent's screenshot never moves this
+	// Agent's @x,y points, and an idle Agent's Mappings go.
+	clock := time.Unix(1000, 0)
+	s := NewStore()
+	s.Now = func() time.Time { return clock }
+	s.Record("A", 101, MappingFor(frame(800, 470, 0, 0, 0, 0), 1))
+	s.Record("B", 101, MappingFor(frame(400, 300, 0, 0, 0, 0), 1))
+	if m, ok := s.Lookup("A", 101); !ok || m.Width != 800 {
+		t.Errorf("A's mapping = %v, %v, want its own 800 px screenshot", m, ok)
+	}
+	if m, ok := s.Lookup("B", 101); !ok || m.Width != 400 {
+		t.Errorf("B's mapping = %v, %v, want its own 400 px screenshot", m, ok)
+	}
+	if _, ok := s.Lookup("C", 101); ok {
+		t.Error("C took no screenshot of window 101 and must have no mapping")
+	}
+
+	s.Record(agent.DefaultID, 202, MappingFor(frame(10, 10, 0, 0, 0, 0), 1))
+	clock = clock.Add(s.Idle + time.Minute)
+	s.Record("B", 303, MappingFor(frame(10, 10, 0, 0, 0, 0), 1))
+	if _, ok := s.Lookup("A", 101); ok {
+		t.Error("A, idle past the store's idle period, kept its mapping")
+	}
+	if _, ok := s.Lookup(agent.DefaultID, 202); !ok {
+		t.Error("the default Agent lost its mapping: it never idles out")
 	}
 }
 

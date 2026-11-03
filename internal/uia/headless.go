@@ -184,7 +184,7 @@ const propName = 30005
 func (c *Client) onElement(ctx context.Context, hwnd uint64, index int, act func(th *thread, el comPtr) error) error {
 	var jobErr error
 	err := c.Run(ctx, func(w *worker, _ *run) {
-		el, lerr := c.lookup(hwnd, index)
+		el, lerr := c.lookup(ctx, hwnd, index)
 		if lerr != nil {
 			jobErr = lerr
 			return

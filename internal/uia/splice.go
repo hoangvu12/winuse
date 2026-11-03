@@ -37,7 +37,7 @@ var ErrSuperseded = errors.New("the Window was read again meanwhile")
 func (c *Client) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any) error {
 	var jobErr error
 	err := c.Run(ctx, func(w *worker, r *run) {
-		jobErr = c.store.splice(hwnd, base, merged, from, origins)
+		jobErr = c.store.splice(storeAgent(ctx), hwnd, base, merged, from, origins)
 	})
 	if err != nil {
 		return err
@@ -49,14 +49,14 @@ func (c *Client) SplicePage(ctx context.Context, hwnd uint64, base, merged []wst
 // comes from: nil for a UIA Element, the stored origin for a Page Element.
 // A Window with no stored Window State fails as ErrNoState and an index
 // outside it as ErrStale (the read-the-State-again recovery). No COM.
-func (c *Client) ElementOrigin(hwnd uint64, index int) (any, error) {
-	return c.store.origin(hwnd, index)
+func (c *Client) ElementOrigin(ctx context.Context, hwnd uint64, index int) (any, error) {
+	return c.store.origin(storeAgent(ctx), hwnd, index)
 }
 
 // splice is SplicePage's store half; it runs on a COM thread.
-func (s *store) splice(hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any) error {
+func (s *store) splice(agent string, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any) error {
 	s.mu.Lock()
-	st := s.byHwnd[hwnd]
+	st := s.lookupState(agent, hwnd)
 	if st == nil || !sameElements(st.elements, base) || len(st.elems) != len(base) {
 		s.mu.Unlock()
 		return ErrSuperseded
@@ -95,12 +95,12 @@ func (s *store) splice(hwnd uint64, base, merged []wstate.Element, from []int, o
 }
 
 // origin is ElementOrigin's store half.
-func (s *store) origin(hwnd uint64, index int) (any, error) {
+func (s *store) origin(agent string, hwnd uint64, index int) (any, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st := s.byHwnd[hwnd]
+	st := s.lookupState(agent, hwnd)
 	if st == nil {
-		return nil, fmt.Errorf("%w: window %d", ErrNoState, hwnd)
+		return nil, s.noStateLocked(agent, hwnd)
 	}
 	if index < 0 || index >= len(st.elems) {
 		return nil, fmt.Errorf("%w: element %d is not in the cached Window State of window %d", ErrStale, index, hwnd)
