@@ -175,6 +175,13 @@ func pressKey(s Services) Command {
 			if rerr != nil {
 				return "", rerr
 			}
+			// A chord with Control, Shift or Alt: the command the Window
+			// labels with that shortcut, run Headless (shortcuts.go,
+			// headless-max ticket 06). None found, or several, and the
+			// routes below run.
+			if out, rerr, ok := s.pressShortcut(ctx, w, chord); ok {
+				return out, rerr
+			}
 			// headlessStep's press-key case for an unposted, unheaded
 			// request: the route read once, then dialogKeyRoute. With no
 			// Headless route the key is refused, never pressed Headed
