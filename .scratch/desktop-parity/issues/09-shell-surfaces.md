@@ -73,4 +73,4 @@ Run once each, one after the other, under the live lock, with `WINUSE_E2E=1 WINU
 - `TestShellRefusesWithoutHeaded`: passed (3.1 s). The Headless click on `id:StartButton` and `press-key <taskbar> Control_L+Escape` were both refused with nothing sent and the `--headed` retry. Start did not open, and the foreground did not move.
 - `TestShellOpensAndClosesTheTrayOverflow`: passed (5.5 s). The `--headed` click on the hidden-icons chevron opened the overflow, and the click's output named it as a new Window. Its Window State had buttons, and the Headless `press-key <overflow> Escape` closed it: it was gone from `list-windows --shell` and, checked afterwards, hidden (not visible, not cloaked). The cleanup re-activated the Window that was in the foreground before.
 
-Nothing was left open. `TestShellReadsTheTaskbar` passed again on the merged head too.
+Nothing was left open. `TestShellReadsTheTaskbar` last ran (and passed) on the previous merge, 779798a.
