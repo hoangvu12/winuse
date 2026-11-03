@@ -48,3 +48,11 @@ Build route 1:
 - Opt-in e2e (written, compiled with `go vet -tags e2e`, NOT run: live runs are paused while the user games): `TestBrowserPages`'s `tabs` subtest now switches to the new background Tab and back on the covered launched browser. `p.act`'s guard checks the foreground and z-order; the test also checks `tab list`'s active Tab and the Window's title. Run: `go test -tags e2e -v -run TestBrowserPages ./test/e2e`.
 - Not measured: Edge (only Chrome 156 was probed), a Tab in a collapsed tab group, and pinned Tabs whose strip name may be shorter than the title (they would be refused with the `--headed` retry, not mis-switched).
 
+### 2026-11-03: the live run (worker, branch chrome-tab-strip)
+
+- `TestBrowserPages/chrome/tabs` failed in the full live run with "the Window shows no tab strip through UI Automation". Bisected live: alone, or after page-actions, drag and dialogs, it passes; after the download subtest, and after cross-origin-iframe plus upload, it fails.
+- Measured four times after a download: the first switch through the tab strip worked (80-400 ms), and from then on every UI Automation call into the Chrome Window failed: `get-window-state` failed at once with E_FAIL (0x80004005) on its root read, and the strip walk's child lookups failed, for as long as the test waited (30 s). It is Chrome's UI Automation, not the walk: the strip sits about 8 levels down and is found whenever Chrome answers.
+- Product: the walk no longer reports failed lookups as "no tab strip". With no item found and a lookup failed, it returns `uia.ErrTabStripUnanswered` with the HRESULT, and the helper refuses with "reading the tab strip of window N failed: the browser's UI Automation did not answer ... ; nothing was sent" and the `--headed` retry. The settle (up to 3 s) retries that and a failed root read too (an earlier commit added the settle for a lazy strip).
+- e2e: the `tabs` subtest runs right after `dialogs`, before the subtests that leave Chrome's UI Automation broken, with the measurement in a comment. The full `TestBrowserPages` passed live in that order.
+- Not explained: why Chrome's UI Automation stops answering after a download (the download bubble is the likely suspect). An agent meets it as the refusal above; `--headed` still switches.
+

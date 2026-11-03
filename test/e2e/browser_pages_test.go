@@ -121,11 +121,20 @@ func runBrowserPages(t *testing.T, sys *browser.System, b browser.Browser, srv *
 	t.Run("page-actions", p.pageActions)
 	t.Run("drag-and-pointer-capture", p.dragAndCapture)
 	t.Run("dialogs", p.dialogs)
+	// The Headless tab switch goes through the frame's UI Automation tree,
+	// so it runs before the subtests that leave a launched Chrome's UI
+	// Automation broken. MEASURED on 2026-11-03 (Chrome, four runs): after
+	// the download subtest, and after cross-origin-iframe plus upload, the
+	// first tab switch through the tab strip worked, and from then on every
+	// UI Automation call into the Window failed with E_FAIL
+	// (get-window-state's root read included) for as long as the test
+	// waited (30 s). The switch then refuses with nothing sent, naming the
+	// failed calls (uia.ErrTabStripUnanswered).
+	t.Run("tabs", p.tabs)
 	t.Run("cross-origin-iframe", p.crossOriginIframe)
 	t.Run("upload", p.upload)
 	t.Run("download", p.download)
 	t.Run("navigation-wait-eval", p.navigation)
-	t.Run("tabs", p.tabs)
 }
 
 // TestBrowserPagesExtension runs a short subset through the winuse
