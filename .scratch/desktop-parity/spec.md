@@ -67,8 +67,9 @@ Details are in each ticket's Comments.
 | 22 | list-windows details and filter | P2 | S | done |
 | 23 | type-text into an Element, and pacing | P2 | S-M | done (`--into` and `--interval-ms`; the Text-pattern leg landed with headless-max 13) |
 | 24 | Batch across several Windows | P3 | M | ready-for-agent |
+| 25 | Restart a helper from another build of the same version | P2 | S | ready-for-agent |
 
-24 tickets: 7 P1, 12 P2, 5 P3. Tickets 22-24 were added after a cross-check of the research's "partial" rows (rows 4, 23 and 60) against the tickets. The research's ticket 15 (`launch-app` options) moved into `../headless-max/issues/01-launch-without-foreground.md`, which changes the same code.
+25 tickets: 7 P1, 13 P2, 5 P3. Tickets 22-24 were added after a cross-check of the research's "partial" rows (rows 4, 23 and 60) against the tickets. Ticket 25 came from ticket 18's live run (a stale helper of the same version). The research's ticket 15 (`launch-app` options) moved into `../headless-max/issues/01-launch-without-foreground.md`, which changes the same code.
 
 `needs-triage` meant the ticket conflicts with an ADR, CONTEXT.md, SKILL.md or a `docs/codex-parity.md` row, and the user decides first. Each ticket names the conflict.
 
