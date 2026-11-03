@@ -16,8 +16,17 @@
 
 **Blocked by:** none
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] ADR 0014
-- [ ] Pointers in the reversed spec lines and ADR 0009
-- [ ] CONTEXT.md terms; codex-parity wording; `go test ./internal/skill/...`
+- [x] ADR 0014
+- [x] Pointers in the reversed spec lines and ADR 0009
+- [x] CONTEXT.md terms; codex-parity wording (deferred to 06); `go test ./internal/skill/...`
+
+## Comments
+
+### 2026-11-03: done
+
+- `docs/adr/0014-several-agents-at-once.md` records decisions 1-8, with thread-keyed lanes (06's correction), the UIA worker pool and the Window identity check, and the fallback to agent-desktop's snapshot-qualified refs.
+- Pointers: `../../desktop-parity/spec.md:88` (already struck) now names ADR 0014; `../../headless/spec.md:56` struck with a pointer; ADR 0009 has an amendment note.
+- CONTEXT.md: Agent and Lane (new "Agents" section), Agent Cursor per agent, Element Index and Window State per agent, each marked planned, since no code exists yet.
+- docs/codex-parity.md "one request at a time" is unchanged on purpose: it describes today's single gate, and its wording changes with ticket 06.

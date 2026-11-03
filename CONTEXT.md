@@ -34,6 +34,7 @@ _Avoid_: CDP session, debug port, endpoint
 
 **Window State**:
 What the agent observes about one Window at one moment: its accessibility tree of Elements as text and, when requested, a screenshot.
+Planned (ADR 0014): each Agent keeps its own Window State per Window, so another Agent's read never replaces it.
 _Avoid_: App state, snapshot, skyshot
 
 **Element**:
@@ -42,6 +43,7 @@ _Avoid_: Control, node, widget
 
 **Element Index**:
 The number that identifies an Element within one Window State. It is only valid for the Window State that produced it and goes stale after any change to the Window.
+Planned (ADR 0014): Element Indexes are per Agent, valid only for the Agent whose Window State produced them.
 _Avoid_: Element ID, ref
 
 ### Operation
@@ -71,12 +73,16 @@ An Action that winuse can deliver reliably without the foreground: no foreground
 _Avoid_: Background action, silent action, pattern action
 
 **Headed Action**:
-An Action performed the way a person would: the Window is brought to the foreground and real pointer or keyboard input is sent, under the in-control banner. These are always Headed: dragging, hovering, any Action aimed at screen coordinates except a scroll at a point of the Page, double, right or middle clicks outside a Page, activating a Window and Raise. Keys and typing are Headed wherever they have no Headless route and are not sent as Posted Keys, except typing into a named Element, which is refused with nothing sent unless the agent asks for Headed. Any other Action is Headed when the agent asks for it.
+An Action performed the way a person would: the Window is brought to the foreground and real pointer or keyboard input is sent, under the in-control banner. These are always Headed: dragging, hovering, any Action aimed at screen coordinates except a scroll at a point of the Page, double, right or middle clicks outside a Page, activating a Window and Raise. Keys and typing are Headed wherever they have no Headless route and are not sent as Posted Keys, except typing into a named Element, which is refused with nothing sent unless the agent asks for Headed. Any other Action is Headed when the agent asks for it. ADR 0013 narrows this set as its routes land: a route that reads its effect back becomes Headless, and one that cannot becomes opt-in Posted.
 _Avoid_: Foreground action, physical action, v1 mode
 
 **Posted Keys**:
 Keys or text that the agent explicitly asks to post to a Window's focused control without the foreground. Best effort: the app may ignore them, and they cannot carry modifiers. Neither Headless nor Headed.
 _Avoid_: Background keys, silent typing
+
+**Posted Clicks**:
+Planned (ADR 0013). Mouse messages that the agent explicitly asks to post to a classic Win32 control of a background Window: double, right and middle clicks, clicks at a point, and scrolls at a point. Best effort like Posted Keys: the app may ignore them, and winuse cannot read the effect back. Neither Headless nor Headed.
+_Avoid_: Background clicks, silent clicks
 
 **Blocked Combo**:
 A key combination press-key refuses, with nothing sent, unless the agent passes `--force`: Alt+F4, Alt+Tab, Ctrl+Shift+Escape, and any chord that holds one of them. The Windows key is refused always, with no override.
@@ -84,6 +90,7 @@ _Avoid_: Dangerous key, forbidden shortcut
 
 **Agent Cursor**:
 The second, presentation-only cursor that shows the user each Headless Action: it travels to the Element, says what is happening in a label and ripples on the click. It never takes the user's pointer, keyboard or foreground and never appears in winuse's own screenshots.
+Planned (ADR 0014): one Agent Cursor per Agent, with its own colour and label, placed just above the Window it acts on rather than topmost.
 _Avoid_: Fake cursor, ghost cursor, pointer
 
 **Esc stop**:
@@ -93,6 +100,16 @@ _Avoid_: Interrupt, cancel, kill switch
 **Harness**:
 The coding-agent program the user runs (Claude Code, Pi, ...) that drives winuse on the model's behalf.
 _Avoid_: Client, agent, host
+
+### Agents
+
+**Agent**:
+Planned (ADR 0014). One caller of winuse, with an identity: by default the Harness process the command came from, or the name in `WINUSE_AGENT`. Several Agents can run at once, each with its own Window States and Agent Cursor.
+_Avoid_: Session, client, user
+
+**Lane**:
+Planned (ADR 0014). The line an Action waits in before it runs. A Window lane is shared by the Windows of one UI thread, a Page Action has a lane per Tab, and the one desktop lane is taken by every Headed Action. Actions in different lanes run at the same time.
+_Avoid_: Lock, lease, queue
 
 ### Evaluation
 

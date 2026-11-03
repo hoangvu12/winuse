@@ -40,7 +40,7 @@ agent-desktop and cua both serialize every input-producing action machine-wide. 
 
 | # | Title | Effort | Status |
 |---|---|---|---|
-| 01 | ADR 0014 and CONTEXT.md terms | S | ready-for-agent |
+| 01 | ADR 0014 and CONTEXT.md terms | S | done |
 | 02 | Agent identity on every request | S | ready-for-agent |
 | 03 | Window States per agent | S-M | ready-for-agent |
 | 04 | A cursor per agent, like cua | M | ready-for-agent |

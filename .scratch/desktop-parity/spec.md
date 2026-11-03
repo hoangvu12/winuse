@@ -85,4 +85,4 @@ Details are in each ticket's Comments.
 - `key-down`, `key-up`, `mouse-down`, `mouse-up` (agent-desktop ships them as refusals only).
 - `get` and `is` (the tree line carries the states; `wait` covers polling).
 - A C library (ADR 0001).
-- ~~Multi-agent cursors and agent ids (one helper serializes every Action).~~ Reversed 2026-11-03: see `../multi-agent/spec.md`.
+- ~~Multi-agent cursors and agent ids (one helper serializes every Action).~~ Reversed 2026-11-03 by ADR 0014: see `../multi-agent/spec.md`.
