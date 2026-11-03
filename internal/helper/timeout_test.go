@@ -143,8 +143,20 @@ func TestLaunchPoll(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), protocol.LaunchTimeout)
 	defer cancel()
-	if got := launchPoll(ctx); got != launchPollBudget {
-		t.Errorf("the default budget: %s, want %s", got, launchPollBudget)
+	if got := launchPoll(ctx); got > launchPollBudget || got < launchPollBudget-100*time.Millisecond {
+		t.Errorf("the default budget: %s, want about %s", got, launchPollBudget)
+	}
+	// The name took 2 s to resolve: the poll ends the margin before the
+	// deadline, never after it.
+	late, cancelLate := context.WithDeadline(context.Background(), time.Now().Add(protocol.LaunchTimeout-2*time.Second))
+	defer cancelLate()
+	if got := launchPoll(late); got > protocol.LaunchTimeout-2*time.Second-launchDeadlineMargin {
+		t.Errorf("2 s already spent: poll %s, past the deadline less the margin", got)
+	}
+	gone, cancelGone := context.WithDeadline(context.Background(), time.Now().Add(launchDeadlineMargin/2))
+	defer cancelGone()
+	if got := launchPoll(gone); got != 0 {
+		t.Errorf("less than the margin left: poll %s, want 0", got)
 	}
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel2()

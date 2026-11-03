@@ -198,11 +198,12 @@ func WaitForWindow(ctx context.Context, spec Spec, pid uint32, before []win.Wind
 				return w, nil
 			}
 		}
-		if !time.Now().Before(deadline) {
+		left := time.Until(deadline)
+		if left <= 0 {
 			return win.WindowInfo{}, &NoWindowError{App: spec.App}
 		}
 		if sleep != nil {
-			sleep(pollInterval)
+			sleep(min(pollInterval, left)) // the last look comes at the deadline, not past it
 		}
 	}
 }
