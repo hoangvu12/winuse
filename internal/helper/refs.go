@@ -111,7 +111,7 @@ type ElementResolver interface {
 // cached Window State cannot answer is resolved in a fresh bounded read,
 // and the Action's output notes it.
 func resolveElementRef(ctx context.Context, s Services, w win.WindowInfo, ref string) (int, *Error) {
-	if live, ok := s.Actions.(LiveResolver); ok {
+	if live, ok := s.Actions.(LiveResolver); ok && !isCacheOnly(ctx) {
 		res, err := live.ResolveElementRefLive(ctx, w.ID, ref, liveBudget(ctx))
 		if err != nil {
 			return 0, refError(err, w)
@@ -191,4 +191,23 @@ func noStateError(err error, w win.WindowInfo) *Error {
 	}
 	return Fail(fmt.Sprintf("no cached Window State is available for window %d", w.ID),
 		"run winuse get-window-state "+id+" to read the Window's Elements before acting on them")
+}
+
+type cacheOnlyKey struct{}
+
+// cacheOnly marks resolutions that must not read the Window afresh: the
+// Page check (pageResolve) runs before an Element Action's own route, in
+// the lane classification (pageStep) and in the command (onPage), and a
+// fresh read there would store the Element, so the route's own resolution
+// would find it cached and lose its note and its fresh-read wording (the
+// live TestNameReferenceAfterHelperRestart failure). A fresh read walks UI
+// Automation only and never finds a Page Element, so the check loses
+// nothing.
+func cacheOnly(ctx context.Context) context.Context {
+	return context.WithValue(ctx, cacheOnlyKey{}, true)
+}
+
+func isCacheOnly(ctx context.Context) bool {
+	only, _ := ctx.Value(cacheOnlyKey{}).(bool)
+	return only
 }
