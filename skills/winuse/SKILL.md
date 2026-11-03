@@ -56,6 +56,18 @@ Element Index fails with an instruction to read the Window State again;
 follow it. `name:` and `id:` survive re-reads better than indexes, because
 an Element keeps its name and ID while its index shifts.
 
+### Several agents
+
+winuse names each caller after the program that ran it, your Harness
+session, and `winuse status` lists the agents it served. Sub-agents of one
+session share that program, so give each one its own name in
+`WINUSE_AGENT`. Set it on every winuse command, because a Harness often
+starts a fresh shell per command: in PowerShell,
+`$env:WINUSE_AGENT = "reviewer"; winuse click 101 3`. The agents still share
+each Window's Element Indexes: another agent's read of the same Window
+renumbers them, so prefer `name:` and `id:` while another agent works in
+that Window.
+
 ## Find the Window
 
 ```
@@ -776,7 +788,8 @@ ordinary Escape sent to the app; only the physical key stops winuse.
 - When failures make no sense, run `winuse status`. It prints the winuse
   and helper versions, whether the helper is running and for how long,
   whether the desktop is locked, the integrity level, DPI awareness, the
-  Browser Connections and the Windows build. It only reads and never
+  Browser Connections, the agents it served and the Windows build. It
+  only reads and never
   starts the helper, so it is safe at any time; include its output when
   you report a problem to the user.
 
@@ -838,7 +851,7 @@ browser clone [browser] [--profile <folder>] [--fresh] [--close-source]
 browser ext install [browser|all] | browser ext status [browser]
 record-tree <window> <file>         # development only, records a tree fixture for winuse's own tests
 skill | skill install <dir>         # print this file from the binary, or write it to <dir>\winuse\SKILL.md
-status                              # read-only: versions, helper uptime, lock, integrity, DPI, browsers, Windows build
+status                              # read-only: versions, helper uptime, lock, integrity, DPI, browsers, agents, Windows build
 version
 ```
 

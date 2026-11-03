@@ -53,6 +53,7 @@ func statusCommand(s Services) Command {
 		if h, ok := s.Browser.(heldBrowsers); ok {
 			r.Browsers, r.BrowsersKnown = h.Held(), true
 		}
+		r.Agents = s.Agents.list(s.Now())
 		raw, err := json.Marshal(r)
 		if err != nil {
 			return "", Fail("status: "+err.Error(), "")

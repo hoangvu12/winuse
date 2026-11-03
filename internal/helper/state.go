@@ -217,6 +217,9 @@ type Services struct {
 	OwnIntegrity func() (uint32, error) // the helper's integrity level RID
 	DPIAwareness func() string          // the helper's DPI awareness, named
 	WindowsBuild func() string          // the Windows build, named
+	// Agents remembers the Agents the helper served (agents.go,
+	// multi-agent ticket 02) for the status report; nil: a fresh log.
+	Agents *agentLog
 
 	// actionGate serializes every command that activates a Window, injects
 	// input or shows the overlay (finding 11): two concurrent CLI calls
@@ -302,13 +305,16 @@ func CommandsWith(s Services) map[string]Command {
 	// The serialized registry: every control-path command runs alone, and
 	// the Actions that can open a Window report it (opened.go). The Batch
 	// keeps the raw step commands, so it diffs once around all its steps.
+	// Every command but status records the Agent it ran for (agents.go).
 	out := make(map[string]Command, len(cmds))
 	for name, cmd := range cmds {
-		if observationOnlyCommand(name) {
-			out[name] = cmd
-			continue
+		if !observationOnlyCommand(name) {
+			cmd = s.serialized(s.reportOpened(name, cmd))
 		}
-		out[name] = s.serialized(s.reportOpened(name, cmd))
+		if name != StatusCommand {
+			cmd = s.tracked(name, cmd)
+		}
+		out[name] = cmd
 	}
 	return out
 }
@@ -558,6 +564,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.Now == nil {
 		s.Now = time.Now
+	}
+	if s.Agents == nil {
+		s.Agents = newAgentLog()
 	}
 	if s.Started.IsZero() {
 		s.Started = s.Now()
