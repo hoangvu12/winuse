@@ -288,6 +288,9 @@ func batch(commands map[string]Command, s Services) Command {
 			if next && err == nil {
 				before, listed = s.snapshotWindow(st.w)
 			}
+			if err == nil && st.w.ID != w.ID {
+				err = s.stepHung(ctx, st)
+			}
 			out := ""
 			if err == nil {
 				out, err = st.cmd(ctx, st.args)
@@ -575,4 +578,14 @@ func (s Services) inNewWindow(ctx context.Context, st *batchStep) *Error {
 	}
 	st.args = args
 	return nil
+}
+
+// stepHung is refuseHung (hung.go, multi-agent ticket 07) for a step in
+// its own Window: the registry checks only the Batch's Window. A step
+// that goes to the Page does not reach the Window's UI thread.
+func (s Services) stepHung(ctx context.Context, st *batchStep) *Error {
+	if s.WindowHung == nil || s.pageStep(ctx, st.kind, st.args, st.w) || !s.WindowHung(st.w.ID) {
+		return nil
+	}
+	return hungWindowError(st.w.ID)
 }

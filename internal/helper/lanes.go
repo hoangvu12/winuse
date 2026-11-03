@@ -252,18 +252,15 @@ func (s Services) batchLanes(ctx context.Context, args json.RawMessage, w win.Wi
 	return newLaneSet(w.ID, keys...)
 }
 
-// heldLanesKey carries the lanes a request holds (onLanes) to its command.
-type heldLanesKey struct{}
-
 // lanesHeld reports whether the request under ctx holds every lane the
-// command with these arguments takes: a Batch's `in new` step checks its
-// new Window this way before it runs. Outside onLanes (no lanes) it
-// holds them all, and so does a Window that does not resolve: the command
+// command with these arguments takes (laneSetOf, hung.go): a Batch's `in
+// new` step checks its new Window this way before it runs. Outside the
+// lanes it holds them all, and so does a Window that does not resolve: the command
 // fails on it. The desktop lane is left out: an `in new` step that asks
 // for Headed took it up front (inNewHeaded), and one with no Headless
 // route that does not ask is refused by its own command.
 func (s Services) lanesHeld(ctx context.Context, name string, args json.RawMessage) bool {
-	held, ok := ctx.Value(heldLanesKey{}).(laneSet)
+	held, ok := laneSetOf(ctx)
 	if !ok {
 		return true
 	}
@@ -380,7 +377,7 @@ func (s Services) onLanes(ctx context.Context, set laneSet, cmd Command, args js
 	if set.has(desktopLane) {
 		s.setOverlayAgent(who) // the banner names the agent holding the desktop
 	}
-	return cmd(context.WithValue(ctx, heldLanesKey{}, set), args)
+	return cmd(ctx, args)
 }
 
 // laneBusyError is the refusal of a request that waited for a lane past

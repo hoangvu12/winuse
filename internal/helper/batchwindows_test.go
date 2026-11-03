@@ -216,7 +216,7 @@ func TestBatchInNewWindowOnAnotherThreadIsRefused(t *testing.T) {
 	spy.svc.Surfaces = func() ([]win.WindowInfo, error) { return []win.WindowInfo{saveDialog, notepadMain}, nil }
 	threads := map[uint64]uint32{101: 11, 777: 11}
 	spy.svc.WindowThread = func(hwnd uint64) uint32 { return threads[hwnd] }
-	ctx := context.WithValue(context.Background(), heldLanesKey{}, newLaneSet(101, threadLane(11)))
+	ctx := withLaneSet(context.Background(), newLaneSet(101, threadLane(11)))
 	step := func() *batchStep {
 		return &batchStep{kind: "press-key", args: batchStepArgs(protocol.PressKeyArgs{Window: "101", Key: "Return"}), inNew: true, w: saveDialog}
 	}
@@ -247,5 +247,42 @@ func TestBatchReportNamesEachUncertainStepsWindow(t *testing.T) {
 	e = batchReport(2, []batchFailure{{n: 2, kind: "click", window: 101, uncertain: true}})
 	if want := "Action 2 may have taken effect: read the Window State (winuse get-window-state 101) before repeating it"; !strings.HasPrefix(e.Hint, want) {
 		t.Errorf("hint %q, want %q", e.Hint, want)
+	}
+}
+
+func TestPoliteBatchGivesBackFromAnyOfItsWindows(t *testing.T) {
+	// A Headed Batch whose last step closed the dialog it acted in: the
+	// foreground fell back to the dialog's owner, which an earlier step
+	// acted in, so it is still the Batch's and is given back (ma-08).
+	spy, d := politeSpy()
+	d.fg = 101
+	main, dialog := win.WindowInfo{ID: 101, PID: 7}, win.WindowInfo{ID: 777, PID: 7}
+	r := &politeRun{saved: savedDesk{foreground: 500, windows: map[uint64]bool{101: true, 500: true}}, headed: true,
+		target: dialog, visited: []win.WindowInfo{main, dialog}}
+	if note := spy.svc.giveBack(r); note != "" || d.fg != 500 {
+		t.Errorf("note %q, foreground %d; want it given back to 500", note, d.fg)
+	}
+	// A foreground on a Window no step acted in is the user's.
+	d.fg = 202
+	r.visited = []win.WindowInfo{dialog}
+	if note := spy.svc.giveBack(r); !strings.Contains(note, "it moved to window 202") || d.fg != 202 {
+		t.Errorf("note %q, foreground %d; want it left on 202", note, d.fg)
+	}
+}
+
+func TestBatchStepInAHungWindowIsRefused(t *testing.T) {
+	// ma-07's hung pre-check covers a step's own Window at its turn; the
+	// Batch runs on past it.
+	spy := newHeadlessSpy()
+	spy.svc.WindowHung = func(hwnd uint64) bool { return hwnd == 203 }
+	_, e := runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{Window: "101", Steps: []protocol.Step{
+		inStep("203", "set-value", protocol.SetValueArgs{Ref: "name:Address", Value: "x"}),
+		stepOf("click", protocol.ClickArgs{ElementIndex: idx(2)}),
+	}})
+	if msg, _, ok := failedStep(e, 1, "set-value in 203"); !ok || msg != "window 203's App is not responding; nothing was sent" {
+		t.Errorf("Action 1: %q (%v); out %q", msg, ok, e.Out)
+	}
+	if !strings.Contains(e.Out, "Action 2 (click): ok") || slices.Contains(spy.recorded(), "headless-set-value") {
+		t.Errorf("out %q, steps %v; want only Action 2 sent", e.Out, spy.recorded())
 	}
 }
