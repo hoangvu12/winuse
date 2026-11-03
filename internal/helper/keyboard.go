@@ -236,6 +236,9 @@ func pressKey(s Services) Command {
 				pressKeyAlt(strconv.FormatUint(w.ID, 10), chord))
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
+			if opensContextMenu(chord) {
+				expectMenuHere(ctx) // polite.go: the menu may show late
+			}
 			if err := s.PressKeys(chord); err != nil {
 				return "", inputError(err)
 			}

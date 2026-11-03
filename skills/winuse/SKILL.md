@@ -345,7 +345,8 @@ Action activates its Window itself, so use it only to restore drifted
 focus. A Headed Action waits while the user types or clicks (past 3 s it is
 refused with `nothing was sent`), stops when they take over (exit 130, like
 Esc: ask before retrying), and then gives back their foreground and pointer,
-unless it left a menu or dialog open, which a `Note:` names.
+unless it left a menu or dialog open, which a `Note:` names. After a right
+click it waits up to 2.5 s for a late context menu (Explorer's) first.
 
 The user sees each Headless Action through the Agent Cursor, a second cursor
 that glides to the Element with a label such as `click "Save"` and ripples

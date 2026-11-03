@@ -24,6 +24,13 @@ package helper
 //     gives back once after its last, from any Window a Headed step acted
 //     in (its steps can name several, desktop-parity 24). When winuse keeps the foreground for
 //     a menu it opened, or the foreground moved elsewhere, a Note says so.
+//     A context menu can open late: a Windows 11 File Explorer item's
+//     first one in a Window shows 1.35-1.65 s after the right click's `ok`
+//     (measured live, multi-agent ticket 12), and a hand-back before it
+//     shows closes it. So a Headed Action that asks for a context menu (a
+//     right click, a Headed ContextMenu, the Apps key or Shift+F10) waits
+//     up to politeMenuWait for a new Window of the App before it gives the
+//     foreground back, and keeps it when one shows.
 //   - After the activation, a WM_NULL round trip to the Window confirms
 //     its thread took it before any input goes in (else nothing is sent).
 //   - After the Action, and after any release of held keys, the injected
@@ -46,6 +53,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hoangvu12/winuse/internal/keys"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/win"
 )
@@ -58,8 +66,9 @@ const (
 	politeCursorSlack  = 2                      // pixels: the cursor is still where winuse left it
 	politeRecheck      = 600 * time.Millisecond // how long a Chromium hand-back is watched
 	politeRecheckEvery = 100 * time.Millisecond
-	politeFlush        = 2 * time.Second        // how long the injected input may take to come through the hooks
-	politeFlushMiss    = 200 * time.Millisecond // the pause instead, when the flush cannot run
+	politeFlush        = 2 * time.Second         // how long the injected input may take to come through the hooks
+	politeFlushMiss    = 200 * time.Millisecond  // the pause instead, when the flush cannot run
+	politeMenuWait     = 2500 * time.Millisecond // how long a context menu may take to show (multi-agent 12)
 )
 
 // politeState is what the Headed pipeline remembers across Actions: when
@@ -99,6 +108,7 @@ type politeRun struct {
 	headed         bool
 	keepForeground bool
 	keepPointer    bool
+	menuExpected   bool             // the last Headed step asked for a context menu (expectMenuHere)
 	visited        []win.WindowInfo // a Batch's: every Headed step's Window, its steps in several (desktop-parity 24)
 }
 
@@ -124,6 +134,41 @@ func keepPointerHere(ctx context.Context) {
 	if r := politeRunOf(ctx); r != nil {
 		r.keepPointer = true
 	}
+}
+
+// expectMenuHere marks the running Headed Action as one that asks for a
+// context menu, which may show after the Action (politeMenuWait).
+func expectMenuHere(ctx context.Context) {
+	if r := politeRunOf(ctx); r != nil {
+		r.menuExpected = true
+	}
+}
+
+// opensContextMenu reports whether a chord asks for the focused
+// Element's context menu: the Apps key (Menu) or Shift+F10.
+func opensContextMenu(chord keys.Chord) bool {
+	const vkApps, vkF10 = 0x5D, 0x79
+	switch {
+	case len(chord) == 1 && chord[0].VK == vkApps:
+		return true
+	case len(chord) == 2 && chord[1].VK == vkF10:
+		vk := chord[0].VK
+		return vk == 0x10 || vk == 0xA0 || vk == 0xA1 // Shift, Shift_L, Shift_R
+	}
+	return false
+}
+
+// waitForLateMenu waits up to politeMenuWait for the run to leave a new
+// Window of target's App open (a context menu that shows late), and
+// reports whether one showed.
+func (s Services) waitForLateMenu(d savedDesk, target win.WindowInfo) bool {
+	for waited := time.Duration(0); waited < politeMenuWait; waited += politePoll {
+		s.sleep(politePoll)
+		if s.leftOpen(d, target) {
+			return true
+		}
+	}
+	return false
 }
 
 // waitForQuietInput waits until the user's input has been quiet for
@@ -226,9 +271,16 @@ func (s Services) giveBack(r *politeRun) string {
 		}
 		return fmt.Sprintf("%sthe foreground was not given back: it moved to window %d during the Action\n", notePrefix, fg)
 	}
-	if s.leftOpen(d, w) {
+	if s.leftOpen(d, w) || r.menuExpected && s.waitForLateMenu(d, w) {
 		// A menu or Window the Action opened lives on the foreground.
 		return fmt.Sprintf("%sthe foreground stays on window %d: the Action left a menu or Window of its App open\n", notePrefix, w.ID)
+	}
+	if r.menuExpected {
+		// No menu showed while winuse waited: give the foreground back
+		// unless the user took it meanwhile.
+		if fg := s.Foreground(); fg != w.ID {
+			return ""
+		}
 	}
 	if err := s.Activate(d.foreground); err != nil {
 		log.Printf("giving the foreground back to window %d: %v", d.foreground, err)
@@ -261,6 +313,7 @@ func near(a, b int32) bool { return a-b <= politeCursorSlack && b-a <= politeCur
 func (s Services) beginPolite(ctx context.Context, w win.WindowInfo) (context.Context, *politeRun, bool) {
 	if r := politeRunOf(ctx); r != nil {
 		r.target, r.headed = w, true
+		r.menuExpected = false // only the Batch's last Headed step's menu is waited for
 		r.visited = append(r.visited, w)
 		return ctx, r, false
 	}

@@ -279,6 +279,7 @@ func (s Services) headedContextMenu(ctx context.Context, ref string, target elem
 			}
 			x, y = pt.X, pt.Y
 		}
+		expectMenuHere(ctx) // polite.go: the menu may show late
 		if err := s.Click(w.ID, x, y, win.MouseRight, 1); err != nil {
 			return "", inputError(err)
 		}
