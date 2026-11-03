@@ -74,6 +74,34 @@ $app = New-Object System.Windows.Application
 [void]$app.Run($w)
 `
 
+// watchForegroundMove samples the foreground every 5 ms from now on, and
+// returns a function that stops sampling and reports when it first left
+// cover, and to which window (0 when it never did).
+func watchForegroundMove(cover uint64) func() (time.Duration, uint64) {
+	stop, done := make(chan struct{}), make(chan struct{})
+	start := time.Now()
+	var at time.Duration
+	var to uint64
+	go func() {
+		defer close(done)
+		for {
+			if fg := win.ForegroundWindow(); to == 0 && fg != cover && fg != 0 {
+				at, to = time.Since(start), fg
+			}
+			select {
+			case <-stop:
+				return
+			case <-time.After(5 * time.Millisecond):
+			}
+		}
+	}()
+	return func() (time.Duration, uint64) {
+		close(stop)
+		<-done
+		return at, to
+	}
+}
+
 func TestPostedChordFiresAWPFKeyBinding(t *testing.T) {
 	optIn(t)
 	dir := t.TempDir()
@@ -97,8 +125,19 @@ func TestPostedChordFiresAWPFKeyBinding(t *testing.T) {
 		t.Fatalf("before the posted chord: the foreground window is %s, want the covering Window %d", describeWindow(t, fg), cover)
 	}
 
+	// When the foreground moves, if it does, tells the two causes apart:
+	// during the chord (the activation pair, winuse's) or outside it (the
+	// App's own activation).
+	moved := watchForegroundMove(cover)
+	start := time.Now()
 	stdout, stderr, exit := runPostedChord(t, window, "Control_L+s")
+	took := time.Since(start)
 	assertActionOK(t, "press-key Control_L+s --post into WPF", stdout, stderr, exit)
+	defer func() {
+		if at, fg := moved(); fg != 0 {
+			t.Logf("the foreground moved to %s %s after the chord started; the chord command took %s", describeWindow(t, fg), at, took)
+		}
+	}()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		b, _ := os.ReadFile(state)
