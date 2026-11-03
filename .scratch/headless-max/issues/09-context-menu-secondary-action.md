@@ -192,3 +192,9 @@ Live e2e on the laptop (the orchestrator approved; run after the full run releas
   - In both, the action itself worked.
   - Main's e2e-live-fixes (merged here afterwards) prints both as `ok` plus a Note line, which `assertActionOK` accepts. They were not rerun live after the merge.
 
+
+### 2026-11-03: press-key Escape on a Chromium menu (branch e2e-context-menu)
+
+- `TestContextMenuOnACoveredBrowserPage` failed intermittently at `press-key <menu> Escape`: "SendMessageTimeout(0x100 or 0x102) failed for window N: Invalid window handle; nothing was sent". The menu was open when the test checked it. A probe found it stays open left alone (3 s) and through a get-window-state; the window closed during the press-key itself. The menu popup took ticket 20's window-message route, whose activation pair (WM_NCACTIVATE, WM_ACTIVATE, WM_SETFOCUS) went to the menu window first: Chrome sometimes dismissed its menu on it, and the key then hit a dead handle. The menu did close, but the command failed and said nothing was sent.
+- Measured (Chrome 155): the menu popup is WS_POPUP with WS_EX_TOOLWINDOW and WS_EX_NOACTIVATE, owned by its browser Window; the browser Window has none of these. `win.ChromiumMenuPopup` tells it by those, and `escapeMenuWindow` now includes it, so `press-key <menu> Escape` posts Escape to the menu window (round 5's measured close) and reads the close back, as for a `#32768`, a PopupHost or a WinForms drop-down; it is Headless in a Batch too.
+- Live: the test 5/5, then 3/3 with an Explorer Window as the home Window; every ContextMenu e2e test passes (WinForms and WinUI skip without their opt-ins).

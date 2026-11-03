@@ -50,6 +50,18 @@ func WinFormsDropDown(class string) bool {
 	return err == nil && bits&csSaveBits != 0
 }
 
+// ChromiumMenuPopup reports whether w is a Chromium menu popup: a
+// Chrome_WidgetWin_ popup that never takes activation, owned by its
+// browser Window (measured on Chrome 155: WS_POPUP, WS_EX_TOOLWINDOW and
+// WS_EX_NOACTIVATE, the browser as owner). Escape posted to it closes it
+// (probes round 5). The window-message route's activation pair is wrong
+// there: Chrome sometimes dismissed the menu on it before the key arrived
+// (e2e live run, 2026-11-03).
+func ChromiumMenuPopup(w WindowInfo) bool {
+	return strings.HasPrefix(w.Class, "Chrome_WidgetWin_") && w.Owner != 0 &&
+		w.Style&wsPopup != 0 && w.ExStyle&(wsExToolWindow|wsExNoActivate) == wsExToolWindow|wsExNoActivate
+}
+
 const (
 	csSaveBits = 0x0800 // CS_SAVEBITS
 
