@@ -92,8 +92,13 @@ var (
 )
 
 // enumTarget is the slice the enumeration callback appends to. A package
-// variable with its own lock instead of the classic lparam unsafe.Pointer
-// dance: safe under concurrent enumerations and vet-clean.
+// variable instead of the classic lparam unsafe.Pointer dance (vet-clean),
+// so enumMu is held for the whole EnumWindows call: concurrent
+// enumerations (requests in different lanes, multi-agent 06) take turns.
+// Holding it only around the target's set and clear let one call's
+// callback append through a target another call had cleared: it panicked
+// holding the lock and every later Collect blocked (e2e live run,
+// 2026-11-03).
 var (
 	enumMu     sync.Mutex
 	enumTarget *[]uintptr
@@ -101,10 +106,9 @@ var (
 
 // enumWindowsCallback appends every enumerated HWND. Created once:
 // callbacks are never freed.
+// The callback runs inside enumAll's EnumWindows call, under enumMu.
 var enumWindowsCallback = syscall.NewCallback(func(hwnd, _ uintptr) uintptr {
-	enumMu.Lock()
 	*enumTarget = append(*enumTarget, hwnd)
-	enumMu.Unlock()
 	return 1 // continue
 })
 
@@ -141,14 +145,10 @@ func Collect() ([]WindowInfo, error) {
 
 func enumAll() ([]uintptr, error) {
 	enumMu.Lock()
+	defer enumMu.Unlock()
 	hwnds := make([]uintptr, 0, 256)
 	enumTarget = &hwnds
-	enumMu.Unlock()
-	defer func() {
-		enumMu.Lock()
-		enumTarget = nil
-		enumMu.Unlock()
-	}()
+	defer func() { enumTarget = nil }()
 	if err := windows.EnumWindows(enumWindowsCallback, nil); err != nil {
 		return nil, err
 	}

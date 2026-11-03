@@ -123,3 +123,7 @@ The browser leg (`TestContextMenuOnACoveredBrowserPage`) did not run here: it is
 
 Not measured: WinForms ContextMenuStrip through a posted WM_CONTEXTMENU; WinUI 3 live; Chrome live (the PC runs it).
 
+
+### 2026-11-03: PC live run (branch e2e-live-fixes-3)
+
+- `TestContextMenuOnACoveredBrowserPage` passes on the PC (Chrome, the Escape route), covered.

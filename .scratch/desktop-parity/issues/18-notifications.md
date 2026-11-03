@@ -104,3 +104,8 @@ Restore:
 - Nothing was left open, and the foreground is where it was.
 
 One slip: after the bare Win+N test I sent one Escape (SendInput) without first checking that a panel had opened. None had, so the Escape went to the user's foreground Window (Zeron). Rule from the orchestrator since: during a live run, no key or click outside winuse's own checked routes.
+
+### 2026-11-03: PC live run (branch e2e-live-fixes-3)
+
+- `--headed open-shell notifications` opens the notification panel on the PC (Windows 11 Pro 10.0.26200): an injected Win+N works here, unlike on the laptop. `TestOpenShellOpensTheNotificationPanel` read the panel's Window State, closed it with a `--headed` Escape (no longer listed), and gave the foreground back. `TestOpenShellRefusesWithoutHeaded` and `TestListNotificationsOnlyReads` pass.
+- The toast tests skipped on the PC: toasts are off for this user (ToastNotifier.Setting 2, DisabledForUser). The setting was left alone.

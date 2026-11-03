@@ -5,7 +5,8 @@
 // helper.
 //
 //   - TestTwoAgentsActAtOnceOnTwoFixtures: alpha and beta each run a
-//     Headless Batch (a click, a pause, a set-value) on their own covered
+//     Batch (a Headless click, ten Posted Keys 150 ms apart, a Headless
+//     set-value) on their own covered
 //     fixture at the same time. Both succeed, the Batches overlap in time
 //     (parallel, not one after the other), and the foreground stays on the
 //     cover.
@@ -15,9 +16,9 @@
 //     index still toggles alpha's Element, the checkbox; beta's click by
 //     beta's index toggles it back.
 //   - TestHeadedActionsTakeTurnsOnTheDesktop: alpha's Headed Batch holds the
-//     desktop lane; beta's Headed click waits for it and then runs, and a
-//     Headed Batch of beta's with a 1 s budget is refused with nothing sent,
-//     naming alpha.
+//     desktop lane; beta's Headed click waits for it and then runs, and
+//     while alpha holds it past the 12 s lane limit, beta's next Headed
+//     click is refused with nothing sent, naming alpha.
 //   - TestEscStopsEveryAgent: one physical Esc press stops alpha's and
 //     beta's running Batches and gamma's command waiting behind alpha's.
 //     Interactive: it needs WINUSE_E2E_HUMAN=1, as TestEscStopsTheLongBatch.
@@ -89,15 +90,17 @@ func TestTwoAgentsActAtOnceOnTwoFixtures(t *testing.T) {
 	idx := mainElementIndexes()
 	checkbox, field := strconv.Itoa(idx[fixture.ElemCheckboxNotify]), strconv.Itoa(idx[fixture.ElemTextField])
 
+	// The middle step takes about 1.5 s: ten characters posted 150 ms
+	// apart (a Batch has no bare pause; its wait takes a state).
 	const pause = 1500 * time.Millisecond
 	batch := func(window, text string) []string {
-		return []string{"batch", window, "click", checkbox, "then", "wait", strconv.Itoa(int(pause.Milliseconds())), "then", "set-value", field, text}
+		return []string{"batch", window, "click", checkbox, "then", "type-text", "--post", "--interval-ms", "150", "abcdefghij", "then", "set-value", field, text}
 	}
 	alpha := runTimedAsync(t, batch(windowA, "alpha-text"), asAgent("alpha")...)
 	beta := runTimedAsync(t, batch(windowB, "beta-text"), asAgent("beta")...)
 	a, b := <-alpha, <-beta
-	assertActionOK(t, "alpha's Batch on fixture A", a.stdout, a.stderr, a.exit)
-	assertActionOK(t, "beta's Batch on fixture B", b.stdout, b.stderr, b.exit)
+	assertBatchOK(t, "alpha's Batch on fixture A", a.stdout, a.stderr, a.exit, 3)
+	assertBatchOK(t, "beta's Batch on fixture B", b.stdout, b.stderr, b.exit, 3)
 	fixA.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.Checkbox && s.Text == "alpha-text" })
 	fixB.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.Checkbox && s.Text == "beta-text" })
 
@@ -156,8 +159,10 @@ func TestHeadedActionsTakeTurnsOnTheDesktop(t *testing.T) {
 	readAs(t, "beta", windowB)
 	canvas := strconv.Itoa(mainElementIndexes()[fixture.ElemCanvas])
 	// alpha's Headed Batch: a double click on the canvas (it opens
-	// nothing), then 3 s holding the desktop lane.
-	holdDesktop := []string{"--headed", "batch", windowA, "click", canvas, "--count", "2", "then", "wait", "3000"}
+	// nothing), then about 3 s holding the desktop lane: ten characters
+	// typed 300 ms apart (a Batch has no bare pause; its wait takes a
+	// state). The canvas takes no text, so they change nothing.
+	holdDesktop := []string{"--headed", "batch", windowA, "click", canvas, "--count", "2", "then", "type-text", "--interval-ms", "300", "abcdefghij"}
 
 	alpha := runTimedAsync(t, holdDesktop, asAgent("alpha")...)
 	fixA.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.CanvasDoubleClicks >= 1 })
@@ -170,7 +175,7 @@ func TestHeadedActionsTakeTurnsOnTheDesktop(t *testing.T) {
 	fixB.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.CanvasDoubleClicks >= 1 })
 	select {
 	case a := <-alpha:
-		assertActionOK(t, "alpha's Headed Batch", a.stdout, a.stderr, a.exit)
+		assertBatchOK(t, "alpha's Headed Batch", a.stdout, a.stderr, a.exit, 2)
 	default:
 		t.Error("beta's Headed click ended before alpha's Batch released the desktop")
 	}
@@ -178,19 +183,27 @@ func TestHeadedActionsTakeTurnsOnTheDesktop(t *testing.T) {
 		t.Errorf("beta's Headed click took %s: it did not wait for alpha's desktop lane", took)
 	}
 
-	// With a short budget, beta's wait ends in the refusal.
-	alpha = runTimedAsync(t, holdDesktop, asAgent("alpha")...)
+	// Held past the 12 s lane limit, the desktop refuses beta. alpha holds
+	// it with a wait for a state that never comes (the disabled button
+	// stays disabled), which sends no input; a caller --timeout cannot
+	// shorten beta's wait instead, since it only widens a budget
+	// (desktop-parity 14).
+	disabled := strconv.Itoa(mainElementIndexes()[fixture.ElemButtonDisabled])
+	holdLong := []string{"--headed", "batch", windowA, "click", canvas, "--count", "2", "then", "wait", disabled, "enabled", "--timeout", "15"}
+	alpha = runTimedAsync(t, holdLong, asAgent("alpha")...)
 	fixA.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.CanvasDoubleClicks >= 2 })
 	start = time.Now()
-	stdout, stderr, exit = runWinuse(t, []string{"--headed", "batch", windowB, "--timeout", "1", "click", canvas, "--count", "2"}, asAgent("beta")...)
+	stdout, stderr, exit = runWinuse(t, []string{"--headed", "click", windowB, canvas, "--count", "2"}, asAgent("beta")...)
 	if exit != 1 || !strings.Contains(stderr, "agent alpha is using the desktop; nothing was sent") {
-		t.Errorf("beta's Headed Batch with a 1 s budget: exit %d, stdout %q, stderr %q; want the desktop refusal naming alpha", exit, stdout, stderr)
+		t.Errorf("beta's Headed click behind alpha's long Batch: exit %d, stdout %q, stderr %q; want the desktop refusal naming alpha", exit, stdout, stderr)
 	}
-	if took := time.Since(start); took > 2500*time.Millisecond {
-		t.Errorf("the refusal took %s; the wait is clamped by the 1 s budget", took)
+	if took := time.Since(start); took < 10*time.Second || took > 14*time.Second {
+		t.Errorf("the refusal came after %s; a request waits 12 s for its lanes", took)
 	}
 	a := <-alpha
-	assertActionOK(t, "alpha's second Headed Batch", a.stdout, a.stderr, a.exit)
+	if a.exit != 1 || !strings.Contains(a.stdout, "Action 1 (click): ok") {
+		t.Errorf("alpha's long Headed Batch: exit %d, stdout %q, stderr %q; want its click ok and its wait failed", a.exit, a.stdout, a.stderr)
+	}
 	if st := fixB.waitState(t, time.Second, func(*fixture.State) bool { return true }); st.CanvasDoubleClicks != 1 {
 		t.Errorf("fixture B saw %d double clicks; the refused Batch must send nothing", st.CanvasDoubleClicks)
 	}
