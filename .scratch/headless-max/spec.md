@@ -38,7 +38,7 @@ Close every gap that has a route, and say plainly where none exists.
 | 03 | EnableWindow guard against self-activation | S | done (detect and report; live e2e run still to do) |
 | 04 | Occlusion flag for launched browsers | S | done |
 | 05 | Headless tab switch on launched browsers | S | done (live e2e run still to do) |
-| 06 | Accelerator lookup route for press-key | S | ready-for-agent (low priority) |
+| 06 | Accelerator lookup route for press-key | S | done (live e2e pending) |
 | 07 | Chords through attached key state (opt-in) | M | done (live e2e pending) |
 | 08 | invoke-menu for classic menu bars | M | done (live e2e pending) |
 | 09 | ContextMenu Secondary Action | M | ready-for-agent |

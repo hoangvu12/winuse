@@ -467,6 +467,15 @@ winuse picks the route from the live Window before it sends anything.
   boxes and most apps' Open and Save As dialogs are classic dialogs. Return
   has no Headless route when the dialog has no default button or the focus
   is in a multi-line box that takes Return as a new line.
+- `press-key` with Control, Shift or Alt, such as `Control_L+s`, first looks
+  for the command the Window labels with that shortcut: a classic menu
+  item that shows `Ctrl+S` beside its name, or a menu item or ribbon
+  button that shows it.
+  One match runs Headless and the output names it, such as
+  `ok (invoked "File > Save" through its shortcut)`; a disabled one is
+  refused with nothing sent. WinForms, WinUI menus, ribbons and classic
+  menus label their shortcuts; WPF never does. With no labelled command,
+  or two, the chord goes on to the routes below.
 - `type-text` into a focused classic edit box, such as Notepad or a text box
   in a Win32 dialog, is Headless when the text has no newline, tab or other
   control character. It replaces the selection or inserts at the caret, like
