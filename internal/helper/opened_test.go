@@ -101,7 +101,9 @@ func TestOpenedMenuAfterPressKeySkipsTooltips(t *testing.T) {
 	spy := newHeadlessSpy()
 	desk := newDesk([]win.WindowInfo{tooltip, editMenu, notepadMain, otherApp})
 	desk.wire(&spy.svc)
-	out, e := runCommand(t, CommandsWith(spy.svc), "press-key", protocol.PressKeyArgs{Window: "101", Key: "Alt_L+e"})
+	// Alt+E has only the Headed route, so it is sent with --headed
+	// (headless-max ticket 21).
+	out, e := runCommand(t, CommandsWith(spy.svc), "press-key", protocol.PressKeyArgs{Window: "101", Key: "Alt_L+e", Headed: true})
 	if e != nil {
 		t.Fatalf("press-key: %v", e.Error())
 	}

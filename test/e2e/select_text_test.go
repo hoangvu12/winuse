@@ -111,8 +111,9 @@ func TestHeadlessSelectTextInNotepad(t *testing.T) {
 	name := "winuse-e2e-select-" + strconv.FormatInt(time.Now().UnixNano(), 36) + ".txt"
 	path := filepath.Join(t.TempDir(), name)
 	// The text is in the file, not typed: once covered, Windows 11
-	// Notepad reports no focused control, so plain type-text takes its
-	// Headed route there (type-text --into the editor's Element does not;
+	// Notepad reports no focused control, so plain type-text has no
+	// Headless route there and is refused without --headed (type-text
+	// --into the editor's Element is Headless;
 	// TestHeadlessTypeTextIntoNotepad).
 	if err := os.WriteFile(path, []byte("hello notepad"), 0o644); err != nil {
 		t.Fatalf("writing %s: %v", path, err)

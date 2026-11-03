@@ -8,7 +8,9 @@ package helper
 // desktop is touched. The refusals share the Action pipeline's contract
 // with click's tests (actions_test.go), so these pin only what differs:
 // the no-screenshot failures name the right verb, and the amounts keep
-// Codex's signs all the way to the injected scroll.
+// Codex's signs all the way to the injected scroll. The point forms are
+// Headed, so the requests send `headed` (without it they are refused,
+// headless-max ticket 21).
 
 import (
 	"context"
@@ -102,7 +104,7 @@ func TestScrollMapsPointAndKeepsCodexSigns(t *testing.T) {
 	// Action time, exactly like the @x,y click.
 	s.origin = image.Point{X: 150, Y: 260}
 	out, cmdErr := runJSON(t, cmds, "scroll", protocol.ScrollArgs{
-		Window: "101", X: 400, Y: 235, ScrollX: -240, ScrollY: 600,
+		Window: "101", X: 400, Y: 235, ScrollX: -240, ScrollY: 600, Headed: true,
 	})
 	if cmdErr != nil {
 		t.Fatalf("scroll: %v", cmdErr.Error())
@@ -132,7 +134,7 @@ func TestScrollHalfScaleFootprintCentre(t *testing.T) {
 		t.Fatalf("screenshot: %v", cmdErr.Error())
 	}
 	s.origin = image.Point{X: 0, Y: 0}
-	_, cmdErr = runJSON(t, cmds, "scroll", protocol.ScrollArgs{Window: "101", X: 400, Y: 300, ScrollY: 360})
+	_, cmdErr = runJSON(t, cmds, "scroll", protocol.ScrollArgs{Window: "101", X: 400, Y: 300, ScrollY: 360, Headed: true})
 	if cmdErr != nil {
 		t.Fatalf("scroll: %v", cmdErr.Error())
 	}
@@ -157,29 +159,29 @@ func TestScrollRefusals(t *testing.T) {
 	}{
 		{
 			name:    "no screenshot recorded",
-			args:    protocol.ScrollArgs{Window: "202", X: 10, Y: 10, ScrollY: 120},
+			args:    protocol.ScrollArgs{Window: "202", X: 10, Y: 10, ScrollY: 120, Headed: true},
 			wantMsg: "no screenshot is available for window 202",
 		},
 		{
 			name:    "point outside the screenshot",
-			args:    protocol.ScrollArgs{Window: "101", X: 800, Y: 235, ScrollY: 120},
+			args:    protocol.ScrollArgs{Window: "101", X: 800, Y: 235, ScrollY: 120, Headed: true},
 			wantMsg: "point @800,235 is outside the latest screenshot of window 101 (800x470 px)",
 		},
 		{
 			name:    "negative point",
-			args:    protocol.ScrollArgs{Window: "101", X: -1, Y: 10, ScrollY: 120},
+			args:    protocol.ScrollArgs{Window: "101", X: -1, Y: 10, ScrollY: 120, Headed: true},
 			wantMsg: "scroll: the @x,y coordinates must be non-negative integers",
 			noInput: true,
 		},
 		{
 			name:    "both amounts zero",
-			args:    protocol.ScrollArgs{Window: "101", X: 10, Y: 10},
+			args:    protocol.ScrollArgs{Window: "101", X: 10, Y: 10, Headed: true},
 			wantMsg: "scroll: at least one scroll amount must be non-zero",
 			noInput: true,
 		},
 		{
 			name:    "amount too large",
-			args:    protocol.ScrollArgs{Window: "101", X: 10, Y: 10, ScrollY: maxScrollUnits + 1},
+			args:    protocol.ScrollArgs{Window: "101", X: 10, Y: 10, ScrollY: maxScrollUnits + 1, Headed: true},
 			wantMsg: "scroll amounts must be within",
 			noInput: true,
 		},
@@ -202,7 +204,7 @@ func TestScrollRefusals(t *testing.T) {
 
 	// The locked desktop refuses before activation, like every Action.
 	s.locked = true
-	_, cmdErr := runJSON(t, cmds, "scroll", protocol.ScrollArgs{Window: "101", X: 10, Y: 10, ScrollY: 120})
+	_, cmdErr := runJSON(t, cmds, "scroll", protocol.ScrollArgs{Window: "101", X: 10, Y: 10, ScrollY: 120, Headed: true})
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "Windows desktop is locked") {
 		t.Fatalf("want the locked-desktop refusal, got %v", cmdErr)
 	}
@@ -213,7 +215,7 @@ func TestScrollRefusals(t *testing.T) {
 func TestScrollWithoutScreenshotNamesTheVerb(t *testing.T) {
 	s := newPointerSpy(t)
 	cmds := CommandsWith(s.svc)
-	_, cmdErr := runJSON(t, cmds, "scroll", protocol.ScrollArgs{Window: "101", X: 10, Y: 10, ScrollY: 120})
+	_, cmdErr := runJSON(t, cmds, "scroll", protocol.ScrollArgs{Window: "101", X: 10, Y: 10, ScrollY: 120, Headed: true})
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "no screenshot is available for window 101") {
 		t.Fatalf("want no-screenshot failure, got %v", cmdErr)
 	}
@@ -228,7 +230,7 @@ func TestScrollMapsInputFailures(t *testing.T) {
 	s.recordScreenshot(t, cmds)
 
 	s.scrollErr = &win.OcclusionError{X: 550, Y: 495, OverTitle: "Something Else"}
-	_, cmdErr := runJSON(t, cmds, "scroll", protocol.ScrollArgs{Window: "101", X: 400, Y: 235, ScrollY: 120})
+	_, cmdErr := runJSON(t, cmds, "scroll", protocol.ScrollArgs{Window: "101", X: 400, Y: 235, ScrollY: 120, Headed: true})
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, `is over "Something Else", not the target Window`) {
 		t.Fatalf("want the occlusion failure, got %v", cmdErr)
 	}
@@ -244,7 +246,7 @@ func TestDragMapsBothPoints(t *testing.T) {
 	s.origin = image.Point{X: 150, Y: 260}
 
 	out, cmdErr := runJSON(t, cmds, "drag", protocol.DragArgs{
-		Window: "101", FromX: 100, FromY: 50, ToX: 400, ToY: 235,
+		Window: "101", FromX: 100, FromY: 50, ToX: 400, ToY: 235, Headed: true,
 	})
 	if cmdErr != nil {
 		t.Fatalf("drag: %v", cmdErr.Error())
@@ -266,7 +268,7 @@ func TestDragRefusals(t *testing.T) {
 
 	// The to point is outside the screenshot: no drag starts.
 	_, cmdErr := runJSON(t, cmds, "drag", protocol.DragArgs{
-		Window: "101", FromX: 10, FromY: 10, ToX: 800, ToY: 10,
+		Window: "101", FromX: 10, FromY: 10, ToX: 800, ToY: 10, Headed: true,
 	})
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "point @800,10 is outside the latest screenshot of window 101") {
 		t.Fatalf("want out-of-screenshot failure for the to point, got %v", cmdErr)
@@ -274,7 +276,7 @@ func TestDragRefusals(t *testing.T) {
 
 	// Negative points are usage errors.
 	_, cmdErr = runJSON(t, cmds, "drag", protocol.DragArgs{
-		Window: "101", FromX: -1, FromY: 10, ToX: 10, ToY: 10,
+		Window: "101", FromX: -1, FromY: 10, ToX: 10, ToY: 10, Headed: true,
 	})
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "non-negative") {
 		t.Fatalf("want negative-point refusal, got %v", cmdErr)
@@ -287,7 +289,7 @@ func TestDragWithoutScreenshotNamesTheVerb(t *testing.T) {
 	s := newPointerSpy(t)
 	cmds := CommandsWith(s.svc)
 	_, cmdErr := runJSON(t, cmds, "drag", protocol.DragArgs{
-		Window: "101", FromX: 10, FromY: 10, ToX: 20, ToY: 20,
+		Window: "101", FromX: 10, FromY: 10, ToX: 20, ToY: 20, Headed: true,
 	})
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "no screenshot is available for window 101") {
 		t.Fatalf("want no-screenshot failure, got %v", cmdErr)
@@ -306,7 +308,7 @@ func TestDragMapsInputFailures(t *testing.T) {
 	// covering window named, like a click.
 	s.dragErr = &win.OcclusionError{X: 550, Y: 495}
 	_, cmdErr := runJSON(t, cmds, "drag", protocol.DragArgs{
-		Window: "101", FromX: 100, FromY: 50, ToX: 400, ToY: 235,
+		Window: "101", FromX: 100, FromY: 50, ToX: 400, ToY: 235, Headed: true,
 	})
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "point (550, 495) is over another window") {
 		t.Fatalf("want the occlusion failure, got %v", cmdErr)
@@ -319,7 +321,7 @@ func TestHoverMapsPoint(t *testing.T) {
 	s.recordScreenshot(t, cmds)
 	s.origin = image.Point{X: 150, Y: 260}
 
-	out, cmdErr := runJSON(t, cmds, "hover", protocol.HoverArgs{Window: "101", X: 200, Y: 42})
+	out, cmdErr := runJSON(t, cmds, "hover", protocol.HoverArgs{Window: "101", X: 200, Y: 42, Headed: true})
 	if cmdErr != nil {
 		t.Fatalf("hover: %v", cmdErr.Error())
 	}
@@ -337,7 +339,7 @@ func TestHoverRefusals(t *testing.T) {
 	s.recordScreenshot(t, cmds)
 
 	// Out-of-screenshot points are refused.
-	_, cmdErr := runJSON(t, cmds, "hover", protocol.HoverArgs{Window: "101", X: 800, Y: 42})
+	_, cmdErr := runJSON(t, cmds, "hover", protocol.HoverArgs{Window: "101", X: 800, Y: 42, Headed: true})
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "outside the latest screenshot") {
 		t.Fatalf("want out-of-screenshot failure, got %v", cmdErr)
 	}
@@ -354,7 +356,7 @@ func TestHoverRefusals(t *testing.T) {
 func TestHoverWithoutScreenshotNamesTheVerb(t *testing.T) {
 	s := newPointerSpy(t)
 	cmds := CommandsWith(s.svc)
-	_, cmdErr := runJSON(t, cmds, "hover", protocol.HoverArgs{Window: "101", X: 10, Y: 10})
+	_, cmdErr := runJSON(t, cmds, "hover", protocol.HoverArgs{Window: "101", X: 10, Y: 10, Headed: true})
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "no screenshot is available for window 101") {
 		t.Fatalf("want no-screenshot failure, got %v", cmdErr)
 	}
@@ -373,9 +375,9 @@ func TestPointerWindowGone(t *testing.T) {
 		cmd  string
 		args any
 	}{
-		{"scroll", protocol.ScrollArgs{Window: "101", X: 10, Y: 10, ScrollY: 120}},
-		{"drag", protocol.DragArgs{Window: "101", FromX: 1, FromY: 1, ToX: 2, ToY: 2}},
-		{"hover", protocol.HoverArgs{Window: "101", X: 10, Y: 10}},
+		{"scroll", protocol.ScrollArgs{Window: "101", X: 10, Y: 10, ScrollY: 120, Headed: true}},
+		{"drag", protocol.DragArgs{Window: "101", FromX: 1, FromY: 1, ToX: 2, ToY: 2, Headed: true}},
+		{"hover", protocol.HoverArgs{Window: "101", X: 10, Y: 10, Headed: true}},
 	} {
 		_, cmdErr := runJSON(t, cmds, tc.cmd, tc.args)
 		if cmdErr == nil || !strings.Contains(cmdErr.Msg, "window is gone") {
@@ -412,6 +414,7 @@ func TestBatchRunsThePointerSteps(t *testing.T) {
 
 	out, cmdErr := runJSON(t, cmds, "batch", protocol.BatchArgs{
 		Window: "101",
+		Headed: true,
 		Steps: []protocol.Step{
 			stepOf("scroll", protocol.ScrollArgs{X: 400, Y: 235, ScrollX: -240, ScrollY: 600}),
 			stepOf("drag", protocol.DragArgs{FromX: 400, FromY: 235, ToX: 500, ToY: 300}),
@@ -468,7 +471,7 @@ func TestDragStopsOnTheRequestDeadline(t *testing.T) {
 	cmds = CommandsWith(s.svc)
 
 	c := cmds["drag"]
-	raw, _ := json.Marshal(protocol.DragArgs{Window: "101", FromX: 10, FromY: 10, ToX: 400, ToY: 300})
+	raw, _ := json.Marshal(protocol.DragArgs{Window: "101", FromX: 10, FromY: 10, ToX: 400, ToY: 300, Headed: true})
 	_, cmdErr := c(ctx, raw)
 	if cmdErr == nil {
 		t.Fatal("a drag past the request's deadline must fail")

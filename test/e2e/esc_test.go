@@ -21,7 +21,7 @@
 //   - the in-control overlay is gone once winuse stopped.
 //
 // The injected test is self-contained: while a Batch types, a concurrent
-// `press-key Escape` injects the key — it must reach the app (the fixture
+// `--headed press-key Escape` injects the key — it must reach the app (the fixture
 // records it) without stopping the Batch, which still prints ok.
 
 package e2e
@@ -196,7 +196,10 @@ func TestInjectedEscDoesNotStopTheBatch(t *testing.T) {
 		t.Fatal("the batch's typing never started")
 	}
 
-	stdout, stderr, exit := runWinuse(t, []string{"press-key", window, "Escape"}, "WINUSE_HELPER_IDLE="+e2eIdle)
+	// --headed: Escape on the fixture's main window (not a classic dialog)
+	// has no Headless route (headless-max ticket 21), and the point is an
+	// injected key the hook sees.
+	stdout, stderr, exit := runWinuse(t, []string{"--headed", "press-key", window, "Escape"}, "WINUSE_HELPER_IDLE="+e2eIdle)
 	assertActionOK(t, "press-key Escape while a batch types", stdout, stderr, exit)
 
 	// The Batch finished normally: the injected key did not stop it.

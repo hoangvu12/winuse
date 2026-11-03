@@ -6,7 +6,9 @@ package helper
 // before the pipeline runs, so no Window is ever activated for a bad
 // key), the pipeline's refusals reusing ticket 05's messages, and the
 // argument validation. Everything Win32 is faked; no desktop is touched,
-// no input is injected.
+// no input is injected. The fake Window has no Headless key route, so the
+// pipeline tests send `headed` (without it the keys are refused,
+// headless-max ticket 21).
 
 import (
 	"context"
@@ -98,16 +100,39 @@ func pressKeyArgs(window, key string) json.RawMessage {
 	return raw
 }
 
-func TestTypeTextPrintsOK(t *testing.T) {
+func TestTypeTextWithoutARouteIsRefused(t *testing.T) {
+	// The fake Window reports no focused control: without --headed the
+	// text is refused with nothing sent, why, the --headed retry and the
+	// --into and --post ways (headless-max tickets 19 and 21).
 	spy := &keySpy{}
 	out, cmdErr := runCommand(t, CommandsWith(spy.services()), "type-text", typeTextArgs("101", "Hello, 世界! 🎉"))
+	if out != "" || cmdErr == nil {
+		t.Fatalf("type-text without a route: got %q, %v; want a refusal", out, cmdErr)
+	}
+	if want := "type-text has no background route: window 101 reports no focused control while it is in the background; nothing was sent"; cmdErr.Msg != want {
+		t.Errorf("message = %q, want %q", cmdErr.Msg, want)
+	}
+	for _, part := range []string{"winuse type-text 101 --into <element> <text>", "winuse type-text 101 --post <text>", "winuse --headed type-text 101 <text>"} {
+		if !strings.Contains(cmdErr.Hint, part) {
+			t.Errorf("hint %q lacks %q", cmdErr.Hint, part)
+		}
+	}
+	if strings.Contains(cmdErr.Hint, "世界") {
+		t.Errorf("the hint must never repeat the text (it could be a password): %q", cmdErr.Hint)
+	}
+	if got := spy.recorded(); len(got) != 0 {
+		t.Errorf("a refused type-text ran %v", got)
+	}
+}
+
+func TestTypeTextPrintsOK(t *testing.T) {
+	spy := &keySpy{}
+	out, cmdErr := runCommand(t, CommandsWith(spy.services()), "type-text", headedArgs(typeTextArgs("101", "Hello, 世界! 🎉")))
 	if cmdErr != nil {
 		t.Fatalf("type-text: %v", cmdErr.Error())
 	}
-	// The fake Window reports no focused control: ok, with why it went
-	// Headed and the --into hint (headless-max ticket 19).
-	if want := noFocusOutput(fakeWindows()[0]); out != want {
-		t.Errorf("output = %q, want %q", out, want)
+	if out != okOutput {
+		t.Errorf("output = %q, want %q", out, okOutput)
 	}
 	// The pipeline order: checks, activation, then input.
 	want := []string{"locked", "integrity", "activate", "type"}
@@ -144,7 +169,7 @@ func TestTypeTextRequiresTextBeforeThePipeline(t *testing.T) {
 
 func TestPressKeyPrintsOKAndForwardsTheChord(t *testing.T) {
 	spy := &keySpy{}
-	out, cmdErr := runCommand(t, CommandsWith(spy.services()), "press-key", pressKeyArgs("notepad", "Control_L+a"))
+	out, cmdErr := runCommand(t, CommandsWith(spy.services()), "press-key", headedArgs(pressKeyArgs("notepad", "Control_L+a")))
 	if cmdErr != nil {
 		t.Fatalf("press-key: %v", cmdErr.Error())
 	}
@@ -210,12 +235,12 @@ func TestKeyboardCommandsReuseThePipelineRefusals(t *testing.T) {
 	// 05): locked first, administrator second, never any input after a
 	// refusal.
 	locked := &keySpy{locked: true, lockedDesktop: "LockApp"}
-	_, cmdErr := runCommand(t, CommandsWith(locked.services()), "type-text", typeTextArgs("101", "hi"))
+	_, cmdErr := runCommand(t, CommandsWith(locked.services()), "type-text", headedArgs(typeTextArgs("101", "hi")))
 	if cmdErr == nil || cmdErr.Msg != "Windows desktop is locked (input desktop is LockApp); unlock before using winuse" {
 		t.Fatalf("locked type-text: %v", cmdErr)
 	}
 	locked = &keySpy{locked: true, lockedDesktop: "LockApp"}
-	_, cmdErr = runCommand(t, CommandsWith(locked.services()), "press-key", pressKeyArgs("101", "Return"))
+	_, cmdErr = runCommand(t, CommandsWith(locked.services()), "press-key", headedArgs(pressKeyArgs("101", "Return")))
 	if cmdErr == nil || !contains(cmdErr.Msg, "desktop is locked") {
 		t.Fatalf("locked press-key: %v", cmdErr)
 	}
@@ -224,12 +249,12 @@ func TestKeyboardCommandsReuseThePipelineRefusals(t *testing.T) {
 	}
 
 	admin := &keySpy{refuse: &win.AdminWindowError{WindowID: 101, App: "Notepad.exe"}}
-	_, cmdErr = runCommand(t, CommandsWith(admin.services()), "type-text", typeTextArgs("101", "hi"))
+	_, cmdErr = runCommand(t, CommandsWith(admin.services()), "type-text", headedArgs(typeTextArgs("101", "hi")))
 	if cmdErr == nil || !contains(cmdErr.Msg, "administrator") {
 		t.Fatalf("admin type-text: %v", cmdErr)
 	}
 	admin = &keySpy{refuse: &win.AdminWindowError{WindowID: 101, App: "Notepad.exe"}}
-	_, cmdErr = runCommand(t, CommandsWith(admin.services()), "press-key", pressKeyArgs("101", "Return"))
+	_, cmdErr = runCommand(t, CommandsWith(admin.services()), "press-key", headedArgs(pressKeyArgs("101", "Return")))
 	if cmdErr == nil || !contains(cmdErr.Msg, "administrator") {
 		t.Fatalf("admin press-key: %v", cmdErr)
 	}
@@ -239,7 +264,7 @@ func TestKeyboardCommandsReuseThePipelineRefusals(t *testing.T) {
 
 	// An activation failure keeps the output contract too.
 	fg := &keySpy{activateErr: &win.NotForegroundError{WindowID: 101}}
-	_, cmdErr = runCommand(t, CommandsWith(fg.services()), "press-key", pressKeyArgs("101", "Return"))
+	_, cmdErr = runCommand(t, CommandsWith(fg.services()), "press-key", headedArgs(pressKeyArgs("101", "Return")))
 	if cmdErr == nil || cmdErr.Msg != "failed to activate window 101" {
 		t.Fatalf("activation failure: %v", cmdErr)
 	}
@@ -250,12 +275,12 @@ func TestKeyboardCommandsReuseThePipelineRefusals(t *testing.T) {
 
 func TestKeyboardInputFailuresSurface(t *testing.T) {
 	press := &keySpy{pressErr: errors.New("injecting the key press failed: SendInput rejected 1 of 2 events")}
-	_, cmdErr := runCommand(t, CommandsWith(press.services()), "press-key", pressKeyArgs("101", "Control_L+a"))
+	_, cmdErr := runCommand(t, CommandsWith(press.services()), "press-key", headedArgs(pressKeyArgs("101", "Control_L+a")))
 	if cmdErr == nil || !contains(cmdErr.Msg, "injecting the key press failed") {
 		t.Fatalf("message = %v", cmdErr)
 	}
 	typee := &keySpy{typeErr: errors.New("injecting the text failed: SendInput rejected 3 of 4 events")}
-	_, cmdErr = runCommand(t, CommandsWith(typee.services()), "type-text", typeTextArgs("101", "hi"))
+	_, cmdErr = runCommand(t, CommandsWith(typee.services()), "type-text", headedArgs(typeTextArgs("101", "hi")))
 	if cmdErr == nil || !contains(cmdErr.Msg, "injecting the text failed") {
 		t.Fatalf("message = %v", cmdErr)
 	}
@@ -310,7 +335,7 @@ func TestPressKeyAcceptsCodexDocumentedChords(t *testing.T) {
 		"Numpad_Decimal", "Numpad_Enter", "page-up", "PAGE_DOWN",
 	} {
 		spy := &keySpy{}
-		_, cmdErr := runCommand(t, CommandsWith(spy.services()), "press-key", pressKeyArgs("101", key))
+		_, cmdErr := runCommand(t, CommandsWith(spy.services()), "press-key", headedArgs(pressKeyArgs("101", key)))
 		if cmdErr != nil {
 			t.Errorf("press-key %q: %v (must be accepted)", key, cmdErr.Msg)
 			continue
@@ -347,7 +372,7 @@ func TestTypeTextStopsOnTheRequestDeadline(t *testing.T) {
 	}
 	cmds := CommandsWith(svc)
 	c := cmds["type-text"]
-	_, cmdErr := c(ctx, typeTextArgs("101", "hello"))
+	_, cmdErr := c(ctx, headedArgs(typeTextArgs("101", "hello")))
 	if cmdErr == nil {
 		t.Fatal("typing past the request's deadline must fail")
 	}

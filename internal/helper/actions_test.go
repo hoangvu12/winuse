@@ -5,7 +5,9 @@ package helper
 // (locked desktop, administrator Window) and the stale messages, plus the
 // pipeline's ordering guarantees: the checks refuse before any activation,
 // and no input is injected once anything refuses. Everything Win32 is
-// faked; no desktop is touched.
+// faked; no desktop is touched. The pipeline tests send `headed`: the spy
+// is no HeadlessActor, so its click has only the Headed route, which is
+// refused without --headed (headless-max ticket 21).
 
 import (
 	"context"
@@ -112,7 +114,7 @@ func clickArgs(window string, index, count int, button string) json.RawMessage {
 
 func TestClickPrintsOK(t *testing.T) {
 	spy := &actionSpy{point: uia.Point{X: 100, Y: 200}}
-	out, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", clickArgs("101", 2, 1, "left"))
+	out, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 	if cmdErr != nil {
 		t.Fatalf("click: %v", cmdErr.Error())
 	}
@@ -155,7 +157,7 @@ func TestClickForwardsButtonCountAndAliases(t *testing.T) {
 	}
 	for _, tc := range cases {
 		spy := &actionSpy{}
-		_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", clickArgs("notepad", 0, tc.count, tc.button))
+		_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", headedArgs(clickArgs("notepad", 0, tc.count, tc.button)))
 		if cmdErr != nil {
 			t.Fatalf("button %q count %d: %v", tc.button, tc.count, cmdErr.Error())
 		}
@@ -168,7 +170,7 @@ func TestClickForwardsButtonCountAndAliases(t *testing.T) {
 
 func TestClickRefusesLockedDesktopBeforeAnyInput(t *testing.T) {
 	spy := &actionSpy{locked: true}
-	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", clickArgs("101", 2, 1, "left"))
+	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 	if cmdErr == nil {
 		t.Fatal("a locked desktop must refuse the click")
 	}
@@ -201,7 +203,7 @@ func TestClickLockedDesktopNamesInputDesktop(t *testing.T) {
 		{"", "Windows desktop is locked; unlock before using winuse"},
 	} {
 		spy := &actionSpy{locked: true, lockedDesktop: tc.desktop}
-		_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", clickArgs("101", 2, 1, "left"))
+		_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 		if cmdErr == nil || cmdErr.Msg != tc.want {
 			t.Fatalf("desktop %q: message = %v, want %q", tc.desktop, cmdErr, tc.want)
 		}
@@ -210,7 +212,7 @@ func TestClickLockedDesktopNamesInputDesktop(t *testing.T) {
 
 func TestClickRefusesAdminWindowWithExplanation(t *testing.T) {
 	spy := &actionSpy{refuse: &win.AdminWindowError{WindowID: 101, App: "Notepad.exe"}}
-	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", clickArgs("101", 2, 1, "left"))
+	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 	if cmdErr == nil {
 		t.Fatal("an administrator Window must refuse the click")
 	}
@@ -231,7 +233,7 @@ func TestClickRefusesAdminWindowWithExplanation(t *testing.T) {
 
 func TestClickAdminWindowUnreadableSaysLikely(t *testing.T) {
 	spy := &actionSpy{refuse: &win.AdminWindowError{WindowID: 101, App: "Notepad.exe", Unreadable: true}}
-	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", clickArgs("101", 2, 1, "left"))
+	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "likely running as administrator") {
 		t.Fatalf("message = %v, want the likely-elevated wording", cmdErr)
 	}
@@ -239,7 +241,7 @@ func TestClickAdminWindowUnreadableSaysLikely(t *testing.T) {
 
 func TestClickIntegrityReadFailureSurfaces(t *testing.T) {
 	spy := &actionSpy{refuse: errors.New("cannot read the process of window 101; run winuse list-windows again")}
-	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", clickArgs("101", 2, 1, "left"))
+	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "cannot read the process") {
 		t.Fatalf("message = %v", cmdErr)
 	}
@@ -247,7 +249,7 @@ func TestClickIntegrityReadFailureSurfaces(t *testing.T) {
 
 func TestClickActivationFailure(t *testing.T) {
 	spy := &actionSpy{activateErr: &win.NotForegroundError{WindowID: 101}}
-	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", clickArgs("101", 2, 1, "left"))
+	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 	if cmdErr == nil || cmdErr.Msg != "failed to activate window 101" {
 		t.Fatalf("message = %v", cmdErr)
 	}
@@ -261,7 +263,7 @@ func TestClickActivationFailure(t *testing.T) {
 
 func TestClickModalDialogPointsAtTheDialog(t *testing.T) {
 	spy := &actionSpy{activateErr: &win.ModalDialogError{WindowID: 101, DialogID: 202}}
-	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", clickArgs("101", 2, 1, "left"))
+	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 	if cmdErr == nil || cmdErr.Msg != "window 101 has a modal dialog open (window 202); act on the dialog instead" {
 		t.Fatalf("message = %v", cmdErr)
 	}
@@ -275,7 +277,7 @@ func TestClickModalDialogPointsAtTheDialog(t *testing.T) {
 
 func TestClickStaleElementIndex(t *testing.T) {
 	spy := &actionSpy{pointErr: fmt.Errorf("%w: element 2 is not in the cached Window State of window 101", uia.ErrStale)}
-	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", clickArgs("101", 2, 1, "left"))
+	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 	if cmdErr == nil || cmdErr.Msg != "element 2 is not available in the cached Window State for window 101" {
 		t.Fatalf("message = %v", cmdErr)
 	}
@@ -289,7 +291,7 @@ func TestClickStaleElementIndex(t *testing.T) {
 
 func TestClickWithoutCachedState(t *testing.T) {
 	spy := &actionSpy{pointErr: fmt.Errorf("%w: window 101", uia.ErrNoState)}
-	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", clickArgs("101", 2, 1, "left"))
+	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 	if cmdErr == nil || cmdErr.Msg != "no cached Window State is available for window 101" {
 		t.Fatalf("message = %v", cmdErr)
 	}
@@ -325,7 +327,7 @@ func TestClickInputFailureMessages(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			spy := &actionSpy{clickErr: tc.err}
-			_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", clickArgs("101", 2, 1, "left"))
+			_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", headedArgs(clickArgs("101", 2, 1, "left")))
 			if cmdErr == nil || cmdErr.Msg != tc.wantMsg {
 				t.Fatalf("message = %v, want %q", cmdErr, tc.wantMsg)
 			}

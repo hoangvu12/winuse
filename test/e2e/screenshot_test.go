@@ -51,11 +51,14 @@ func runZoom(t *testing.T, window string, x, y, w, h int, extraEnv ...string) (s
 	return runWinuse(t, []string{"zoom", window, region}, append(extraEnv, "WINUSE_HELPER_IDLE="+e2eIdle)...)
 }
 
-// runClickPoint invokes `winuse click <window> @x,y [options]`.
+// runClickPoint invokes `winuse --headed click <window> @x,y`. A click at
+// a point has no Headless route: without --headed it is refused before
+// the screenshot mapping is even read (headless-max ticket 21;
+// headed_gate_test.go pins that), so every caller here is Headed.
 func runClickPoint(t *testing.T, window string, x, y int, extraEnv ...string) (string, string, int) {
 	t.Helper()
 	ref := fmt.Sprintf("@%d,%d", x, y)
-	return runWinuse(t, []string{"click", window, ref}, append(extraEnv, "WINUSE_HELPER_IDLE="+e2eIdle)...)
+	return runWinuse(t, []string{"--headed", "click", window, ref}, append(extraEnv, "WINUSE_HELPER_IDLE="+e2eIdle)...)
 }
 
 // screenshotInfo is a parsed Screenshot output line.

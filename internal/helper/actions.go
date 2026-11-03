@@ -13,8 +13,10 @@ package helper
 // passes. Element Actions are Headless by default instead (ADR 0010,
 // headless.go): a click on an Element Index or name:/id: reference (left,
 // single) runs Services.runHeadless — the same refusals, no activation,
-// no input, a pattern call. `@x,y`, double/triple and right/middle clicks,
-// activate-window and any click sent with `headed` keep runAction.
+// no input, a pattern call. `@x,y`, double/triple and right/middle clicks
+// sent with `headed`, and activate-window, keep runAction; without
+// `headed` they are refused with nothing sent (headedgate.go, ADR 0013
+// rule 3).
 
 import (
 	"context"
@@ -59,10 +61,12 @@ func escStopError() *Error {
 // its first offered pattern (Invoke, Toggle, Select, Expand/Collapse,
 // LegacyIAccessible default action) on a Window that stays where it is,
 // and an Element with none fails with nothing sent and a --headed hint.
-// Headed (double/triple, right/middle, or `headed`), the Window is
-// activated and verified in the foreground, the Element behind the index
-// is scrolled into view if needed, and the click is injected at its
-// clickable point or bounds centre.
+// Headed (`headed`), the Window is activated and verified in the
+// foreground, the Element behind the index is scrolled into view if
+// needed, and the click is injected at its clickable point or bounds
+// centre. A double/triple or right/middle click outside a Page, and the
+// @x,y form, have no other route: without `headed` they are refused with
+// nothing sent and the --headed retry (headless-max ticket 21).
 //
 // `winuse click <window> name:<text>` and `id:<AutomationId>` (ticket 11)
 // name the Element by its Name or AutomationId instead of its Index: the
@@ -119,6 +123,12 @@ func click(s Services) Command {
 			// The coordinate form (@x,y, ticket 08): input at the point
 			// itself.
 			x, y := target.point.X, target.point.Y
+			if !a.Headed {
+				return "", s.headedOnly(a.Window,
+					fmt.Sprintf("click at %s has no background route: a click at a point needs the real pointer", pointToken(x, y)),
+					func(id string) string { return "click " + id + " " + pointToken(x, y) + clickOptions(button, count) },
+					"to click without the foreground, name the Element by its Element Index, name: or id: from winuse get-window-state")
+			}
 			return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
 				pt, serr := shotPoint(ctx, s, w, x, y, "click")
 				if serr != nil {
@@ -150,6 +160,11 @@ func click(s Services) Command {
 		}
 		if s.Actions == nil {
 			return "", Fail("click is unavailable: no UIA client", "")
+		}
+		if !a.Headed {
+			return "", s.headedOnly(a.Window,
+				clickDescription(button, count)+" on an Element has no background route outside a Page: it needs the real pointer",
+				func(id string) string { return "click " + id + " " + target.token() + clickOptions(button, count) }, "")
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
 			index, rerr := target.resolve(ctx, s, w)

@@ -560,7 +560,9 @@ func TestPageWheelDeltas(t *testing.T) {
 }
 
 // TestPageScrollAtAPoint: @x,y inside the Page's document wheels over CDP
-// at the inverse-transformed point; outside it, today's Headed wheel.
+// at the inverse-transformed point; outside it, today's Headed wheel, and
+// only with --headed: without it the scroll is refused with nothing sent
+// (headless-max ticket 21).
 func TestPageScrollAtAPoint(t *testing.T) {
 	r := newPageRig(t)
 	r.svc.Shots.Record(agent.DefaultID, browserWindowID, shot.Mapping{Scale: 1, Width: 2000, Height: 2000, Coverage: image.Rect(0, 0, 2000, 2000)})
@@ -577,7 +579,14 @@ func TestPageScrollAtAPoint(t *testing.T) {
 	}
 
 	r.set(func() { r.inputs = nil })
-	if _, e := r.run(t, "scroll", protocol.ScrollArgs{Window: "301", X: 50, Y: 50, ScrollY: 120}); e != nil {
+	out, e := r.run(t, "scroll", protocol.ScrollArgs{Window: "301", X: 50, Y: 50, ScrollY: 120})
+	wantHeadedRefusal(t, "scroll outside the Page", out, e)
+	if len(r.sent()) != 0 || len(r.scrolls) != 0 {
+		t.Errorf("refused outside the Page: sent %v, wheel %v", r.sent(), r.scrolls)
+	}
+	r.noForeground(t)
+
+	if _, e := r.run(t, "scroll", protocol.ScrollArgs{Window: "301", X: 50, Y: 50, ScrollY: 120, Headed: true}); e != nil {
 		t.Fatal(e.Error())
 	}
 	if len(r.sent()) != 0 || len(r.scrolls) != 1 || r.scrolls[0] != [5]int32{browserWindowID, 50, 50, 0, 120} {
@@ -586,7 +595,9 @@ func TestPageScrollAtAPoint(t *testing.T) {
 }
 
 // TestPageKeys: typing and keys reach the Page when it holds the focus,
-// newline as Return; with the focus on the body they keep today's route.
+// newline as Return; with the focus on the body they keep today's route,
+// which is Headed and runs only with --headed: without it they are refused
+// with nothing sent (headless-max ticket 21).
 func TestPageKeys(t *testing.T) {
 	r := newPageRig(t)
 	if _, e := r.run(t, "type-text", protocol.TypeTextArgs{Window: "301", Text: "hi\nyo"}); e != nil {
@@ -613,7 +624,16 @@ func TestPageKeys(t *testing.T) {
 	for _, kind := range []string{"body", "none"} {
 		r = newPageRig(t)
 		r.set(func() { r.focus = map[string]any{"kind": kind} })
-		if _, e := r.run(t, "type-text", protocol.TypeTextArgs{Window: "301", Text: "x"}); e != nil {
+		out, e := r.run(t, "type-text", protocol.TypeTextArgs{Window: "301", Text: "x"})
+		wantHeadedRefusal(t, "type-text with the focus on "+kind, out, e)
+		if len(r.sent()) != 0 {
+			t.Errorf("focus %s refused: sent %v", kind, r.sent())
+		}
+		r.noForeground(t)
+
+		r = newPageRig(t)
+		r.set(func() { r.focus = map[string]any{"kind": kind} })
+		if _, e := r.run(t, "type-text", protocol.TypeTextArgs{Window: "301", Text: "x", Headed: true}); e != nil {
 			t.Fatal(e.Error())
 		}
 		if len(r.sent()) != 0 || !strings.Contains(strings.Join(r.recorded(), ","), "activate,type-text") {
@@ -623,7 +643,16 @@ func TestPageKeys(t *testing.T) {
 	// Without a Page in the latest Window State: today's route, no probe.
 	r = newPageRig(t)
 	delete(r.trees.origins, browserWindowID)
-	if _, e := r.run(t, "press-key", protocol.PressKeyArgs{Window: "301", Key: "Return"}); e != nil {
+	out, e := r.run(t, "press-key", protocol.PressKeyArgs{Window: "301", Key: "Return"})
+	wantHeadedRefusal(t, "press-key with no Page", out, e)
+	if len(r.sent()) != 0 {
+		t.Errorf("no Page, refused: sent %v", r.sent())
+	}
+	r.noForeground(t)
+
+	r = newPageRig(t)
+	delete(r.trees.origins, browserWindowID)
+	if _, e := r.run(t, "press-key", protocol.PressKeyArgs{Window: "301", Key: "Return", Headed: true}); e != nil {
 		t.Fatal(e.Error())
 	}
 	if len(r.sent()) != 0 || !strings.Contains(strings.Join(r.recorded(), ","), "press-key") {
@@ -692,11 +721,28 @@ func TestBatchPageStepsArePassive(t *testing.T) {
 	}
 	r.noForeground(t)
 
-	// A UIA step that needs the foreground makes it a swallowing scope.
+	// A UIA step that needs the foreground, sent without --headed, is
+	// refused at its turn with nothing sent (headless-max ticket 21), so
+	// the scope stays passive.
+	r = newPageRig(t)
+	_, e = r.run(t, "batch", protocol.BatchArgs{Window: "301", Steps: []protocol.Step{
+		stepOf("click", protocol.ClickArgs{ElementIndex: idx(7)}),
+		stepOf("click", protocol.ClickArgs{ElementIndex: idx(2), ClickCount: 2}),
+	}})
+	if e == nil || !strings.HasPrefix(e.Msg, "batch stopped at Action 2 (click): ") ||
+		!strings.HasSuffix(e.Msg, "; nothing was sent") || !strings.Contains(e.Hint, "winuse --headed ") {
+		t.Errorf("unheaded UIA step: %+v, want the --headed refusal", e)
+	}
+	if got := strings.Join(r.esc.brackets(), ","); strings.Contains(got, "arm,") || !strings.HasPrefix(got, "arm-passive") {
+		t.Errorf("Esc scope with the refused step = %s", got)
+	}
+	r.noForeground(t)
+
+	// Sent with `headed`, it makes it a swallowing scope.
 	r = newPageRig(t)
 	if _, e := r.run(t, "batch", protocol.BatchArgs{Window: "301", Steps: []protocol.Step{
 		stepOf("click", protocol.ClickArgs{ElementIndex: idx(7)}),
-		stepOf("click", protocol.ClickArgs{ElementIndex: idx(2), ClickCount: 2}),
+		stepOf("click", protocol.ClickArgs{ElementIndex: idx(2), ClickCount: 2, Headed: true}),
 	}}); e != nil {
 		t.Fatal(e.Error())
 	}

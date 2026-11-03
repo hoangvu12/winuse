@@ -40,15 +40,21 @@ headless (the default; your foreground, pointer and keyboard stay untouched):
   get-window-state --screenshot and zoom (--headed activates the Window
   first); and the Window Actions restore-, minimize-, move-, resize- and
   close-window, which have no headed form (maximize-window is headed
-  only). Every other Action is headed.
-  tab new, tab close and tab switch are headless (on a launched or cloned
-  browser, tab switch selects the Tab in the Window's tab strip; --headed
-  switches with real keys in the foreground instead). In a
+  only). tab new, tab close and tab switch are headless (on a launched or
+  cloned browser, tab switch selects the Tab in the Window's tab strip;
+  --headed switches with real keys in the foreground instead). In a
   browser Window with a Browser Connection, every Action on its Page is
   headless, and so are navigate, back, forward, reload, upload, dialog,
   wait and eval, which have no headed form. The clipboard commands,
   list-displays and screenshot --display are headless Desktop commands:
   they name no Window and have no headed form.
+
+headed only with --headed: every other Action (@x,y forms, double, right
+  and middle clicks, drag, hover, Raise, maximize-window, press-key and
+  type-text with no headless route) is refused with "nothing was sent"
+  and the exact
+  --headed retry. activate-window always takes the foreground: that is
+  what it is for.
 
 commands:
   list-windows [--details] [--app <name>]
@@ -398,9 +404,9 @@ func Main(args []string) int {
 	case "invoke-menu":
 		return invokeMenuCmd(args[1:])
 	case "drag":
-		return dragCmd(args[1:])
+		return dragCmd(args[1:], headed)
 	case "hover":
-		return hoverCmd(args[1:])
+		return hoverCmd(args[1:], headed)
 	case "activate-window":
 		return activateWindowCmd(args[1:])
 	case "restore-window", "minimize-window", "close-window":
