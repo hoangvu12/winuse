@@ -63,6 +63,8 @@ Probe rounds 4 and 5 (`.scratch/headless-gaps/probes-round4.md` section 7,
    icons, the items of an open Start or Action Center) are unmeasured
    flyouts or App activations, refused on the cautious side. Element
    scroll and select-text stay Headless: they activate nothing.
+   press-key's shortcut lookup (headless-max 06), which invokes an
+   Element labelled with the chord, never runs on a shell surface.
 5. **With `--headed`** they are clicked with the real pointer, Start
    opens with `--headed press-key <taskbar> Control_L+Escape`, and the
    output says where the foreground went.

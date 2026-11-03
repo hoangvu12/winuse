@@ -182,8 +182,12 @@ func pressKey(s Services) Command {
 			// labels with that shortcut, run Headless (shortcuts.go,
 			// headless-max ticket 06). None found, or several, and the
 			// routes below run.
-			if out, rerr, ok := s.pressShortcut(ctx, w, chord); ok {
-				return out, rerr
+			// Never on a shell surface: its labelled buttons open flyouts
+			// or activate Apps (shell.go).
+			if w.Shell == "" {
+				if out, rerr, ok := s.pressShortcut(ctx, w, chord); ok {
+					return out, rerr
+				}
 			}
 			// headlessStep's press-key case for an unposted, unheaded
 			// request: the route read once, then dialogKeyRoute. With no
