@@ -22,7 +22,7 @@ import (
 )
 
 // batchUsage is the batch command's usage line.
-const batchUsage = "usage: winuse batch <window> [--timeout <seconds>] [--stop-on-error] <action> [arguments] [then <action> [arguments]] ...\n" +
+const batchUsage = "usage: winuse batch <window> [--timeout <seconds>] [--stop-on-error] [in <window>|new] <action> [arguments] [then [in <window>|new] <action> [arguments]] ...\n" +
 	"       winuse batch -   (stdin: the Window and the Batch flags, then one Action per line)"
 
 // stopOnErrorFlag stops a Batch at its first failed Action
@@ -102,8 +102,28 @@ func parseBatchArgs(args []string) (window string, steps []protocol.Step, err er
 
 // parseBatchStep parses one batch step — the Action's name and its
 // arguments, the same arguments the standalone command takes — into the
-// wire Step (the Window is the Batch's; the helper injects it).
+// wire Step (the Window is the Batch's; the helper injects it). A step
+// that starts `in <window>` acts in that Window instead, and `in new` in
+// the Window the step before it opened (desktop-parity ticket 24).
 func parseBatchStep(tokens []string) (protocol.Step, error) {
+	if strings.EqualFold(tokens[0], "in") {
+		if len(tokens) < 3 {
+			return protocol.Step{}, errors.New("a batch step's `in` takes a Window and an Action: in <window>|new <action> [arguments]")
+		}
+		step, err := parseBatchStep(tokens[2:])
+		if err != nil {
+			return protocol.Step{}, err
+		}
+		if step.Window != "" || step.InNew {
+			return protocol.Step{}, errors.New("a batch step takes one `in <window>`")
+		}
+		if strings.EqualFold(tokens[1], "new") {
+			step.InNew = true
+		} else {
+			step.Window = tokens[1]
+		}
+		return step, nil
+	}
 	kind, rest := tokens[0], tokens[1:]
 	var args any
 	switch kind {
@@ -335,6 +355,9 @@ func batchCmd(args []string, headed bool) int {
 	}
 	if err == nil && headed && batchPosts(steps) {
 		err = errPostHeaded
+	}
+	if err == nil && steps[0].InNew {
+		err = errors.New("the first batch Action cannot be `in new`: no Action before it opened a Window")
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, batchUsage)

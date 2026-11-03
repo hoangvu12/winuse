@@ -286,6 +286,12 @@ parsing are offline-tested in `internal/wstate`, `internal/uia`,
 `internal/helper` and `internal/cli`; these tests pin the live wiring
 only.
 
+Desktop-parity 24 (`multi_window_batch_test.go`):
+`TestBatchInNewActsInTheOpenedMessageBox` runs one Batch on the covered
+fixture that clicks "Message Box..." and then presses Return `in new`, the
+MessageBox the click opened: step 2 prints its Window ID, the box closes
+with ok, and the foreground stays on the cover.
+
 The ticket-12 tests (`esc_test.go`) cover the Esc stop.
 **`TestEscStopsTheLongBatch` is interactive — a human must be at the
 keyboard** (with `-v`, the run prints `PRESS THE PHYSICAL ESC KEY NOW`).

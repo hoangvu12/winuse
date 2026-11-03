@@ -21,7 +21,8 @@ package helper
 //     foreground is checked again for a moment. activate-window and
 //     maximize-window keep the foreground, and hover keeps the pointer:
 //     that is their point. A Batch saves once before its first step and
-//     gives back once after its last. When winuse keeps the foreground for
+//     gives back once after its last, from any Window a Headed step acted
+//     in (its steps can name several, desktop-parity 24). When winuse keeps the foreground for
 //     a menu it opened, or the foreground moved elsewhere, a Note says so.
 //   - After the activation, a WM_NULL round trip to the Window confirms
 //     its thread took it before any input goes in (else nothing is sent).
@@ -98,6 +99,7 @@ type politeRun struct {
 	headed         bool
 	keepForeground bool
 	keepPointer    bool
+	visited        []win.WindowInfo // a Batch's: every Headed step's Window, its steps in several (desktop-parity 24)
 }
 
 type politeKey struct{}
@@ -211,7 +213,13 @@ func (s Services) giveBack(r *politeRun) string {
 	if r.keepForeground || w.ShellWindow || d.foreground == 0 || d.foreground == w.ID || s.Foreground == nil || s.Activate == nil {
 		return ""
 	}
-	if fg := s.Foreground(); fg != w.ID {
+	fg := s.Foreground()
+	for _, v := range r.visited {
+		if fg != w.ID && fg == v.ID {
+			w = v // an earlier Headed step's Window of the Batch (desktop-parity 24): a dialog its last step closed
+		}
+	}
+	if fg != w.ID {
 		// The user, a flyout or Start moved the foreground meanwhile.
 		if fg == 0 || fg == d.foreground {
 			return ""
@@ -253,6 +261,7 @@ func near(a, b int32) bool { return a-b <= politeCursorSlack && b-a <= politeCur
 func (s Services) beginPolite(ctx context.Context, w win.WindowInfo) (context.Context, *politeRun, bool) {
 	if r := politeRunOf(ctx); r != nil {
 		r.target, r.headed = w, true
+		r.visited = append(r.visited, w)
 		return ctx, r, false
 	}
 	r := &politeRun{saved: s.saveDesk(), target: w, headed: true}

@@ -73,7 +73,7 @@ How an Action names its target: an Element Index, an Element's name, an Element'
 _Avoid_: Selector, locator
 
 **Batch**:
-Several Actions sent in one call and run in order, each one's output printed under its number. A failed Action does not stop the Batch unless the agent asks for that; the Batch then fails as a whole, naming every Action that failed and marking those that may have taken effect.
+Several Actions sent in one call and run in order, each one's output printed under its number. A failed Action does not stop the Batch unless the agent asks for that; the Batch then fails as a whole, naming every Action that failed and marking those that may have taken effect. The Actions act on the Batch's Window, unless one names its own Window or the Window the Action before it opened.
 _Avoid_: Script, macro, sequence
 
 **Headless Action**:
