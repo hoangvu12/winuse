@@ -416,6 +416,43 @@ func TestWaitElementGone(t *testing.T) {
 	}
 }
 
+// TestWaitElementGoneWithItsWindowWhateverTheReadSays follows the live
+// path of the e2e dialog test (fx-gone-wait-window-closed): the Element
+// reads live, its Window closes, and the next read fails with neither a
+// stale HRESULT nor success. The Element went with its Window all the
+// same.
+func TestWaitElementGoneWithItsWindowWhateverTheReadSays(t *testing.T) {
+	for name, err := range map[string]error{
+		"a failed read": errors.New("reading the Element's state failed (HRESULT 0x80070578)"),
+		"a read that still succeeds": nil,
+		"a replaced worker":          uia.ErrWorkerGone,
+	} {
+		d := newWaitDesk()
+		d.refIndex = 2
+		d.states = func(n int) (uia.ElementState, error) {
+			if n < 3 {
+				return uia.ElementState{Enabled: true}, nil
+			}
+			return uia.ElementState{}, err
+		}
+		d.open = func(n int) bool { return n < 3 }
+		out, e := runWait(t, d, protocol.WaitArgs{Window: "101", For: "element", Ref: "id:1001", State: "gone"})
+		if e != nil || out != "ok\nNote: the Window closed\n" {
+			t.Errorf("%s: gone with its Window = %q, %v", name, out, e)
+		}
+		if d.reads != 3 || d.release != 1 {
+			t.Errorf("%s: reads %d, releases %d: want 3 reads and the Element released", name, d.reads, d.release)
+		}
+	}
+	// Any other state still fails on a closed Window.
+	d := newWaitDesk()
+	d.states = func(int) (uia.ElementState, error) { return uia.ElementState{}, errors.New("HRESULT 0x80070578") }
+	d.open = func(int) bool { return false }
+	if _, e := runWait(t, d, protocol.WaitArgs{Window: "101", For: "element", ElementIndex: intp(2), State: "enabled"}); e == nil || !strings.Contains(e.Msg, "the Window closed") {
+		t.Fatalf("enabled on a closed Window = %v, want the Window closed", e)
+	}
+}
+
 func TestWaitElementWindowClosed(t *testing.T) {
 	d := newWaitDesk()
 	d.states = func(n int) (uia.ElementState, error) {
