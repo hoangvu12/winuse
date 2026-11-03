@@ -12,11 +12,11 @@ Today: "A Batch prints only ok" (`skills/winuse/SKILL.md:471-473`).
 
 **Blocked by:** none
 
-**Status:** needs-info (everything but stdin batches landed; the stdin format is an open decision, see the 2026-11-03 implementation comment)
+**Status:** done
 
 - [x] Per-step output
 - [x] Continue by default, `--stop-on-error`, and the final report
-- [ ] stdin batches (waits on the format decision below)
+- [x] stdin batches (one step per line, decided 2026-11-03)
 - [x] Offline tests
 - [x] SKILL.md Batch section
 
@@ -72,3 +72,30 @@ Open decision: the stdin format (`winuse batch -`). agent-desktop's PR #439 read
 - One conflict, in test/e2e/README.md. Both sides are kept: this ticket's Batch wording for `TestHeadedOnlyActionsAreRefusedWithoutTheFlag`, and main's headless-max 11 sentence and its 11 and 12 test paragraphs.
 - Three Batch tests from main expected the old `ok`. They now expect the step lines: `TestBatchPointStepsKeepTheHeadlessScope` (each step's `ok (clicked element 5 ...)` comes back), `TestBatchPostedStepsArePassive` and `TestDesktopWaitIsABatchStep` (dp-03).
 - main's new e2e files run no Batch. The four checks pass after the merge.
+
+### 2026-11-03: stdin format decided (PC orchestrator): option 2
+
+One step per line in the normal step syntax, with no `then`. The first line holds the Window and the Batch flags (`--timeout`, `--stop-on-error`).
+
+### 2026-11-03: stdin batches implemented; merged main (d3c3325)
+
+- `winuse batch -` (internal/cli/batchstdin.go, hooked into `batchCmd`).
+  - The first line is the Window, with `--timeout <s>` (or `--timeout=<s>`) and `--stop-on-error` in any order. `--headed` there is refused with the hint `winuse --headed batch -`: the global flag stays on the command line.
+  - Each further line is one step, parsed by the same `parseBatchStep` as the command-line form. A `then` on a line is an ordinary word.
+  - Words split at spaces and tabs. Double quotes group words and keep their spacing; inside them `\"` is a quote and `\\` a backslash. Outside quotes a backslash is itself, so Windows paths need no escaping, and `""` is an empty word.
+  - Blank lines and lines whose first non-space character is `#` are skipped. CRLF line ends and a leading BOM are accepted.
+  - Usage errors exit 2 without dialing the helper and name their line: `batch stdin line N: <the step's own error>`. So do an unclosed quote, a second word on the first line, a missing Window line, no Action, and anything after `-` on the command line.
+- Docs: the usage text (a `batch -` entry, plus the second line of `batchUsage`), SKILL.md, the README row and the codex-parity extensions paragraph.
+- SKILL.md size: main's file is at the 64 KB guard. The Batches section was rewritten shorter than main's version (stdin included), and the notes-paragraph addition was dropped. SKILL.md is 65362 bytes against main's 65509.
+- Tests:
+  - cli: `TestParseBatchScript` covers flags in any order, comments, a blank line, CRLF, a BOM, quoted text with `\"`, `then` and repeated spaces, a backslash path and an empty `""` value. `TestParseBatchScriptLongTextOnALine` puts about 26 KB of non-ASCII text on one line. `TestParseBatchScriptErrorsNameTheLine` has eight cases plus `batch - 101`. `TestBatchStdinUsageErrorExits2WithoutDialing` goes through `Main` with a file as stdin.
+  - e2e: `TestBatchFromStdin` covers a comment, a blank line, CRLF and `--stop-on-error` on the first line, and a quoted `set-value` holding `then` and quotes.
+- Merge of main (fa349de, then d3c3325):
+  - Conflict in selfactivation.go: kept `ranOn` together with ma-06's `desktopUses` check.
+  - Conflict in pageactions_test.go: kept hm-20's Chromium route, with the step-line output.
+  - Batch tests from main moved to step lines: `TestBatchChromiumStepsArePassive` (hm-20), and `TestBatchRunsElementDragAndHoverSteps` (dp-13; its unheaded refusal is now a failed step read with `failedStep`).
+  - ma-06 lanes: they decide a Batch's lanes up front from its steps, which continuation does not change. A Window that does not resolve takes the desktop lane, and the Batch then fails before any step as before.
+- Live, under the lock, one run at a time:
+  - Pass: `TestBatchFromStdin`, `TestBatchRunsPastAFailedStep`, `TestBatchStopOnErrorStopsAtTheFirstFailure`, `TestBatchUnknownWindowFailsBeforeAnyStep`, `TestBatchUsageErrorsExit2WithoutDialing`, `TestBatchAgainstTheDialog`, `TestHeadlessTypeTextIntoElement`, `TestHeadlessInvokeMenuOnClassicDialog`, `TestHeadedOnlyActionsAreRefusedWithoutTheFlag` and `TestBatchTypesThenClicksAndSucceeds`.
+  - Fail, and not from this ticket: `TestInjectedEscDoesNotStopTheBatch`. With ma-06 its concurrent `press-key` is refused ("agent e2e.test ... is using the desktop") rather than timing out. It fails the same way on main d3c3325.
+  - Not run: `TestEscStopsTheLongBatch`, which needs a human Esc press.
