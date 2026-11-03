@@ -415,7 +415,8 @@ without it the command is refused with nothing sent.
   scrolling, keys, `invoke-menu` and screenshots need `restore-window`
   first.
 - A right-click menu in a desktop App, such as a WPF App's.
-  `click --button right` needs `--headed`.
+  `click --button right` needs `--headed`, or `--post` on a classic
+  control (see "Posted Clicks").
 - The taskbar, with its hidden icons and the clock's calendar and
   notification panel. winuse lists no taskbar Window, the hidden-icons
   overflow takes the foreground when it opens, and the panel opens only
@@ -427,8 +428,9 @@ without it the command is refused with nothing sent.
 - An administrator Window, in any mode. See "Refusals and recovery".
 
 Pick the fallback by what the step needs. `--post` fits a single key or
-plain text on `press-key` and `type-text`, when the user's foreground
-matters more than certainty; read the Window State afterwards. `--headed`
+plain text on `press-key` and `type-text`, and a click or wheel scroll on
+a classic control, when the user's foreground matters more than
+certainty; read the Window State afterwards. `--headed`
 fits the rest of this list, administrator Windows aside, and any step
 that must work the first time. It takes the foreground, so tell the user
 first if they are working in another Window.
@@ -1078,7 +1080,7 @@ close-app <app> [--force]           # --force ends what is still running: the on
 get-window-state <window> [--screenshot] [--skeleton | --root <element> [--depth N] [--interactive]] [--timeout <s>]
 find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --count] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
-click <window> <ref> [--count 1|2|3] [--button left|middle|right]
+click <window> <ref> [--count 1|2|3] [--button left|middle|right] [--post]
 set-value <window> <ref> <value|on|off|item name>
 perform-secondary-action <window> <ref> <action>   # Raise, Scroll Up/Down/Left/Right, Expand, Collapse, Toggle, Select
 type-text <window> [--post | --into <ref>] <text>
@@ -1086,7 +1088,7 @@ press-key <window> <key> [--post] [--force]
 select-text <window> <ref> <start> <length> | select-text <window> <ref> all
 invoke-menu <window> "<menu> > <item>"   # a classic menu bar command, Headless
 scroll <window> <ref> <up|down|left|right> [steps] | scroll <window> <ref> into-view
-scroll <window> @x,y <dx> <dy>      # Headless: the Page, or the Window's Element under the point
+scroll <window> @x,y <dx> <dy> [--post]   # Headless: the Page, or the Window's Element under the point; --post posts the wheel
 drag <window> @x,y @x,y             # --headed: left button, point to point
 drag <window> <element> <element|@x,y>   # a Page Element, Headless
 hover <window> @x,y                 # --headed: moves the pointer and leaves it there, to reveal tooltips

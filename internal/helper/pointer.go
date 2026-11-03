@@ -59,6 +59,9 @@ func scroll(s Services) Command {
 			return "", Fail("scroll: "+err.Error(), scrollUsageHint)
 		}
 		if isElementScroll(a) {
+			if a.Post {
+				return "", Fail("scroll: --post scrolls at an @x,y point; an Element scrolls headless without it", scrollUsageHint)
+			}
 			return scrollElement(ctx, s, args, a)
 		}
 		if a.Direction != "" || a.Steps != nil {
@@ -72,6 +75,11 @@ func scroll(s Services) Command {
 		}
 		if abs(a.ScrollX) > maxScrollUnits || abs(a.ScrollY) > maxScrollUnits {
 			return "", Fail(fmt.Sprintf("scroll amounts must be within ±%d wheel units (one notch is 120)", maxScrollUnits), scrollUsageHint)
+		}
+		if a.Post {
+			// A posted wheel to the classic control there, opt-in
+			// (headless-max ticket 12, postclick.go).
+			return s.postScroll(ctx, a)
 		}
 		x, y, dx, dy := a.X, a.Y, a.ScrollX, a.ScrollY
 		// A point on a browser Window's Page wheels over the Browser

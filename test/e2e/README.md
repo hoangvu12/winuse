@@ -394,6 +394,16 @@ names the Element and the point, the cover stays the foreground window,
 the pointer does not move and no banner shows. A click at the canvas is
 refused with the `--headed` retry and reaches no canvas click.
 
+`TestPostedClicksOnACoveredEdit` (`posted_clicks_test.go`, headless-max
+ticket 12): the covered fixture's Classic Dialog gets "alpha bravo" in its
+name Edit, then a screenshot. `click @x,y --count 2 --post` a few pixels
+into the Edit prints the posted output and selects the first word
+(EM_GETSEL from 0 to 5 or 6), and `click @x,y --button right --post` opens
+the Edit's context menu (a `#32768` Window of the fixture, closed with the
+fixture). The cover stays the foreground window and no banner shows. The
+posted wheel (`scroll @x,y --post`) is not run: the fixture has no classic
+list box.
+
 Run only these tests:
 
 ```

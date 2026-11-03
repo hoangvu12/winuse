@@ -144,25 +144,42 @@ func parseElementScrollTokens(rest []string) (protocol.ScrollArgs, error) {
 	return a, nil
 }
 
-// scrollCmd implements `winuse scroll <window> @x,y <dx> <dy>` (scroll the
-// Window at a point of its latest screenshot, always Headed) and the
-// Element forms `winuse scroll <window> <element> <direction> [steps]` and
+// scrollCmd implements `winuse scroll <window> @x,y <dx> <dy> [--post]`
+// (scroll the Window at a point of its latest screenshot) and the Element
+// forms `winuse scroll <window> <element> <direction> [steps]` and
 // `winuse scroll <window> <element> into-view` (Headless unless headed,
 // the global --headed flag).
 func scrollCmd(args []string, headed bool) int {
-	a, err := parseScrollCommand(args)
+	a, err := scrollRequest(args, headed)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, scrollUsage)
 		return 2
 	}
-	// The point form needs it too: outside a Page it is Headed only with
-	// --headed (headless-max ticket 21).
-	a.Headed = headed
 	if err := runWithArgs("scroll", a); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}
 	return 0
+}
+
+// scrollRequest builds scroll's request: parseScrollCommand with --post
+// taken out anywhere after the Window (a posted wheel at the point,
+// headless-max ticket 12; the point form only, and not with --headed) and
+// the global --headed, which the point form needs too (ticket 21).
+func scrollRequest(args []string, headed bool) (protocol.ScrollArgs, error) {
+	args, post := stripFlag(args, postFlag)
+	a, err := parseScrollCommand(args)
+	if err != nil {
+		return a, err
+	}
+	if post && (a.ElementIndex != nil || a.Ref != "") {
+		return a, errors.New("--post scrolls at an @x,y point; an Element scrolls headless without it")
+	}
+	if post && headed {
+		return a, errPostHeadedClick
+	}
+	a.Headed, a.Post = headed, post
+	return a, nil
 }
 
 // parseDragArgs parses drag's arguments: a Window reference and two @x,y
