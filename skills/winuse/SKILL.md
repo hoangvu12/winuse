@@ -857,6 +857,12 @@ anything reached the app.
 When a failure does not say whether anything was sent, treat the outcome as
 unknown and decide from a fresh Window State.
 
+Put `--json` before the command for one JSON line instead:
+`{"ok":false,"command":"click","out":"","error":{"code":"STALE_REF",...}}`.
+`error` carries the message, hint, a code, and the phrases above as
+`delivery` (`not_delivered`, `delivered_unverified`, `delivery_uncertain`)
+and `retry` (`safe` or `unsafe`). A Window State stays text in `out`.
+
 After `click`, `perform-secondary-action` Expand or Select, `press-key`,
 `set-value` and a Batch, winuse watches the App's Windows for a moment and
 adds a line after `ok` for each change:

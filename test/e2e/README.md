@@ -994,3 +994,57 @@ set WINUSE_E2E=1
 set WINUSE_E2E_SHELL=1
 go test -tags e2e -v -run "TestShell" ./test/e2e
 ```
+
+## Several agents (multi-agent)
+
+These tests run two or three agents, named by `WINUSE_AGENT`, through
+one helper at the same time. Every fixture they act on is covered by
+another fixture, so the user's foreground stays on the cover; only the
+Headed tests take it, and give it back.
+
+- `TestTwoAgentsActAtOnceOnTwoFixtures` (`several_agents_test.go`, ticket
+  10): alpha and beta each run a Headless Batch (click the checkbox, pause
+  1.5 s, `set-value` the text field) on their own fixture at once. Both
+  succeed, and the Batches overlap by at least two thirds of the pause:
+  parallel, not serial.
+- `TestAgentsIndexesSurviveAnotherAgentsRead` (ticket 10): on one fixture,
+  alpha reads, beta opens the File menu and reads again, which shifts
+  beta's indexes by three. alpha's click by alpha's index still toggles
+  the checkbox and nothing else; beta's click by beta's index toggles it
+  back.
+- `TestHeadedActionsTakeTurnsOnTheDesktop` (ticket 10): alpha's Headed
+  Batch (a double click on the canvas, then 3 s) holds the desktop lane.
+  beta's Headed click waits and runs after it; beta's Headed Batch with
+  `--timeout 1` is refused with `agent alpha is using the desktop; nothing
+  was sent` and sends nothing. Both take the foreground for a moment.
+- `TestEscStopsEveryAgent` (ticket 10): alpha and beta run 25 s Headless
+  Batches on two fixtures, and gamma's click waits behind alpha's. One
+  physical Esc press stops all three with exit 130, and a command sent
+  after the press runs. **Interactive**: it skips unless
+  `WINUSE_E2E_HUMAN=1` is set, and the press must come within about 10 s
+  of the prompt, before gamma's 12 s lane wait ends.
+- `TestTwoAgentsRunInTheirOwnLanes` (`lanes_test.go`, ticket 06): alpha's
+  Batch holds fixture A's UI-thread lane for 2 s; beta's click on fixture
+  B finishes within 1.5 s, and gamma's click on A waits its turn.
+- `TestHungAppStallsOnlyItsOwnWorker` (`hung_app_test.go`, ticket 07):
+  fixture A runs with `-hang-on-click 15000`, which stops its UI thread
+  after Click Me. While it hangs, beta's click on fixture B lands within
+  2 s, and a click on A is refused as not responding, with nothing sent.
+- `TestWindowStatesArePerAgent` (`agents_test.go`, ticket 03),
+  `TestEachAgentsCursorSitsAboveItsOwnWindow` (`agent_cursors_test.go`,
+  ticket 04) and `TestHeadedClickGivesTheForegroundAndCursorBack`
+  (`polite_input_test.go`, ticket 08) are described above.
+
+Run them one at a time, as every live test here:
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -run "TestTwoAgentsActAtOnceOnTwoFixtures$" ./test/e2e
+go test -tags e2e -v -run "TestAgentsIndexesSurviveAnotherAgentsRead$" ./test/e2e
+go test -tags e2e -v -run "TestHeadedActionsTakeTurnsOnTheDesktop$" ./test/e2e
+go test -tags e2e -v -run "TestTwoAgentsRunInTheirOwnLanes$" ./test/e2e
+go test -tags e2e -v -run "TestHungAppStallsOnlyItsOwnWorker$" ./test/e2e
+set WINUSE_E2E_HUMAN=1
+go test -tags e2e -v -run "TestEscStopsEveryAgent$" ./test/e2e
+```
+

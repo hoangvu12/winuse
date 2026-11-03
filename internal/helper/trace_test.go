@@ -43,7 +43,7 @@ func TestServerAnswersTheTraceNotesOnlyWhenAsked(t *testing.T) {
 		t.Errorf("untraced response carries %+v, want no trace", resp.Trace)
 	}
 	raw, _ := json.Marshal(resp)
-	if string(raw) != `{"ok":false,"err":"refused; nothing was sent","exit":1}` {
+	if string(raw) != `{"ok":false,"err":"refused; nothing was sent","exit":1,"code":"INTERNAL","delivery":"not_delivered","retry":"safe"}` {
 		t.Errorf("untraced response on the wire = %s, want no trace field", raw)
 	}
 }
