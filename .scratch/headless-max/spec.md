@@ -47,7 +47,7 @@ Close every gap that has a route, and say plainly where none exists.
 | 12 | Posted Clicks (opt-in) | M | ready-for-agent |
 | 13 | Caret-aware typing into Text-pattern fields (and the `type-text --into` Text-pattern leg, from desktop-parity 23) | M | ready-for-agent |
 | 14 | Headless Actions on minimized Windows | S | done (live e2e pending) |
-| 15 | Electron and WebView2 Browser Connections at launch, and attach to a running Electron (opt-in) | L | ready-for-agent (after 01) |
+| 15 | Electron and WebView2 Browser Connections at launch, and attach to a running Electron (opt-in) | L | done (live e2e runs still to do) |
 | 16 | Spike: MXC session container | M | wontfix |
 | 17 | ADR 0013, CONTEXT.md, skill and the impossible list | S | ready-for-agent |
 | 18 | Longer settle for a cold Chromium UIA tree | S | done |

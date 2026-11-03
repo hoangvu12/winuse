@@ -90,7 +90,10 @@ agent-desktop and need an executable. `--cdp` (headless-max 15, agent-desktop's
 `launch --cdp`) starts an Electron or WebView2 executable with a loopback
 debugging port that winuse picks and verifies (its listener must be the
 launched process tree), so the App's Windows get a Browser Connection; a
-note line says whether one reaches the App.
+note line says whether one reaches the App. `browser attach <window>`
+gives a running Electron App one without a restart (its Node.js
+inspector, opt-in, refused when the nodeCliInspect fuse is off) and
+`browser detach` closes it again; agent-desktop refuses running Apps.
 
 ### get_window_state
 

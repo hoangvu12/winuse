@@ -757,12 +757,17 @@ through UI Automation" note), a `set-value` on it must answer `ok`, and
 throughout. `TestLaunchAppCDPOnWebView2` needs `WINUSE_E2E_WEBVIEW2`, an
 executable that hosts a WebView2 control (it skips without it): the
 launch must print the WebView2 note, and the covered Window's State must
-come over CDP; the test logs it. Both end the App, the fixture and the
-helper.
+come over CDP; the test logs it. `TestAttachToRunningElectron` starts
+the same electron.exe the plain way (no debugging port), covers it, and
+runs `winuse browser attach <window>`: the Window State must then show
+the field read over CDP, `set-value` must be read back by `eval`, and
+`winuse browser detach <window>` must answer `ok (detached` after which
+`eval` fails. It sends the Node debug signal into the test's own Electron
+process only. All three end the App, the fixture and the helper.
 
 ```
 set WINUSE_E2E=1
 set WINUSE_E2E_ELECTRON=C:\electron-dist\electron-vX.Y.Z-win32-x64\electron.exe
 set WINUSE_E2E_WEBVIEW2=C:\path\to\WebView2App.exe
-go test -tags e2e -v -timeout 5m -run TestLaunchAppCDP ./test/e2e
+go test -tags e2e -v -timeout 5m -run "TestLaunchAppCDP|TestAttachToRunningElectron" ./test/e2e
 ```

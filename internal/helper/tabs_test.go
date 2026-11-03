@@ -717,9 +717,15 @@ func TestNothingSendsActivateTargetOrBringToFront(t *testing.T) {
 		if call.MatchString(src) {
 			t.Errorf("%s sends a forbidden method", path)
 		}
-		// The method names may appear only where they are refused.
-		if method.MatchString(src) && filepath.ToSlash(path) != "../../internal/bridge/bridge.go" {
-			t.Errorf("%s names a forbidden method outside the bridge's refusal", path)
+		// The method names may appear only where they are refused: the
+		// extension bridge's refusal, and the attached Electron App's shim
+		// (headless-max 15), which refuses them the same way.
+		switch filepath.ToSlash(path) {
+		case "../../internal/bridge/bridge.go", "../../internal/browser/electron.go":
+		default:
+			if method.MatchString(src) {
+				t.Errorf("%s names a forbidden method outside the bridge's refusal", path)
+			}
 		}
 		return nil
 	})

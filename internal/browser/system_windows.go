@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -51,12 +52,17 @@ func Live() *System {
 		FreePort:     freeDebugPort,
 		AppPort:      ephemeralPort,
 		ParentPID:    parentPID,
-		Dial:         liveDial,
-		OpenBridge:   liveOpenBridge,
-		Registry:     liveRegistry{},
-		Executable:   liveExecutable,
-		Now:          time.Now,
-		Sleep:        time.Sleep,
+
+		HasNodeDebug:   win.NodeDebugHandler,
+		NodeDebug:      win.SignalNodeDebug,
+		ListeningPorts: listeningPorts,
+		InspectorWS:    liveInspectorWS,
+		Dial:           liveDial,
+		OpenBridge:     liveOpenBridge,
+		Registry:       liveRegistry{},
+		Executable:     liveExecutable,
+		Now:            time.Now,
+		Sleep:          time.Sleep,
 	}
 	// The winuse extension (extension_windows.go): discovery tries it first.
 	s.Bridges = func() []bridge.Info {
@@ -366,4 +372,70 @@ func parentPID(pid uint32) (uint32, bool) {
 		}
 	}
 	return 0, false
+}
+
+// listeningPorts lists the loopback (or any-address) TCP ports a process
+// listens on, from the system's listener table.
+func listeningPorts(pid uint32) []int {
+	var out []int
+	for _, af := range []uint32{afInet, afInet6} {
+		buf, err := tcpTable(af)
+		if err != nil {
+			continue
+		}
+		rows := parseTCP4Listeners(buf)
+		if af == afInet6 {
+			rows = parseTCP6Listeners(buf)
+		}
+		for _, r := range rows {
+			if r.PID == pid && (r.Addr.IsLoopback() || r.Addr.IsUnspecified()) && !slices.Contains(out, r.Port) {
+				out = append(out, r.Port)
+			}
+		}
+	}
+	return out
+}
+
+func liveInspectorWS(ctx context.Context, port int) (string, error) {
+	if err := win.LiveDesktopGuard(); err != nil {
+		return "", err
+	}
+	return inspectorWS(ctx, "http://127.0.0.1:"+strconv.Itoa(port))
+}
+
+// inspectorWS asks a Node inspector's /json/list for the WebSocket URL of
+// its one target (type "node"), read as versionWS reads /json/version.
+func inspectorWS(ctx context.Context, base string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 900*time.Millisecond)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/json/list", nil)
+	if err != nil {
+		return "", err
+	}
+	client := http.Client{Transport: &http.Transport{DisableKeepAlives: true, Proxy: nil}}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("/json/list answered %s", resp.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", err
+	}
+	var targets []struct {
+		Type string `json:"type"`
+		WS   string `json:"webSocketDebuggerUrl"`
+	}
+	if err := json.Unmarshal(body, &targets); err != nil {
+		return "", err
+	}
+	for _, t := range targets {
+		if t.Type == "node" && t.WS != "" {
+			return t.WS, nil
+		}
+	}
+	return "", errors.New("/json/list names no Node.js target")
 }

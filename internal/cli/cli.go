@@ -213,6 +213,12 @@ const usageTail = `);
   browser ext status [browser]
                                say whether the extension is connected, or in
                                one sentence what is missing and what to run
+  browser attach <window>     give a running Electron App's Window a Browser
+                               Connection: opens the App's Node.js inspector
+                               and runs winuse's code inside the App, so ask
+                               the user first; refused when the App turned
+                               its inspector off (nodeCliInspect fuse)
+  browser detach <window>     end the attach and close the App's inspector
   tab list <window>           list the Tabs of a browser Window with a Browser
                                Connection, one per line: * for the active
                                Tab, its id, title and URL

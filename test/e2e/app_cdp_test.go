@@ -18,11 +18,13 @@ package e2e
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/win"
 )
@@ -130,6 +132,73 @@ func TestLaunchAppCDPOnWebView2(t *testing.T) {
 		t.Errorf("the WebView2 Window's Page was not read over CDP:\n%s", state)
 	}
 	t.Logf("the WebView2 App's Window State:\n%s", state)
+	if fg := win.ForegroundWindow(); fg != cover {
+		t.Errorf("the foreground is %s; the cover %d must stay in front", describeWindow(t, fg), cover)
+	}
+}
+
+// TestAttachToRunningElectron starts Electron the plain way (no debugging
+// port), covers it, and attaches with winuse browser attach: the Window
+// State then reads the Page over CDP, a set-value is read back through
+// eval, and browser detach ends it (eval fails again). The foreground stays
+// with the cover.
+func TestAttachToRunningElectron(t *testing.T) {
+	optIn(t)
+	exe := os.Getenv("WINUSE_E2E_ELECTRON")
+	if exe == "" {
+		t.Skip("WINUSE_E2E_ELECTRON is not set: point it at electron.exe from an Electron release to run this test")
+	}
+	if err := win.SetPerMonitorV2DPIAwareness(); err != nil {
+		t.Logf("per-monitor DPI awareness failed (bounds may be scaled): %v", err)
+	}
+	killHelper(t)
+	t.Cleanup(func() { killHelper(t) })
+	startFG := win.ForegroundWindow()
+	t.Cleanup(func() { restoreForeground(t, startFG) })
+
+	page, err := filepath.Abs("testdata/chromium-fixture.html")
+	if err != nil {
+		t.Fatalf("resolving the fixture page: %v", err)
+	}
+	url := "file:///" + strings.ReplaceAll(filepath.ToSlash(page), " ", "%20")
+	cmd := exec.Command(exe, "--user-data-dir="+t.TempDir(), "--disable-features=CalculateNativeWinOcclusion", url)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("starting %s: %v", exe, err)
+	}
+	pid := uint32(cmd.Process.Pid)
+	defer terminatePID(t, pid)
+	id := findWindowOf(t, pid, "Chrome_WidgetWin_1", "", 30*time.Second)
+	window := strconv.FormatUint(id, 10)
+	cover := coverWindow(t, window)
+	coverOver(t, cover, id)
+
+	run := func(args ...string) (string, string, int) {
+		return runWinuse(t, args, "WINUSE_HELPER_IDLE="+e2eIdle)
+	}
+	out, stderr, exit := run("browser", "attach", window)
+	if exit != 0 || !strings.HasPrefix(out, "ok (attached to ") {
+		t.Fatalf("browser attach: exit %d, stdout %q, stderr %q", exit, out, stderr)
+	}
+	state, stderr, exit := runGetWindowState(t, window)
+	if exit != 0 {
+		t.Fatalf("get-window-state: exit %d, stderr:\n%s", exit, stderr)
+	}
+	m := regexp.MustCompile(`(?m)^\t+(\d+) edit\b.*winuse e2e input`).FindStringSubmatch(state)
+	if m == nil || strings.Contains(state, "Note: the Page is read through UI Automation") {
+		t.Fatalf("the Window State does not show the Page read over CDP:\n%s", state)
+	}
+	if out, stderr, exit := run("set-value", window, m[1], "typed through the attach"); exit != 0 || !strings.HasPrefix(out, "ok") {
+		t.Fatalf("set-value: exit %d, stdout %q, stderr %q", exit, out, stderr)
+	}
+	if v, stderr, exit := run("eval", window, "document.getElementById('e2e-input').value"); exit != 0 || strings.TrimSpace(v) != "typed through the attach" {
+		t.Errorf("eval read %q (exit %d, stderr %q)", v, exit, stderr)
+	}
+	if out, stderr, exit := run("browser", "detach", window); exit != 0 || !strings.HasPrefix(out, "ok (detached") {
+		t.Errorf("browser detach: exit %d, stdout %q, stderr %q", exit, out, stderr)
+	}
+	if _, _, exit := run("eval", window, "1"); exit == 0 {
+		t.Error("eval still reached the App after the detach")
+	}
 	if fg := win.ForegroundWindow(); fg != cover {
 		t.Errorf("the foreground is %s; the cover %d must stay in front", describeWindow(t, fg), cover)
 	}
