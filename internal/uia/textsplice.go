@@ -25,6 +25,8 @@ import (
 	"fmt"
 	"unicode/utf16"
 	"unsafe"
+
+	"github.com/hoangvu12/winuse/internal/linebreak"
 )
 
 // Splice refusals, raised before anything was sent. ErrNoTextPattern and
@@ -148,7 +150,7 @@ func spliceText(el comPtr, text string) (SpliceResult, error) {
 		return SpliceResult{}, &WriteError{What: "setting the field's value", HR: hr}
 	}
 	if err := pollVerify("type-text", "the text at the caret", func() (bool, string) {
-		return currentString(el, propValueValue) == next, "another value"
+		return linebreak.Same(currentString(el, propValueValue), next), "another value"
 	}); err != nil {
 		return SpliceResult{}, err
 	}

@@ -38,6 +38,7 @@ import (
 
 	"github.com/hoangvu12/winuse/internal/cdp"
 	"github.com/hoangvu12/winuse/internal/keys"
+	"github.com/hoangvu12/winuse/internal/linebreak"
 )
 
 // Point is a point in CSS px of the Tab's viewport.
@@ -1017,20 +1018,21 @@ func (o Origin) TypeInto(ctx context.Context, in *Input, text string) error {
 	return in.TypeText(ctx, text)
 }
 
-// ValueMatches compares a field's read-back with the value sent: exactly
-// for inputs and text areas, and for editable text with spaces and the
-// trailing newline normalized. A mismatch never shows a password field's
-// value, only the lengths.
+// ValueMatches compares a field's read-back with the value sent, line
+// breaks aside (a text area stores CRLF as LF; linebreak): exactly
+// otherwise for inputs and text areas, and for editable text with spaces
+// and the trailing newline normalized too. A mismatch never shows a
+// password field's value, only the lengths.
 func ValueMatches(f Field, sent, got string) error {
 	if f.Kind == "editable" {
 		norm := func(s string) string {
 			s = strings.ReplaceAll(s, " ", " ")
-			return strings.TrimRight(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
+			return strings.TrimRight(linebreak.Normalize(s), "\n")
 		}
 		if norm(sent) == norm(got) {
 			return nil
 		}
-	} else if sent == got {
+	} else if linebreak.Same(sent, got) {
 		return nil
 	}
 	if f.Password {
