@@ -376,11 +376,13 @@ func TestAgentCursorShownAndExcludedFromCaptures(t *testing.T) {
 		t.Fatalf("no visible %s window right after a Headless click (seen during it: %d)", win.AgentCursorClassName, len(during))
 	}
 
-	// It is the helper's, presentation only (click-through, topmost,
-	// never activated, not in Alt-Tab), and it sits at the Element.
+	// It is the helper's, presentation only (click-through, never
+	// activated, not in Alt-Tab), not topmost but just above the Window it
+	// acted on (multi-agent ticket 04), and it sits at the Element.
 	helper := helperPID(t)
 	const slack = 4
 	atElement := false
+	fixtureZ := zOrderOf(t, mustWindowID(t, window))
 	for _, w := range after {
 		if w.PID != helper {
 			t.Errorf("cursor window %d belongs to process %d, want the helper %d", w.ID, w.PID, helper)
@@ -388,10 +390,16 @@ func TestAgentCursorShownAndExcludedFromCaptures(t *testing.T) {
 		for _, s := range []struct {
 			bit  uint32
 			name string
-		}{{exLayered, "layered"}, {exTransparent, "click-through"}, {exTopmost, "topmost"}, {exToolWindow, "tool-window"}, {exNoActivate, "no-activate"}} {
+		}{{exLayered, "layered"}, {exTransparent, "click-through"}, {exToolWindow, "tool-window"}, {exNoActivate, "no-activate"}} {
 			if w.ExStyle&s.bit == 0 {
 				t.Errorf("cursor window %d's extended style 0x%x is not %s", w.ID, w.ExStyle, s.name)
 			}
+		}
+		if w.ExStyle&exTopmost != 0 {
+			t.Errorf("cursor window %d is topmost; it belongs just above the fixture", w.ID)
+		}
+		if z := zOrderOf(t, w.ID); z > fixtureZ {
+			t.Errorf("cursor window %d is below the fixture in the z-order (%d vs %d)", w.ID, z, fixtureZ)
 		}
 		b := w.Bounds
 		if cx >= b.Left-slack && cx <= b.Right+slack && cy >= b.Top-slack && cy <= b.Bottom+slack {

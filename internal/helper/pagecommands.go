@@ -362,14 +362,14 @@ func (s Services) runPageWindow(ctx context.Context, ref string, run pageWindowR
 	shown := false
 	if run.target != nil {
 		target, _ := run.target(ctx, pw)
-		rect, shown = s.cursorTravelRect(pw.w, target, run.label)
+		rect, shown = s.cursorTravelRect(ctx, pw.w, target, run.label)
 	}
 	if esc.Stopped() {
 		return "", escStopBeforeActError()
 	}
 	out, delivered, e := run.act(ctx, pw, esc.Stopped)
 	if shown && delivered {
-		s.cursorClick(rect)
+		s.cursorClick(ctx, pw.w, rect)
 	}
 	if esc.Stopped() {
 		if delivered {

@@ -29,7 +29,7 @@ func requestAgent(req *protocol.Request) agent.Identity {
 	if label == "" {
 		label = req.Agent
 	}
-	return agent.Identity{ID: req.Agent, Label: label}
+	return agent.Identity{ID: req.Agent, Label: label, Color: req.AgentColor}
 }
 
 // withAgent puts the request's Agent on its context (agent.NewContext),

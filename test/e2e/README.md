@@ -317,11 +317,19 @@ command clicks the covered fixture the v1 way, bringing it to the
 foreground. `TestAgentCursorShownAndExcludedFromCaptures`: during and
 right after a Headless click a visible top-level window of class
 `winuse.cursor` exists, owned by the helper, layered, click-through,
-topmost, tool-window and no-activate, lying over the clicked button; a
+tool-window and no-activate, not topmost but above the fixture in the
+z-order (multi-agent ticket 04), lying over the clicked button; a
 concurrent `get-window-state --screenshot` contains none of its accent
 colour, and the cursor is back after the capture. The cursor's own
 `WDA_EXCLUDEFROMCAPTURE` keeps it out of any screen capture, so the test
 observes it through the window list, not a capture.
+`TestEachAgentsCursorSitsAboveItsOwnWindow` (`agent_cursors_test.go`,
+multi-agent ticket 04): two Agents named by `WINUSE_AGENT` click on two
+covered fixtures through one helper; each fixture has a cursor window
+between it and its cover in the z-order, none topmost. Then the covers are
+minimized for five seconds: look for two cursors in two colours with
+`alpha: click` and `beta: click` in their pills (the cursors are excluded
+from captures, so the test cannot check that itself).
 
 Since Element clicks are Headless by default, the tests that rely on a
 real-pointer click pass `--headed`: the Batches that click the text field
