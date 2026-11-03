@@ -191,13 +191,23 @@ commands:
 const usageTail = `);
                                @x,y acts on the Element under a point of the
                                latest screenshot
-  batch <window> [--timeout <seconds>] <action> [arguments] [then <action> [arguments]] ...
-                               run several Actions on one Window in order,
-                               stopping at the first failure (which names
-                               the failed Action); e.g.
+  batch <window> [--timeout <seconds>] [--stop-on-error] <action> [arguments] [then <action> [arguments]] ...
+                               run several Actions on one Window in order and
+                               print each one's output as Action N (<action>):
+                               ...; e.g.
                                winuse batch 101 click name:File then type-text hello then press-key Return
+                               A failed Action does not stop the Batch: the
+                               rest run, and the Batch then fails (exit 1)
+                               naming every failed Action, uncertain ones
+                               marked; --stop-on-error stops at the first.
                                A Batch has 60 s; --timeout before the first
                                Action gives it up to 300
+  batch -                      the same Batch read from stdin: the Window and
+                               the Batch flags on the first line, then one
+                               Action per line with no then; double quotes
+                               group words (\" is a quote inside them), and
+                               blank lines and lines starting with # are
+                               skipped
   scroll <window> <element index | name: | id:> <up|down|left|right> [steps]
                                scroll the list or page holding an Element by
                                steps (1 to 50, default 3)
@@ -835,10 +845,11 @@ func runRequest(cmd string, args any, edit func(*protocol.Request)) error {
 }
 
 // finish turns a response into an error carrying the exit code the CLI
-// should use; helper-reported failures keep their exact message text.
+// should use; helper-reported failures keep their exact message text. A
+// failure's output (the steps a Batch ran) is printed first.
 func finish(resp *protocol.Response) error {
+	os.Stdout.WriteString(resp.Out)
 	if resp.OK {
-		os.Stdout.WriteString(resp.Out)
 		return nil
 	}
 	code := resp.Exit

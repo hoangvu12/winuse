@@ -255,7 +255,8 @@ old one; only the read-only `status` is answered across builds, naming
 both versions), idle-exiting after 5 minutes. The observable contract — one
 request at a time, `ok` or a one-line failure, no Window State echoed back
 — is preserved. After `click`, `perform-secondary-action` Expand or
-Select, `press-key`, `set-value` and a Batch, the `ok` may be followed by
+Select, `press-key`, `set-value` and a Batch, the `ok` (a Batch's step
+lines) may be followed by
 `Note:` lines naming a Window the Action opened (a dialog, a menu or a
 popup of the same App, with its Window ID) or the target Window closing,
 and a Page Action's JavaScript dialog or new Tab (desktop-parity 02,
@@ -449,7 +450,13 @@ references, no `record-tree`, no `find`, no partial tree reads; winuse has
 all of them (`find` with role, name, text and state filters,
 `get-window-state --root`, `--depth`, `--interactive` and `--skeleton`,
 desktop-parity 04, from agent-desktop), keeping Codex's
-parameter names where a parameter exists. Headless Actions bring two
+parameter names where a parameter exists. A Batch works like
+agent-desktop's (desktop-parity 20): each step's output on its own
+numbered line (`Action N (<action>): ...`), a failed step does not stop
+the rest, and the Batch then fails naming every failed step, the ones
+that may have taken effect marked uncertain; `--stop-on-error` stops at
+the first failure instead. `winuse batch -` reads the Batch from stdin,
+one step per line (agent-desktop's PR #439 reads its JSON there). Headless Actions bring two
 more: the global `--headed` flag (before or after the command, and on a
 Batch) that restores Codex's foreground, real-input behaviour for any
 Action, and the Agent Cursor — a presentation-only second cursor that

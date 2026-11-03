@@ -569,7 +569,7 @@ func TestDesktopWaitIsABatchStep(t *testing.T) {
 	d.states = func(n int) (uia.ElementState, error) { return uia.ElementState{Enabled: n > 1}, nil }
 	step, _ := json.Marshal(protocol.WaitArgs{For: "element", ElementIndex: intp(3), State: "enabled"})
 	out, e := runCommand(t, CommandsWith(d.services()), "batch", protocol.BatchArgs{Window: "101", Steps: []protocol.Step{{Kind: "wait", Args: step}}})
-	if e != nil || out != okOutput || d.held[0] != 3 {
+	if e != nil || out != "Action 1 (wait): "+okOutput || d.held[0] != 3 {
 		t.Fatalf("batch wait = %q, %v (held %v)", out, e, d.held)
 	}
 }

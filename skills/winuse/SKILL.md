@@ -797,27 +797,30 @@ winuse refuses to close a Window's last Tab; use `close-window`.
 
 ## Batches
 
-A Batch runs a routine sequence on one Window in one call, in order,
-stopping at the first failure and naming it.
+A Batch runs a routine sequence on one Window in one call, in order, and
+prints each step as `Action N (<action>): <output>` (more lines indented),
+then any `Note:` lines.
 
 ```
-winuse --headed batch 101 click id:field then type-text hello world then press-key Return then click name:OK
+winuse --headed batch 101 click id:field then type-text hello world then press-key Return
 ```
 
-Each step takes the standalone command's arguments without the Window,
-`--post` included. A separate `then` argument, in any case, always starts a
-new step, so quote text containing the word. A malformed Batch is refused
-before anything is sent. Batch only sequences you understand well. A Batch
-has 60 seconds; for a long one, put `--timeout <seconds>` (up to 300) right
-after the Window. A `--timeout` later on the line belongs to a `wait` step.
+Steps take the standalone arguments without the Window. A separate `then`
+starts a new step; quote text containing it. `winuse batch -` reads stdin:
+the Window and flags on line 1, then one step per line without `then`; `"`
+groups words (`\"` inside), and blank and `#` lines are skipped. A
+malformed Batch or unknown Window sends nothing. Batch only sequences you
+understand well. A Batch has 60 s; `--timeout <s>` (up to 300) after the
+Window widens it (a later one is a `wait` step's).
 
-Without `--headed`, a Batch runs Headless, and a step with no Headless
-route is refused at its turn with nothing sent for it; the steps before it
-took effect. `--headed` makes every step Headed under one banner, which is
-why the example needs it: a Headless click would not move focus to the
-field. The Page commands and `tab new`, `tab close` and `tab switch` are
-Batch steps too. A Batch prints only `ok` and its notes, so run `eval` and
-`tab list` on their own.
+A failed step prints `failed: <message>` and its hint, and the rest run.
+The Batch exits 1 naming them: retry only those, reading the Window State
+first for one marked `uncertain` (it may have acted). `--stop-on-error`
+after the Window stops at the first failure, as Esc and a spent budget do.
+
+Without `--headed` a step with no Headless route is refused with nothing
+sent; `--headed` makes every step Headed under one banner, as the example
+needs. Page and tab commands are steps too.
 
 ## Read the result
 
@@ -993,7 +996,7 @@ activate-window <window>            # takes the foreground, no flag needed
 restore-window <window> | minimize-window <window> | close-window <window>
 move-window <window> <x> <y> | resize-window <window> <width> <height>
 maximize-window <window>            # needs --headed: takes the foreground
-batch <window> [--timeout <s>] <action> [args] [then <action> [args]] ...
+batch <window>|- [--timeout <s>] [--stop-on-error] <action> [args] [then ...]
 navigate <window> <url> [--wait load|domcontentloaded|none] | back | forward | reload <window>
 wait <window> selector <css> | text <text> | url <url> | load | download [--timeout <s>]
 wait <window> <ref> enabled|disabled|gone|value <v>|checked|unchecked|expanded|collapsed [--timeout <s>]

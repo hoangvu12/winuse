@@ -79,7 +79,7 @@ func TestHeadlessInvokeMenuOnClassicDialog(t *testing.T) {
 
 	// A Batch step: Select All, then the replacement.
 	res, overlaySeen = runWatched(t, []string{"batch", dialog, "invoke-menu", "Edit > Select All", "then", "type-text", "from a batch"})
-	assertActionOK(t, "batch invoke-menu then type-text", res.stdout, res.stderr, res.exit)
+	assertBatchOK(t, "batch invoke-menu then type-text", res.stdout, res.stderr, res.exit, 2)
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.ClassicText == "from a batch" })
 	if overlaySeen {
 		t.Error("the in-control banner was shown during an all-Headless Batch")

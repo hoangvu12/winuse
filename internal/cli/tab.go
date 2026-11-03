@@ -97,15 +97,16 @@ func tabCmd(args []string, headed bool) int {
 	return 0
 }
 
-// parseBatchTabStep parses a tab step of a Batch: `tab new [url]`, `tab
-// close <tab>` or `tab switch <tab>` (or the wire names tab-new,
-// tab-close and tab-switch), without the Window, which the Batch names.
-// tab list is no step: a Batch prints only ok.
+// parseBatchTabStep parses a tab step of a Batch: `tab list`, `tab new
+// [url]`, `tab close <tab>` or `tab switch <tab>` (or the wire names
+// tab-list, tab-new, tab-close and tab-switch), without the Window, which
+// the Batch names. tab list is a step since a Batch prints its steps'
+// output (desktop-parity ticket 20).
 func parseBatchTabStep(kind string, rest []string) (protocol.Step, error) {
 	sub := strings.TrimPrefix(kind, "tab-")
 	if kind == "tab" {
 		if len(rest) == 0 {
-			return protocol.Step{}, errors.New("a batch tab Action needs new, close or switch")
+			return protocol.Step{}, errors.New("a batch tab Action needs list, new, close or switch")
 		}
 		sub, rest = rest[0], rest[1:]
 	}
@@ -127,9 +128,11 @@ func parseBatchTabStep(kind string, rest []string) (protocol.Step, error) {
 		}
 		a.Tab = rest[0]
 	case "list":
-		return protocol.Step{}, errors.New("tab list is not a batch Action: it prints the Tabs, and a batch prints only ok; run winuse tab list <window> on its own")
+		if len(rest) != 0 {
+			return protocol.Step{}, errors.New("a batch tab list Action takes no arguments")
+		}
 	default:
-		return protocol.Step{}, fmt.Errorf("unknown batch tab Action %q; expected new, close or switch", sub)
+		return protocol.Step{}, fmt.Errorf("unknown batch tab Action %q; expected list, new, close or switch", sub)
 	}
 	raw, err := json.Marshal(a)
 	if err != nil {

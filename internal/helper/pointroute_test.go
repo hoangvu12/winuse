@@ -214,7 +214,9 @@ func TestBatchPointStepsKeepTheHeadlessScope(t *testing.T) {
 		stepOf("click", protocol.ClickArgs{Point: pt(40, 50)}),
 		stepOf("scroll", protocol.ScrollArgs{X: 5, Y: 6, ScrollY: 120}),
 	}})
-	if e != nil || out != okOutput {
+	// Each step's own ok, naming the Element under its point, comes back
+	// (desktop-parity ticket 20).
+	if e != nil || out != "Action 1 (click): ok (clicked element 5 button \"Save\" at @40,50)\nAction 2 (scroll): ok (scrolled element 5 button \"Save\" at @5,6)\n" {
 		t.Fatalf("batch = %q, %v", out, e)
 	}
 	if containsString(p.recorded(), "activate") || hasStepPrefix(p.recorded(), "overlay-show") {

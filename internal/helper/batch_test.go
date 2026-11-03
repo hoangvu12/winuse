@@ -1,11 +1,13 @@
 package helper
 
 // The Batch command's offline tests (ticket 11): the output contract
-// (`ok`, or a one-line failure with a hint and non-zero exit), steps
-// running in order and stopping at the first failure with the failed
-// step named, malformed steps refused before any input is sent, the
-// Batch's Window injected into every step (overriding any window the
-// step carries), and the batchable-Action allowlist. Everything Win32
+// (each step's output under its number, desktop-parity ticket 20), steps
+// running in order and past a failed step, the final report naming every
+// failed step with the uncertain ones marked, stop_on_error stopping at
+// the first failure with the failed step named, malformed steps refused
+// before any input is sent, the Batch's Window injected into every step
+// (overriding any window the step carries), and the batchable-Action
+// allowlist. Everything Win32
 // and element-side is faked; no desktop is touched. The spy is no
 // HeadlessActor, so the Batches that run its steps send `headed` (a step
 // with only the Headed route is refused without it, headless-max ticket
@@ -14,6 +16,7 @@ package helper
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -132,8 +135,9 @@ func TestBatchRunsStepsInOrderAndPrintsOK(t *testing.T) {
 	if cmdErr != nil {
 		t.Fatalf("batch: %v", cmdErr.Error())
 	}
-	if out != "ok\n" {
-		t.Errorf("output = %q, want %q", out, "ok\n")
+	wantOut := "Action 1 (click): ok\nAction 2 (type-text): ok\nAction 3 (press-key): ok\nAction 4 (set-value): ok\nAction 5 (activate-window): ok\n"
+	if out != wantOut {
+		t.Errorf("output = %q, want %q", out, wantOut)
 	}
 
 	// Every step ran, in order, each through the shared pipeline.
@@ -163,15 +167,106 @@ func TestBatchRunsStepsInOrderAndPrintsOK(t *testing.T) {
 	}
 }
 
-func TestBatchStopsAtFirstFailureNamingTheStep(t *testing.T) {
+func TestBatchRunsPastAFailedStep(t *testing.T) {
+	// Desktop-parity ticket 20: the step after the failure runs, the failed
+	// step's line forwards its message and hint, and the Batch then fails
+	// naming it.
+	spy := newBatchSpy()
+	spy.point = uia.Point{X: 100, Y: 200}
+	spy.typeErr = &win.OcclusionError{X: 660, Y: 430, OverTitle: "Something Else"}
+
+	out, cmdErr := runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{
+		Window: "101",
+		Headed: true,
+		Steps: []protocol.Step{
+			stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(1)}),
+			stepOf("type-text", protocol.TypeTextArgs{Text: "hello"}),
+			stepOf("press-key", protocol.PressKeyArgs{Key: "Return"}),
+		},
+	})
+	if out != "" || cmdErr == nil {
+		t.Fatalf("batch = %q, %+v; a failed step must fail the Batch", out, cmdErr)
+	}
+	if want := "batch: 1 of 3 Actions failed: Action 2 (type-text)"; cmdErr.Msg != want {
+		t.Errorf("message = %q, want %q", cmdErr.Msg, want)
+	}
+	if cmdErr.Exit != 1 || !strings.Contains(cmdErr.Hint, "each failed Action's line in the output") || strings.Contains(cmdErr.Hint, "may have taken effect") {
+		t.Errorf("exit %d, hint %q: want 1 and the plain report hint", cmdErr.Exit, cmdErr.Hint)
+	}
+	lines := strings.Split(strings.TrimSuffix(cmdErr.Out, "\n"), "\n")
+	if len(lines) != 4 || lines[0] != "Action 1 (click): ok" ||
+		lines[1] != `Action 2 (type-text): failed: point (660, 430) is over "Something Else", not the target Window` ||
+		!strings.HasPrefix(lines[2], "  hint: ") || !strings.Contains(lines[2], "covers the target Element") ||
+		lines[3] != "Action 3 (press-key): ok" {
+		t.Errorf("steps' lines = %q", cmdErr.Out)
+	}
+	if pressed := spy.pressedKeys(); len(pressed) != 1 || pressed[0] != "Return" {
+		t.Errorf("pressed %q, want the step after the failure to run", pressed)
+	}
+}
+
+func TestBatchReportMarksUncertainSteps(t *testing.T) {
+	// A step whose failure may have acted ("may have taken effect", "do
+	// not repeat it") does not stop the Batch either; the report marks it,
+	// and the hint sends the agent to the Window State first. A step's
+	// output of several lines stays under its number.
+	var ran []string
+	step := func(name, out string, e *Error) Command {
+		return func(ctx context.Context, args json.RawMessage) (string, *Error) {
+			ran = append(ran, name)
+			return out, e
+		}
+	}
+	cmds := map[string]Command{
+		"set-value": step("set-value", "", Fail("the value did not stick", "the Action was delivered; do not repeat it, read the Window State: winuse get-window-state 101")),
+		"eval":      step("eval", "{\n  \"a\": 1\n}\n", nil),
+		"click":     step("click", "", Fail("the Invoke failed", "the Action may have taken effect; read the Window State (winuse get-window-state 101) before repeating it")),
+		"press-key": step("press-key", "", nothingSent(Fail("press-key has no background route", "pass --headed"))),
+	}
+	raw, err := json.Marshal(protocol.BatchArgs{Window: "101", Steps: []protocol.Step{
+		stepOf("set-value", protocol.SetValueArgs{ElementIndex: intPtrBatch(1), Value: "x"}),
+		stepOf("eval", nil),
+		stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(2)}),
+		stepOf("press-key", protocol.PressKeyArgs{Key: "Tab"}),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, cmdErr := batch(cmds, Services{Windows: func() ([]win.WindowInfo, error) { return fakeWindows(), nil }})(context.Background(), raw)
+	if cmdErr == nil {
+		t.Fatal("failed steps must fail the Batch")
+	}
+	if strings.Join(ran, ",") != "set-value,eval,click,press-key" {
+		t.Errorf("ran %v, want every step", ran)
+	}
+	if want := "batch: 3 of 4 Actions failed: Action 1 (set-value, uncertain), Action 3 (click, uncertain), Action 4 (press-key)"; cmdErr.Msg != want {
+		t.Errorf("message = %q, want %q", cmdErr.Msg, want)
+	}
+	if want := "Actions 1 and 3 may have taken effect: read the Window State (winuse get-window-state 101) before repeating them; "; !strings.HasPrefix(cmdErr.Hint, want) {
+		t.Errorf("hint = %q, want it to start %q", cmdErr.Hint, want)
+	}
+	wantOut := "Action 1 (set-value): failed: the value did not stick\n" +
+		"  hint: the Action was delivered; do not repeat it, read the Window State: winuse get-window-state 101\n" +
+		"Action 2 (eval): {\n    \"a\": 1\n  }\n" +
+		"Action 3 (click): failed: the Invoke failed\n" +
+		"  hint: the Action may have taken effect; read the Window State (winuse get-window-state 101) before repeating it\n" +
+		"Action 4 (press-key): failed: press-key has no background route; nothing was sent\n" +
+		"  hint: pass --headed\n"
+	if cmdErr.Out != wantOut {
+		t.Errorf("steps' lines = %q, want %q", cmdErr.Out, wantOut)
+	}
+}
+
+func TestBatchStopOnErrorStopsAtFirstFailureNamingTheStep(t *testing.T) {
 	spy := newBatchSpy()
 	spy.point = uia.Point{X: 100, Y: 200}
 	spy.typeErr = &win.OcclusionError{X: 660, Y: 430, OverTitle: "Something Else"}
 	cmds := CommandsWith(spy.svc)
 
 	_, cmdErr := runCommand(t, cmds, "batch", protocol.BatchArgs{
-		Window: "101",
-		Headed: true,
+		Window:      "101",
+		Headed:      true,
+		StopOnError: true,
 		Steps: []protocol.Step{
 			stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(1)}),
 			stepOf("type-text", protocol.TypeTextArgs{Text: "hello"}),
@@ -191,6 +286,11 @@ func TestBatchStopsAtFirstFailureNamingTheStep(t *testing.T) {
 	if cmdErr.Exit != 1 {
 		t.Errorf("exit = %d, want 1", cmdErr.Exit)
 	}
+	// The step before the failure printed its line; the failed step is
+	// the failure itself.
+	if cmdErr.Out != "Action 1 (click): ok\n" {
+		t.Errorf("out = %q, want only step 1's line", cmdErr.Out)
+	}
 	// Steps after the failure did not run: no press-key at all.
 	if pressed := spy.pressedKeys(); len(pressed) != 0 {
 		t.Errorf("pressed %q after the failure; remaining steps must not run", pressed)
@@ -200,22 +300,26 @@ func TestBatchStopsAtFirstFailureNamingTheStep(t *testing.T) {
 	}
 }
 
-func TestBatchFirstStepFailureNamesStepOne(t *testing.T) {
-	// An unresolvable Window fails the first step, and no step runs.
+func TestBatchWindowThatDoesNotResolveFailsBeforeAnyStep(t *testing.T) {
+	// An unresolvable Window fails the Batch before its first step, which
+	// would otherwise repeat the one failure for every step; no step runs.
 	spy := newBatchSpy()
 	_, cmdErr := runCommand(t, CommandsWith(spy.svc), "batch", protocol.BatchArgs{
 		Window: "Chrome", // two Windows: ambiguous
-		Steps:  []protocol.Step{stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(1)})},
+		Steps: []protocol.Step{
+			stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(1)}),
+			stepOf("activate-window", nil),
+		},
 	})
 	if cmdErr == nil {
 		t.Fatal("an ambiguous Window must fail the Batch")
 	}
-	wantMsg := `batch stopped at Action 1 (click): app "Chrome" has 2 open Windows; name the Window by its Window ID`
+	wantMsg := `batch: app "Chrome" has 2 open Windows; name the Window by its Window ID`
 	if cmdErr.Msg != wantMsg {
 		t.Errorf("message = %q, want %q", cmdErr.Msg, wantMsg)
 	}
-	if !strings.HasPrefix(cmdErr.Hint, "candidates:") {
-		t.Errorf("hint = %q, want the candidate Windows", cmdErr.Hint)
+	if !strings.HasPrefix(cmdErr.Hint, "candidates:") || cmdErr.Out != "" {
+		t.Errorf("hint = %q, out %q: want the candidate Windows and no step lines", cmdErr.Hint, cmdErr.Out)
 	}
 	if got := spy.recorded(); len(got) != 0 {
 		t.Errorf("pipeline steps = %v, want none", got)
@@ -319,8 +423,15 @@ func TestBatchInjectsTheBatchesWindowIntoEveryStep(t *testing.T) {
 
 func TestBatchExitCodeForwarding(t *testing.T) {
 	// Drive the batch handler over a hand-built registry so the step's
-	// exit code (130, the Esc stop) is observable end to end.
+	// exit code (130, the Esc stop) is observable end to end. An Esc stop
+	// stops a Batch that runs past failures too, keeping the lines of the
+	// steps before it.
+	activated := 0
 	batchCmd := batch(map[string]Command{
+		"activate-window": func(ctx context.Context, args json.RawMessage) (string, *Error) {
+			activated++
+			return okOutput, nil
+		},
 		"press-key": func(ctx context.Context, args json.RawMessage) (string, *Error) {
 			return "", &Error{
 				Msg:  "the user stopped winuse with the physical Escape key",
@@ -331,7 +442,11 @@ func TestBatchExitCodeForwarding(t *testing.T) {
 	}, Services{Windows: func() ([]win.WindowInfo, error) { return fakeWindows(), nil }})
 	raw, err := json.Marshal(protocol.BatchArgs{
 		Window: "101",
-		Steps:  []protocol.Step{stepOf("press-key", protocol.PressKeyArgs{Key: "Return"})},
+		Steps: []protocol.Step{
+			stepOf("activate-window", nil),
+			stepOf("press-key", protocol.PressKeyArgs{Key: "Return"}),
+			stepOf("activate-window", nil), // must not run
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -343,11 +458,14 @@ func TestBatchExitCodeForwarding(t *testing.T) {
 	if cmdErr.Exit != protocol.ExitEsc {
 		t.Errorf("exit = %d, want %d forwarded from the step", cmdErr.Exit, protocol.ExitEsc)
 	}
-	if !strings.HasPrefix(cmdErr.Msg, "batch stopped at Action 1 (press-key): the user stopped winuse") {
+	if !strings.HasPrefix(cmdErr.Msg, "batch stopped at Action 2 (press-key): the user stopped winuse") {
 		t.Errorf("message = %q, want the step named with its message", cmdErr.Msg)
 	}
 	if cmdErr.Hint != "stop and ask the user" {
 		t.Errorf("hint = %q, want the step's hint verbatim", cmdErr.Hint)
+	}
+	if cmdErr.Out != "Action 1 (activate-window): ok\n" || activated != 1 {
+		t.Errorf("out %q, %d activations: want step 1's line and nothing after the stop", cmdErr.Out, activated)
 	}
 }
 
@@ -392,6 +510,29 @@ func TestBatchRegisteredInCommands(t *testing.T) {
 			t.Errorf("batch step kind %q has no registered command", kind)
 		}
 	}
+}
+
+// failedStep reads step n's failure out of a Batch that ran past it
+// (desktop-parity ticket 20): the message after "Action n (<kind>):
+// failed: " and the hint line under it, from the failure's step lines.
+// ok is false when the Batch did not fail or printed no failure for step
+// n.
+func failedStep(e *Error, n int, kind string) (msg, hint string, ok bool) {
+	if e == nil {
+		return "", "", false
+	}
+	prefix := fmt.Sprintf("Action %d (%s): failed: ", n, kind)
+	lines := strings.Split(e.Out, "\n")
+	for i, line := range lines {
+		if !strings.HasPrefix(line, prefix) {
+			continue
+		}
+		if i+1 < len(lines) {
+			hint, _ = strings.CutPrefix(lines[i+1], "  hint: ")
+		}
+		return strings.TrimPrefix(line, prefix), hint, true
+	}
+	return "", "", false
 }
 
 // countSteps counts the recorded steps named step.
@@ -466,6 +607,9 @@ func TestBatchStopsWhenTheRequestBudgetExpires(t *testing.T) {
 	}
 	if !strings.Contains(cmdErr.Msg, "the batch's request budget expired before Action 2 (activate-window)") {
 		t.Fatalf("message = %q, want the budget failure naming Action 2", cmdErr.Msg)
+	}
+	if cmdErr.Out != "Action 1 (activate-window): ok\n" {
+		t.Errorf("out = %q, want the line of the Action that ran", cmdErr.Out)
 	}
 	mu.Lock()
 	defer mu.Unlock()

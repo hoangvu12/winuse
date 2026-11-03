@@ -131,28 +131,50 @@ func TestHeadedOnlyActionsAreRefusedWithoutTheFlag(t *testing.T) {
 	assertAbove(t, cover, mustWindowID(t, window))
 
 	// A Batch refuses such a step at its turn: the steps before it took
-	// effect (Headless), nothing of the refused step was sent, and the steps
-	// after it did not run.
+	// effect (Headless), nothing of the refused step was sent, and the
+	// Batch runs on past it (desktop-parity ticket 20): the step after it
+	// toggles the checkbox, and the Batch fails naming step 2.
 	checkbox := "id:" + fixture.AutomationID(fixture.ElemCheckboxNotify)
-	stdout, stderr, exit := runBatch(t, []string{
+	batchArgs := []string{
 		window,
 		"click", "id:" + fixture.AutomationID(fixture.ElemButtonClick),
 		"then", "press-key", "Control_L+a",
 		"then", "click", checkbox,
-	})
-	assertHeadedRefusal(t, "a Batch with press-key Control_L+a", stdout, stderr, exit,
-		"winuse --headed press-key "+window+" Control_L+a")
-	if !strings.Contains(stderr, "batch stopped at Action 2 (press-key)") {
-		t.Errorf("the Batch refusal must name step 2: %q", stderr)
 	}
-	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.LastButton == "Click Me" })
+	stdout, stderr, exit := runBatch(t, batchArgs)
+	if exit != 1 || !strings.Contains(stderr, "batch: 1 of 3 Actions failed: Action 2 (press-key)") {
+		t.Errorf("a Batch with press-key Control_L+a: exit %d, stderr %q; want 1 and the report naming step 2", exit, stderr)
+	}
+	steps, _, ok := batchSteps(stdout)
+	if !ok || !strings.HasPrefix(steps[1], "ok") || !strings.HasPrefix(steps[2], "failed: ") || !strings.HasSuffix(steps[2], "nothing was sent") ||
+		!strings.Contains(stdout, "winuse --headed press-key "+window+" Control_L+a") || !strings.HasPrefix(steps[3], "ok") {
+		t.Errorf("a Batch with press-key Control_L+a: stdout %q, want step 2's refusal with the retry between two oks", stdout)
+	}
+	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.LastButton == "Click Me" && s.Checkbox })
 	time.Sleep(300 * time.Millisecond)
 	st = fix.waitState(t, time.Second, func(*fixture.State) bool { return true })
 	if st.TextSelected || st.LastKey != "" {
 		t.Errorf("the refused press-key step reached the fixture: selected %v, last key %q", st.TextSelected, st.LastKey)
 	}
-	if st.Checkbox {
-		t.Error("the step after the refused one ran: the checkbox is on")
-	}
 	assertForeground(t, "a Batch with a refused step", cover)
+
+	// With --stop-on-error the refusal stops the Batch: the step after it
+	// does not run, so the checkbox stays on.
+	stdout, stderr, exit = runBatch(t, append([]string{window, "--stop-on-error"}, batchArgs[1:]...))
+	if exit != 1 || !strings.Contains(stderr, "batch stopped at Action 2 (press-key)") ||
+		!strings.Contains(stderr, "nothing was sent") || !strings.Contains(stderr, "winuse --headed press-key "+window+" Control_L+a") {
+		t.Errorf("a --stop-on-error Batch: exit %d, stderr %q; want the refusal naming step 2", exit, stderr)
+	}
+	if steps, _, ok := batchSteps(stdout); !ok || len(steps) != 1 || !strings.HasPrefix(steps[1], "ok") {
+		t.Errorf("a --stop-on-error Batch: stdout %q, want only step 1's ok", stdout)
+	}
+	time.Sleep(300 * time.Millisecond)
+	st = fix.waitState(t, time.Second, func(*fixture.State) bool { return true })
+	if !st.Checkbox {
+		t.Error("the step after the refused one ran under --stop-on-error: the checkbox is off")
+	}
+	if st.TextSelected || st.LastKey != "" {
+		t.Errorf("the refused press-key step reached the fixture: selected %v, last key %q", st.TextSelected, st.LastKey)
+	}
+	assertForeground(t, "a --stop-on-error Batch with a refused step", cover)
 }
