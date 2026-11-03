@@ -344,14 +344,14 @@ func (s Services) waitElement(ctx context.Context, a protocol.WaitArgs, want tim
 	}
 	index := 0
 	if target.ref != "" {
-		if index, rerr = resolveElementRef(s, w, target.ref); rerr != nil {
+		if index, rerr = resolveElementRef(ctx, s, w, target.ref); rerr != nil {
 			return "", rerr
 		}
 	} else {
 		index = *target.index
 	}
 	if splicer, ok := s.Actions.(PageSplicer); ok {
-		if o, err := splicer.ElementOrigin(w.ID, index); errors.Is(err, uia.ErrPageElement) || (err == nil && o != nil) {
+		if o, err := splicer.ElementOrigin(ctx, w.ID, index); errors.Is(err, uia.ErrPageElement) || (err == nil && o != nil) {
 			return "", pageElementWaitError(w, index)
 		}
 	}

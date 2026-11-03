@@ -42,7 +42,7 @@ type waitDesk struct {
 	release int
 	held    []int // the Element Indexes held
 
-	open func(poll int) bool // the Window is open at each WindowOpen probe
+	open  func(poll int) bool // the Window is open at each WindowOpen probe
 	opens int
 
 	refIndex int
@@ -128,7 +128,7 @@ func (d *waitDesk) ElementPoint(ctx context.Context, hwnd uint64, index int) (ui
 	return uia.Point{}, errors.New("a wait never aims at a point")
 }
 
-func (d *waitDesk) ResolveElementRef(hwnd uint64, ref string) (int, error) {
+func (d *waitDesk) ResolveElementRef(ctx context.Context, hwnd uint64, ref string) (int, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.refs = append(d.refs, ref)
@@ -139,7 +139,7 @@ func (d *waitDesk) SplicePage(ctx context.Context, hwnd uint64, base, merged []w
 	return nil
 }
 
-func (d *waitDesk) ElementOrigin(hwnd uint64, index int) (any, error) {
+func (d *waitDesk) ElementOrigin(ctx context.Context, hwnd uint64, index int) (any, error) {
 	if d.pageEls[index] {
 		return struct{}{}, nil
 	}

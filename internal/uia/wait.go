@@ -82,7 +82,7 @@ func (c *Client) HoldElement(ctx context.Context, hwnd uint64, index int) (Held,
 	var el comPtr
 	var jobErr error
 	err := c.Run(ctx, func(_ *worker, _ *run) {
-		el, jobErr = c.lookup(hwnd, index)
+		el, jobErr = c.lookup(ctx, hwnd, index)
 	})
 	if err != nil {
 		return nil, err
