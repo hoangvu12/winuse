@@ -91,3 +91,43 @@ func TestBatchWaitStepTakesAnElement(t *testing.T) {
 		t.Errorf("wait step %s %s", steps[1].Kind, steps[1].Args)
 	}
 }
+
+// A Batch's wait step names no Window, so one number is a pause, on the
+// command line and on a stdin line alike; the helper refuses one that is
+// an open Window's ID.
+func TestBatchWaitStepTakesAPause(t *testing.T) {
+	const pause = `{"window":"","for":"ms","ms":1500}`
+	_, steps, err := parseBatchArgs([]string{"101", "click", "3", "then", "wait", "1500", "then", "set-value", "4", "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(steps) != 3 || steps[1].Kind != "wait" || string(steps[1].Args) != pause {
+		t.Errorf("command-line steps %+v, want a pause second", steps)
+	}
+	_, steps, _, _, err = parseBatchScript("101\nclick 3\nwait 1500\nset-value 4 x\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(steps) != 3 || steps[1].Kind != "wait" || string(steps[1].Args) != pause {
+		t.Errorf("stdin steps %+v, want a pause second", steps)
+	}
+}
+
+func TestBatchWaitPauseErrors(t *testing.T) {
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"101", "wait", "0"}, "a batch wait Action: a pause is a number of milliseconds above 0"},
+		{[]string{"101", "wait", "300001"}, "at most 300000"},
+		{[]string{"101", "wait", "1500", "--timeout", "2"}, "a batch wait Action: a pause takes no --timeout"},
+		{[]string{"101", "wait", "5", "enabled", "now"}, "takes nothing after it"}, // still an element wait
+	} {
+		if _, _, err := parseBatchArgs(c.args); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%q: %v, want %q", c.args, err, c.want)
+		}
+	}
+	if _, _, _, _, err := parseBatchScript("101\nwait 0\n"); err == nil || !strings.Contains(err.Error(), "batch stdin line 2: a batch wait Action: a pause is") {
+		t.Errorf("stdin wait 0: %v", err)
+	}
+}

@@ -204,6 +204,13 @@ func parsePageArgs(cmd string, tokens []string) (any, error) {
 	case "dialog":
 		return parseDialogArgs(tokens)
 	case "wait":
+		// Only a Batch's wait step comes here (pageCmd hands wait to
+		// waitCmd), and it names no Window: one number is a pause, as in
+		// `wait <milliseconds>`. The helper refuses one that is an open
+		// Window's ID (desktop-parity ticket 03).
+		if ms, ok, err := parsePause(tokens); ok || err != nil {
+			return protocol.WaitArgs{For: protocol.WaitMS, MS: ms}, err
+		}
 		return parseWaitArgs(tokens)
 	case "eval":
 		if len(tokens) == 0 {
