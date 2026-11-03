@@ -27,6 +27,7 @@ type fakeAgentCursor struct {
 	log     []string
 	anchors []uint64
 	labels  []string
+	carets  [][3]int32
 	closed  bool
 }
 
@@ -48,6 +49,14 @@ func (c *fakeAgentCursor) ClickAbove(anchor uint64, target win.Rect) {
 }
 
 func (c *fakeAgentCursor) HideWhile(f func()) { c.record("hide"); f(); c.record("show") }
+
+func (c *fakeAgentCursor) CaretAbove(anchor uint64, x, top, bottom int32) {
+	c.mu.Lock()
+	c.anchors = append(c.anchors, anchor)
+	c.carets = append(c.carets, [3]int32{x, top, bottom})
+	c.mu.Unlock()
+	c.record("caret")
+}
 
 func (c *fakeAgentCursor) Close() { c.mu.Lock(); c.closed = true; c.mu.Unlock() }
 

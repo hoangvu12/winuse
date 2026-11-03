@@ -86,7 +86,11 @@ func (s Services) typeTextInto(ctx context.Context, a protocol.TypeTextArgs) (st
 		return "", nothingSent(elementError(err, w, index))
 	}
 	if edit.Writable() && !hasControlChars(a.Text) {
-		return s.typeIntoEdit(ctx, w, edit, a.Text)
+		out, rerr := s.typeIntoEdit(ctx, w, edit, a.Text)
+		if rerr == nil {
+			s.showCaret(ctx, w, index)
+		}
+		return out, rerr
 	}
 	if sp, ok := s.Actions.(TextSplicer); ok && !edit.IsEdit() && !hasControlChars(a.Text) {
 		return s.spliceInto(ctx, a.Window, target, a.Text, sp)
@@ -132,6 +136,9 @@ func (s Services) spliceInto(ctx context.Context, ref string, target elementTarg
 		act: func(ctx context.Context, w win.WindowInfo, index int) error {
 			r, err := sp.SpliceText(ctx, w.ID, index, text)
 			res = r
+			if err == nil {
+				s.showCaret(ctx, w, index)
+			}
 			return err
 		},
 		refusal: func(err error, w win.WindowInfo, index int) *Error {

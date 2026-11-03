@@ -344,6 +344,12 @@ between it and its cover in the z-order, none topmost. Then the covers are
 minimized for five seconds: look for two cursors in two colours with
 `alpha: click` and `beta: click` in their pills (the cursors are excluded
 from captures, so the test cannot check that itself).
+`TestTheInsertionCaretShowsAfterASplice` (`insertion_caret_test.go`,
+multi-agent ticket 11) **needs Windows PowerShell**: on the test's own
+WPF TextBox, left uncovered, `type-text --into id:box XY` after the caret
+is put after "hello" must leave a caret bar among the cursor windows (a
+few pixels wide, a line high) within its showing; the log says where, for
+the user to check it stands right after "helloXY".
 
 Since Element clicks are Headless by default, the tests that rely on a
 real-pointer click pass `--headed`: the Batches that click the text field
