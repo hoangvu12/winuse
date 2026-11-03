@@ -116,6 +116,7 @@ at all, and winuse says so.
 | `click`, `set-value`, `perform-secondary-action` | Clicks, fills in, picks a list item, expands or toggles an element |
 | `type-text`, `press-key` | Types text or presses keys such as `Control_L+a` |
 | `select-text` | Selects text in a field without keys or the mouse |
+| `invoke-menu` | Runs a command of a classic menu bar, such as `"File > Save As..."`, without opening the menu |
 | `scroll` | Scrolls an element by steps or into view, or scrolls at a point |
 | `drag`, `hover`, `zoom` | Drags or hovers at a point or on a page element, or saves a close-up of a screenshot |
 | `restore-window`, `minimize-window`, `move-window`, `resize-window`, `close-window` | Manages a window without bringing it to the front |

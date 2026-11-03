@@ -444,6 +444,16 @@ still the foreground window afterwards. The shared helpers are in
   `select-text` 6 4 on the text field, read back through its own
   `selectionStart` and `selectionEnd`, then `type-text` replaces it, then
   `all`. The UI Automation Text pattern route has no e2e target yet.
+- `TestHeadlessInvokeMenuOnClassicDialog` (`invoke_menu_test.go`): the
+  covered Classic Dialog has a real menu bar. `invoke-menu "Edit > Select
+  All"` selects the name Edit's text, which a `type-text` then replaces;
+  `Edit > Clear Name`, greyed until the dialog's WM_INITMENUPOPUP enables
+  it, empties the Edit (`classicMenuInits` must be above 0); `Edit >
+  Locked`, always greyed, is refused with "nothing was sent"; `file >
+  FILL NAME` matches without case and &; a Batch step runs Select All
+  before a `type-text`; and the main window's drawn menu bar is refused
+  as "no classic menu bar". The foreground and the pointer stay put, and
+  no banner shows.
 - `TestPostedKeysIntoClassicEdit` (`posted_keys_test.go`):
   `type-text --post` and `press-key BackSpace --post` reach the Classic
   Dialog's Edit, the output starts with `ok (posted;`, and

@@ -111,6 +111,18 @@ type Services struct {
 	EditControl func(hwnd uint64) win.Control           // class, style and enabled state, never the text
 	SetEditSel  func(edit uint64, start, end int) error // SendMessageTimeout(EM_SETSEL, start, end)
 
+	// invoke-menu's classic menu bar route (headless-max ticket 08,
+	// invokemenu.go): MenuBar reads the Window's menu bar, ReadMenu one
+	// menu's items, InitMenuPopup lets the App update a submenu before it
+	// is read, MenuItemRect places the Agent Cursor on the bar item, and
+	// MenuCommand posts the command. Nil values fall back to the real
+	// calls; tests fake them so offline tests never send a message.
+	MenuBar       func(hwnd uint64) uint64                    // GetMenu: 0 when the Window has no classic menu bar
+	ReadMenu      func(menu uint64) ([]win.MenuItem, error)   // the items of one HMENU, by position
+	InitMenuPopup func(hwnd, submenu uint64, pos int) error   // SendMessageTimeout(WM_INITMENUPOPUP)
+	MenuItemRect  func(hwnd uint64, pos int) (win.Rect, bool) // GetMenuItemRect of a menu bar item
+	MenuCommand   func(hwnd uint64, id uint16) error          // PostMessage(WM_COMMAND, MAKEWPARAM(id, 0))
+
 	// Posted Keys (ADR 0011, Decision 5; keyroute.go): press-key and
 	// type-text with `post`. Each returns how many messages it posted, so
 	// a failure can tell "nothing was sent" from a partial post. Nil values
@@ -261,6 +273,7 @@ func CommandsWith(s Services) map[string]Command {
 		"perform-secondary-action": performSecondaryAction(s),
 		"scroll":                   scroll(s),
 		"select-text":              selectText(s),
+		"invoke-menu":              invokeMenu(s),
 		"drag":                     drag(s),
 		"hover":                    hover(s),
 		"list-apps":                listApps(store),
@@ -426,6 +439,21 @@ func defaultServices(s Services) Services {
 	}
 	if s.SetEditSel == nil {
 		s.SetEditSel = win.SetEditSelection
+	}
+	if s.MenuBar == nil {
+		s.MenuBar = win.MenuBar
+	}
+	if s.ReadMenu == nil {
+		s.ReadMenu = win.ReadMenu
+	}
+	if s.InitMenuPopup == nil {
+		s.InitMenuPopup = win.InitMenuPopup
+	}
+	if s.MenuItemRect == nil {
+		s.MenuItemRect = win.MenuBarItemRect
+	}
+	if s.MenuCommand == nil {
+		s.MenuCommand = win.PostMenuCommand
 	}
 	if s.PostKeys == nil {
 		s.PostKeys = win.PostKeys
