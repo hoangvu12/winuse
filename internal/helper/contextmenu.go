@@ -25,13 +25,14 @@ package helper
 // agent's interest in it: the Agent's next Action on another Window closes
 // the menu its own ContextMenu opened, and says so in a Note
 // (closeLeftMenu). A menu the user opened is never tracked, so never
-// closed. `press-key <menu> Escape` closes a `#32768` or a WinUI 3
-// PopupHost with Escape posted where each takes it, and reads the close
-// back (pressMenuEscape); a Chromium menu popup is a Chrome_WidgetWin_1,
-// so the key takes ticket 20's window-message route there. Picking an item
-// of a `#32768` is a click by Element Index (menuitem.go); Chromium and
-// WinUI 3 items take today's Headless click (UIA Invoke keeps the
-// foreground there).
+// closed. `press-key <menu> Escape` closes a `#32768`, a WinUI 3
+// PopupHost or a WinForms drop-down with Escape posted where each takes
+// it, and reads the close back (pressMenuEscape); a Chromium menu popup is
+// a Chrome_WidgetWin_1, so the key takes ticket 20's window-message route
+// there. Picking an item of a `#32768` is a click by Element Index
+// (menuitem.go); Chromium, WinUI 3 and WinForms items take today's
+// Headless click (UIA Invoke keeps the foreground there; hm-09b measured
+// WinUI 3 and WinForms).
 
 import (
 	"context"
@@ -396,8 +397,9 @@ func (s Services) closeAgentMenu(ctx context.Context, args json.RawMessage) stri
 
 // closeMenu closes a menu the way its kind closes without the foreground:
 // a `#32768` through WM_CANCELMODE to the window tracking it (round 4),
-// any other with Escape posted where it takes it (a Chromium menu popup
-// itself, a WinUI 3 PopupHost's input windows; round 5). Chromium menus
+// any other with Escape posted where it takes it (a Chromium menu popup or
+// a WinForms drop-down itself, a WinUI 3 PopupHost's input windows; round
+// 5, hm-09b). Chromium menus
 // are never collapsed through UI Automation: that hung the client once.
 func (s Services) closeMenu(lm leftMenu) error {
 	if lm.menu.Class == win.MenuClass {
@@ -420,20 +422,27 @@ func (s Services) closeMenu(lm leftMenu) error {
 }
 
 // menuEscapeStep is the Batch's scope question for a menu's Escape:
-// Escape alone, unheaded and unposted, on a `#32768` or a WinUI 3
-// PopupHost.
+// Escape alone, unheaded and unposted, on a `#32768`, a WinUI 3 PopupHost
+// or a WinForms drop-down.
 func menuEscapeStep(args json.RawMessage, w win.WindowInfo) bool {
 	var a protocol.PressKeyArgs
-	if (w.Class != win.MenuClass && w.Class != win.PopupHostClass) || json.Unmarshal(args, &a) != nil || a.Headed || a.Post {
+	if !escapeMenuWindow(w) || json.Unmarshal(args, &a) != nil || a.Headed || a.Post {
 		return false
 	}
 	chord, err := keys.Parse(a.Key)
 	return err == nil && len(chord) == 1 && chord[0].Name == "Escape"
 }
 
-// pressMenuEscape is press-key Escape on an open `#32768` or WinUI 3
-// PopupHost: Escape posted where the menu takes it (win.PostMenuEscape),
-// and the menu closing is the read-back. ok is false when the request is
+// escapeMenuWindow is a menu window press-key Escape closes Headless: a
+// `#32768`, a WinUI 3 PopupHost, or a WinForms ContextMenuStrip's
+// drop-down (hm-09b: Escape posted to it closes it, foreground kept).
+func escapeMenuWindow(w win.WindowInfo) bool {
+	return w.Class == win.MenuClass || w.Class == win.PopupHostClass || win.WinFormsDropDown(w.Class)
+}
+
+// pressMenuEscape is press-key Escape on an open `#32768`, WinUI 3
+// PopupHost or WinForms drop-down: Escape posted where the menu takes it
+// (win.PostMenuEscape), and the menu closing is the read-back. ok is false when the request is
 // not that route; the other routes run.
 func (s Services) pressMenuEscape(ctx context.Context, args json.RawMessage, ref string) (string, *Error, bool) {
 	if s.PostMenuEscape == nil {

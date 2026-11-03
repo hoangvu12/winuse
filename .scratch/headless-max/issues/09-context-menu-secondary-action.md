@@ -127,3 +127,68 @@ Not measured: WinForms ContextMenuStrip through a posted WM_CONTEXTMENU; WinUI 3
 ### 2026-11-03: PC live run (branch e2e-live-fixes-3)
 
 - `TestContextMenuOnACoveredBrowserPage` passes on the PC (Chrome, the Escape route), covered.
+
+### 2026-11-03: hm-09b live measuring (laptop, branch `laptop/hm-09b-context-menu-measure`)
+
+These are the three unmeasured routes.
+
+**Setup.**
+- The user approved the run through the laptop orchestrator. It ran under `.live-lock`, one target at a time.
+- Each target was the run's own build, in the scratchpad, never in the repo:
+  - a csc.exe (.NET Framework 4.x) WinForms App;
+  - an unpackaged WinUI 3 App (Windows App SDK 1.7 from the NuGet cache, .NET 8);
+  - for case 3, the same WinForms App in a second mode.
+- Every target was shown without activation at 300,300. The fixture covered it, and `activate-window` gave the cover the foreground.
+- One Agent drove it all (`WINUSE_AGENT`), through a winuse.exe built from c017f4c.
+- Before every pick or Escape, I checked that the menu window existed and was visible (IsWindowVisible).
+- Afterwards each target and cover was killed by its PID, and no visible window of those PIDs was left.
+- One incident: the first cover was started with PowerShell's Start-Process without `-NoNewWindow`. It opened its console in a new Windows Terminal, which took the foreground. That was the run's own window, not a target. It was killed at once, and every later cover started in the hidden console.
+
+**1. WinForms ContextMenuStrip** (a TextBox with a ContextMenuStrip of &Alpha and &Bravo; FrameworkId `WinForm`, own HWND):
+- Open: posted WM_CONTEXTMENU. The menu opened as a `WindowsForms10.Window.20808.app.0.*` drop-down of the App's process (plus a SysShadow, which is not listed). The ok named it, and the cover kept the foreground. The App logged the system foreground as the cover when the strip opened.
+- Menu Window State: `menu DropDown` with `menu item Alpha` and `menu item Bravo`. It also adds the "tree is nearly empty" note, wrongly for a menu (cosmetic, not changed).
+- Pick: `click <menu> name:Alpha` took today's Headless click (UIA Invoke on the ToolStripMenuItem). It returned `ok` and `Note: window <menu> closed`; the App logged `picked Alpha` and CloseReason ItemClicked. The foreground stayed on the cover.
+- `press-key <menu> Escape` was **refused** ("no background route ... only Return or Escape on a classic dialog"), even though the ContextMenu's ok offers it. Nothing was sent, and the menu stayed open.
+- The Agent's next Action elsewhere (a click on the cover's check box) closed it with the posted Escape: `Note: closed context menu ...`, CloseReason Keyboard. The foreground stayed on the cover.
+- **Fixed:** `win.WinFormsDropDown` (a `WindowsForms10.Window.<style>` class whose style has CS_SAVEBITS, which only the drop-down sets) now joins `#32768` and PopupHost in the menu-Escape route (`menuEscapeStep`, `pressMenuEscape`; also in a Batch's scope). Re-measured live with the fix: `ok`, `Note: window <menu> closed`, CloseReason Keyboard, the foreground on the cover.
+
+**2. WinUI 3 MenuFlyout** (a TextBox whose ContextFlyout is a MenuFlyout of Alpha and Bravo; Native 0):
+- Open: ShowContextMenu. A `Microsoft.UI.Content.PopupWindowSiteBridge "PopupHost"` of the App opened, and the note read `cmwinui "PopupHost"`. The system foreground stayed on the cover. The App saw one `CodeActivated` Window.Activated event, as round 5 found.
+- Menu Window State: `pane PopupHost > pane > window Popup > menu > menu item Alpha / menu item Bravo`, focus on Alpha.
+- Pick: `click <menu> 4` (Alpha) went through UIA Invoke: `ok`, `Note: window <menu> closed`, `picked Alpha`, the foreground kept.
+- The PopupHost is hidden, not destroyed, and reused: the same HWND came back at every open. The read-back still sees it as new, because it was not a visible surface before.
+- `press-key <menu> Escape` (posted to the InputSite) returned `ok` and closed the menu, foreground kept.
+- The next Action elsewhere closed the third open with the Note, foreground kept.
+- No fix needed.
+
+**3. FrameworkId "" with an HWND:**
+- A raw custom-class child with no provider of its own (RegisterClass, `DefWindowProc` plus WM_CONTEXTMENU) reports FrameworkId **`Win32`** through the system proxy, not "". The empty FrameworkId comes only from a provider of the control's own that sets it. The measured control was a WinForms child whose managed UIA provider returns "" (Name "Provided"): FrameworkId `''`, NativeWindowHandle its HWND.
+- Open: the posted WM_CONTEXTMENU (route `menuRoutePost`). Its WM_CONTEXTMENU ran TrackPopupMenu, and a `#32768` of the App opened, foreground kept.
+- `click <menu> name:Alpha` posted the mnemonic: `ok`, the menu gone, `picked provided Alpha`.
+- `press-key <menu> Escape` closed the second menu.
+- The cover click closed the third, with the Note.
+- The foreground stayed on the cover throughout. No fix needed: treating "" with an HWND as classic opens the menu when the window answers WM_CONTEXTMENU.
+
+**Fixtures and tests.**
+- Case 3 is now a Go fixture control: the Classic Dialog's bare control (`fixture.ClassicBareID` 1005, class `WinuseFixtureBare`, `internal/fixture/bare.go`). Its own provider reports FrameworkId "", Name "Bare control", AutomationId "1005" and Pane. Its `#32768` holds &Fill Name and Select &All, which run the dialog's commands (classicMenu).
+- It is the dialog's last control, so the other Element Indexes hold, and the dialog grew 20 DLUs (cy 158 to 178).
+- WinForms and WinUI 3 get opt-in e2e tests behind `WINUSE_E2E_WINFORMS_APP` and `WINUSE_E2E_WINUI_APP`. The App sources and build steps are in `test/e2e/README.md`, "Context menus in WinForms and WinUI 3". No C# is in the repo.
+
+Files:
+- New: `internal/fixture/bare.go`, `internal/fixture/bare_test.go`, `test/e2e/context_menu_apps_test.go`.
+- Edited: `internal/win/contextmenu.go` (`WinFormsDropDown`), `internal/helper/contextmenu.go` (`escapeMenuWindow`), `internal/fixture/{app,classic,elements,win32}.go`, `test/e2e/README.md`.
+
+Tests:
+- Offline: `TestWinFormsDropDown`, `TestPressEscapeOnAWinFormsMenu`, `TestLeftWinFormsMenuClosedWithEscape`, `TestMenuEscapeStepPerMenuKind`, `TestClassicBareControlIsLastAndInside`, `TestBareProviderProperties`, `TestBareProviderInterfaces`.
+- Opt-in e2e: `TestContextMenuOnACoveredBareControl`, `TestContextMenuOnACoveredWinFormsApp`, `TestContextMenuOnACoveredWinUIApp`.
+
+Live e2e on the laptop (the orchestrator approved; run after the full run released `.live-lock`, under the lock):
+- The 3 new tests pass. They used the README's two Apps, built in the scratchpad (csc.exe, and dotnet with Windows App SDK 1.7).
+- The first WinUI 3 run failed in the test itself. In the PopupHost, each MenuFlyoutItem holds a TextBlock of the same name, so winuse refused `click <menu> name:Alpha` as ambiguous, with nothing sent. The test now clicks the menu item by Element Index, as an agent reading the Window State would.
+- Rerun after the Classic Dialog grew a control: everything matching "Classic", plus `TestContextMenuOnACoveredEdit`. These pass: `TestHeadlessReturnAndEscapeOnClassicDialog`, `TestHeadlessTypeTextIntoClassicEdit`, `TestContextMenuOnACoveredEdit`, `TestHeadlessInvokeMenuOnClassicDialog`, `TestPostedKeysIntoClassicEdit`, `TestHeadlessSelectTextInClassicEdit`.
+- Two fail on output wording that predates this branch, not on the dialog:
+  - `TestPostedChordFiresAClassicAccelerator` expects `ok\n`, but the posted output is `ok (posted; ...)`, from 93a415e.
+  - `TestShortcutRunsAClassicMenuCommand` expects `ok\n`, but the shortcut route prints `ok (invoked "Edit > Select All" through its shortcut)`, from 5c7d1cf.
+  - In both, the action itself worked.
+  - Main's e2e-live-fixes (merged here afterwards) prints both as `ok` plus a Note line, which `assertActionOK` accepts. They were not rerun live after the merge.
+

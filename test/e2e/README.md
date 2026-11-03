@@ -976,6 +976,162 @@ set WINUSE_E2E_WEBVIEW2=C:\path\to\WebView2App.exe
 go test -tags e2e -v -timeout 5m -run "TestLaunchAppCDP|TestAttachToRunningElectron" ./test/e2e
 ```
 
+## Context menus in WinForms and WinUI 3
+
+`context_menu_apps_test.go` (hm-09b, ticket 09 of `.scratch/headless-max/`)
+runs the ContextMenu Secondary Action on three covered targets. The cover
+must keep the foreground throughout.
+
+- `TestContextMenuOnACoveredBareControl` needs only the fixture. It uses
+  the Classic Dialog's bare control (`fixture.ClassicBareID`), whose own UI
+  Automation provider reports an empty FrameworkId. The ContextMenu must
+  post WM_CONTEXTMENU and open the control's `#32768`. `click <menu>
+  name:Fill Name` must fill the name Edit (classicMenu `fill-name`), and
+  `press-key <menu> Escape` must close a second menu.
+- `TestContextMenuOnACoveredWinFormsApp` needs `WINUSE_E2E_WINFORMS_APP`.
+  It opens a ContextMenuStrip drop-down through a posted WM_CONTEXTMENU.
+- `TestContextMenuOnACoveredWinUIApp` needs `WINUSE_E2E_WINUI_APP`. It
+  opens a MenuFlyout's PopupHost through ShowContextMenu.
+
+The two App tests then choose Alpha (UIA Invoke) and read back the App's
+`picked Alpha` line. They close a second menu with `press-key <menu>
+Escape`, and a third with a click on the cover, which must note `closed
+context menu`. Each test skips without its variable, and kills its App at
+the end.
+
+The repository holds no C#, so the user builds the two measuring Apps
+once, anywhere outside the repository. Both take `<state-file> <x> <y>`.
+Each shows a Window without activating it, with a TextBox (AutomationId
+`box`) whose context menu holds Alpha and Bravo, and appends `picked
+<item>` to the state file.
+
+The WinForms App is one file, `menuapp-winforms.cs`. Build it with the
+.NET Framework compiler that ships with Windows (no SDK):
+
+```csharp
+// The WinForms measuring App: menuapp-winforms.exe <state-file> <x> <y>.
+using System;
+using System.Drawing;
+using System.IO;
+using System.Windows.Forms;
+
+class MenuForm : Form {
+    protected override bool ShowWithoutActivation { get { return true; } }
+
+    MenuForm(string state, int x, int y) {
+        StartPosition = FormStartPosition.Manual;
+        Location = new Point(x, y);
+        Size = new Size(420, 220);
+        Text = "winuse e2e WinForms menu";
+        var box = new TextBox { Name = "box", Text = "hello world", Location = new Point(20, 20), Width = 200 };
+        var strip = new ContextMenuStrip();
+        foreach (var name in new[] { "Alpha", "Bravo" }) {
+            var n = name;
+            strip.Items.Add(new ToolStripMenuItem("&" + n, null, delegate { File.AppendAllText(state, "picked " + n + "\r\n"); }));
+        }
+        box.ContextMenuStrip = strip;
+        Controls.Add(box);
+    }
+
+    [STAThread]
+    static void Main(string[] args) {
+        Application.EnableVisualStyles();
+        Application.Run(new MenuForm(args[0], int.Parse(args[1]), int.Parse(args[2])));
+    }
+}
+```
+
+```
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /out:menuapp-winforms.exe /r:System.Windows.Forms.dll /r:System.Drawing.dll menuapp-winforms.cs
+```
+
+The WinUI 3 App is an unpackaged Windows App SDK project: `MenuApp.csproj`,
+`App.xaml` and `App.xaml.cs` in one folder. Keep the project name free of
+`-`, which breaks the XAML compiler. Build it with the .NET 8 SDK
+(`dotnet build -c Release -o out`, giving `out\MenuApp.exe`).
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.260224002" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.22621.756" />
+  </ItemGroup>
+</Project>
+```
+
+```xml
+<Application x:Class="MenuApp.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Application.Resources>
+        <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+    </Application.Resources>
+</Application>
+```
+
+```csharp
+// The WinUI 3 measuring App: MenuApp.exe <state-file> <x> <y>.
+using System;
+using System.IO;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Controls;
+using Windows.Graphics;
+
+namespace MenuApp;
+
+public partial class App : Application
+{
+    Window window;
+
+    public App() { InitializeComponent(); }
+
+    protected override void OnLaunched(LaunchActivatedEventArgs e)
+    {
+        var args = Environment.GetCommandLineArgs();
+        string state = args[1];
+        var box = new TextBox { Text = "hello world", Width = 220, Margin = new Thickness(20) };
+        AutomationProperties.SetAutomationId(box, "box");
+        var flyout = new MenuFlyout();
+        foreach (var name in new[] { "Alpha", "Bravo" })
+        {
+            var item = new MenuFlyoutItem { Text = name };
+            item.Click += (_, _) => File.AppendAllText(state, "picked " + name + "\r\n");
+            flyout.Items.Add(item);
+        }
+        box.ContextFlyout = flyout;
+        var panel = new StackPanel();
+        panel.Children.Add(box);
+        window = new Window { Title = "winuse e2e WinUI menu", Content = panel };
+        window.AppWindow.MoveAndResize(new RectInt32(int.Parse(args[2]), int.Parse(args[3]), 420, 220));
+        window.AppWindow.Show(false); // never activated
+    }
+}
+```
+
+If the build fails in `mt.exe` with "cannot find the path specified",
+the intermediate path is too long. Shorten it by putting a
+`Directory.Build.props` next to the project, with
+`<BaseIntermediateOutputPath>` set to a short folder.
+
+```
+set WINUSE_E2E=1
+set WINUSE_E2E_WINFORMS_APP=C:\path\to\menuapp-winforms.exe
+set WINUSE_E2E_WINUI_APP=C:\path\to\out\MenuApp.exe
+go test -tags e2e -v -timeout 5m -run "TestContextMenuOnACovered(BareControl|WinFormsApp|WinUIApp)" ./test/e2e
+```
+
 ## Shell surfaces (desktop-parity 09)
 
 `test/e2e/shell_test.go` runs against the user's own taskbar: there is no

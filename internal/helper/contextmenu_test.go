@@ -337,6 +337,69 @@ func TestPressEscapeOnAMenu(t *testing.T) {
 	}
 }
 
+// winFormsMenu is a WinForms ContextMenuStrip's drop-down, the class
+// hm-09b measured.
+var winFormsMenu = win.WindowInfo{ID: 781, PID: notepadPID, App: "Notepad", Class: "WindowsForms10.Window.20808.app.0.34f5582_r6_ad1", ExStyle: toolWindow, Visible: true, Bounds: popupBounds}
+
+// A WinForms drop-down takes press-key Escape posted to it, read back as
+// closed (hm-09b: it was refused before, though the ContextMenu's ok
+// offers it).
+func TestPressEscapeOnAWinFormsMenu(t *testing.T) {
+	spy := newContextMenuSpy([]win.WindowInfo{winFormsMenu, notepadMain, otherApp})
+	spy.desk.before = []win.WindowInfo{winFormsMenu, notepadMain, otherApp}
+	spy.open[winFormsMenu.ID] = true
+	spy.svc.PostMenuEscape = func(menu uint64) (int, error) {
+		spy.step("menu-escape")
+		spy.escaped = append(spy.escaped, menu)
+		spy.open[menu] = false
+		return 2, nil
+	}
+	out, e := runCommand(t, CommandsWith(spy.svc), "press-key", protocol.PressKeyArgs{Window: "781", Key: "Escape"})
+	if e != nil {
+		t.Fatalf("press-key 781 Escape: %v", e.Error())
+	}
+	if !strings.HasPrefix(out, "ok\n") || len(spy.escaped) != 1 || spy.escaped[0] != winFormsMenu.ID {
+		t.Errorf("output %q, Escape to %v; want ok and one Escape to the drop-down", out, spy.escaped)
+	}
+}
+
+// A WinForms menu the Agent left open closes with Escape, not
+// WM_CANCELMODE.
+func TestLeftWinFormsMenuClosedWithEscape(t *testing.T) {
+	spy := newContextMenuSpy()
+	spy.open[winFormsMenu.ID] = true
+	spy.svc.Menus = newAgentMenus()
+	spy.svc.Menus.set("a", leftMenu{menu: winFormsMenu, owner: fakeEditHWND})
+	defaulted := defaultServices(spy.svc)
+	if got := defaulted.closeAgentMenu(withAgent(context.Background(), agent.Identity{ID: "a"}), json.RawMessage(`{"window":"101"}`)); got == "" {
+		t.Fatal("the WinForms menu was not closed")
+	}
+	if len(spy.escaped) != 1 || spy.escaped[0] != winFormsMenu.ID || len(spy.cancelled) != 0 {
+		t.Errorf("Escape to %v, WM_CANCELMODE to %v; want Escape to the drop-down alone", spy.escaped, spy.cancelled)
+	}
+}
+
+func TestMenuEscapeStepPerMenuKind(t *testing.T) {
+	escape := json.RawMessage(`{"window":"1","key":"Escape"}`)
+	for _, c := range []struct {
+		w    win.WindowInfo
+		args json.RawMessage
+		want bool
+	}{
+		{editMenu, escape, true},
+		{win.WindowInfo{Class: win.PopupHostClass}, escape, true},
+		{winFormsMenu, escape, true},
+		{winFormsMenu, json.RawMessage(`{"window":"1","key":"Return"}`), false},
+		{winFormsMenu, json.RawMessage(`{"window":"1","key":"Escape","post":true}`), false},
+		{chromeMenu, escape, false}, // ticket 20's window-message route
+		{notepadMain, escape, false},
+	} {
+		if got := menuEscapeStep(c.args, c.w); got != c.want {
+			t.Errorf("menuEscapeStep(%s, %q) = %v, want %v", c.args, c.w.Class, got, c.want)
+		}
+	}
+}
+
 // classicMenuItems is the faked `#32768` of a classic Edit.
 var classicMenuItems = []win.MenuItem{
 	{Pos: 0, Text: "&Undo\tCtrl+Z", ID: 772},

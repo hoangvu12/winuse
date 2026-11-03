@@ -30,6 +30,8 @@ type app struct {
 	classicEdit uintptr // its menu bar's Edit submenu, 0 while closed (classic.go)
 	accel       uintptr // the main window's accelerator table (AcceleratorChord)
 
+	bareProviders map[uintptr]uintptr // the Classic Dialog's bare control's provider, per window (bare.go)
+
 	uia *uiaProviders
 
 	focusMain   Elem // logical focus inside the main window
@@ -131,6 +133,9 @@ func (a *app) createWindows(origin Origin) error {
 		return err
 	}
 	if err := registerClass(DialogWindowClass, dialogProc, hmod); err != nil {
+		return err
+	}
+	if err := registerBareClass(newCallback(a.wndBare), hmod); err != nil {
 		return err
 	}
 
