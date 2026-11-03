@@ -295,7 +295,7 @@ func TestPoliteBatchGivesBackOnce(t *testing.T) {
 		stepOf("click", protocol.ClickArgs{ElementIndex: idx(2), ClickCount: 2}),
 		stepOf("click", protocol.ClickArgs{ElementIndex: idx(2), ClickCount: 2}),
 	}})
-	if e != nil || out != "ok\n" {
+	if e != nil || out != "Action 1 (click): ok\nAction 2 (click): ok\n" {
 		t.Fatalf("batch: %q, %+v", out, e)
 	}
 	// Two activations of 101 (one per step) and one give-back to 500.

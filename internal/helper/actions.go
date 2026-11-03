@@ -107,6 +107,13 @@ func click(s Services) Command {
 			return "", Fail(fmt.Sprintf("%s %s click is not supported", buttonWord(button), clickWord(count)), "")
 		}
 
+		// Modifiers held during the click (desktop-parity ticket 06,
+		// modifiers.go).
+		mods, merr := win.ParseModifiers(a.Modifiers)
+		if merr != nil {
+			return "", Fail("click: "+merr.Error(), clickUsageHint)
+		}
+
 		// Exactly one Element Reference form: an Element Index, a name:/id:
 		// reference, or @x,y coordinates (the shared guard, finding 16).
 		target, terr := parseElementTarget("click", a.ElementIndex, a.Ref, a.Point, clickUsageHint)
@@ -116,14 +123,29 @@ func click(s Services) Command {
 		if a.Post {
 			// Posted Clicks to the classic control there, opt-in
 			// (headless-max ticket 12, postclick.go).
-			return s.postClick(ctx, a, target, button, count)
+			return s.postClick(ctx, a, target, button, count, mods)
 		}
 		// A Page Element routes over the Browser Connection (browser merge
 		// ticket 05, pageactions.go).
 		if out, rerr, ok := s.onPage(ctx, a.Window, target, func(w win.WindowInfo, index int, o *page.Origin) (string, *Error) {
-			return s.pageClick(ctx, w, index, o, target, button, count, a.Headed)
+			return s.pageClick(ctx, w, index, o, target, button, count, a.Headed, mods)
 		}); ok {
 			return out, rerr
+		}
+		if !mods.None() && !a.Headed {
+			// Ctrl+click or Shift+click on a multi-select list item, Headless;
+			// anything else with modifiers needs the real keys.
+			if out, rerr, ok := s.multiSelectClick(ctx, a.Window, target, button, count, mods); ok {
+				return out, rerr
+			}
+			at := target.token()
+			if target.point != nil {
+				at = pointToken(target.point.X, target.point.Y)
+			}
+			return "", s.modifierRefusal(a.Window, "click", mods,
+				func(id string) string {
+					return "click " + id + " " + at + clickOptions(button, count) + modsOption(mods)
+				})
 		}
 
 		if target.point != nil {
@@ -163,7 +185,7 @@ func click(s Services) Command {
 				if serr != nil {
 					return "", serr
 				}
-				if err := s.Click(w.ID, int32(pt.X), int32(pt.Y), button, count); err != nil {
+				if err := s.heldInput(mods, func() error { return s.Click(w.ID, int32(pt.X), int32(pt.Y), button, count) }); err != nil {
 					return "", inputError(err)
 				}
 				return okOutput, nil
@@ -211,7 +233,7 @@ func click(s Services) Command {
 			if err != nil {
 				return "", elementError(err, w, index)
 			}
-			if err := s.Click(w.ID, pt.X, pt.Y, button, count); err != nil {
+			if err := s.heldInput(mods, func() error { return s.Click(w.ID, pt.X, pt.Y, button, count) }); err != nil {
 				return "", inputError(err)
 			}
 			return okOutput, nil

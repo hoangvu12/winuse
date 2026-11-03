@@ -140,8 +140,14 @@ type Services struct {
 	// return how many messages they posted. Nil values fall back to the
 	// real Win32 calls; tests fake them so offline tests never post.
 	ChildAtPoint func(top uint64, sx, sy int32) (hwnd uint64, cx, cy int32, class string)
-	PostClick    func(target uint64, cx, cy int32, button win.MouseButton, count int) (int, error)
-	PostWheel    func(target uint64, sx, sy, dx, dy int32) (int, error)
+	PostClick    func(target uint64, cx, cy int32, button win.MouseButton, count int, mods win.Modifiers) (int, error)
+	PostWheel    func(target uint64, sx, sy, dx, dy int32, mods win.Modifiers) (int, error)
+
+	// HoldModifiers holds the modifier keys of a Headed click or wheel
+	// with SendInput and returns their release (desktop-parity ticket 06,
+	// modifiers.go). Nil falls back to win.HoldModifiers; tests fake it so
+	// offline tests never send input.
+	HoldModifiers func(m win.Modifiers) (release func() error, err error)
 
 	// The Chromium and Electron message route (headless-max ticket 20,
 	// chromium.go): text and one key inside the activation pair, clicks as
@@ -627,6 +633,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.PostWheel == nil {
 		s.PostWheel = win.PostWheel
+	}
+	if s.HoldModifiers == nil {
+		s.HoldModifiers = win.HoldModifiers
 	}
 	if s.ChromiumText == nil {
 		s.ChromiumText = win.SendChromiumText

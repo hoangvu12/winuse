@@ -273,9 +273,12 @@ File menu exposes `name:New`, which the previous read did not contain);
 `set-value` and `perform-secondary-action` accept references too. Batch
 tests: the acceptance flow — one Batch that clicks the text field by
 `id:`, types into it and clicks a button by `name:` — succeeds and prints
-`ok`; a Batch with a bad step (the ambiguous `name:Twin`) stops exactly
-there, steps after it never run, and the failure names step 2 with the
-candidates; an unknown Window fails step 1; a Batch on the Save As dialog
+each step's `Action N (<action>): ok` line; a Batch with a bad step (the
+ambiguous `name:Twin`) runs on past it (desktop-parity 20): step 2's line
+is the failure with the candidates in its hint, step 3's `set-value` lands,
+and the Batch exits 1 naming step 2; with `--stop-on-error` the same
+Batch stops there, step 3 never runs, and the failure names step 2 with
+the candidates; an unknown Window fails the Batch before any step; a Batch on the Save As dialog
 sets the file name and clicks Save in one call; usage errors (no steps,
 an empty step, an unknown action) exit 2 without dialing. Reference
 resolution (parsing, matching semantics, candidate lines) and Batch
@@ -302,7 +305,7 @@ in-control overlay is gone. `TestInjectedEscDoesNotStopTheBatch` is
 self-contained: while a Batch types, a concurrent `--headed press-key
 Escape` injects the key (Escape on the fixture's main window, not a
 classic dialog, has no Headless route) — it must reach the app (the fixture records the
-key-down) without stopping the Batch, which still prints `ok`. The
+key-down) without stopping the Batch, which still prints each step's `ok`. The
 hook's decision table (injected filtering, swallow pairing, the armed
 scope), the abort checkpoints and the exit-130 mapping are
 offline-tested in `internal/win`, `internal/apps`, `internal/helper`;
@@ -383,11 +386,13 @@ the pointer unmoved, no banner, and the fixture's state generation
 unchanged (no canvas click, drag or scroll, no toolbar, no text, no key,
 and the fixture not raised above the cover). Then a Batch
 `click id:button-click then press-key Control_L+a then click
-id:checkbox-notify` stops with "batch stopped at Action 2 (press-key)"
-and nothing was sent: the first click took effect, no key reached the
-fixture, and the checkbox step never ran. Its click at a point aims at the
-canvas, which offers no click route, so headless-max ticket 11 refuses it
-too.
+id:checkbox-notify` prints step 2's refusal with nothing sent and the
+retry between two `ok` lines, and exits 1 naming step 2 (desktop-parity
+20): the first click took effect, no key reached the fixture, and the
+checkbox step ran. The same Batch with `--stop-on-error` stops with
+"batch stopped at Action 2 (press-key)", and the checkbox step never runs.
+Its click at a point aims at the canvas, which offers no click route, so
+headless-max ticket 11 refuses it too.
 
 `TestPointFormsActHeadlessOnTheCoveredWindow` (`point_headless_test.go`,
 headless-max ticket 11): on the covered fixture, after a screenshot, a
@@ -421,6 +426,13 @@ input (window messages, no activation pair), `type-text`, `press-key
 Control_L+a` and a second `type-text` each print their window-messages
 `ok`, the Window State shows the input's value after each typing, and
 the cover stays the foreground window with no banner.
+
+`TestCtrlClickOnASingleSelectListIsRefused` (`modifiers_test.go`,
+desktop-parity ticket 06): `click <item> --modifiers ctrl` on an item of
+the covered fixture's list, which is single-select, is refused with
+nothing sent and the exact `--headed` retry; the selection is unchanged
+and the cover keeps the foreground. The positive multi-select leg needs a
+multi-select list in the fixture and is not run.
 
 Run only these tests:
 

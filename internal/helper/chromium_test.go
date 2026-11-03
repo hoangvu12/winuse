@@ -214,7 +214,8 @@ func TestBatchChromiumStepsArePassive(t *testing.T) {
 		stepOf("press-key", protocol.PressKeyArgs{Key: "Return"}),
 		stepOf("click", protocol.ClickArgs{Point: pt(10, 20), ClickCount: 2}),
 	}})
-	if e != nil || out != okOutput {
+	if e != nil || !strings.HasPrefix(out, "Action 1 (type-text): ok (typed as window messages") ||
+		!strings.Contains(out, "\nAction 2 (press-key): ok (pressed as window messages") || !strings.HasSuffix(out, "\nAction 3 (click): ok (clicked as window messages)\n") {
 		t.Fatalf("batch = %q, %v", out, e)
 	}
 	if hasStepPrefix(c.recorded(), "overlay-show") || containsString(c.recorded(), "activate") {

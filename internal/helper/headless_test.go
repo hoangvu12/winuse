@@ -660,7 +660,7 @@ func TestBatchScopeAllHeadlessIsPassiveWithNoBanner(t *testing.T) {
 			stepOf("perform-secondary-action", protocol.SecondaryActionArgs{ElementIndex: intPtrBatch(4), Action: "Toggle"}),
 		},
 	})
-	if cmdErr != nil || out != "ok\n" {
+	if cmdErr != nil || out != "Action 1 (click): ok\nAction 2 (set-value): ok\nAction 3 (perform-secondary-action): ok\n" {
 		t.Fatalf("batch: %q, %v", out, cmdErr)
 	}
 	assertNoV1(t, spy.recorded())
@@ -690,8 +690,7 @@ func TestBatchScopeWithAHeadedStepSwallowsWithTheBanner(t *testing.T) {
 			stepOf("type-text", protocol.TypeTextArgs{Text: "hello"}),
 		},
 	})
-	if cmdErr == nil || !strings.HasPrefix(cmdErr.Msg, "batch stopped at Action 2 (type-text): ") ||
-		!strings.HasSuffix(cmdErr.Msg, "; nothing was sent") || !strings.Contains(cmdErr.Hint, "winuse --headed ") {
+	if msg, hint, ok := failedStep(cmdErr, 2, "type-text"); !ok || !strings.HasSuffix(msg, "; nothing was sent") || !strings.Contains(hint, "winuse --headed ") {
 		t.Errorf("unheaded type-text step: %+v, want the --headed refusal", cmdErr)
 	}
 	if b := spy.esc.brackets(); containsStep(b, "arm") || len(b) == 0 || b[0] != "arm-passive" {

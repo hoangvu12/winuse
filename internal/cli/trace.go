@@ -11,7 +11,8 @@ package cli
 // Redacted by default: typed text, set-value values, clipboard-set text,
 // a prompt's dialog answer, eval expressions, eval results and
 // clipboard-get's text and files become {"redacted":true,"len":N} (N in
-// characters). --trace-unredacted keeps them, for local debugging only.
+// characters), a Batch's steps included (an eval step's line keeps its
+// "Action N (eval): " prefix). --trace-unredacted keeps them, for local debugging only.
 // Whatever the flag, a Window State tree is never kept (only its line
 // count, and the screenshot by path), so neither its size nor the names
 // of its password fields reach the trace, and the output kept is cut at
@@ -243,6 +244,9 @@ func (t *traceRun) keepOut(l *traceLine, out string) {
 		l.Out = redact(out)
 		return
 	}
+	if !t.unredacted && t.req.Cmd == "batch" {
+		out = redactBatchOut(t.req.Args, out)
+	}
 	l.Refs = outRefs(out)
 	if len(out) > traceOutCap {
 		cut := traceOutCap
@@ -315,6 +319,42 @@ func redactsOut(cmd string, raw json.RawMessage) bool {
 		return a.Format != "image"
 	}
 	return false
+}
+
+// batchStepLine starts one step's output in a Batch's: "Action N
+// (<kind>): ", the step's other lines indented two spaces under it
+// (helper batch.go, desktop-parity ticket 20).
+var batchStepLine = regexp.MustCompile(`^Action (\d+) \([a-z-]+\): `)
+
+// redactBatchOut redacts, in a Batch's output, the output of each step
+// whose own output redactsOut covers (an eval step's result), found by
+// the step number its lines start with. A Batch whose arguments it cannot
+// read is redacted whole.
+func redactBatchOut(raw json.RawMessage, out string) string {
+	var a protocol.BatchArgs
+	if json.Unmarshal(raw, &a) != nil {
+		return string(redactedJSON(out))
+	}
+	redacted := func(n string) bool {
+		i, err := strconv.Atoi(n)
+		return err == nil && i >= 1 && i <= len(a.Steps) && redactsOut(a.Steps[i-1].Kind, a.Steps[i-1].Args)
+	}
+	lines := strings.SplitAfter(out, "\n")
+	var b strings.Builder
+	for i := 0; i < len(lines); {
+		m := batchStepLine.FindStringSubmatch(lines[i])
+		if m == nil || !redacted(m[1]) {
+			b.WriteString(lines[i])
+			i++
+			continue
+		}
+		text := strings.TrimSuffix(lines[i][len(m[0]):], "\n")
+		for i++; i < len(lines) && strings.HasPrefix(lines[i], "  "); i++ {
+			text += "\n" + strings.TrimSuffix(lines[i][2:], "\n")
+		}
+		b.WriteString(m[0] + string(redactedJSON(text)) + "\n")
+	}
+	return b.String()
 }
 
 // screenshotLine and imagePath find the files an output names: a

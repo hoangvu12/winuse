@@ -188,6 +188,38 @@ func TestTraceOutput(t *testing.T) {
 	}
 }
 
+func TestTraceRedactsABatchsEvalSteps(t *testing.T) {
+	// A Batch prints each step's output under its number (desktop-parity
+	// ticket 20): an eval step's result is redacted there, its lines
+	// included, and the other steps are kept; a failed Batch's output too.
+	args := protocol.BatchArgs{Window: "301", Steps: []protocol.Step{
+		{Kind: "navigate", Args: json.RawMessage(`{"url":"https://a.test/"}`)},
+		{Kind: "eval", Args: json.RawMessage(`{"expression":"document.cookie"}`)},
+		{Kind: "click", Args: json.RawMessage(`{"element_index":3}`)},
+	}}
+	out := "Action 1 (navigate): ok https://a.test/\nAction 2 (eval): {\n    \"token\": \"the secret\"\n  }\nAction 3 (click): failed: gone\n  hint: retry\n"
+	for _, resp := range []*protocol.Response{
+		{OK: true, Out: out},
+		{Out: out, Err: "batch: 1 of 3 Actions failed: Action 3 (click)", Exit: 1},
+	} {
+		var l traceLine
+		if err := json.Unmarshal([]byte(tracedLine(t, false, "batch", args, resp, nil, 0)), &l); err != nil {
+			t.Fatal(err)
+		}
+		want := "Action 1 (navigate): ok https://a.test/\nAction 2 (eval): {\"redacted\":true,\"len\":27}\nAction 3 (click): failed: gone\n  hint: retry\n"
+		if l.Out != want {
+			t.Errorf("out = %q, want %q", l.Out, want)
+		}
+		got := tracedLine(t, true, "batch", args, resp, nil, 0)
+		if !strings.Contains(got, "the secret") {
+			t.Errorf("--trace-unredacted line = %s, want the result kept", got)
+		}
+	}
+	if got := redactBatchOut(json.RawMessage(`[`), "Action 1 (eval): 42\n"); strings.Contains(got, "42") {
+		t.Errorf("unreadable Batch arguments: %q, want the whole output redacted", got)
+	}
+}
+
 func TestTraceFailures(t *testing.T) {
 	got := tracedLine(t, false, "click", map[string]any{"window": "101"},
 		&protocol.Response{Err: "window 101 is gone; nothing was sent", Hint: "run winuse list-windows", Exit: 1}, nil, 1)
@@ -243,7 +275,7 @@ func TestTraceShow(t *testing.T) {
 			OK: true, OutLines: 40, Refs: []string{`C:\Temp\shot.png`}, DurationMS: 812},
 		{Time: "2026-11-03T14:02:12.000+07:00", Command: "click", Routes: []string{"Headless"},
 			Window: &protocol.TraceWindow{ID: 101, App: "Notepad", Title: "Untitled - Notepad"},
-			Exit: 1, Error: "element 12 is stale; nothing was sent", Hint: "read the Window State again", DurationMS: 40, Unredacted: true},
+			Exit:   1, Error: "element 12 is stale; nothing was sent", Hint: "read the Window State again", DurationMS: 40, Unredacted: true},
 	}
 	for _, l := range lines {
 		b, _ := json.Marshal(l)

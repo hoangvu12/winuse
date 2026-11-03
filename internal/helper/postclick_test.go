@@ -52,7 +52,7 @@ func newPostSpy() *postSpy {
 		p.asked = append(p.asked, image.Point{X: int(sx), Y: int(sy)})
 		return p.child, 12, 34, p.class
 	}
-	p.svc.PostClick = func(target uint64, cx, cy int32, button win.MouseButton, count int) (int, error) {
+	p.svc.PostClick = func(target uint64, cx, cy int32, button win.MouseButton, count int, mods win.Modifiers) (int, error) {
 		p.step("post-click")
 		p.clicks = append(p.clicks, postedClick{target, cx, cy, button, count})
 		if p.postErr != nil {
@@ -60,7 +60,7 @@ func newPostSpy() *postSpy {
 		}
 		return 2 + 2*count, nil
 	}
-	p.svc.PostWheel = func(target uint64, sx, sy, dx, dy int32) (int, error) {
+	p.svc.PostWheel = func(target uint64, sx, sy, dx, dy int32, mods win.Modifiers) (int, error) {
 		p.step("post-wheel")
 		p.wheels = append(p.wheels, postedWheel{target, sx, sy, dx, dy})
 		return 1, p.postErr
@@ -210,7 +210,8 @@ func TestBatchPostedStepsArePassive(t *testing.T) {
 		stepOf("click", protocol.ClickArgs{Point: pt(40, 50), ClickCount: 2, Post: true}),
 		stepOf("scroll", protocol.ScrollArgs{X: 5, Y: 6, ScrollY: 120, Post: true}),
 	}})
-	if e != nil || out != okOutput {
+	if e != nil || out != "Action 1 (click): ok (posted; the app may ignore posted clicks, read the Window State to check)\n"+
+		"Action 2 (scroll): ok (posted; the app may ignore posted scrolls, read the Window State to check)\n" {
 		t.Fatalf("batch = %q, %v", out, e)
 	}
 	if hasStepPrefix(p.recorded(), "overlay-show") || containsString(p.recorded(), "activate") {

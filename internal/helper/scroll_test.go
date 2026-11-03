@@ -352,7 +352,7 @@ func TestBatchElementScrollStepsKeepTheHeadlessScope(t *testing.T) {
 			stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(3)}),
 		},
 	})
-	if cmdErr != nil || out != "ok\n" {
+	if cmdErr != nil || out != "Action 1 (scroll): ok\nAction 2 (scroll): ok\nAction 3 (click): ok\n" {
 		t.Fatalf("batch: %q, %v", out, cmdErr)
 	}
 	assertNoV1(t, spy.recorded())
@@ -372,8 +372,7 @@ func TestBatchElementScrollStepsKeepTheHeadlessScope(t *testing.T) {
 			stepOf("scroll", protocol.ScrollArgs{X: 4, Y: 4, ScrollY: 120}),
 		},
 	})
-	if cmdErr == nil || !strings.HasPrefix(cmdErr.Msg, "batch stopped at Action 2 (scroll): ") ||
-		!strings.HasSuffix(cmdErr.Msg, "; nothing was sent") || !strings.Contains(cmdErr.Hint, "winuse --headed ") {
+	if msg, hint, ok := failedStep(cmdErr, 2, "scroll"); !ok || !strings.HasSuffix(msg, "; nothing was sent") || !strings.Contains(hint, "winuse --headed ") {
 		t.Errorf("unheaded point step: %+v, want the --headed refusal", cmdErr)
 	}
 	if got := spy.recorded(); containsStep(got, "wheel") {

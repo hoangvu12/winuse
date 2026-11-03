@@ -411,7 +411,7 @@ func TestBatchPicksItsScopeWithTheKeyProbe(t *testing.T) {
 			stepOf("press-key", protocol.PressKeyArgs{Key: "Return"}),
 		},
 	})
-	if cmdErr != nil || out != "ok\n" {
+	if cmdErr != nil || out != "Action 1 (click): ok\nAction 2 (press-key): ok\n" {
 		t.Fatalf("batch: %q, %v", out, cmdErr)
 	}
 	assertNoV1(t, spy.recorded())
@@ -437,8 +437,7 @@ func TestBatchPicksItsScopeWithTheKeyProbe(t *testing.T) {
 			stepOf("press-key", protocol.PressKeyArgs{Key: "Return"}),
 		},
 	})
-	if cmdErr == nil || !strings.HasPrefix(cmdErr.Msg, "batch stopped at Action 2 (press-key): ") ||
-		!strings.HasSuffix(cmdErr.Msg, "; nothing was sent") || !strings.Contains(cmdErr.Hint, "winuse --headed ") {
+	if msg, hint, ok := failedStep(cmdErr, 2, "press-key"); !ok || !strings.HasSuffix(msg, "; nothing was sent") || !strings.Contains(hint, "winuse --headed ") {
 		t.Errorf("unheaded press-key step: %+v, want the --headed refusal", cmdErr)
 	}
 	assertNoV1(t, spy.recorded())
@@ -754,8 +753,7 @@ func TestBatchTypeTextIntoAnEditKeepsTheHeadlessScope(t *testing.T) {
 		Window: "101",
 		Steps:  []protocol.Step{stepOf("type-text", protocol.TypeTextArgs{Text: "a\nb"})},
 	})
-	if cmdErr == nil || !strings.HasPrefix(cmdErr.Msg, "batch stopped at Action 1 (type-text): ") ||
-		!strings.HasSuffix(cmdErr.Msg, "; nothing was sent") || !strings.Contains(cmdErr.Hint, "winuse --headed ") {
+	if msg, hint, ok := failedStep(cmdErr, 1, "type-text"); !ok || !strings.HasSuffix(msg, "; nothing was sent") || !strings.Contains(hint, "winuse --headed ") {
 		t.Errorf("unheaded newline step: %+v, want the --headed refusal", cmdErr)
 	}
 	if got := spy.recorded(); len(got) != 0 {
@@ -1034,7 +1032,7 @@ func TestBatchPostedStepsKeepTheHeadlessScope(t *testing.T) {
 			stepOf("press-key", protocol.PressKeyArgs{Key: "Return", Post: true}),
 		},
 	})
-	if cmdErr != nil || out != "ok\n" {
+	if cmdErr != nil || out != "Action 1 (click): ok\nAction 2 (type-text): "+postedOK+"Action 3 (press-key): "+postedOK {
 		t.Fatalf("batch: %q, %v", out, cmdErr)
 	}
 	assertNoV1(t, spy.recorded())

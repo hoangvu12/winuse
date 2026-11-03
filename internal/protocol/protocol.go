@@ -265,14 +265,15 @@ type BrowserCloneArgs struct {
 // form (Point); ticket 11 adds the name:/id: Element Reference form (Ref).
 // The three forms are mutually exclusive.
 type ClickArgs struct {
-	Window       string `json:"window"`                 // Window ID, or an App name when that App has exactly one Window
-	ElementIndex *int   `json:"element_index"`          // the Element to click, from that Window's latest Window State
-	Ref          string `json:"ref,omitempty"`          // name:<text> or id:<AutomationId>: the Element to click, resolved against the Window's latest Window State
-	Point        *Point `json:"point,omitempty"`        // @x,y: coordinates in the latest screenshot's coordinate space
-	ClickCount   int    `json:"click_count,omitempty"`  // 1 (default), 2 (double click) or 3 (triple click)
-	MouseButton  string `json:"mouse_button,omitempty"` // "left" (default), "right" or "middle"; aliases l, r, m
-	Headed       bool   `json:"headed,omitempty"`       // force v1's foreground click with the real pointer (ADR 0010); default Headless for an Element click
-	Post         bool   `json:"post,omitempty"`         // post the click's mouse messages to the classic control there, best effort (headless-max ticket 12); not with headed
+	Window       string   `json:"window"`                 // Window ID, or an App name when that App has exactly one Window
+	ElementIndex *int     `json:"element_index"`          // the Element to click, from that Window's latest Window State
+	Ref          string   `json:"ref,omitempty"`          // name:<text> or id:<AutomationId>: the Element to click, resolved against the Window's latest Window State
+	Point        *Point   `json:"point,omitempty"`        // @x,y: coordinates in the latest screenshot's coordinate space
+	ClickCount   int      `json:"click_count,omitempty"`  // 1 (default), 2 (double click) or 3 (triple click)
+	MouseButton  string   `json:"mouse_button,omitempty"` // "left" (default), "right" or "middle"; aliases l, r, m
+	Headed       bool     `json:"headed,omitempty"`       // force v1's foreground click with the real pointer (ADR 0010); default Headless for an Element click
+	Post         bool     `json:"post,omitempty"`         // post the click's mouse messages to the classic control there, best effort (headless-max ticket 12); not with headed
+	Modifiers    []string `json:"modifiers,omitempty"`    // ctrl, shift, alt held during the click (desktop-parity ticket 06)
 }
 
 // Point is a coordinate Element Reference: a point in the coordinate space
@@ -315,12 +316,13 @@ type ScrollArgs struct {
 	ScrollX int    `json:"scrollX"`
 	ScrollY int    `json:"scrollY"`
 
-	ElementIndex *int   `json:"element_index,omitempty"` // the Element to scroll, from the Window's latest Window State
-	Ref          string `json:"ref,omitempty"`           // name:<text> or id:<AutomationId>: the Element to scroll
-	Direction    string `json:"direction,omitempty"`     // up, down, left, right or into-view
-	Steps        *int   `json:"steps,omitempty"`         // scroll steps for a direction (default 3, 1 to 50); none for into-view
-	Headed       bool   `json:"headed,omitempty"`        // the v1 way: activate, then the wheel at the point or the Element (into-view: the ScrollItem call after activation); without it a point outside a Page is refused
-	Post         bool   `json:"post,omitempty"`          // the point form: post the wheel to the classic control there, best effort (headless-max ticket 12); not with headed
+	ElementIndex *int     `json:"element_index,omitempty"` // the Element to scroll, from the Window's latest Window State
+	Ref          string   `json:"ref,omitempty"`           // name:<text> or id:<AutomationId>: the Element to scroll
+	Direction    string   `json:"direction,omitempty"`     // up, down, left, right or into-view
+	Steps        *int     `json:"steps,omitempty"`         // scroll steps for a direction (default 3, 1 to 50); none for into-view
+	Headed       bool     `json:"headed,omitempty"`        // the v1 way: activate, then the wheel at the point or the Element (into-view: the ScrollItem call after activation); without it a point outside a Page is refused
+	Post         bool     `json:"post,omitempty"`          // the point form: post the wheel to the classic control there, best effort (headless-max ticket 12); not with headed
+	Modifiers    []string `json:"modifiers,omitempty"`     // the point form: ctrl, shift, alt held during the wheel, e.g. ctrl to zoom (desktop-parity ticket 06)
 }
 
 // DragArgs are drag's arguments — Codex's drag parameters: from and to
@@ -537,11 +539,13 @@ type ScreenshotArgs struct {
 }
 
 // BatchArgs are batch's arguments (ticket 11): several Actions on one
-// Window in a single call, run in order, stopping at the first failure.
+// Window in a single call, run in order, past a failed step unless
+// StopOnError (desktop-parity ticket 20).
 type BatchArgs struct {
-	Window string `json:"window"`           // the one Window every step acts on (Window ID, or an App name when that App has exactly one Window)
-	Steps  []Step `json:"steps"`            // the Actions to run, in order
-	Headed bool   `json:"headed,omitempty"` // every step runs Headed (ADR 0010)
+	Window      string `json:"window"`                  // the one Window every step acts on (Window ID, or an App name when that App has exactly one Window)
+	Steps       []Step `json:"steps"`                   // the Actions to run, in order
+	Headed      bool   `json:"headed,omitempty"`        // every step runs Headed (ADR 0010)
+	StopOnError bool   `json:"stop_on_error,omitempty"` // stop at the first failed step instead of running the rest
 }
 
 // Step is one Batch step: an Action and its arguments — the same
@@ -554,19 +558,19 @@ type Step struct {
 }
 
 // BatchStepKinds are the Action commands a Batch step can be — the
-// commands that act on one Window and print nothing but `ok`. Ticket 10
-// extends the list with scroll, drag and hover. The CLI's batch step
-// parser and the helper's step dispatch share this list so the two ends
-// of the wire never disagree about what a Batch can run.
+// commands that act on one Window. Ticket 10 extends the list with
+// scroll, drag and hover. The CLI's batch step parser and the helper's
+// step dispatch share this list so the two ends of the wire never disagree
+// about what a Batch can run. A Batch prints each step's output under its
+// number (desktop-parity ticket 20).
 var BatchStepKinds = append(append([]string{
 	"click", "type-text", "press-key", "set-value", "perform-secondary-action", "activate-window",
 	"scroll", "drag", "hover",
-	// Browser merge ticket 07: the tab commands that act (tab-list prints
-	// the Tabs, so it is no step; tab-new's id is not printed in a Batch).
-	"tab-new", "tab-close", "tab-switch",
+	// Browser merge ticket 07: the tab commands; tab-list since
+	// desktop-parity ticket 20 printed the steps' output.
+	"tab-new", "tab-close", "tab-switch", "tab-list",
 },
-	// Browser merge ticket 06: the page-only Actions (what navigate, wait
-	// and eval print is dropped in a Batch, which prints only ok).
+	// Browser merge ticket 06: the page-only Actions.
 	PageCommands...),
 	// Headless-max ticket 10: select-text, so a Batch can select a word
 	// and type its replacement.
@@ -579,7 +583,7 @@ var BatchStepKinds = append(append([]string{
 type Response struct {
 	OK    bool   `json:"ok"`
 	Stale bool   `json:"stale,omitempty"` // helper is from a different winuse build: it exits after answering; the CLI restarts one and retries
-	Out   string `json:"out,omitempty"`   // text the CLI prints on stdout
+	Out   string `json:"out,omitempty"`   // text the CLI prints on stdout (before the error on a failure: a Batch's steps)
 	Err   string `json:"err,omitempty"`   // single-line error message
 	Hint  string `json:"hint,omitempty"`  // recovery hint printed after the error
 	Exit  int    `json:"exit,omitempty"`  // exit code the CLI should use on failure
