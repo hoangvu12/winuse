@@ -196,6 +196,7 @@ type LaunchArgs struct {
 	Args      []string `json:"args,omitempty"`      // command-line arguments, one per --arg, quoted by the helper
 	Cwd       string   `json:"cwd,omitempty"`       // the working directory, absolute (the CLI resolves it)
 	Env       []string `json:"env,omitempty"`       // KEY=VALUE entries over the helper's environment
+	CDP       bool     `json:"cdp,omitempty"`       // an Electron or WebView2 App with a loopback debugging port (headless-max 15)
 }
 
 // BrowserArgs are the arguments of browser status, use, launch, connect

@@ -37,6 +37,8 @@ func (m Mode) Describe() string {
 		return "your real profile through the inspect toggle"
 	case ModeExtension:
 		return "your running browser through the winuse extension"
+	case ModeApp:
+		return "an App winuse launched with --cdp"
 	}
 	return "a debugging port on this machine"
 }

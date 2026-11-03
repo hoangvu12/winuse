@@ -717,3 +717,27 @@ set WINUSE_E2E=1
 set WINUSE_E2E_ELECTRON=C:\electron-dist\electron-vX.Y.Z-win32-x64\electron.exe
 go test -tags e2e -v -timeout 5m -run TestCoveredElectronReadCold ./test/e2e
 ```
+
+## Electron and WebView2 Apps launched with --cdp
+
+`app_cdp_test.go` (ticket 15 of `.scratch/headless-max/`).
+`TestLaunchAppCDPOnCoveredElectron` uses the same `WINUSE_E2E_ELECTRON`
+binary: `winuse launch-app <electron.exe> --cdp` on the fixture page with
+an isolated profile must print the Window line and
+`Note: a Browser Connection reaches the App's pages (Electron App, port
+<n>)`. The fixture then covers the Window; get-window-state must show the
+page's "winuse e2e input" field read over CDP (no "the Page is read
+through UI Automation" note), a `set-value` on it must answer `ok`, and
+`winuse eval` must read the value back. The cover keeps the foreground
+throughout. `TestLaunchAppCDPOnWebView2` needs `WINUSE_E2E_WEBVIEW2`, an
+executable that hosts a WebView2 control (it skips without it): the
+launch must print the WebView2 note, and the covered Window's State must
+come over CDP; the test logs it. Both end the App, the fixture and the
+helper.
+
+```
+set WINUSE_E2E=1
+set WINUSE_E2E_ELECTRON=C:\electron-dist\electron-vX.Y.Z-win32-x64\electron.exe
+set WINUSE_E2E_WEBVIEW2=C:\path\to\WebView2App.exe
+go test -tags e2e -v -timeout 5m -run TestLaunchAppCDP ./test/e2e
+```

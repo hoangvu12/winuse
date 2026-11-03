@@ -179,3 +179,34 @@ func TestReasonWording(t *testing.T) {
 		}
 	}
 }
+
+// An App's Window (headless-max 15): its one page whatever the titles; with
+// several pages, the one whose title the Window shows; never a guess.
+func TestMatchAppTab(t *testing.T) {
+	page := func(id, title string) Tab { return Tab{TargetID: id, Title: title} }
+	wv2 := Geometry{Title: "Contoso Orders"}
+	if got, err := MatchAppTab(wv2, []Tab{page("P1", "orders.html")}); err != nil || got.TargetID != "P1" {
+		t.Errorf("one page: %+v, %v", got, err)
+	}
+	internal := Tab{TargetID: "D1", Title: "DevTools", URL: "devtools://devtools/", Internal: true}
+	if got, err := MatchAppTab(wv2, []Tab{internal, page("P1", "orders.html")}); err != nil || got.TargetID != "P1" {
+		t.Errorf("one page beside an internal one: %+v, %v", got, err)
+	}
+	code := Geometry{Title: "main.go - winuse - Visual Studio Code"}
+	two := []Tab{page("P1", "main.go - winuse - Visual Studio Code"), page("P2", "notes.md - other - Visual Studio Code")}
+	if got, err := MatchAppTab(code, two); err != nil || got.TargetID != "P1" {
+		t.Errorf("by title: %+v, %v", got, err)
+	}
+	var none *NoTabError
+	if _, err := MatchAppTab(Geometry{Title: "Settings"}, two); !errors.As(err, &none) || len(none.Titles) != 2 {
+		t.Errorf("no title: %v", err)
+	}
+	var several *AmbiguousTabError
+	same := []Tab{page("P1", "Untitled"), page("P2", "Untitled")}
+	if _, err := MatchAppTab(Geometry{Title: "Untitled"}, same); !errors.As(err, &several) || len(several.Candidates) != 2 {
+		t.Errorf("same titles: %v", err)
+	}
+	if _, err := MatchAppTab(wv2, nil); !errors.As(err, &none) {
+		t.Errorf("no page: %v", err)
+	}
+}

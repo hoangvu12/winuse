@@ -49,6 +49,12 @@ type System struct {
 	CloseApp func(exe string) error
 	// FreePort is the first free loopback port from 9222 up.
 	FreePort func() int
+	// AppPort is a free ephemeral loopback port, for an App launched with
+	// --cdp (apps.go): never one of the ports browser discovery probes.
+	AppPort func() (int, error)
+	// ParentPID is a process's parent: AwaitApp checks that an App's
+	// port belongs to the process tree winuse launched.
+	ParentPID func(pid uint32) (uint32, bool)
 
 	// Dial opens the WebSocket to a verified endpoint; handshake bounds the
 	// opening handshake (the Chrome 144+ approval prompt holds it).

@@ -18,14 +18,14 @@ Rules:
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent (after 01)
+**Status:** ready-for-agent (launch done on branch hm15-electron-cdp; the attach to a running Electron App is in progress)
 
-- [ ] `--cdp` in the CLI and protocol
-- [ ] Electron and WebView2 argument injection; port discovery and owner verification
-- [ ] Window-to-Page mapping for non-browser hosts
-- [ ] Offline tests: argument and environment building, owner check, no-port fallback
-- [ ] Opt-in e2e: VS Code or another installed Electron App, and a WebView2 App, covered
-- [ ] ADR 0012 amendment, SKILL.md
+- [x] `--cdp` in the CLI and protocol
+- [x] Electron and WebView2 argument injection; port discovery and owner verification
+- [x] Window-to-Page mapping for non-browser hosts
+- [x] Offline tests: argument and environment building, owner check, no-port fallback
+- [x] Opt-in e2e: VS Code or another installed Electron App, and a WebView2 App, covered
+- [x] ADR 0012 amendment, SKILL.md
 
 ## Comments
 
@@ -55,3 +55,14 @@ Both work, with the foreground unchanged at launch.
   - Set `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<free port>` in the child's environment only. winuse picks a free loopback port, because WebView2 needs a fixed one.
   - The owner check: msedgewebview2.exe inside the launched App's process tree. The user's other msedgewebview2 processes are unaffected.
 - **Typing:** `Input.insertText` needs a DOM focus step first (the existing Page type-text --into route already does `DOM.focus`). No window activation.
+
+### 2026-11-03: launch-time CDP done (worker, branch hm15-electron-cdp, first commit)
+
+- `launch-app <exe> --cdp` (`internal/helper/launchcdp.go`): refused with nothing started for a shortcut or packaged App, or on a helper without Browser Connections. winuse picks an ephemeral loopback port (`System.AppPort`, never 9222-9224). An Electron executable (`browser.IsElectron`: `resourcespp.asar`, `electron.asar`, `default_app.asar` or `resourcespp\package.json`) gets `--remote-debugging-port=<p>` in front of its arguments plus `--disable-features=CalculateNativeWinOcclusion` (merged into its own). Anything else gets `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` in its own environment, after a value from `--env` or the helper's own. Never the registry.
+- I picked the port myself instead of reading stderr or DevToolsActivePort, because the userData folder is App-defined and the helper does not keep the App's stderr. After the Window appears, `browser.Manager.AwaitApp` polls for what is left of the launch budget. It accepts the port only when its listener is the launched pid or a descendant (`System.ParentPID`, at most 8 hops), and registers it for the Window's process. Note lines: `Note: a Browser Connection reaches the App's pages (Electron App, port <p>): get-window-state <id> reads them through it`, or `Note: no debugging port appeared, so the App stays on UI Automation`.
+- `Manager.WindowConnection` dials a registered App endpoint (`ModeApp`, keyed by the Windows' pid). `open("")` (the browser commands and commands without a Window) never picks App connections; `Held()` lists them for `status`. `livePages.Browser` returns the App kind for a registered pid whatever the window class.
+- `page.MatchAppTab`: the App's one non-internal page, else the page whose title the Window title shows, else NoTab/Ambiguous. This is because Electron's content-layer DevTools may not answer `Browser.getWindowForTarget`, and a WebView2 page title is not the Window's.
+- Docs: ADR 0012 amendment, ADR 0013 table ("launch done; attach planned"), SKILL.md launch section, codex-parity launch_app row, CLI usage, e2e README.
+- Tests: `internal/browser/apps_test.go` (switches, env var, Electron detection, owner tree check incl. the user's own msedgewebview2 refused, wait expiry and a late port, WindowConnection/open/Held/DisplayName), `internal/helper/launchcdp_test.go` (Electron and WebView2 launches, refusals, App Window recognised), `TestMatchAppTab`, `TestParseLaunchArgsCDP`. Opt-in e2e `test/e2e/app_cdp_test.go` (covered Electron 45 via `WINUSE_E2E_ELECTRON`: Page read over CDP, Headless set-value read back by eval; WebView2 via `WINUSE_E2E_WEBVIEW2`), compiled, NOT run (live runs paused).
+- Live risks: page.Merge needs a UIA Document element in the App's tree. Electron gets occlusion off for that, but it is unmeasured whether a covered Electron/WebView2 exposes one. Without it, the read falls back to UI Automation with the note.
+

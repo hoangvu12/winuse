@@ -41,6 +41,7 @@ type Manager struct {
 	mu     sync.Mutex
 	conns  map[string]*Connection  // by Endpoint.key: the browser process
 	dials  map[string]*pendingDial // the one dial in flight per process
+	apps   map[uint32]AppEndpoint  // apps.go: by the process that owns the App's Windows
 	closed bool
 }
 
@@ -168,6 +169,10 @@ func (m *Manager) Connection(ctx context.Context, name string) (*Connection, err
 // Actions and the tab commands reach a Window's Page: the pin does not
 // apply, since a Window belongs to exactly one process. A pid of 0
 // (unknown) falls back to Connection.
+//
+// An App winuse launched with --cdp (apps.go) is reached through the
+// endpoint AwaitApp registered for its Windows' process; it is never
+// discovered.
 func (m *Manager) WindowConnection(ctx context.Context, name string, pid uint32) (*Connection, error) {
 	if pid == 0 {
 		return m.Connection(ctx, name)
@@ -177,6 +182,11 @@ func (m *Manager) WindowConnection(ctx context.Context, name string, pid uint32)
 	m.mu.Unlock()
 	if c != nil && c.Client.Alive() {
 		return c, nil
+	}
+	if app, ok := m.appEndpoint(pid); ok {
+		// PID is the Windows' process, the connection's key: a WebView2
+		// App's port belongs to its msedgewebview2.exe child (app.Owner).
+		return m.dial(ctx, Endpoint{Browser: app.Kind, Mode: ModeApp, WSURL: app.WSURL, Port: app.Port, PID: pid})
 	}
 	ep, err := m.sys.discoverFor(ctx, normalizeName(name), pid)
 	if err != nil {
@@ -198,12 +208,13 @@ func (m *Manager) live(want string) *Connection {
 }
 
 // open lists the held, still-open connections to want (every browser for
-// ""), by browser and pid.
+// "", the Apps launched with --cdp left out: they are reached only through
+// their Windows), by browser and pid.
 func (m *Manager) open(want string) []*Connection {
 	m.mu.Lock()
 	var out []*Connection
 	for _, c := range m.conns {
-		if c.Client.Alive() && (want == "" || c.Browser == want) {
+		if c.Client.Alive() && (c.Browser == want || want == "" && c.Mode != ModeApp) {
 			out = append(out, c)
 		}
 	}
@@ -223,7 +234,11 @@ func (m *Manager) open(want string) []*Connection {
 // nothing (winuse status, desktop parity ticket 16).
 func (m *Manager) Held() []string {
 	var out []string
-	for _, c := range m.open("") {
+	held := m.open("")
+	for _, kind := range []string{AppElectron, AppWebView2} {
+		held = append(held, m.open(kind)...)
+	}
+	for _, c := range held {
 		out = append(out, fmt.Sprintf("%s process %d, %s", c.Browser, c.PID, c.Mode.Describe()))
 	}
 	return out

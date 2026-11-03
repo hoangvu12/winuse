@@ -86,7 +86,11 @@ non-activating show state (`--minimized`: minimized), and a
 `Note: the App took the foreground` line follows the Window line when it
 took the foreground anyway (a packaged App's activation always can).
 `--arg` (repeatable), `--cwd` and `--env KEY=VALUE` (repeatable) come from
-agent-desktop and need an executable.
+agent-desktop and need an executable. `--cdp` (headless-max 15, agent-desktop's
+`launch --cdp`) starts an Electron or WebView2 executable with a loopback
+debugging port that winuse picks and verifies (its listener must be the
+launched process tree), so the App's Windows get a Browser Connection; a
+note line says whether one reaches the App.
 
 ### get_window_state
 

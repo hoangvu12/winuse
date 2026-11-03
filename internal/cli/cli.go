@@ -57,7 +57,7 @@ commands:
   get-window <window>         print one Window's line (Window ID, App and title),
                                resolved by Window ID or an unambiguous App name
   list-apps                   list running and recently used Apps, with their Windows
-  launch-app <name|exe path> [--minimized] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <seconds>]
+  launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <seconds>]
                                start an App by name or executable path, report
                                its Window; waits 15 s, --timeout up to 120 for
                                a slow App. The App starts without taking the
@@ -66,7 +66,10 @@ commands:
                                a "Note: the App took the foreground" line.
                                --arg (one per argument, quoted for you),
                                --cwd and --env (over the helper's
-                               environment) need an executable
+                               environment) need an executable. --cdp starts
+                               an Electron or WebView2 executable with a
+                               loopback debugging port, so its pages are read
+                               and acted on like a browser's, headless
   get-window-state <window> [--screenshot] [--timeout <seconds>]
                                print a Window's State: its Element tree as text,
                                and with --screenshot a screenshot saved to a file
@@ -527,7 +530,7 @@ func listAppsCmd(args []string) int {
 // against the CLI's working directory: the helper cannot see it.
 // --timeout widens the 15 s launch budget (up to 120 s) for a slow App.
 func launchAppCmd(args []string) int {
-	const usage = "usage: winuse launch-app <name|exe path> [--minimized] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <seconds>]"
+	const usage = "usage: winuse launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <seconds>]"
 	a, timeout, err := parseLaunchArgs(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, usage)
@@ -569,6 +572,10 @@ func parseLaunchArgs(args []string) (protocol.LaunchArgs, time.Duration, error) 
 		}
 		if tok == "--minimized" {
 			a.Minimized = true
+			continue
+		}
+		if tok == "--cdp" {
+			a.CDP = true
 			continue
 		}
 		name, value, inline := strings.Cut(tok, "=")

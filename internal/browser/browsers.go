@@ -63,6 +63,9 @@ func DisplayName(name string) string {
 	if d, ok := displayNames[name]; ok {
 		return d
 	}
+	if d, ok := appDisplayNames[name]; ok {
+		return d
+	}
 	return name
 }
 
