@@ -75,7 +75,7 @@ is not, which is why ADR 0011 made Posted Keys opt-in.
 
 | Route | Rule | Ticket | State |
 |---|---|---|---|
-| Launch without the foreground, and launch options | 6 | 01 | planned |
+| Launch without the foreground, and launch options | 6 | 01 | done |
 | restore-window reports self-activation | 6 | 02 | done |
 | Detect and report self-activation around restore | 6 | 03 | planned |
 | Headless tab switch on a launched browser | 1 | 05 | planned |
