@@ -78,6 +78,16 @@ name ahead of the action, such as `reviewer: click "Save"`. To choose the
 colour, set `WINUSE_CURSOR_COLOR` to a hex colour such as `#FF8A3D` on
 every command, next to `WINUSE_AGENT`.
 
+Agents working in Windows of different Apps run at the same time.
+Windows of one App that share a UI thread take turns, as all of one
+Chrome's or Explorer's Windows do, and so do two agents in one Window.
+Page Actions in two browser Windows run at once. A Headed Action holds the
+whole desktop, and its banner names the agent: another agent's Headed
+Action waits for it. A command that has waited about 12 seconds, or most
+of its budget, is refused with nothing sent and names the agent it waited
+for, such as `agent reviewer is using window 101`. Retry when that agent is
+done, or work in another App's Window meanwhile. Reads never wait.
+
 ## Find the Window
 
 ```

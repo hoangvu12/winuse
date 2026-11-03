@@ -270,19 +270,17 @@ type Services struct {
 	// go test binary; tests fake it.
 	ShellKind func(hwnd uint64) string
 
-	// actionGate serializes every command that activates a Window, injects
-	// input or shows the overlay (finding 11): two concurrent CLI calls
-	// must never interleave control of the desktop. It is a capacity-1
-	// channel — a mutex whose wait is bounded by the waiting request's own
-	// budget. Created by defaultServices so one Services (one helper)
-	// shares one gate; observation-only commands skip it. Headless Actions
-	// (ADR 0010) stay serialized too: they write into apps and drive the
-	// one Agent Cursor, and one command at a time is the promise either
-	// way. The Window Actions (ADR 0011) are serialized as well: they
-	// place and close the Windows that other Actions act in, and so are
-	// the Desktop commands (the clipboard's): a paste in a Batch must not
-	// see the clipboard change halfway.
-	actionGate chan struct{}
+	// The lanes (multi-agent ticket 06, lanes.go) replace the one action
+	// gate: a lane per UI thread for Headless and Posted Actions, a lane per
+	// browser Window's Page for Page Actions, and one desktop lane for
+	// Headed Actions and the commands that name no Window. Created by
+	// defaultServices so one helper shares them; reads take none.
+	// WindowThread reads a Window's UI thread (nil: the Window's own lane);
+	// LaneWait is how long a request waits for its lanes (0: 12 s, clamped
+	// by its budget).
+	lanes        *laneManager
+	WindowThread func(hwnd uint64) uint32
+	LaneWait     time.Duration
 
 	// The Window identity check (multi-agent ticket 09, identity.go):
 	// WindowIdentity reads what a Window ID names now (its process, that
@@ -389,7 +387,7 @@ func CommandsWith(s Services) map[string]Command {
 		case !observationOnlyCommand(name):
 			// The Window identity check runs once the command holds the
 			// gate, before anything else looks at the Window (identity.go).
-			cmd = s.serialized(s.checkWindow(s.reportAfter(name, cmd)))
+			cmd = s.laned(name, s.checkWindow(s.reportAfter(name, cmd)))
 		default:
 			cmd = s.recordReads(name, cmd) // identity.go: what a read Window ID names
 		}
@@ -423,43 +421,6 @@ func observationOnlyCommand(name string) bool {
 	return strings.HasPrefix(name, "browser-")
 }
 
-// serialized wraps one command in the helper-wide action gate (finding
-// 11): the command runs alone — no other activating, injecting or
-// overlay-showing command interleaves with it. The wait for the gate is
-// bounded by the waiting request's own budget: a request queued behind
-// another Action until its budget expired fails instead of acting late
-// (the server's central timeout policy reports it).
-//
-// Esc stops every agent (multi-agent ticket 05, ADR 0014 Decision 5): a
-// request waiting for the gate is stopped too, with nothing sent, when the
-// user presses Esc while it waits (WaitingEscWatch). One that arrives
-// after the press runs as usual.
-func (s Services) serialized(cmd Command) Command {
-	if s.actionGate == nil {
-		return cmd // a zero Services (no defaultServices): tests wrap nothing
-	}
-	gate := s.actionGate
-	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
-		wait := s.beginWait()
-		if !wait.acquire(ctx, gate) {
-			if wait.stopped() {
-				return "", escStopBeforeActError()
-			}
-			return "", queuedOutError()
-		}
-		defer func() { <-gate }()
-		if wait.stopped() {
-			// The press landed in the instant the gate opened.
-			return "", escStopBeforeActError()
-		}
-		if err := ctx.Err(); err != nil {
-			// The budget expired in the instant the gate opened.
-			return "", queuedOutError()
-		}
-		return cmd(ctx, args)
-	}
-}
-
 // WaitingEscWatch is the Esc service's side of stopping requests that wait
 // for their turn (multi-agent 05): *win.EscWatcher. An EscWatch that does
 // not implement it (the test fakes, the no-op) stops only running work.
@@ -474,7 +435,7 @@ var _ WaitingEscWatch = (*win.EscWatcher)(nil)
 // escWaitPoll is how often a waiting request looks for the user's Esc.
 const escWaitPoll = 25 * time.Millisecond
 
-// gateWait is one request's wait for the action gate.
+// gateWait is one request's wait for its lanes (lanes.go).
 type gateWait struct {
 	esc   WaitingEscWatch // nil: no waiting stops
 	gen   uint64
@@ -490,10 +451,16 @@ func (s Services) beginWait() *gateWait {
 	return w
 }
 
-// acquire waits for the gate until the request's budget ends or the user
-// presses Esc (false), and ends the waiting scope either way.
-func (w *gateWait) acquire(ctx context.Context, gate chan struct{}) bool {
-	defer w.end()
+// acquireOr waits for one lane until the request's budget ends, the user
+// presses Esc or limit fires: ok is false then, and timedOut says the
+// limit fired. The waiting scope stays open across a request's lanes: the
+// caller ends it (end).
+func (w *gateWait) acquireOr(ctx context.Context, lane chan struct{}, limit <-chan time.Time) (ok, timedOut bool) {
+	select {
+	case lane <- struct{}{}:
+		return true, false // a free lane is taken whatever the timers say
+	default:
+	}
 	var tick <-chan time.Time
 	if w.esc != nil {
 		t := time.NewTicker(escWaitPoll)
@@ -502,13 +469,15 @@ func (w *gateWait) acquire(ctx context.Context, gate chan struct{}) bool {
 	}
 	for {
 		select {
-		case gate <- struct{}{}:
-			return true
+		case lane <- struct{}{}:
+			return true, false
 		case <-ctx.Done():
-			return false
+			return false, false
+		case <-limit:
+			return false, true
 		case <-tick:
 			if w.stopped() {
-				return false
+				return false, false
 			}
 		}
 	}
@@ -525,13 +494,6 @@ func (w *gateWait) end() {
 		w.ended = true
 		w.esc.EndWait()
 	}
-}
-
-// queuedOutError is the failure a serialized command reports when its
-// request's budget expired while another Action held the desktop.
-func queuedOutError() *Error {
-	return Fail("another winuse Action was still running when this request's budget expired",
-		"retry once the other Action finishes")
 }
 
 // noopEscWatch is the Esc service when there is no watcher: no armed
@@ -782,8 +744,11 @@ func defaultServices(s Services) Services {
 	if s.windowIDs == nil {
 		s.windowIDs = newWindowRecords()
 	}
-	if s.actionGate == nil {
-		s.actionGate = make(chan struct{}, 1)
+	if s.lanes == nil {
+		s.lanes = newLaneManager()
+	}
+	if s.WindowThread == nil {
+		s.WindowThread = win.WindowThreadID
 	}
 	return s
 }

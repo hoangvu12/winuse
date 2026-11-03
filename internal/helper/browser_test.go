@@ -141,9 +141,9 @@ func TestBrowserProblemsBecomeOneSentenceAndANextCommand(t *testing.T) {
 
 func TestBrowserCommandsNeverWaitForTheActionGate(t *testing.T) {
 	fb := &fakeBrowsers{}
-	gate := make(chan struct{}, 1)
-	gate <- struct{}{} // another Action holds the desktop
-	cmds := CommandsWith(Services{Trees: &fakeTrees{}, Browser: fb, actionGate: gate})
+	lanes := newLaneManager()
+	lanes.lane(desktopLane) <- struct{}{} // another Action holds the desktop
+	cmds := CommandsWith(Services{Trees: &fakeTrees{}, Browser: fb, lanes: lanes})
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	for _, name := range []string{"browser-status", "browser-use", "browser-launch", "browser-clone", "browser-connect", "browser-stop", "browser-ext-install", "browser-ext-status"} {

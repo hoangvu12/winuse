@@ -44,3 +44,14 @@ func WindowIdentity(hwnd uint64) (WindowOwner, bool) {
 	}
 	return WindowOwner{PID: pid, Started: int64(created.HighDateTime)<<32 | int64(created.LowDateTime), Class: className(h)}, true
 }
+
+// WindowThreadID is the id of the UI thread that owns hwnd (0 when it
+// cannot be read): the lane a Headless Action on it takes (multi-agent
+// ticket 06). Read-only.
+func WindowThreadID(hwnd uint64) uint32 {
+	tid, err := windows.GetWindowThreadProcessId(windows.HWND(hwnd), nil)
+	if err != nil {
+		return 0
+	}
+	return tid
+}

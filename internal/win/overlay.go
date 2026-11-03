@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"image/color"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 
@@ -59,6 +60,7 @@ const (
 )
 
 var (
+	procInvalidateRect           = user32.NewProc("InvalidateRect")
 	procSetWindowPos             = user32.NewProc("SetWindowPos")
 	procSetLayeredWindowAttrs    = user32.NewProc("SetLayeredWindowAttributes")
 	procSetWindowDisplayAffinity = user32.NewProc("SetWindowDisplayAffinity")
@@ -346,7 +348,8 @@ func paintOverlay(hwnd uintptr) {
 	}
 	procSetBkMode.Call(hdc, bkModeTransparent) // text draws over the solid pill only
 	procSetTextColor.Call(hdc, uintptr(overlayTextColor))
-	text, _ := windows.UTF16PtrFromString(overlayText)
+	agent, _ := overlayAgent.Load().(string)
+	text, _ := windows.UTF16PtrFromString(OverlayBannerText(agent))
 	var tr Rect
 	drawText(hdc, text, &tr, dtCalcRect|dtSingleLine)
 	// Draw into a copy: DrawText must not move the pill rectangle itself.
@@ -356,6 +359,34 @@ func paintOverlay(hwnd uintptr) {
 		roundRectOverlay(hdc, pill, brush)
 	}
 	drawText(hdc, text, &pill, dtCenter|dtVCenter|dtSingleLine|dtEndEllipsis)
+}
+
+// overlayAgent is the agent the banner names (multi-agent 06), read when
+// the banner paints; "" names none. One overlay per helper, so one value.
+var overlayAgent atomic.Value
+
+// OverlayBannerText is the banner's text: it names the agent winuse is in
+// control for when several agents may share the desktop (multi-agent
+// ticket 06: the banner names the agent holding the desktop lane).
+func OverlayBannerText(agent string) string {
+	if agent == "" {
+		return overlayText
+	}
+	return "winuse is in control for " + agent + " — press Esc to stop"
+}
+
+// SetAgent sets the agent the banner names ("" names none) and repaints a
+// banner that is shown.
+func (o *Overlay) SetAgent(agent string) error {
+	if old, _ := overlayAgent.Load().(string); old == agent {
+		return nil
+	}
+	overlayAgent.Store(agent)
+	return o.thread.do(func() {
+		if o.shown && !o.paused {
+			procInvalidateRect.Call(o.hwnd, 0, 1)
+		}
+	})
 }
 
 // createSolidBrush creates a solid brush of the COLORREF colour (the
