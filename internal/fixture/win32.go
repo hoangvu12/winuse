@@ -121,6 +121,7 @@ const (
 	// so that a UI Automation Invoke returns before the window opens.
 	wmOpenClassic    = 0x8000 + 1
 	wmOpenMessageBox = 0x8000 + 2
+	wmHang           = 0x8000 + 3 // Options.HangOnClick
 
 	wmActivateApp = 0x001C
 	wmSize        = 0x0005

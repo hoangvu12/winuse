@@ -226,6 +226,7 @@ func sendInput(events ...input) error {
 		return nil
 	}
 	n, _, e := procSendInput.Call(uintptr(len(events)), uintptr(unsafe.Pointer(&events[0])), unsafe.Sizeof(events[0]))
+	held.note(events[:min(int(n), len(events))]) // the ledger of held keys and buttons (polite.go)
 	if int(n) != len(events) {
 		return fmt.Errorf("SendInput rejected %d of %d events (error %v)", len(events)-int(n), len(events), e)
 	}

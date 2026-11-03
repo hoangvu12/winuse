@@ -94,7 +94,7 @@ func resolveCacheFirst(cv cacheView, ref string, alive func(int) bool, live func
 // probe count as alive: the Action's own step checks them as before.
 func (c *Client) alive(ctx context.Context, hwnd uint64, index int) bool {
 	gone := false
-	c.Run(ctx, func(w *worker, _ *run) {
+	c.RunFor(ctx, hwnd, func(w *worker, _ *run) {
 		el, err := c.lookup(ctx, hwnd, index)
 		if err != nil {
 			gone = errors.Is(err, ErrStale)
@@ -119,7 +119,7 @@ func (c *Client) resolveLive(ctx context.Context, hwnd uint64, ref string, budge
 	cfg := walkConfig(ctx, budget)
 	cfg.MaxNodes = FindMaxNodes
 	who := storeAgent(ctx)
-	err := c.Run(ctx, func(w *worker, r *run) {
+	err := c.RunFor(ctx, hwnd, func(w *worker, r *run) {
 		if w.thread == nil {
 			jobErr = errNoState(hwnd) // fake workers carry no COM thread
 			return

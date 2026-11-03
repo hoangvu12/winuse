@@ -5,9 +5,10 @@
 Accepted (the winuse-v1 review). Amends ADR 0003's "one goroutine for
 all COM".
 
-Amended by ADR 0014: the one UIA MTA thread becomes a pool of UIA MTA
-workers with per-App affinity (multi-agent ticket 07, planned). Until
-that ticket lands, Decision 1's single UIA thread is what runs.
+Amended by ADR 0014 (multi-agent ticket 07, landed): the one UIA MTA
+thread is a pool of UIA MTA workers with per-App affinity. See
+"Amendment: the UIA worker pool" below; Decision 1 reads "one COM home
+per technology" with UI Automation's home being that pool.
 
 ## Context
 
@@ -94,3 +95,64 @@ concrete reason:
 - `RPC_E_CHANGED_MODE` on either MTA (a thread already initialised the
   other way) is tolerated per wgc.md §2 and uia-go §1 rather than
   treated as fatal.
+
+## Amendment: the UIA worker pool (ADR 0014, multi-agent ticket 07)
+
+With several agents at once, one UIA thread let one hung App stall every
+agent: a provider that does not answer holds the thread until the
+request's budget abandons it. Probes round 3
+(`.scratch/headless-gaps/probes-round3.md`) measured that, with one App
+hung, other MTA threads still clicked a healthy App in 17 ms (sharing one
+IUIAutomation) and 210 ms (each with its own), and that the hung App's
+own ElementFromHandle returned UIA_E_TIMEOUT after about 1 s, never
+delivering the click late.
+
+1. **UI Automation's home is a pool** of up to four UIA MTA workers
+   (`internal/uia/pool.go`, `PoolSize`), each exactly the worker Decision
+   1 described: OS-locked, MTA, no window, no pump, its own
+   IUIAutomation2 with the 1 s connection timeout and AutoSetFocus off.
+   A worker starts on first use, so a helper that reads one App runs one.
+2. **Affinity by App.** Every UIA call names its Window, and the Window's
+   App (its process id; a UWP App's content process rather than
+   ApplicationFrameHost, `win.AppPID`) is bound to one worker: all of an
+   App's calls run there, in order. A new App is bound to the worker with
+   the fewest Apps that have a job in flight (a hung App's wedged job
+   counts, so new Apps avoid its worker), then the fewest Apps. A binding
+   idle for 10 minutes with nothing in flight is dropped when a new App
+   is bound. Calls that name no Window share one binding.
+3. **Abandon and replace per worker.** Decision 3's discipline is
+   unchanged and applies to each worker alone: a job that outlives its
+   budget abandons its worker (the thread is leaked), and the next call
+   bound to that slot starts a replacement; the other workers carry on.
+4. **Workers start one at a time** (`workerInit`): the first UI Automation
+   call is not re-entrant across threads, so each worker initialises COM
+   and creates its IUIAutomation2 alone, and takes work only after.
+5. **Decision 2 still holds.** No interface pointer crosses a job
+   boundary. The store's live Elements belong to the one process MTA,
+   which every worker joined, so any worker may Release them; a held
+   Element is read on its Window's App's worker and released on the
+   worker of the calls that name no Window, so a wedged worker cannot hold
+   a release up.
+6. **A hung pre-check guards Actions** (`internal/helper/hung.go`,
+   `win.WindowHung`): once a command holds its lanes and passes the Window
+   identity check, an Action that reaches the Window's UI thread asks
+   IsHungAppWindow, then sends a WM_NULL with SMTO_ABORTIFHUNG and a
+   300 ms timeout (SendMessageTimeout waits the full timeout even when
+   Windows already marks the App hung, so it is short). A hung App is
+   refused: "window N's App is not responding; nothing was sent". Page
+   Actions, which reach the Page through the browser, and reads are not
+   checked.
+
+Consequences of the amendment:
+
+- A hung App stalls only the agents working in it, and only for its own
+  calls' budgets; the hung App's reads still answer when UIA times out.
+- More Apps than workers share workers, so two Apps on one worker still
+  wait for each other's calls. Four keeps the thread count small; the
+  pool size is a constant to raise if that shows up.
+- Reads of different Apps now run at once; reads of one App stay in
+  order on its worker. The store and the thin-Window memory were already
+  guarded by their own mutexes.
+- A busy App that needs more than 300 ms to answer a WM_NULL is refused
+  as not responding; the refusal sent nothing, so a retry is safe.
+

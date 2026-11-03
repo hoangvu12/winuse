@@ -252,7 +252,8 @@ func (s Services) laned(name string, cmd Command) Command {
 		return cmd // a zero Services (no defaultServices): tests wrap nothing
 	}
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
-		return s.onLanes(ctx, s.lanesFor(ctx, name, args), cmd, args)
+		set := s.lanesFor(ctx, name, args)
+		return s.onLanes(withLaneSet(ctx, set), set, cmd, args)
 	}
 }
 

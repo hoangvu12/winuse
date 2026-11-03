@@ -11,9 +11,13 @@ Window States and screenshot mappings per Agent (ticket 03), Decision
 the Window identity check (ticket 09: a reused Window ID is refused
 before any Action), and Decisions 1, 6 and 7, the lanes (ticket 06: a lane
 per UI thread, per browser Window's Page and one desktop lane, waited for
-up to 12 s). The UIA worker pool (ticket 07) and polite real input
-(ticket 08) are planned; until ticket 07 lands, every UIA call still runs
-on the one UIA thread. It reverses the desktop-parity
+up to 12 s), the UIA worker pool (ticket 07: up to four UIA workers,
+each App bound to one, and a hung App's Actions refused with nothing
+sent; ADR 0009's amendment), and Decision 8's last step, polite real
+input for Headed Actions (ticket 08: wait for the user's input to go
+quiet, give the foreground and cursor back unless the Action left a menu
+or Window of its App open, yield to the user's own keys and clicks,
+release held keys). It reverses the desktop-parity
 spec's "not adopted: multi-agent cursors and agent ids"
 (`.scratch/desktop-parity/spec.md:88`), the headless spec's out-of-scope
 "Per-agent cursors and a machine-wide input lease"

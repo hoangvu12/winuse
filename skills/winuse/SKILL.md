@@ -340,7 +340,10 @@ with a reason ending in `nothing was sent`, and the hint gives the exact
 `--headed` command, with `--post` or `--into` where they fit.
 `activate-window` alone takes the foreground without the flag; a Headed
 Action activates its Window itself, so use it only to restore drifted
-focus.
+focus. A Headed Action waits while the user types or clicks (past 3 s it is
+refused with `nothing was sent`), stops when they take over (exit 130, like
+Esc: ask before retrying), and then gives back their foreground and pointer,
+unless it left a menu or dialog open, which a `Note:` names.
 
 The user sees each Headless Action through the Agent Cursor, a second cursor
 that glides to the Element with a label such as `click "Save"` and ripples
@@ -924,6 +927,9 @@ ordinary Escape; only the physical key stops winuse.
   it, and leave the lock screen alone.
 - A modal dialog blocking the target is named in the failure, with its
   Window ID. Handle that dialog's Window, then return to the owner.
+- `window <id>'s App is not responding; nothing was sent` means the App
+  is hung. Wait until it responds and retry, or work in another App's
+  Window meanwhile; other Apps are not held up.
 - A timeout fails with `winuse request timed out: <command>`. Requests have
   10 seconds; `launch-app` 15, a Batch 60, Page, tab and most browser
   commands 30, `browser connect` 90 and `browser clone` 180. Only
