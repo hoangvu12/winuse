@@ -188,6 +188,7 @@ func afterActivation(err error) error {
 // the pair. It returns how many key messages keys sent; a failure once an
 // activation message went out is marked ErrAfterActivation.
 func withActivation(top uint64, keys func() (int, error)) (int, error) {
+	defer lockForeground()() // as for a posted chord's pair (postchord.go)
 	if n, err := sendAll(top, activationOn); err != nil {
 		sendAll(top, activationOff)
 		if n > 0 {
