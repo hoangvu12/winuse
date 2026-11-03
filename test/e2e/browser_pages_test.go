@@ -511,7 +511,20 @@ func (p *pageRun) tabs(t *testing.T) {
 	if title := windowTitle(t, p.main); !strings.HasPrefix(title, pagesTitle) {
 		t.Errorf("the Window's title is %q after tab new, want it to start with %q", title, pagesTitle)
 	}
-	t.Log("tab switch on a launched browser is Headed (ticket 07): not run here; TestBrowserPagesExtension runs the Headless one")
+	// tab switch on a launched browser is Headless too (headless-max 05):
+	// the Tab's item in the covered Window's tab strip is selected through
+	// UI Automation. p.act's guard checks the foreground and the z-order.
+	p.actOK(t, "tab", "switch", p.window, tab)
+	if _, now := p.tabList(t); now != tab {
+		t.Errorf("after tab switch %s the active tab is %q", tab, now)
+	}
+	if title := windowTitle(t, p.main); !strings.HasPrefix(title, pagesNextTitle) {
+		t.Errorf("the Window's title is %q after tab switch, want it to start with %q", title, pagesNextTitle)
+	}
+	p.actOK(t, "tab", "switch", p.window, before)
+	if _, now := p.tabList(t); now != before {
+		t.Errorf("after switching back to %s the active tab is %q", before, now)
+	}
 
 	p.actOK(t, "tab", "close", p.window, tab)
 	closed = true

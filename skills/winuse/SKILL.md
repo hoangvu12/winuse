@@ -646,9 +646,11 @@ winuse tab close <window> <tab>
 
 Page commands act on the Window's active Tab, and `tab new` opens a Tab in
 the background, so `tab switch` to the new Tab before you act in it.
-`tab new` and `tab close` are Headless. `tab switch` is Headless through
-the extension and Headed on a browser winuse launched or cloned. Name a Tab
-by its id from `tab list`. In the user's own browser, work in Tabs you
+`tab new`, `tab close` and `tab switch` are Headless. On a browser winuse
+launched or cloned, `tab switch` selects the Tab in the Window's tab strip
+by its title. When two Tabs share a title, or the strip does not show it,
+it sends nothing and prints the `--headed` retry, which switches with real
+keys and takes the foreground. Name a Tab by its id from `tab list`. In the user's own browser, work in Tabs you
 opened and close only those. winuse refuses to close a Window's last Tab,
 so use `close-window` to close the Window.
 

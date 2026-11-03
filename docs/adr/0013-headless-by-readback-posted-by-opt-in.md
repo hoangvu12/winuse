@@ -78,7 +78,7 @@ is not, which is why ADR 0011 made Posted Keys opt-in.
 | Launch without the foreground, and launch options | 6 | 01 | done |
 | restore-window reports self-activation | 6 | 02 | done |
 | Detect and report self-activation around restore | 6 | 03 | planned |
-| Headless tab switch on a launched browser | 1 | 05 | planned |
+| Headless tab switch on a launched browser | 1 | 05 | done |
 | Accelerator lookup for press-key | 1 | 06 | planned |
 | Chords through attached key state, `--post` | 2 | 07 | planned |
 | invoke-menu on classic menu bars | 1 | 08 | done |

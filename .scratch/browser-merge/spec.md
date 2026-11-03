@@ -115,7 +115,7 @@ Page Element Actions go over CDP, frame Element Actions over UIA. Both are Headl
 - `tab list|new|close|switch <window>`.
 - New tabs are created in the background (`Target.createTarget` with `background: true`, or the extension's background tabs).
 - Never `Page.bringToFront` or `Target.activateTarget`.
-- `tab switch` is Headless through the extension (`chrome.tabs.update` active, without focusing the window). Otherwise it stays Headed: the probe confirmed that the extension's switch keeps the foreground, but it never measured a switch on a launched browser.
+- `tab switch` is Headless through the extension (`chrome.tabs.update` active, without focusing the window). ~~Otherwise it stays Headed: the probe confirmed that the extension's switch keeps the foreground, but it never measured a switch on a launched browser.~~ Superseded 2026-11-03 by headless-max ticket 05 (ADR 0012 amendment): on a launched or cloned browser it is Headless too, through UIA SelectionItem.Select on the Window's tab-strip item, read back through IsSelected; `--headed` keeps the activate-and-keys switch.
 
 ### Retiring use-browser (ticket 08)
 

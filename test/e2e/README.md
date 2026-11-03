@@ -615,8 +615,10 @@ later subtests still run. Its subtests:
   (a value set by eval is gone after the reload); `wait` for a selector,
   text, a URL pattern and the load; and `eval`.
 - `tabs`: `tab new` opens a background tab (the active tab and the
-  Window's title stay), `tab list` lists it, and `tab close` closes it.
-  `tab switch` is Headed on a launched browser, so it is not run here.
+  Window's title stay), `tab list` lists it, `tab switch` makes it the
+  active tab and back through the covered Window's tab strip (Headless,
+  headless-max 05: the foreground, the z-order and the Window's title are
+  checked), and `tab close` closes it.
 
 `TestBrowserPagesExtension` runs a short subset in the user's real browser
 through the winuse extension. It runs only when

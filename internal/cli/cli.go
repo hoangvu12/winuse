@@ -39,8 +39,9 @@ headless (the default; your foreground, pointer and keyboard stay untouched):
   get-window-state --screenshot and zoom (--headed activates the Window
   first); and the Window Actions restore-, minimize-, move-, resize- and
   close-window, which have no headed form. Every other Action is headed.
-  tab new and tab close are headless; tab switch is headless through the
-  winuse extension and headed on a launched or cloned browser. In a
+  tab new, tab close and tab switch are headless (on a launched or cloned
+  browser, tab switch selects the Tab in the Window's tab strip; --headed
+  switches with real keys in the foreground instead). In a
   browser Window with a Browser Connection, every Action on its Page is
   headless, and so are navigate, back, forward, reload, upload, dialog,
   wait and eval, which have no headed form.
@@ -216,7 +217,8 @@ const usageTail = `);
                                characters of it); the last Tab is refused,
                                run close-window to close the Window
   tab switch <window> <tab>   make a Tab the active one in its Window (the
-                               Page commands act on the active Tab)
+                               Page commands act on the active Tab); headless,
+                               --headed switches with real keys
   navigate <window> <url> [--wait load|domcontentloaded|none]
                                open a URL in the Window's active Tab, wait for
                                it to load (default load), and print the URL it
@@ -364,7 +366,7 @@ func Main(args []string) int {
 	case "browser":
 		return browserCmd(args[1:])
 	case "tab":
-		return tabCmd(args[1:])
+		return tabCmd(args[1:], headed)
 	case "navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval":
 		return pageCmd(args[0], args[1:]) // page.go, browser merge ticket 06
 	case "skill":

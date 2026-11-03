@@ -117,7 +117,8 @@ func armPassive(esc EscWatch) (disarm func()) {
 // flag: the only ones with a Headless form.
 func takesHeaded(kind string) bool {
 	switch kind {
-	case "click", "set-value", "perform-secondary-action", "scroll", "press-key", "type-text":
+	case "click", "set-value", "perform-secondary-action", "scroll", "press-key", "type-text",
+		"tab-switch": // tabs.go: the tab strip's Select, or the keys with headed
 		return true
 	}
 	return false
@@ -280,7 +281,7 @@ func (s Services) stepHeadless(kind string, args json.RawMessage, w *win.WindowI
 		}
 		return headlessStep(kind, args, s.keyRoute(args, *w))
 	case "tab-new", "tab-close", "tab-switch":
-		return s.tabStepHeadless(kind, w) // tabs.go: tab-switch is Headless only through the extension
+		return s.tabStepHeadless(kind, args, w) // tabs.go: a headed tab-switch is Headless only through the extension
 	case "invoke-menu":
 		return headlessStep(kind, args, nil) // the menu route needs no element side
 	}
