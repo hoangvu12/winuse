@@ -306,6 +306,21 @@ const usageTail = `);
                                it); wait download prints the path of the
                                file a click downloaded, on a browser winuse
                                launched or cloned
+  wait <window> <element index | name: | id:> enabled | disabled | gone | value <value> | checked | unchecked | expanded | collapsed
+                               wait until an Element of the Window's latest
+                               Window State reaches that state (gone: the
+                               Element is gone, its Window closed too); text
+                               on a Window that is no browser waits in its
+                               UI Automation tree. Both read the Window
+                               without changing its Element Indexes, and fail
+                               when it closes
+  wait window <app or title> [--gone]
+                               wait until a Window of that App, or whose title
+                               holds the text, shows, and print its line;
+                               --gone: until none is left. Desktop waits only
+                               read and poll, take --timeout like the Page's,
+                               and never hold up an Action
+  wait <milliseconds>         pause, up to 300000 (300 s)
   eval <window> <expression>  run a JavaScript expression in the Page and
                                print its value (JSON for objects, cut at 4000
                                characters)

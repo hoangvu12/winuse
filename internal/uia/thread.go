@@ -322,8 +322,8 @@ func (c *Client) Run(ctx context.Context, job func(w *worker, r *run)) error {
 	}
 	delivered, serr := w.sendCtx(ctx, j)
 	if !delivered {
-		if errors.Is(serr, ErrWorkerGone) {
-			return serr
+		if errors.Is(serr, ErrWorkerGone) || isWaitPoll(ctx) {
+			return serr // a wait's poll gives up without abandoning (WithWaitPoll)
 		}
 		// ctx expired while waiting for the worker (another request's job
 		// holds it): give up on the worker, like a job that overruns.
@@ -341,6 +341,9 @@ func (c *Client) Run(ctx context.Context, job func(w *worker, r *run)) error {
 		case <-done:
 			return perr
 		default:
+		}
+		if isWaitPoll(ctx) {
+			return ctx.Err() // left to finish: a poll installs nothing (WithWaitPoll)
 		}
 		r.markAbandoned()
 		c.abandon(w)

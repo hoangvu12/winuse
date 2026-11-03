@@ -946,6 +946,35 @@ Action, a Window Action or a Page Action, the output then ends with
 `Note: the App took the foreground; winuse does not take it back.` The user
 may have been typing elsewhere: tell them, and do not repeat the Action.
 
+## Wait for a change
+
+When an Action starts something slow, wait for its effect instead of
+reading the Window State over and over:
+
+```
+winuse wait window "Save As"                   # a Window of that App, or whose title holds the text, shows: prints its line
+winuse wait window "Save As" --gone            # no such Window is left
+winuse wait <window> text <text>               # the text shows in the Window
+winuse wait <window> <ref> enabled             # also disabled, gone, value <v>, checked, unchecked, expanded, collapsed
+winuse wait 500                                # a plain pause, in milliseconds (at most 300000)
+```
+
+- A wait lasts 10 seconds by default; `--timeout <seconds>` gives it up to
+  300. One that runs out fails with what it saw last, such as
+  `it reads disabled`.
+- `<ref>` is an Element Index, `name:` or `id:` from your latest Window
+  State, so read the Window first. It resolves once, when the wait starts.
+  `gone` succeeds when that Element goes away, also when its Window
+  closes. Any other wait whose Window closes fails with
+  `the Window closed`.
+- A wait only reads, Headless. It does not renumber your Element Indexes,
+  and an Action can run while it waits.
+- A wait for something the Element cannot show, such as `value` on an
+  Element without `Value:`, fails at once.
+- In a browser Window with a Browser Connection, `text` waits in the Page,
+  and the Page waits are under "Act on a Page". An element wait there
+  takes the frame's Elements, not the Page's.
+
 ## When the user presses Esc
 
 The Esc stop is the user's way to take back control. While an Action or
@@ -1063,6 +1092,8 @@ maximize-window <window>            # needs --headed: takes the foreground
 batch <window> [--timeout <s>] <action> [args] [then <action> [args]] ...
 navigate <window> <url> [--wait load|domcontentloaded|none] | back | forward | reload <window>
 wait <window> selector <css> | text <text> | url <url> | load | download [--timeout <s>]
+wait <window> <ref> enabled|disabled|gone|value <v>|checked|unchecked|expanded|collapsed [--timeout <s>]
+wait window <app|title> [--gone] [--timeout <s>] | wait <ms>
 eval <window> <expression> | dialog <window> accept|dismiss [text]
 upload <window> [<element>] <file>...
 tab list <window> | tab new <window> [url] | tab switch <window> <tab> | tab close <window> <tab>

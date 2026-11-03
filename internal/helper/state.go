@@ -352,7 +352,10 @@ func CommandsWith(s Services) map[string]Command {
 	// Every command but status records the Agent it ran for (agents.go).
 	out := make(map[string]Command, len(cmds))
 	for name, cmd := range cmds {
-		if !observationOnlyCommand(name) {
+		switch {
+		case name == "wait":
+			cmd = s.waitGated(cmd) // waits.go: a desktop wait only reads, a Page wait is serialized
+		case !observationOnlyCommand(name):
 			cmd = s.serialized(s.reportAfter(name, cmd))
 		}
 		if name != StatusCommand {

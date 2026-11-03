@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -122,17 +121,23 @@ func parseDialogArgs(tokens []string) (protocol.DialogArgs, error) {
 // protocol.MaxWaitTimeout. In a Batch the Batch's budget bounds it.
 const maxWaitSeconds = int(protocol.MaxWaitTimeout / time.Second)
 
-// waitTimeout is the request budget a wait asks for: its --timeout plus
-// protocol.WaitMargin, so the wait runs out before the request does (0:
-// no --timeout, the command's own budget).
+// waitTimeout is the request budget a wait asks for: its --timeout, or a
+// pause's length (wait.go), plus protocol.WaitMargin, so the wait runs out
+// before the request does (0: no --timeout, the command's own budget).
 func waitTimeout(a protocol.WaitArgs) time.Duration {
-	if a.TimeoutMS <= 0 {
+	ms := a.TimeoutMS
+	if a.For == protocol.WaitMS {
+		ms = a.MS
+	}
+	if ms <= 0 {
 		return 0
 	}
-	return time.Duration(a.TimeoutMS)*time.Millisecond + protocol.WaitMargin
+	return time.Duration(ms)*time.Millisecond + protocol.WaitMargin
 }
 
-// parseWaitArgs parses what to wait for, its value and --timeout.
+// parseWaitArgs parses what to wait for after the Window, its value and
+// --timeout: a Page predicate, or an Element Reference and its state
+// (desktop-parity ticket 03, wait.go).
 func parseWaitArgs(tokens []string) (protocol.WaitArgs, error) {
 	var a protocol.WaitArgs
 	var rest []string
@@ -152,14 +157,14 @@ func parseWaitArgs(tokens []string) (protocol.WaitArgs, error) {
 			rest = append(rest, t)
 			continue
 		}
-		n, err := strconv.ParseFloat(secs, 64)
-		if err != nil || n <= 0 || n > float64(maxWaitSeconds) {
-			return a, fmt.Errorf("--timeout must be a number of seconds above 0 and at most %d, got %q", maxWaitSeconds, secs)
+		ms, err := parseWaitTimeoutMS(secs)
+		if err != nil {
+			return a, err
 		}
-		a.TimeoutMS = int(n * 1000)
+		a.TimeoutMS = ms
 	}
 	if len(rest) == 0 {
-		return a, errors.New("wait needs what to wait for: selector, text, url, load or download")
+		return a, errors.New("wait needs what to wait for: selector, text, url, load, download, or an element and its state")
 	}
 	a.For = strings.ToLower(rest[0])
 	value := strings.Join(rest[1:], " ")
@@ -177,7 +182,12 @@ func parseWaitArgs(tokens []string) (protocol.WaitArgs, error) {
 			return a, errors.New("wait download takes no value")
 		}
 	default:
-		return a, fmt.Errorf("wait for selector, text, url, load or download, not %q", rest[0])
+		index, ref, err := parseElementRefToken(rest[0])
+		if err != nil {
+			return a, fmt.Errorf("wait for selector, text, url, load, download, or an element (an element index, name: or id:) and its state, not %q", rest[0])
+		}
+		a.ElementIndex, a.Ref = index, ref
+		return parseElementWait(a, rest[0], rest[1:])
 	}
 	a.Value = value
 	return a, nil
@@ -229,6 +239,9 @@ func withWindowField(args any, window string) any {
 // pageCmd implements `winuse navigate|back|forward|reload|upload|dialog|
 // wait|eval <window> ...`.
 func pageCmd(cmd string, args []string) int {
+	if cmd == "wait" {
+		return waitCmd(args) // wait.go: the desktop waits too (desktop-parity ticket 03)
+	}
 	if len(args) == 0 {
 		fmt.Fprintf(os.Stderr, "winuse: %s takes a window reference first\n%s\n", cmd, protocol.PageUsage(cmd))
 		return 2
@@ -238,11 +251,7 @@ func pageCmd(cmd string, args []string) int {
 		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, protocol.PageUsage(cmd))
 		return 2
 	}
-	var timeout time.Duration
-	if w, ok := a.(protocol.WaitArgs); ok {
-		timeout = waitTimeout(w)
-	}
-	if err := runWithTimeout(cmd, withWindowField(a, args[0]), timeout); err != nil {
+	if err := runWithArgs(cmd, withWindowField(a, args[0])); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}
