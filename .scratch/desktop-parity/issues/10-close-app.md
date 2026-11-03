@@ -79,4 +79,5 @@ explorer.exe).
 
 Ran: `go build ./...`, `go vet ./...`, `go test ./...`,
 `go vet -tags e2e ./test/e2e`, all passing. Live (WINUSE_E2E=1, under the
-laptop's live lock): both close-app e2e tests passed (11.8 s and 11.5 s).
+laptop's live lock): both close-app e2e tests passed (11.8 s and 11.5 s),
+and again after merging origin/main (desktop-parity 08) into the branch.
