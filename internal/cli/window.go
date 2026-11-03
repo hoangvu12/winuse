@@ -2,9 +2,11 @@ package cli
 
 // The Window Actions' CLI side (ADR 0011): restore-window,
 // minimize-window, move-window, resize-window and close-window. They are
-// always Headless and take no --headed. Argument parsing is local (usage
-// errors exit 2 and never dial the helper); the helper checks the same
-// limits for any other client.
+// always Headless and take no --headed. maximize-window (desktop-parity
+// ticket 11) is the one Headed Window Action: it forwards --headed, and
+// the helper refuses it without. Argument parsing is local (usage errors
+// exit 2 and never dial the helper); the helper checks the same limits
+// for any other client.
 
 import (
 	"errors"
@@ -16,8 +18,9 @@ import (
 )
 
 const (
-	moveWindowUsage   = "usage: winuse move-window <window> <x> <y>"
-	resizeWindowUsage = "usage: winuse resize-window <window> <width> <height>"
+	moveWindowUsage     = "usage: winuse move-window <window> <x> <y>"
+	resizeWindowUsage   = "usage: winuse resize-window <window> <width> <height>"
+	maximizeWindowUsage = "usage: winuse --headed maximize-window <window>"
 
 	// The coordinate and size limits, as the helper checks them.
 	maxWindowCoordinate = 1_000_000
@@ -55,6 +58,28 @@ func resizeWindowCmd(args []string) int {
 		return 2
 	}
 	return runWindowAction("resize-window", a)
+}
+
+// maximizeWindowCmd implements `winuse --headed maximize-window
+// <window>`: maximize the Window for real, which brings it to the
+// foreground. headed is the global --headed flag; without it the helper
+// sends nothing and prints the --headed retry.
+func maximizeWindowCmd(args []string, headed bool) int {
+	a, err := parseMaximizeWindowArgs(args, headed)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, maximizeWindowUsage)
+		return 2
+	}
+	return runWindowAction("maximize-window", a)
+}
+
+// parseMaximizeWindowArgs parses maximize-window's Window and carries the
+// global --headed flag.
+func parseMaximizeWindowArgs(args []string, headed bool) (protocol.MaximizeWindowArgs, error) {
+	if len(args) != 1 {
+		return protocol.MaximizeWindowArgs{}, errors.New("maximize-window takes one window reference")
+	}
+	return protocol.MaximizeWindowArgs{Window: args[0], Headed: headed}, nil
 }
 
 func runWindowAction(cmd string, args any) int {

@@ -56,9 +56,20 @@ Every call of `Services.runAction` (the Headed pipeline: activate, real input, b
 | 12 | `scroll` Element forms, non-HeadlessActor | `scroll.go` | v1 fakes only | refused |
 | 13 | `drag @x,y @x,y` | `pointer.go` | yes (DragArgs had no `headed`; the CLI did not forward it) | refused |
 | 14 | `hover @x,y` | `pointer.go` | yes (same) | refused |
-| 15 | `tab switch` on a launched, cloned, toggled or port browser (not the extension) | `tabs.go` `tabSwitchHeaded` | yes (TabArgs had no `headed`) | refused; alt: `navigate` the active Tab |
+| 15 | `tab switch` on a launched, cloned, toggled or port browser (not the extension) | `tabs.go` `tabSwitchHeaded` | yes (TabArgs had no `headed`) | superseded by headless-max 05 (merged from main): Headless through the tab strip; its keys run only with `headed`, and a Tab the strip cannot select is refused with the `--headed` retry. Ticket 21's own gate there was dropped in the merge |
 | 16 | Batch steps of 1-15 | `batch.go` (each step's own command) | yes; a Headed step also made the whole Batch Headed (swallowing Esc, banner) | the step is refused at its turn, nothing sent for it; the Batch stops there (desktop-parity 20 decides continuation later). An unheaded Batch now picks the passive scope unless a step is `activate-window` or carries its own `headed` |
 | — | Page Element click/scroll/set-value/type-into, the Page scroll at a point, `get-window-state --screenshot` and `zoom` under `--headed`, `type-text --into` | `pageactions.go`, `screenshot.go`, `typeinto.go` | no: Headed only when `headed` was passed | unchanged |
+
+Re-inventory after merging main up to 82cc761. New since 117767a: dp-02 opened windows, hm-08 invoke-menu, hm-05 tab strip, hm-14 minimized, dp-01 clipboard, ma-02 agents, hm-15 `launch-app --cdp`, dp-08 displays, dp-11 maximize-window, dp-10 close-app, hm-03 self-activation. The `runAction` call sites are the same set, plus `maximize-window`. Results:
+- `maximize-window` already refuses without `headed`, with nothing sent and the `--headed` retry (dp-11). It is no Batch step.
+- `tabSwitchHeaded` runs only under `headed` (hm-05).
+- `invoke-menu` is Headless only.
+- The clipboard commands, `list-displays` and `screenshot --display` name no Window and send no input.
+- `launch-app --cdp` starts through the non-activating launcher of ticket 01.
+- hm-14 only lets pattern Actions reach a minimized Window.
+- hm-03 and dp-02 only report.
+- No new file activates, calls SendInput, SetForegroundWindow, SetCursorPos or AttachThreadInput, or shows a Window.
+Nothing new needed a gate.
 
 The CLI now forwards the global `--headed` to `drag`, `hover`, `tab switch` and the point form of `scroll` (it reached only the Element forms), and `takesHeaded` injects a headed Batch's flag into drag, hover and tab-switch steps.
 
@@ -86,3 +97,12 @@ Asked whether plain `type-text` and `press-key` may keep taking the foreground o
 - Task Suite: no code or task change. Its Checks read only the end state, and its fixed preamble names no route. The canvas, drag and Electron tasks (paint-draw, paint-rect, vscode-edit, probably explorer-organize and the Edge tasks) now depend on the agent reading the refusal and retrying with `--headed`, as SKILL.md teaches. A rerun is a live run still to do.
 - Docs: CONTEXT.md (Headed Action), SKILL.md (routing, "What winuse cannot do headless", keyboard routes, tab switch, Batches, result phrases, command reference), ADR 0011 (amendment notes on Decisions 3 and 4 and the ticket 19 amendment), ADR 0013 (table row done, the Reversals entry names Raise, tab switch and the Batch scope), codex-parity (an intro row, and the click, press-key, type-text, scroll, set-value, drag and secondary-action rows), README, usage text.
 - Live runs still to do: `TestHeadedOnlyActionsAreRefusedWithoutTheFlag`, `TestTypeTextIntoDialogEdit` and `TestHeadlessTypeTextIntoNotepad`, whose expectations changed in substance. Then every test that only gained `--headed`, to confirm nothing else moved, and a Task Suite pass.
+
+### 2026-11-03: merged main (4eea0e7, then 82cc761)
+
+- Conflicts:
+  - tab switch takes hm-05's version. The tab strip's Select is the unheaded route, the keys run only with `headed`, and a Tab the strip cannot select is refused with the `--headed` retry. This ticket's tab-switch gate, its refusal text and its two-sided tests were dropped in favour of main's. The SKILL.md, usage, ADR 0013 Reversals and codex-parity lines follow hm-05.
+  - `stepHeadless` now takes a context (main); the Batch's passive-scope rule from this ticket is kept around it.
+  - The `maximize-window` docs from dp-11 are merged into the SKILL.md routing paragraphs and the usage text.
+- Tests from main that sent a Headed Action without the flag now send `headed`: `TestClipboardCommandsWaitForTheActionGate` (its holding click; it hung without it), `TestOpenedMenuAfterPressKeySkipsTooltips` (`press-key Alt_L+e`) and `TestHeadedActionReportsNothing` (the double click, and the mixed Batch's Headed step). The e2e tests main added call no Headed-only form unflagged: the Classic Dialog edit and Escape routes are Headless, and `TestMaximizeWindowNeedsHeaded` already expects the refusal.
+- The re-inventory is in the Inventory section above: nothing new needed a gate.

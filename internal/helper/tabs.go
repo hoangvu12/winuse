@@ -448,7 +448,7 @@ func (s Services) tabCursor(ctx context.Context, tw tabWindow, tab *page.Tab, ve
 	var target win.Rect
 	if tab != nil {
 		label = cursorLabel(verb, tabTitle(tab.Title))
-		items := s.tabStrip(tw.w)
+		items := s.tabStrip(ctx, tw.w)
 		if pos := stripPosition(items, tab.Title); pos > 0 {
 			if b, ok := s.Actions.(elementBounder); ok {
 				if l, t, r, bt, _, err := b.ElementBounds(ctx, tw.w.ID, items[pos-1].index); err == nil {
@@ -469,7 +469,7 @@ type elementBounder interface {
 // storedElements reads a Window's latest Window State without COM:
 // *uia.Client.
 type storedElements interface {
-	StoredElements(hwnd uint64) ([]wstate.Element, bool)
+	StoredElements(ctx context.Context, hwnd uint64) ([]wstate.Element, bool)
 }
 
 // stripItem is one tab item of a browser Window's tab strip in its latest
@@ -482,12 +482,12 @@ type stripItem struct {
 // tabStrip lists the frame's tab items in the Window's latest Window
 // State, in tab strip order. Page Elements (a web page's own tabs) are
 // left out. Nil when the helper keeps no Window State for the Window.
-func (s Services) tabStrip(w win.WindowInfo) []stripItem {
+func (s Services) tabStrip(ctx context.Context, w win.WindowInfo) []stripItem {
 	r, ok := s.Actions.(storedElements)
 	if !ok {
 		return nil
 	}
-	els, ok := r.StoredElements(w.ID)
+	els, ok := r.StoredElements(ctx, w.ID)
 	if !ok {
 		return nil
 	}
@@ -498,7 +498,7 @@ func (s Services) tabStrip(w win.WindowInfo) []stripItem {
 			continue
 		}
 		if splicer != nil {
-			if o, err := splicer.ElementOrigin(w.ID, i); err != nil || o != nil {
+			if o, err := splicer.ElementOrigin(ctx, w.ID, i); err != nil || o != nil {
 				continue
 			}
 		}
@@ -579,7 +579,7 @@ func planTabKeys(items []stripItem, wt page.WindowTabs, tab page.Tab) tabKeys {
 // document.visibilityState over CDP. Everything before runAction sends
 // nothing.
 func (s Services) tabSwitchHeaded(ctx context.Context, ref string, tw tabWindow, tab page.Tab) (string, *Error) {
-	plan := planTabKeys(s.tabStrip(tw.w), tw.tabs, tab)
+	plan := planTabKeys(s.tabStrip(ctx, tw.w), tw.tabs, tab)
 	vis := page.NewVisibility(tw.conn)
 	defer func() {
 		dctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

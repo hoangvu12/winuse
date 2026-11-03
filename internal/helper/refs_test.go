@@ -11,6 +11,7 @@ package helper
 // refused without it, headless-max ticket 21).
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -23,7 +24,7 @@ import (
 
 // ResolveElementRef implements ElementResolver on the click pipeline's
 // spy: it records the call and answers with the configured outcome.
-func (s *actionSpy) ResolveElementRef(hwnd uint64, ref string) (int, error) {
+func (s *actionSpy) ResolveElementRef(ctx context.Context, hwnd uint64, ref string) (int, error) {
 	s.step("resolve")
 	s.mu.Lock()
 	s.refHwnd, s.refRef = hwnd, ref

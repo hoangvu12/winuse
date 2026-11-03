@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hoangvu12/winuse/internal/agent"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/shot"
 	"github.com/hoangvu12/winuse/internal/win"
@@ -93,7 +94,7 @@ func TestDisplayScreenshot(t *testing.T) {
 		t.Errorf("captured %v, want display 1", captured)
 	}
 	for _, id := range []uint64{0, 1} {
-		if _, ok := s.Shots.Lookup(id); ok {
+		if _, ok := s.Shots.Lookup(agent.DefaultID, id); ok {
 			t.Errorf("a display screenshot recorded an @x,y mapping under %d", id)
 		}
 	}

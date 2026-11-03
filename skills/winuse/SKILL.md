@@ -63,10 +63,15 @@ session, and `winuse status` lists the agents it served. Sub-agents of one
 session share that program, so give each one its own name in
 `WINUSE_AGENT`. Set it on every winuse command, because a Harness often
 starts a fresh shell per command: in PowerShell,
-`$env:WINUSE_AGENT = "reviewer"; winuse click 101 3`. The agents still share
-each Window's Element Indexes: another agent's read of the same Window
-renumbers them, so prefer `name:` and `id:` while another agent works in
-that Window.
+`$env:WINUSE_AGENT = "reviewer"; winuse click 101 3`.
+
+Each agent keeps its own Window State and screenshot of each Window, so
+another agent's read never renumbers your Element Indexes or moves your
+`@x,y` points. Read a Window yourself before you act in it: until you do,
+winuse refuses with nothing sent and says the Window has not been read by
+this agent, even when another agent read it. If that refusal comes on
+every command, your identity is changing between commands; set
+`WINUSE_AGENT` to one name for all of them.
 
 ## Find the Window
 
@@ -256,8 +261,10 @@ default:
   `scroll`, and `select-text`, which has no Headed form.
 - `invoke-menu`, a command of a classic menu bar, which has no Headed
   form either.
-- Every Window Action: `restore-window`, `minimize-window`, `move-window`,
-  `resize-window` and `close-window`.
+- Every Window Action but one: `restore-window`, `minimize-window`,
+  `move-window`, `resize-window` and `close-window`, and `close-app`,
+  which closes every Window of an App the way `close-window` closes one.
+  `maximize-window` is Headed only.
 - `press-key` Return or Escape on a classic dialog, `type-text` into a
   focused classic edit box, and `type-text --into` a classic edit box or a
   Page field you name, as described in "Fill in fields, keys and text".
@@ -269,15 +276,14 @@ Every other Action is a Headed Action, and it runs only when you pass
 pointer and keyboard, and frames the Window with a banner telling the user
 that winuse is in control and Esc stops it. Headed covers every `@x,y` form
 outside a Page, `--count 2|3`, `--button right|middle`, `drag`, `hover`,
-Raise, and `press-key` and `type-text` anywhere the routes below do not
-reach. Sent without
-`--headed`, these are refused: the line says why there is no background
-route and ends in `nothing was sent`, and the hint gives the exact
-`--headed` command, with `--post` or `--into` where they fit.
-`activate-window` is the one Action that takes the foreground without the
-flag, because that is what it asks for. A Headed Action activates its Window
-itself, so use `activate-window` only when focus drifted and you must
-restore it first.
+`maximize-window`, Raise, and `press-key` and `type-text` anywhere the
+routes below do not reach. Sent without `--headed`, these are refused: the
+line says why there is no background route and ends in `nothing was sent`,
+and the hint gives the exact `--headed` command, with `--post` or `--into`
+where they fit. `activate-window` is the one Action that takes the
+foreground without the flag, because that is what it asks for. A Headed
+Action activates its Window itself, so use `activate-window` only when
+focus drifted and you must restore it first.
 
 The user sees each Headless Action through the Agent Cursor, a second cursor
 that glides to the Element with a short label such as `click "Save"` and
@@ -295,10 +301,11 @@ Window State.
 `--headed` asks for the Headed way, as in `winuse --headed click 101 3`. It
 runs the Actions above that have no other route, and forces the Headed way
 for an Action that has a Headless form. On a Batch it makes every step
-Headed. Window Actions have no Headed form. It goes before the command or
-anywhere after it, except inside `type-text`'s text, `set-value`'s value
-and `clipboard-set`'s text, where a `--headed` token is literal text. Put
-the flag before the command there. Use `--headed` in these cases.
+Headed. Window Actions have no Headed form, except `maximize-window`, which
+has only one and needs `--headed`. It goes before the command or anywhere
+after it, except inside `type-text`'s text, `set-value`'s value and
+`clipboard-set`'s text, where a `--headed` token is literal text. Put the
+flag before the command there. Use `--headed` in these cases.
 
 - A command was refused with `nothing was sent` and a `--headed` retry in
   its hint, and the step needs the real pointer or keyboard.
@@ -550,15 +557,26 @@ winuse minimize-window <window>
 winuse move-window <window> <x> <y>              # visible frame top-left, screen physical pixels
 winuse resize-window <window> <width> <height>   # visible frame size, physical pixels
 winuse close-window <window>                     # the same request as the close button
+winuse --headed maximize-window <window>         # a real maximize; takes the foreground
+winuse close-app <app> [--force]                 # every Window of the App, then waits for it to exit
 ```
 
 Window Actions change the Window without bringing it to the front, read it
-back, and print `ok`. They are not Batch steps.
+back, and print `ok`. They are not Batch steps. `maximize-window` is the
+exception.
 
+- `maximize-window` maximizes the Window for real, as its maximize button
+  does. Windows cannot maximize a Window without bringing it to the front,
+  so it needs `--headed`: it brings the Window to the foreground under the
+  banner, maximizes it and reads the maximized state back. Without
+  `--headed` it is refused with nothing sent. Tell the user first if they
+  are working in another Window. To keep their foreground, `move-window`
+  and `resize-window` the Window to fill the monitor instead; it then looks
+  maximized but is not. A Window that is already maximized prints `ok`.
 - A Window that was maximized before it was minimized comes back at its
   normal size, because Windows cannot maximize without activating. The
-  output says so. Use `activate-window` when the user wants it maximized and
-  in front.
+  output says so. Use `winuse --headed maximize-window` when the user wants
+  it maximized again.
 - Some Apps bring themselves to the front when they are restored, even
   though winuse does not activate them. Expect it most from an App that
   has not been in front since it started, for example one launched in the
@@ -574,8 +592,19 @@ back, and print `ok`. They are not Batch steps.
   new screenshot line rather than repeating it.
 - `close-window` asks the Window to close and waits up to two seconds. If it
   stays open, the output says so: the app may be asking to save. Read
-  `list-windows` or the Window State and handle that prompt. winuse never
-  ends a process.
+  `list-windows` or the Window State and handle that prompt.
+- `close-app` names the App as `list-windows` prints it, or by its
+  executable name, and asks every one of its Windows to close, then waits
+  up to five seconds for it to exit. One still running gets `ok (the close
+  was requested; <App> is still running, it may be asking to save: ...)`:
+  handle its prompt as for `close-window`. It refuses administrator Apps,
+  a locked desktop and Windows' own processes (explorer, dwm, csrss,
+  winlogon and the like) with nothing sent.
+- Only `close-app --force` ends a process: after the same request and
+  wait, it ends the App's processes still running, and their unsaved work
+  is lost. Use it only when the user asked for the App to be ended, never
+  to get past a save prompt you could answer. No other command ends a
+  process.
 
 ## Clipboard
 
@@ -660,6 +689,18 @@ foreground. If the browser takes it anyway, `launch` ends its line with
 `list-windows`. It keeps rendering and its UI Automation tree while it is
 covered, so it can stay behind the user's windows. When the job is done, `winuse browser stop [browser]`
 closes a browser winuse launched or cloned and keeps its profile.
+
+An Electron App that is already running (Slack, Discord, VS Code) can get
+a Browser Connection without a restart: `winuse browser attach <window>`
+opens the App's Node.js inspector and runs winuse's code inside the App.
+Always ask the user first, and attach only after they agree. It works on
+Electron Apps only. winuse refuses with nothing sent when the App turned
+its inspector off, as Discord does; the App then stays on UI Automation,
+or, if the user agrees to restart it, relaunch it with
+`launch-app <exe path> --cdp`. While attached, any program the user runs
+could reach the App's inspector too, so run `winuse browser detach
+<window>` when the job is done. It closes the inspector, and so does the
+helper when it exits.
 
 Through the extension, the browser shows a "started debugging this
 browser" bar. The user turns winuse off with Cancel on that bar or with the
@@ -820,6 +861,13 @@ Windows rather than the App. No note does not prove nothing opened: a slow
 App can open its dialog later, so check `list-windows` when you expected
 one.
 
+An App can take the foreground by itself when a Headless Action reaches
+it, most often by bringing forward a dialog the click opened. winuse cannot
+stop that, and it does not take the foreground back. After any Headless
+Action, a Window Action or a Page Action, the output then ends with
+`Note: the App took the foreground; winuse does not take it back.` The user
+may have been typing elsewhere: tell them, and do not repeat the Action.
+
 ## When the user presses Esc
 
 The Esc stop is the user's way to take back control. While an Action or
@@ -897,6 +945,7 @@ winuse [--headed] <command> [arguments]
 list-windows [--details] [--app <name>]
 list-apps | get-window <window>
 launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <s>]
+close-app <app> [--force]           # --force ends what is still running: the only command that ends a process
 get-window-state <window> [--screenshot] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right]
@@ -915,6 +964,7 @@ hover <window> <element>            # a Page Element, Headless
 activate-window <window>            # takes the foreground, no flag needed
 restore-window <window> | minimize-window <window> | close-window <window>
 move-window <window> <x> <y> | resize-window <window> <width> <height>
+maximize-window <window>            # needs --headed: takes the foreground
 batch <window> [--timeout <s>] <action> [args] [then <action> [args]] ...
 navigate <window> <url> [--wait load|domcontentloaded|none] | back | forward | reload <window>
 wait <window> selector <css> | text <text> | url <url> | load | download [--timeout <s>]
@@ -925,6 +975,7 @@ browser status | launch | connect | stop [browser]
 browser use [browser|auto]          # pin a browser (it persists); auto removes the pin
 browser clone [browser] [--profile <folder>] [--fresh] [--close-source]
 browser ext install [browser|all] | browser ext status [browser]
+browser attach <window> | browser detach <window>   # a running Electron App; ask the user first
 clipboard-get [--format text|image|files] [--out <path>]
 clipboard-set <text> | --image <png> | --file <path>... | clipboard-clear
 list-displays | screenshot --display <n>

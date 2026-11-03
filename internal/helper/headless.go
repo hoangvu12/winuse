@@ -283,8 +283,8 @@ func (s Services) keyRoute(args json.RawMessage, w win.WindowInfo) *win.KeyTarge
 // each step's command routes on. Element Actions need the element side;
 // press-key and type-text need the Batch's Window (w nil when it did not
 // resolve: the first step then fails on it anyway) and probe it.
-func (s Services) stepHeadless(kind string, args json.RawMessage, w *win.WindowInfo) bool {
-	if w != nil && s.pageStep(kind, args, *w) {
+func (s Services) stepHeadless(ctx context.Context, kind string, args json.RawMessage, w *win.WindowInfo) bool {
+	if w != nil && s.pageStep(ctx, kind, args, *w) {
 		return true // a Page step (pageactions.go)
 	}
 	switch kind {
@@ -356,7 +356,7 @@ func (s Services) runHeadless(ctx context.Context, ref string, actor HeadlessAct
 	}
 	defer armPassive(esc)()
 
-	index, rerr := run.target.resolve(s, w)
+	index, rerr := run.target.resolve(ctx, s, w)
 	if rerr != nil {
 		return "", nothingSent(rerr)
 	}

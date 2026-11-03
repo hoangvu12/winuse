@@ -99,7 +99,7 @@ func (p *pageTrees) SplicePage(ctx context.Context, hwnd uint64, base, merged []
 	return nil
 }
 
-func (p *pageTrees) ElementOrigin(hwnd uint64, index int) (any, error) {
+func (p *pageTrees) ElementOrigin(ctx context.Context, hwnd uint64, index int) (any, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	st, ok := p.state[hwnd]
@@ -113,7 +113,7 @@ func (p *pageTrees) ElementOrigin(hwnd uint64, index int) (any, error) {
 }
 
 // ResolveElementRef makes pageTrees an ElementResolver, as *uia.Client is.
-func (p *pageTrees) ResolveElementRef(hwnd uint64, ref string) (int, error) {
+func (p *pageTrees) ResolveElementRef(ctx context.Context, hwnd uint64, ref string) (int, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	st, ok := p.state[hwnd]
@@ -199,13 +199,13 @@ func TestBrowserWindowStateMergesThePage(t *testing.T) {
 	// Element Indexes across both parts, each with its origin.
 	w := browserWindow()
 	for i, want := range map[int]int64{9: 3, 10: 113, 13: 121} {
-		o, perr := pageOrigin(Services{Actions: trees}, w, i)
+		o, perr := pageOrigin(context.Background(), Services{Actions: trees}, w, i)
 		if perr != nil || o == nil || o.BackendNodeID != want || o.SessionID != "S1" || o.LoaderID != "L1" || o.DocIndex != 8 {
 			t.Errorf("index %d origin = %+v, %v", i, o, perr)
 		}
 	}
 	for _, i := range []int{0, 7, 8, 16, 17} {
-		if o, perr := pageOrigin(Services{Actions: trees}, w, i); perr != nil || o != nil {
+		if o, perr := pageOrigin(context.Background(), Services{Actions: trees}, w, i); perr != nil || o != nil {
 			t.Errorf("frame index %d: origin %+v, %v", i, o, perr)
 		}
 	}
@@ -235,7 +235,7 @@ func TestBrowserWindowFallbackIsTodayPlusANote(t *testing.T) {
 		if trees.splices != 0 {
 			t.Error("a fallback must not splice")
 		}
-		if o, err := pageOrigin(Services{Actions: trees}, browserWindow(), 10); err != nil || o != nil {
+		if o, err := pageOrigin(context.Background(), Services{Actions: trees}, browserWindow(), 10); err != nil || o != nil {
 			t.Errorf("a fallback read has UIA indexes only: %+v, %v", o, err)
 		}
 	}
@@ -333,17 +333,17 @@ func TestActionsRefusePageElements(t *testing.T) {
 	s.Actions = trees
 	w := browserWindow()
 	ten, seven := 10, 7
-	_, err := elementTarget{index: &ten}.resolve(s, w)
+	_, err := elementTarget{index: &ten}.resolve(context.Background(), s, w)
 	if err == nil || err.Msg != "element 10 is in the Page of window 301, and winuse could not route this Action to the Page; nothing was sent" {
 		t.Fatalf("page index: %+v", err)
 	}
 	if err.Hint != "every Element Action but perform-secondary-action takes Page Elements; run winuse get-window-state 301 again and retry with a fresh Element Index" || strings.ContainsAny(err.Msg+err.Hint, "\u2013\u2014") {
 		t.Errorf("hint = %q", err.Hint)
 	}
-	if _, err := (elementTarget{ref: "name:Email"}).resolve(s, w); err == nil || !strings.Contains(err.Msg, "element 10 is in the Page") {
+	if _, err := (elementTarget{ref: "name:Email"}).resolve(context.Background(), s, w); err == nil || !strings.Contains(err.Msg, "element 10 is in the Page") {
 		t.Errorf("page name: %+v", err)
 	}
-	if i, err := (elementTarget{index: &seven}).resolve(s, w); err != nil || i != 7 {
+	if i, err := (elementTarget{index: &seven}).resolve(context.Background(), s, w); err != nil || i != 7 {
 		t.Errorf("frame index: %d, %+v", i, err)
 	}
 
@@ -371,8 +371,8 @@ func TestActionsRefusePageElements(t *testing.T) {
 // *uia.Client does for a nil handle with no origin stored.
 type lostOrigins struct{ *pageTrees }
 
-func (l lostOrigins) ElementOrigin(hwnd uint64, index int) (any, error) {
-	o, err := l.pageTrees.ElementOrigin(hwnd, index)
+func (l lostOrigins) ElementOrigin(ctx context.Context, hwnd uint64, index int) (any, error) {
+	o, err := l.pageTrees.ElementOrigin(ctx, hwnd, index)
 	if err == nil && o != nil {
 		return nil, fmt.Errorf("%w: element %d of window %d", uia.ErrPageElement, index, hwnd)
 	}
@@ -389,14 +389,14 @@ type rereadOrigins struct {
 	pageAfter int
 }
 
-func (r *rereadOrigins) ElementOrigin(hwnd uint64, index int) (any, error) {
+func (r *rereadOrigins) ElementOrigin(ctx context.Context, hwnd uint64, index int) (any, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if index == r.pageAfter && r.n > 0 {
 		r.n--
 		return nil, nil
 	}
-	return r.pageTrees.ElementOrigin(hwnd, index)
+	return r.pageTrees.ElementOrigin(ctx, hwnd, index)
 }
 
 // TestUnroutedPageElementsAreRefusedBeforeActivating: a Page Element the
@@ -484,7 +484,7 @@ func TestPageStalenessUsesTheUIAMessage(t *testing.T) {
 	}
 	// No state and out of range: the usual errors.
 	trees := newPageTrees(t)
-	if _, perr := pageOrigin(Services{Actions: trees}, w, 3); perr == nil || !strings.Contains(perr.Msg, "no cached Window State") {
+	if _, perr := pageOrigin(context.Background(), Services{Actions: trees}, w, 3); perr == nil || !strings.Contains(perr.Msg, "no cached Window State") {
 		t.Errorf("no state: %+v", perr)
 	}
 }

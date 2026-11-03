@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/hoangvu12/winuse/internal/agent"
 	"image"
 	"reflect"
 	"strings"
@@ -39,11 +40,11 @@ func (a pageActor) SplicePage(ctx context.Context, hwnd uint64, base, merged []w
 	return a.trees.SplicePage(ctx, hwnd, base, merged, from, origins)
 }
 
-func (a pageActor) ElementOrigin(hwnd uint64, index int) (any, error) {
-	return a.trees.ElementOrigin(hwnd, index)
+func (a pageActor) ElementOrigin(ctx context.Context, hwnd uint64, index int) (any, error) {
+	return a.trees.ElementOrigin(ctx, hwnd, index)
 }
 
-func (a pageActor) StoredElements(hwnd uint64) ([]wstate.Element, bool) {
+func (a pageActor) StoredElements(ctx context.Context, hwnd uint64) ([]wstate.Element, bool) {
 	a.trees.mu.Lock()
 	defer a.trees.mu.Unlock()
 	els, ok := a.trees.state[hwnd]
@@ -564,7 +565,7 @@ func TestPageWheelDeltas(t *testing.T) {
 // (headless-max ticket 21).
 func TestPageScrollAtAPoint(t *testing.T) {
 	r := newPageRig(t)
-	r.svc.Shots.Record(browserWindowID, shot.Mapping{Scale: 1, Width: 2000, Height: 2000, Coverage: image.Rect(0, 0, 2000, 2000)})
+	r.svc.Shots.Record(agent.DefaultID, browserWindowID, shot.Mapping{Scale: 1, Width: 2000, Height: 2000, Coverage: image.Rect(0, 0, 2000, 2000)})
 	if _, e := r.run(t, "scroll", protocol.ScrollArgs{Window: "301", X: 400, Y: 500, ScrollY: 240}); e != nil {
 		t.Fatal(e.Error())
 	}
@@ -765,7 +766,7 @@ func TestBatchPageStepsArePassive(t *testing.T) {
 		{"hover", protocol.HoverArgs{X: 1, Y: 1}, false},
 	} {
 		raw, _ := json.Marshal(c.args)
-		if got := s.pageStep(c.kind, raw, w); got != c.want {
+		if got := s.pageStep(context.Background(), c.kind, raw, w); got != c.want {
 			t.Errorf("%s %s: %v", c.kind, raw, got)
 		}
 	}

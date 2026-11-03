@@ -56,6 +56,17 @@ type System struct {
 	// port belongs to the process tree winuse launched.
 	ParentPID func(pid uint32) (uint32, bool)
 
+	// The attach to a running Electron App (attach.go). HasNodeDebug
+	// reports whether a process publishes the Node debug handler (the
+	// nodeCliInspect fuse is on); NodeDebug sends it the signal that opens
+	// its inspector; ListeningPorts lists the loopback ports a process
+	// listens on; InspectorWS asks a Node inspector's /json/list for its
+	// WebSocket URL.
+	HasNodeDebug   func(pid uint32) bool
+	NodeDebug      func(pid uint32) error
+	ListeningPorts func(pid uint32) []int
+	InspectorWS    func(ctx context.Context, port int) (string, error)
+
 	// Dial opens the WebSocket to a verified endpoint; handshake bounds the
 	// opening handshake (the Chrome 144+ approval prompt holds it).
 	Dial func(ctx context.Context, wsURL string, handshake time.Duration) (cdp.Transport, error)

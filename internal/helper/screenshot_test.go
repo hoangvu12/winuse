@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/hoangvu12/winuse/internal/agent"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -220,7 +221,7 @@ func TestGetWindowStateScreenshotScalesBigWindow(t *testing.T) {
 	}
 
 	// The mapping recorded for the Window describes the saved image.
-	m, ok := s.svc.Shots.Lookup(101)
+	m, ok := s.svc.Shots.Lookup(agent.DefaultID, 101)
 	if !ok {
 		t.Fatal("the mapping must be recorded")
 	}
@@ -301,7 +302,7 @@ func TestGetWindowStateScreenshotCaptureFailure(t *testing.T) {
 		t.Errorf("hint = %q", cmdErr.Hint)
 	}
 	// No mapping was recorded for a failed screenshot.
-	if _, ok := s.svc.Shots.Lookup(101); ok {
+	if _, ok := s.svc.Shots.Lookup(agent.DefaultID, 101); ok {
 		t.Error("a failed screenshot must not record a mapping")
 	}
 }
@@ -453,7 +454,7 @@ func TestZoomKeepsRecordedMapping(t *testing.T) {
 	}); cmdErr != nil {
 		t.Fatalf("zoom: %v", cmdErr.Error())
 	}
-	m, _ := s.svc.Shots.Lookup(101)
+	m, _ := s.svc.Shots.Lookup(agent.DefaultID, 101)
 	if m.Width != 800 || m.Height != 470 {
 		t.Errorf("zoom must not replace the mapping, got %dx%d", m.Width, m.Height)
 	}
@@ -554,7 +555,7 @@ func TestScreenshotRefusesMinimizedWindow(t *testing.T) {
 	if _, cmdErr := runJSON(t, cmds, "get-window-state", windowRef{Window: "101", Screenshot: true}); cmdErr != nil {
 		t.Fatalf("screenshot: %v", cmdErr.Error())
 	}
-	before, _ := s.svc.Shots.Lookup(101)
+	before, _ := s.svc.Shots.Lookup(agent.DefaultID, 101)
 	s.minimized = true
 	s.steps = nil
 
@@ -581,7 +582,7 @@ func TestScreenshotRefusesMinimizedWindow(t *testing.T) {
 		t.Errorf("steps = %v, want nothing captured or activated", s.steps)
 	}
 	// The refused screenshot recorded no Mapping: the earlier one stands.
-	if after, _ := s.svc.Shots.Lookup(101); after != before {
+	if after, _ := s.svc.Shots.Lookup(agent.DefaultID, 101); after != before {
 		t.Errorf("the refused screenshot replaced the mapping: %+v, want %+v", after, before)
 	}
 }
@@ -919,7 +920,7 @@ func TestMappingsArePerWindow(t *testing.T) {
 	if cmdErr != nil {
 		t.Fatalf("screenshot: %v", cmdErr.Error())
 	}
-	if _, ok := s.svc.Shots.Lookup(303); ok {
+	if _, ok := s.svc.Shots.Lookup(agent.DefaultID, 303); ok {
 		t.Fatal("window 303 must have no mapping")
 	}
 	_, cmdErr = runJSON(t, cmds, "click", protocol.ClickArgs{Window: "Paint", Point: &protocol.Point{X: 1, Y: 1}, Headed: true})

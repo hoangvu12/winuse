@@ -271,26 +271,26 @@ func TestStoreInstallReplacesPreviousWindowState(t *testing.T) {
 	})
 
 	// A newer read's install replaces the previous state's Elements.
-	s.install(101, s.beginRead(), []comPtr{p1}, nil)
+	s.install(defaultAgent, 101, s.beginRead(), []comPtr{p1}, nil)
 	if got := released[p1]; got != 0 {
 		t.Fatalf("p1 released %d times before any replacement, want 0", got)
 	}
 	// A different Window does not disturb the first.
-	s.install(202, s.beginRead(), []comPtr{p2}, nil)
-	s.install(101, s.beginRead(), []comPtr{p3}, nil)
+	s.install(defaultAgent, 202, s.beginRead(), []comPtr{p2}, nil)
+	s.install(defaultAgent, 101, s.beginRead(), []comPtr{p3}, nil)
 	if got := released[p1]; got != 1 {
 		t.Fatalf("the previous state's element was released %d times, want 1", got)
 	}
 	if got := released[p2]; got != 0 {
 		t.Fatalf("window 202's element released %d times, want 0", got)
 	}
-	if e, ok := s.element(101, 0); !ok || e != p3 {
+	if e, ok := s.element(defaultAgent, 101, 0); !ok || e != p3 {
 		t.Fatalf("element(101, 0) = %v, %v; want the new state's element", e, ok)
 	}
-	if _, ok := s.element(101, 1); ok {
+	if _, ok := s.element(defaultAgent, 101, 1); ok {
 		t.Fatal("index 1 must not resolve: the new state has one element")
 	}
-	if _, ok := s.element(303, 0); ok {
+	if _, ok := s.element(defaultAgent, 303, 0); ok {
 		t.Fatal("an unread Window must have no stored state")
 	}
 
@@ -321,18 +321,18 @@ func TestStoreInstallRejectsSupersededRead(t *testing.T) {
 	// completes first — the state the agent actually saw.
 	read1 := s.beginRead()
 	read2 := s.beginRead()
-	s.install(101, read2, []comPtr{p2}, nil)
-	if e, ok := s.element(101, 0); !ok || e != p2 {
+	s.install(defaultAgent, 101, read2, []comPtr{p2}, nil)
+	if e, ok := s.element(defaultAgent, 101, 0); !ok || e != p2 {
 		t.Fatalf("element(101, 0) = %v, %v; want read 2's element", e, ok)
 	}
 
 	// Read 1's job finally completes: superseded, it releases its own
 	// Elements and leaves read 2's state untouched.
-	s.install(101, read1, []comPtr{p1, p3}, nil)
-	if e, ok := s.element(101, 0); !ok || e != p2 {
+	s.install(defaultAgent, 101, read1, []comPtr{p1, p3}, nil)
+	if e, ok := s.element(defaultAgent, 101, 0); !ok || e != p2 {
 		t.Fatalf("element(101, 0) = %v, %v; the late read must not clobber it", e, ok)
 	}
-	if _, ok := s.element(101, 1); ok {
+	if _, ok := s.element(defaultAgent, 101, 1); ok {
 		t.Fatal("the late read's Elements must not extend the stored state")
 	}
 	if released[p1] != 1 || released[p3] != 1 {
@@ -343,8 +343,8 @@ func TestStoreInstallRejectsSupersededRead(t *testing.T) {
 	}
 
 	// A read starting now is the latest and installs normally.
-	s.install(101, s.beginRead(), []comPtr{p1}, nil)
-	if e, ok := s.element(101, 0); !ok || e != p1 {
+	s.install(defaultAgent, 101, s.beginRead(), []comPtr{p1}, nil)
+	if e, ok := s.element(defaultAgent, 101, 0); !ok || e != p1 {
 		t.Fatalf("element(101, 0) = %v, %v; want the newest read's element", e, ok)
 	}
 	if released[p2] != 1 {
@@ -408,8 +408,8 @@ func TestInstallReadRefusesAbandonedRuns(t *testing.T) {
 
 	// A healthy read installs its Elements as the Window's state.
 	res := &captureResult{live: []comPtr{p1}, tree: &wstate.Tree{}}
-	c.installRead(101, c.store.beginRead(), res, &run{})
-	if e, ok := c.store.element(101, 0); !ok || e != p1 {
+	c.installRead(defaultAgent, 101, c.store.beginRead(), res, &run{})
+	if e, ok := c.store.element(defaultAgent, 101, 0); !ok || e != p1 {
 		t.Fatalf("element(101, 0) = %v, %v; want the healthy read's element", e, ok)
 	}
 	if got := released[p1]; got != 0 {
@@ -421,8 +421,8 @@ func TestInstallReadRefusesAbandonedRuns(t *testing.T) {
 	r := &run{}
 	r.markAbandoned()
 	res2 := &captureResult{live: []comPtr{p2}, tree: &wstate.Tree{}}
-	c.installRead(101, c.store.beginRead(), res2, r)
-	if e, ok := c.store.element(101, 0); !ok || e != p1 {
+	c.installRead(defaultAgent, 101, c.store.beginRead(), res2, r)
+	if e, ok := c.store.element(defaultAgent, 101, 0); !ok || e != p1 {
 		t.Fatalf("element(101, 0) = %v, %v; the abandoned read must not change it", e, ok)
 	}
 	if got := released[p2]; got != 1 {
@@ -446,8 +446,8 @@ func TestStoreElementAddRefsOnHandOut(t *testing.T) {
 	s := newStore(func(comPtr) { mu.Lock(); addRefs++; mu.Unlock() },
 		func(comPtr) { mu.Lock(); released++; mu.Unlock() })
 
-	s.install(101, s.beginRead(), []comPtr{p}, nil)
-	if _, ok := s.element(101, 0); !ok {
+	s.install(defaultAgent, 101, s.beginRead(), []comPtr{p}, nil)
+	if _, ok := s.element(defaultAgent, 101, 0); !ok {
 		t.Fatal("element(101, 0) must resolve")
 	}
 	mu.Lock()
@@ -461,7 +461,7 @@ func TestStoreElementAddRefsOnHandOut(t *testing.T) {
 
 	// A newer read replaces the state: only the stored reference is
 	// released — the handed-out one keeps the Element alive for its user.
-	s.install(101, s.beginRead(), []comPtr{p2}, nil)
+	s.install(defaultAgent, 101, s.beginRead(), []comPtr{p2}, nil)
 	mu.Lock()
 	if released != 1 {
 		t.Fatalf("Release called %d times after the replacement, want 1 (the stored reference)", released)
@@ -481,7 +481,7 @@ func TestElementPointReleasesItsBorrowedElement(t *testing.T) {
 	addRefs, releases := 0, 0
 	c.store.addRef = func(comPtr) { mu.Lock(); addRefs++; mu.Unlock() }
 	c.store.release = func(comPtr) { mu.Lock(); releases++; mu.Unlock() }
-	c.store.install(101, c.store.beginRead(), []comPtr{comPtr(&a)}, nil)
+	c.store.install(defaultAgent, 101, c.store.beginRead(), []comPtr{comPtr(&a)}, nil)
 
 	if _, err := c.ElementPoint(context.Background(), 101, 0); err != nil {
 		t.Fatalf("element point: %v", err)

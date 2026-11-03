@@ -10,20 +10,22 @@ package uia
 // Element Index the agent passed directly.
 
 import (
-	"fmt"
+	"context"
 
 	"github.com/hoangvu12/winuse/internal/wstate"
 )
 
 // ResolveElementRef resolves a name:/id: Element Reference against
-// hwnd's latest Window State: exactly one match resolves to its Element
-// Index; several matches and no match fail with the candidates (never a
-// guess), and a Window with no cached Window State fails as ErrNoState
-// (read the Window State again, the shared stale contract).
-func (c *Client) ResolveElementRef(hwnd uint64, ref string) (int, error) {
-	els, ok := c.store.state(hwnd)
+// the requesting Agent's latest Window State of hwnd: exactly one match
+// resolves to its Element Index; several matches and no match fail with
+// the candidates (never a guess), and a Window with no cached Window
+// State for the Agent fails as ErrNoState (read the Window State again,
+// the shared stale contract).
+func (c *Client) ResolveElementRef(ctx context.Context, hwnd uint64, ref string) (int, error) {
+	who := storeAgent(ctx)
+	els, ok := c.store.state(who, hwnd)
 	if !ok {
-		return 0, fmt.Errorf("%w: window %d", ErrNoState, hwnd)
+		return 0, c.store.noState(who, hwnd)
 	}
 	return wstate.ResolveElementRef(els, ref)
 }

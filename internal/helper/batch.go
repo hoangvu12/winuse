@@ -154,7 +154,7 @@ func batch(commands map[string]Command, s Services) Command {
 		// itself.
 		allHeadless := true
 		for _, st := range steps {
-			if s.stepHeadless(st.kind, st.args, bw) {
+			if s.stepHeadless(ctx, st.kind, st.args, bw) {
 				continue
 			}
 			if st.kind != "activate-window" && !stepHeaded(st.args) {

@@ -147,6 +147,54 @@ func TestWindowActionsKeepTheForeground(t *testing.T) {
 	assertForeground(t, "close-window", cover)
 }
 
+// TestMaximizeWindowNeedsHeaded (desktop-parity ticket 11): maximize-window
+// is the one Headed Window Action. On a covered fixture, without --headed it
+// sends nothing: the fixture stays at its normal size and the cover keeps
+// the foreground. With --headed the fixture comes to the foreground and is
+// really maximized (IsZoomed); restore-window then brings it back to its
+// normal size.
+func TestMaximizeWindowNeedsHeaded(t *testing.T) {
+	optIn(t)
+	_, window := startFixtureWithState(t)
+	id := mustWindowID(t, window)
+	r0, err := win.WindowFrame(id)
+	if err != nil {
+		t.Fatalf("reading the window rectangle: %v", err)
+	}
+	cover := coverWindow(t, window)
+
+	stdout, stderr, exit := runWindowAction(t, "maximize-window", window)
+	assertActionFailed(t, "maximize-window without --headed", stdout, stderr, exit, "cannot be maximized headless")
+	if !strings.Contains(stderr, "nothing was sent") || !strings.Contains(stderr, "winuse --headed maximize-window "+window) {
+		t.Errorf("the refusal must say nothing was sent and give the --headed retry: %q", stderr)
+	}
+	if win.IsMaximized(id) {
+		t.Error("maximize-window without --headed maximized the Window")
+	}
+	assertForeground(t, "maximize-window without --headed", cover)
+
+	stdout, stderr, exit = runWinuse(t, []string{"--headed", "maximize-window", window}, "WINUSE_HELPER_IDLE="+e2eIdle)
+	assertActionOK(t, "--headed maximize-window", stdout, stderr, exit)
+	if !win.IsMaximized(id) {
+		t.Error("--headed maximize-window printed ok but the Window is not maximized")
+	}
+	waitForeground(t, id, 5*time.Second)
+	waitOverlayGone(t, 5*time.Second)
+
+	stdout, stderr, exit = runWindowAction(t, "restore-window", window)
+	assertActionOK(t, "restore-window after the maximize", stdout, stderr, exit)
+	if win.IsMaximized(id) {
+		t.Error("restore-window: the Window is still maximized")
+	}
+	r1, err := win.WindowFrame(id)
+	if err != nil {
+		t.Fatalf("reading the window rectangle: %v", err)
+	}
+	if !near(r1.Width(), r0.Width()) || !near(r1.Height(), r0.Height()) {
+		t.Errorf("restore-window: the Window is %+v, was %+v before the maximize", r1, r0)
+	}
+}
+
 // TestRestoreWindowReportsSelfActivation (headless-max ticket 02): an App
 // that brings itself to the foreground when it is restored. The target is
 // the fixture in its -activate-on-restore mode: it calls

@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -76,11 +77,11 @@ func TestWindowStateAfterAHeadlessTabSwitch(t *testing.T) {
 			t.Errorf("stored Element %d is the stale document", i)
 		}
 	}
-	o, perr := pageOrigin(Services{Actions: trees}, browserWindow(), m.Doc+1)
+	o, perr := pageOrigin(context.Background(), Services{Actions: trees}, browserWindow(), m.Doc+1)
 	if perr != nil || o == nil || o.DocIndex != 4 {
 		t.Errorf("origin %+v, %v", o, perr)
 	}
-	if i, err := trees.ResolveElementRef(browserWindowID, "name:Cancel"); err != nil || i != len(m.Tree.Elements)-1 {
+	if i, err := trees.ResolveElementRef(context.Background(), browserWindowID, "name:Cancel"); err != nil || i != len(m.Tree.Elements)-1 {
 		t.Errorf("name:Cancel = %d, %v", i, err)
 	}
 }

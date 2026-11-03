@@ -17,7 +17,7 @@ import (
 // elements back the given live pointers, through the real
 // beginRead/install path.
 func installState(c *Client, hwnd uint64, elems []comPtr, elements []wstate.Element) {
-	c.store.install(hwnd, c.store.beginRead(), elems, elements)
+	c.store.install(defaultAgent, hwnd, c.store.beginRead(), elems, elements)
 }
 
 // refState is the reference test tree: two Elements share a Name, one
@@ -47,7 +47,7 @@ func TestResolveElementRefAgainstStoredState(t *testing.T) {
 		{"id:searchBox", 3}, // an empty Name is still reachable by ID
 	}
 	for _, tc := range cases {
-		index, err := c.ResolveElementRef(101, tc.ref)
+		index, err := c.ResolveElementRef(context.Background(), 101, tc.ref)
 		if err != nil {
 			t.Errorf("ResolveElementRef(%q): %v", tc.ref, err)
 			continue
@@ -57,7 +57,7 @@ func TestResolveElementRefAgainstStoredState(t *testing.T) {
 		}
 		// The resolved Index must also be the one whose live Element the
 		// store holds — the Element the Action's own step will probe.
-		if _, ok := c.store.element(101, index); !ok {
+		if _, ok := c.store.element(defaultAgent, 101, index); !ok {
 			t.Errorf("the resolved index %d has no live element", index)
 		}
 	}
@@ -69,7 +69,7 @@ func TestResolveElementRefAmbiguousAndMissing(t *testing.T) {
 	a, b, cc, d := 1, 2, 3, 4
 	installState(c, 101, []comPtr{comPtr(&a), comPtr(&b), comPtr(&cc), comPtr(&d)}, refState())
 
-	index, err := c.ResolveElementRef(101, "name:Twin")
+	index, err := c.ResolveElementRef(context.Background(), 101, "name:Twin")
 	if index != 0 || err == nil {
 		t.Fatalf("ambiguous reference resolved to %d, %v; it must never guess", index, err)
 	}
@@ -82,7 +82,7 @@ func TestResolveElementRefAmbiguousAndMissing(t *testing.T) {
 		t.Errorf("candidates = %q", amb.Candidates)
 	}
 
-	index, err = c.ResolveElementRef(101, "name:OK")
+	index, err = c.ResolveElementRef(context.Background(), 101, "name:OK")
 	if index != 0 || err == nil {
 		t.Fatalf("missing reference resolved to %d, %v; it must fail", index, err)
 	}
@@ -97,7 +97,7 @@ func TestResolveElementRefNoStateAndReplacement(t *testing.T) {
 	defer c.Close()
 
 	// A Window with no stored Window State: the shared no-state failure.
-	if _, err := c.ResolveElementRef(101, "name:OK"); !errors.Is(err, ErrNoState) {
+	if _, err := c.ResolveElementRef(context.Background(), 101, "name:OK"); !errors.Is(err, ErrNoState) {
 		t.Fatalf("error = %v, want ErrNoState", err)
 	}
 
@@ -112,10 +112,10 @@ func TestResolveElementRefNoStateAndReplacement(t *testing.T) {
 		{Depth: 0, Role: "window", Name: "New", AutomationId: "w"},
 		{Depth: 1, Role: "button", Name: "OK", AutomationId: "ok"},
 	})
-	if index, err := c.ResolveElementRef(101, "name:OK"); err != nil || index != 1 {
+	if index, err := c.ResolveElementRef(context.Background(), 101, "name:OK"); err != nil || index != 1 {
 		t.Errorf("ResolveElementRef(name:OK) after replacement = %d, %v, want 1, nil", index, err)
 	}
-	if _, err := c.ResolveElementRef(101, "name:Old"); err == nil {
+	if _, err := c.ResolveElementRef(context.Background(), 101, "name:Old"); err == nil {
 		t.Error("a reference to the replaced Window State's name must fail")
 	}
 }
@@ -129,7 +129,7 @@ func TestResolveElementRefNeedsNoWorker(t *testing.T) {
 	installState(c, 101, []comPtr{comPtr(&a)}, []wstate.Element{
 		{Depth: 0, Role: "window", Name: "Example", AutomationId: "w"},
 	})
-	if index, err := c.ResolveElementRef(101, "name:Example"); err != nil || index != 0 {
+	if index, err := c.ResolveElementRef(context.Background(), 101, "name:Example"); err != nil || index != 0 {
 		t.Errorf("ResolveElementRef = %d, %v, want 0, nil with no worker at all", index, err)
 	}
 	// ElementPoint still needs one (the COM probe), proving the split.

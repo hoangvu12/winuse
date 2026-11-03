@@ -391,7 +391,7 @@ func (s Services) frameElementRect(ctx context.Context, w win.WindowInfo, match 
 	if !ok {
 		return win.Rect{}, false
 	}
-	els, ok := st.StoredElements(w.ID)
+	els, ok := st.StoredElements(ctx, w.ID)
 	if !ok {
 		return win.Rect{}, false
 	}
@@ -405,7 +405,7 @@ func (s Services) frameElementRect(ctx context.Context, w win.WindowInfo, match 
 			continue
 		}
 		if splicer != nil {
-			if o, err := splicer.ElementOrigin(w.ID, i); err != nil || o != nil {
+			if o, err := splicer.ElementOrigin(ctx, w.ID, i); err != nil || o != nil {
 				continue
 			}
 		}

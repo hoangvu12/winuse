@@ -85,7 +85,7 @@ func scroll(s Services) Command {
 				"to scroll without the foreground, name an Element inside the list or page: winuse scroll <window> <element> <up|down|left|right> [steps]")
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-			pt, serr := shotPoint(s, w, x, y, "scroll")
+			pt, serr := shotPoint(ctx, s, w, x, y, "scroll")
 			if serr != nil {
 				return "", serr
 			}
@@ -122,11 +122,11 @@ func drag(s Services) Command {
 				"")
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-			from, serr := shotPoint(s, w, fx, fy, "drag")
+			from, serr := shotPoint(ctx, s, w, fx, fy, "drag")
 			if serr != nil {
 				return "", serr
 			}
-			to, serr := shotPoint(s, w, tx, ty, "drag")
+			to, serr := shotPoint(ctx, s, w, tx, ty, "drag")
 			if serr != nil {
 				return "", serr
 			}
@@ -164,7 +164,7 @@ func hover(s Services) Command {
 				"")
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-			pt, serr := shotPoint(s, w, x, y, "hover")
+			pt, serr := shotPoint(ctx, s, w, x, y, "hover")
 			if serr != nil {
 				return "", serr
 			}

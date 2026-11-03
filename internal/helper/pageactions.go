@@ -81,7 +81,7 @@ func (p *livePages) PageActiveTab(ctx context.Context, w win.WindowInfo) (string
 // pageStoredElements reads the Elements of a Window's latest Window State
 // (*uia.Client), for the Agent Cursor's label.
 type pageStoredElements interface {
-	StoredElements(hwnd uint64) ([]wstate.Element, bool)
+	StoredElements(ctx context.Context, hwnd uint64) ([]wstate.Element, bool)
 }
 
 // pageCapable reports whether this helper keeps Page Elements at all.
@@ -94,8 +94,8 @@ func (s Services) pageCapable() bool {
 // Element Index and its origin. ok is false for a UIA Element, the @x,y
 // form, and anything that does not resolve; the command's own path then
 // runs and reports any failure exactly as before.
-func (s Services) pageRoute(ref string, t elementTarget) (w win.WindowInfo, index int, o *page.Origin, ok bool) {
-	w, index, o, refused := s.pageResolve(ref, t)
+func (s Services) pageRoute(ctx context.Context, ref string, t elementTarget) (w win.WindowInfo, index int, o *page.Origin, ok bool) {
+	w, index, o, refused := s.pageResolve(ctx, ref, t)
 	return w, index, o, o != nil && refused == nil
 }
 
@@ -104,8 +104,8 @@ func (s Services) pageRoute(ref string, t elementTarget) (w win.WindowInfo, inde
 // and the command's own routes run. The commands whose other routes may
 // activate the Window go through here, so a Page Element is refused before
 // any activation.
-func (s Services) onPage(ref string, t elementTarget, act func(w win.WindowInfo, index int, o *page.Origin) (string, *Error)) (out string, rerr *Error, handled bool) {
-	w, index, o, refused := s.pageResolve(ref, t)
+func (s Services) onPage(ctx context.Context, ref string, t elementTarget, act func(w win.WindowInfo, index int, o *page.Origin) (string, *Error)) (out string, rerr *Error, handled bool) {
+	w, index, o, refused := s.pageResolve(ctx, ref, t)
 	switch {
 	case refused != nil:
 		return "", refused, true
@@ -119,7 +119,7 @@ func (s Services) onPage(ref string, t elementTarget, act func(w win.WindowInfo,
 // pageResolve is pageRoute's and onPage's resolution: o is nil for anything
 // but a Page Element, and refused is set for a Page Element whose origin is
 // missing from the latest Window State (refusePageElement).
-func (s Services) pageResolve(ref string, t elementTarget) (w win.WindowInfo, index int, o *page.Origin, refused *Error) {
+func (s Services) pageResolve(ctx context.Context, ref string, t elementTarget) (w win.WindowInfo, index int, o *page.Origin, refused *Error) {
 	if t.point != nil || !s.pageCapable() {
 		return w, 0, nil, nil
 	}
@@ -129,7 +129,7 @@ func (s Services) pageResolve(ref string, t elementTarget) (w win.WindowInfo, in
 	}
 	switch {
 	case t.ref != "":
-		i, rerr := resolveElementRef(s, w, t.ref)
+		i, rerr := resolveElementRef(ctx, s, w, t.ref)
 		if rerr != nil {
 			return w, 0, nil, nil
 		}
@@ -139,9 +139,9 @@ func (s Services) pageResolve(ref string, t elementTarget) (w win.WindowInfo, in
 	default:
 		return w, 0, nil, nil
 	}
-	o, perr := pageOrigin(s, w, index)
+	o, perr := pageOrigin(ctx, s, w, index)
 	if perr != nil {
-		return w, index, nil, refusePageElement(s, w, index)
+		return w, index, nil, refusePageElement(ctx, s, w, index)
 	}
 	return w, index, o, nil
 }
@@ -149,13 +149,13 @@ func (s Services) pageResolve(ref string, t elementTarget) (w win.WindowInfo, in
 // pageDoc finds the Page of a Window's latest Window State: the origin of
 // its first Page Element (its Tab, session and document Element), or nil
 // when that Window State holds no Page.
-func (s Services) pageDoc(w win.WindowInfo) *page.Origin {
+func (s Services) pageDoc(ctx context.Context, w win.WindowInfo) *page.Origin {
 	splicer, ok := s.Actions.(PageSplicer)
 	if !ok {
 		return nil
 	}
 	for i := 0; ; i++ {
-		o, err := splicer.ElementOrigin(w.ID, i)
+		o, err := splicer.ElementOrigin(ctx, w.ID, i)
 		if err != nil && !errors.Is(err, uia.ErrPageElement) {
 			return nil // no Window State, or past its end
 		}
@@ -230,9 +230,9 @@ func (s Services) pageScreenRect(ctx context.Context, w win.WindowInfo, o *page.
 
 // pageElementName is the Element's name in the latest Window State, for
 // the Agent Cursor's label; fallback when it has none there.
-func (s Services) pageElementName(w win.WindowInfo, index int, fallback string) string {
+func (s Services) pageElementName(ctx context.Context, w win.WindowInfo, index int, fallback string) string {
 	if st, ok := s.Actions.(pageStoredElements); ok {
-		if els, ok := st.StoredElements(w.ID); ok && index >= 0 && index < len(els) && els[index].Name != "" {
+		if els, ok := st.StoredElements(ctx, w.ID); ok && index >= 0 && index < len(els) && els[index].Name != "" {
 			return els[index].Name
 		}
 	}
@@ -297,7 +297,7 @@ func (s Services) runPage(ctx context.Context, run pageRun) (string, *Error) {
 		}
 		return "", pageFailure(err, run, 0)
 	}
-	label := cursorLabel(run.verb, s.pageElementName(w, run.index, aim.Name))
+	label := cursorLabel(run.verb, s.pageElementName(ctx, w, run.index, aim.Name))
 	rect, _ := s.pageScreenRect(ctx, w, o, aim.Rect)
 	rect, shown := s.cursorTravelRect(w, rect, label)
 	if esc.Stopped() {
@@ -630,11 +630,11 @@ func (s Services) pageScroll(ctx context.Context, w win.WindowInfo, index int, o
 // false when the Window's latest Window State holds no Page or the point
 // is outside the Page's document Element; @x,y then keeps today's route.
 func (s Services) pagePoint(ctx context.Context, w win.WindowInfo, x, y int) (o *page.Origin, screen win.Rect, ok bool) {
-	o = s.pageDoc(w)
+	o = s.pageDoc(ctx, w)
 	if o == nil || s.Shots == nil {
 		return nil, screen, false
 	}
-	pt, serr := shotPoint(s, w, x, y, "scroll")
+	pt, serr := shotPoint(ctx, s, w, x, y, "scroll")
 	if serr != nil {
 		return nil, screen, false
 	}
@@ -764,7 +764,7 @@ func pageHasFocus(f page.Focus) bool {
 // active one, and the Page holds the focus. Any failure keeps today's
 // route.
 func (s Services) pageKeyTarget(ctx context.Context, w win.WindowInfo) (*page.Origin, page.Focus, bool) {
-	o := s.pageDoc(w)
+	o := s.pageDoc(ctx, w)
 	if o == nil {
 		return nil, page.Focus{}, false
 	}
@@ -826,7 +826,7 @@ func (s Services) pagePressKey(ctx context.Context, ref string, chord keys.Chord
 // State holds its Page. The keyboard steps do not probe the Page's focus
 // here: an earlier step (a click in a field) usually moves it, and each
 // step still decides its own route when it runs.
-func (s Services) pageStep(kind string, args json.RawMessage, w win.WindowInfo) bool {
+func (s Services) pageStep(ctx context.Context, kind string, args json.RawMessage, w win.WindowInfo) bool {
 	if pageOnlyStep(kind, args) { // ticket 06: the page-only Actions (pagecommands.go)
 		return true
 	}
@@ -840,21 +840,21 @@ func (s Services) pageStep(kind string, args json.RawMessage, w win.WindowInfo) 
 		if json.Unmarshal(args, &a) != nil || a.Headed || !elementForm(a.ElementIndex, a.Ref, a.Point) {
 			return false
 		}
-		_, _, _, ok := s.pageRoute(ref, elementTarget{index: a.ElementIndex, ref: a.Ref})
+		_, _, _, ok := s.pageRoute(ctx, ref, elementTarget{index: a.ElementIndex, ref: a.Ref})
 		return ok
 	case "set-value":
 		var a protocol.SetValueArgs
 		if json.Unmarshal(args, &a) != nil || a.Headed || !elementForm(a.ElementIndex, a.Ref, a.Point) {
 			return false
 		}
-		_, _, _, ok := s.pageRoute(ref, elementTarget{index: a.ElementIndex, ref: a.Ref})
+		_, _, _, ok := s.pageRoute(ctx, ref, elementTarget{index: a.ElementIndex, ref: a.Ref})
 		return ok
 	case "select-text":
 		var a protocol.SelectTextArgs
 		if json.Unmarshal(args, &a) != nil || !headlessSelectText(a) {
 			return false
 		}
-		_, _, _, ok := s.pageRoute(ref, elementTarget{index: a.ElementIndex, ref: a.Ref})
+		_, _, _, ok := s.pageRoute(ctx, ref, elementTarget{index: a.ElementIndex, ref: a.Ref})
 		return ok
 	case "scroll":
 		var a protocol.ScrollArgs
@@ -865,10 +865,10 @@ func (s Services) pageStep(kind string, args json.RawMessage, w win.WindowInfo) 
 			if !headlessElementScroll(a) {
 				return false
 			}
-			_, _, _, ok := s.pageRoute(ref, elementTarget{index: a.ElementIndex, ref: a.Ref})
+			_, _, _, ok := s.pageRoute(ctx, ref, elementTarget{index: a.ElementIndex, ref: a.Ref})
 			return ok
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), pageProbeBudget)
+		ctx, cancel := context.WithTimeout(withAgent(context.Background(), AgentOf(ctx)), pageProbeBudget) // the Agent's store (multi-agent 03)
 		defer cancel()
 		_, _, ok := s.pagePoint(ctx, w, a.X, a.Y)
 		return ok
@@ -880,11 +880,11 @@ func (s Services) pageStep(kind string, args json.RawMessage, w win.WindowInfo) 
 		if json.Unmarshal(args, &f) != nil || f.Headed || f.Post {
 			return false
 		}
-		o := s.pageDoc(w)
+		o := s.pageDoc(ctx, w)
 		if o == nil {
 			return false
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), pageProbeBudget)
+		ctx, cancel := context.WithTimeout(withAgent(context.Background(), AgentOf(ctx)), pageProbeBudget)
 		defer cancel()
 		return s.pageTabCheck(ctx, w, -1, o) == nil
 	}

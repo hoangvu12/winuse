@@ -17,6 +17,10 @@ amends Decision 4 and Decision 3's "Scroll at `@x,y` stays Headed"
 and the `--headed` retry unless the agent passed `--headed`. They no
 longer go Headed on their own.
 
+Amended on 2026-11-03 (desktop-parity ticket 11): Decision 2 gains
+`maximize-window`, the one Headed Window Action. See the amendment at
+the end.
+
 ## Context
 
 ADR 0010 made Element Actions Headless and kept every other Action
@@ -126,3 +130,54 @@ still decided before anything is sent.
 
 Remembering a Window's last focused edit control from an earlier read
 was rejected: a stale handle could type into the wrong tab.
+
+## Amendment: maximize-window is a Headed Window Action (2026-11-03)
+
+Ticket 11 of `.scratch/desktop-parity/`, decided by the user: a real
+maximize, like agent-desktop's `maximize`. The consequence above still
+holds: Windows has no non-activating maximize (`ShowWindow(SW_MAXIMIZE)`
+activates). So `maximize-window` cannot join Decision 2's Headless set.
+
+Decision 2 now reads: restore, minimize, move, resize and close are
+Headless; maximize is a Headed Window Action.
+
+- `winuse --headed maximize-window <window>` runs the Headed pipeline:
+  the refusals, the in-control banner and the swallowing Esc scope, the
+  activation (which restores a minimized Window), then
+  `ShowWindowAsync(SW_MAXIMIZE)`, read back through `IsZoomed`. A
+  read-back that fails says the maximize was delivered.
+- Without `--headed` it is refused with "nothing was sent" (ADR 0013 rule
+  3). The hint gives the `--headed` retry, or `move-window` and
+  `resize-window` to the monitor's work area, which look maximized and
+  keep the foreground but leave the Window in its normal state.
+- A Window that is already maximized is left alone, with or without
+  `--headed`.
+- Like the other Window Actions, it is not a Batch step.
+
+The headless "fill the work area" form (`resize-window --fill`, the
+ticket's option 2) was not built.
+
+## Amendment: self-activation is reported after every Headless Action (2026-11-03)
+
+Ticket 03 of `.scratch/headless-max/`, decided by the user as "detect and
+report". Decision 2's report for `restore-window` now covers the other
+Actions that run without the foreground. In the safe probe batch, an App
+took the foreground by itself after a Headless click: the fixture's
+dialog, 19 ms after a UIA Invoke opened it, while the foreground lock had
+lapsed.
+
+- After every Element, keyboard, Window and Page Action, and after a
+  Batch, winuse compares the foreground with the one before the Action,
+  after the Action's settle. If it moved from another process's Window to
+  a Window of the target's process (the target, or a dialog it opened),
+  the output ends with `Note: the App took the foreground; winuse does
+  not take it back.`, the line `launch-app` prints. When the Action
+  opened a Window, winuse looks once more a moment later.
+- A request that ran a Headed Action took the foreground on purpose and
+  reports nothing, and neither does a Batch with a Headed step.
+  `restore-window` keeps its own wording, and `activate-window` asks for
+  the foreground.
+- The EnableWindow guard is not built. It cannot cover a dialog shown
+  after the pattern call returns, and LockSetForegroundWindow fails
+  without foreground rights (probe round 3). winuse still never takes the
+  foreground back.

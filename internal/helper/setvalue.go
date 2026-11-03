@@ -89,7 +89,7 @@ func setValue(s Services) Command {
 			return "", terr
 		}
 		// A Page Element routes over the Browser Connection (pageactions.go).
-		if out, rerr, ok := s.onPage(a.Window, target, func(w win.WindowInfo, index int, o *page.Origin) (string, *Error) {
+		if out, rerr, ok := s.onPage(ctx, a.Window, target, func(w win.WindowInfo, index int, o *page.Origin) (string, *Error) {
 			return s.pageSetValue(ctx, w, index, o, target, a.Value, a.Headed)
 		}); ok {
 			return out, rerr
@@ -122,7 +122,7 @@ func setValue(s Services) Command {
 					"to set it without the foreground, name the Element by its Element Index, name: or id: from winuse get-window-state")
 			}
 			return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-				pt, serr := shotPoint(s, w, x, y, "set-value")
+				pt, serr := shotPoint(ctx, s, w, x, y, "set-value")
 				if serr != nil {
 					return "", serr
 				}
@@ -139,7 +139,7 @@ func setValue(s Services) Command {
 				func(id string) string { return "set-value " + id + " " + target.token() + " <value>" }, "")
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-			index, rerr := target.resolve(s, w)
+			index, rerr := target.resolve(ctx, s, w)
 			if rerr != nil {
 				return "", rerr
 			}
@@ -183,7 +183,7 @@ func performSecondaryAction(s Services) Command {
 			return "", Fail(fmt.Sprintf("unsupported secondary action: %s; expected %s", a.Action, uia.ExpectedSecondaryActions()),
 				"the Secondary Actions each Element offers are listed in its Window State line")
 		}
-		if out, rerr, ok := s.onPage(a.Window, target, func(w win.WindowInfo, index int, _ *page.Origin) (string, *Error) {
+		if out, rerr, ok := s.onPage(ctx, a.Window, target, func(w win.WindowInfo, index int, _ *page.Origin) (string, *Error) {
 			return "", pageSecondaryRefusal(w, index, target, action)
 		}); ok {
 			return out, rerr
@@ -219,7 +219,7 @@ func performSecondaryAction(s Services) Command {
 					"to act without the foreground, name the Element by its Element Index, name: or id: from winuse get-window-state")
 			}
 			return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-				pt, serr := shotPoint(s, w, x, y, "perform-secondary-action")
+				pt, serr := shotPoint(ctx, s, w, x, y, "perform-secondary-action")
 				if serr != nil {
 					return "", serr
 				}
@@ -245,7 +245,7 @@ func performSecondaryAction(s Services) Command {
 				}, alt)
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-			index, rerr := target.resolve(s, w)
+			index, rerr := target.resolve(ctx, s, w)
 			if rerr != nil {
 				return "", rerr
 			}

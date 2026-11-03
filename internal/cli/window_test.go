@@ -92,6 +92,8 @@ func TestWindowActionUsageErrorsExit2WithoutDialing(t *testing.T) {
 		{[]string{"move-window", "101", "x", "0"}, "usage: winuse move-window <window> <x> <y>"},
 		{[]string{"resize-window", "101", "0", "0"}, "usage: winuse resize-window <window> <width> <height>"},
 		{[]string{"--headed", "close-window", "101", "102"}, "usage: winuse close-window <window>"},
+		{[]string{"--headed", "maximize-window"}, "usage: winuse --headed maximize-window <window>"},
+		{[]string{"maximize-window", "101", "--headed", "102"}, "maximize-window takes one window reference"},
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
@@ -119,10 +121,36 @@ func TestWindowActionUsageErrorsExit2WithoutDialing(t *testing.T) {
 	}
 }
 
+// TestMaximizeWindowCarriesHeaded (desktop-parity ticket 11): the global
+// --headed flag, before or after the command, reaches maximize-window's
+// request; the helper refuses the request without it.
+func TestMaximizeWindowCarriesHeaded(t *testing.T) {
+	cases := []struct {
+		line []string
+		want protocol.MaximizeWindowArgs
+	}{
+		{[]string{"maximize-window", "101"}, protocol.MaximizeWindowArgs{Window: "101"}},
+		{[]string{"--headed", "maximize-window", "101"}, protocol.MaximizeWindowArgs{Window: "101", Headed: true}},
+		{[]string{"maximize-window", "notepad", "--headed"}, protocol.MaximizeWindowArgs{Window: "notepad", Headed: true}},
+	}
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.line, " "), func(t *testing.T) {
+			rest, headed := extractHeaded(tc.line)
+			got, err := parseMaximizeWindowArgs(rest[1:], headed)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("args = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestUsageListsWindowActions(t *testing.T) {
 	for _, want := range []string{
 		"restore-window <window>", "minimize-window <window>", "move-window <window> <x> <y>",
-		"resize-window <window> <width> <height>", "close-window <window>",
+		"resize-window <window> <width> <height>", "close-window <window>", "maximize-window <window>",
 	} {
 		if !strings.Contains(Usage, want) {
 			t.Errorf("usage text missing %q", want)

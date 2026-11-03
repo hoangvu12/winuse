@@ -113,7 +113,7 @@ func click(s Services) Command {
 		}
 		// A Page Element routes over the Browser Connection (browser merge
 		// ticket 05, pageactions.go).
-		if out, rerr, ok := s.onPage(a.Window, target, func(w win.WindowInfo, index int, o *page.Origin) (string, *Error) {
+		if out, rerr, ok := s.onPage(ctx, a.Window, target, func(w win.WindowInfo, index int, o *page.Origin) (string, *Error) {
 			return s.pageClick(ctx, w, index, o, target, button, count, a.Headed)
 		}); ok {
 			return out, rerr
@@ -130,7 +130,7 @@ func click(s Services) Command {
 					"to click without the foreground, name the Element by its Element Index, name: or id: from winuse get-window-state")
 			}
 			return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-				pt, serr := shotPoint(s, w, x, y, "click")
+				pt, serr := shotPoint(ctx, s, w, x, y, "click")
 				if serr != nil {
 					return "", serr
 				}
@@ -167,7 +167,7 @@ func click(s Services) Command {
 				func(id string) string { return "click " + id + " " + target.token() + clickOptions(button, count) }, "")
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-			index, rerr := target.resolve(s, w)
+			index, rerr := target.resolve(ctx, s, w)
 			if rerr != nil {
 				return "", rerr
 			}
@@ -241,6 +241,7 @@ func (s Services) runAction(ctx context.Context, ref string, act func(ctx contex
 	// Disarm, the physical Esc key stops this Action.
 	s.Esc.Arm()
 	defer s.Esc.Disarm()
+	markHeaded(ctx) // selfactivation.go: this foreground is winuse's own doing
 	if err := s.Activate(w.ID); err != nil {
 		return "", activationError(err)
 	}
@@ -278,8 +279,7 @@ func lockedDesktopFailure(desktop string) *Error {
 func elementError(err error, w win.WindowInfo, index int) *Error {
 	switch {
 	case errors.Is(err, uia.ErrNoState):
-		return Fail(fmt.Sprintf("no cached Window State is available for window %d", w.ID),
-			"run winuse get-window-state "+strconv.FormatUint(w.ID, 10)+" to read the Window's Elements before acting on them")
+		return noStateError(err, w)
 	case errors.Is(err, uia.ErrStale):
 		return Fail(fmt.Sprintf("element %d is not available in the cached Window State for window %d", index, w.ID),
 			"the Window State has changed; run winuse get-window-state "+strconv.FormatUint(w.ID, 10)+" again and use fresh Element Indexes")

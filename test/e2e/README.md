@@ -402,6 +402,12 @@ still the foreground window afterwards. The shared helpers are in
   toggles the checkbox and `set-value` fills the text field, while Element
   `scroll` and the screenshot are refused with "is minimized". The Window
   stays minimized, and the foreground and the pointer do not change.
+- `TestWindowStatesArePerAgent` (`agents_test.go`, multi-agent ticket 03):
+  two Agents named by `WINUSE_AGENT` (alpha and beta) against one fixture
+  through one helper. After alpha reads the Window, beta's click is refused
+  with "has not been read by this agent" and nothing sent; after beta
+  reads too, alpha's click still lands on alpha's Element, then beta's; the
+  foreground stays put; `winuse status` lists both Agents.
 - `TestSetValueOnOffTheCheckbox`: `set-value` with `on`, `ON`, `checked`,
   `off`, `unchecked`, `True` and `false` on the covered checkbox. Setting
   the state it already has sends nothing (the fixture's generation stays
@@ -425,6 +431,22 @@ still the foreground window afterwards. The shared helpers are in
   it when it has not been the foreground since it started, and whether a
   process the test starts takes the foreground at launch depends on the
   desktop's input state, so it skipped on most runs.
+- `TestMaximizeWindowNeedsHeaded` (`window_actions_test.go`,
+  desktop-parity ticket 11): on a covered fixture, `maximize-window`
+  without `--headed` is refused with "nothing was sent" and the `--headed`
+  retry, leaving the fixture at its size and the cover in front;
+  `--headed maximize-window` brings the fixture to the foreground and
+  maximizes it (IsZoomed), and `restore-window` returns it to its size.
+- `TestCloseAppClosesTwoWindowsWithOneCommand` (`close_app_test.go`,
+  desktop-parity ticket 10): two instances of a uniquely named copy of the
+  fixture, closed by one `close-app <name>`, which prints `ok` once both
+  processes have exited; a plain fixture beside them stays open. The copy's
+  name keeps close-app away from any process the test did not start.
+- `TestCloseAppForceEndsAnAppThatStaysOpen` (`close_app_test.go`): the
+  copy with `-ignore-close` stays open on `close-app`, which prints the
+  still-running `ok`; `close-app --force` then ends its process. The
+  protected-process refusal is tested offline only: a live test would aim
+  at the user's own explorer.exe.
 - `TestLaunchAppKeepsTheForeground`, `TestLaunchAppMinimized` and
   `TestLaunchAppNotepadReportsTheForeground` (`launch_noactivate_test.go`,
   headless-max ticket 01): a cover fixture is made the foreground with
@@ -459,6 +481,12 @@ still the foreground window afterwards. The shared helpers are in
   `get-window <id>` finds that Window, and a Headless Escape on it prints
   `Note: window <id> closed`. The foreground stays put. Every other test
   accepts such note lines after `ok` and logs them (`assertActionOK`).
+- `TestHeadlessClickReportsSelfActivation` (`self_activation_test.go`,
+  headless-max 03): the same click on the covered fixture must end with
+  `Note: the App took the foreground` exactly when the fixture holds the
+  foreground right after it, and never otherwise. The App only takes the
+  foreground when the foreground lock has lapsed (in the probe, the
+  user's last-input process had exited), so the log says which case ran.
 - `TestHeadlessTypeTextIntoPasswordEdit`: a posted Tab moves the focus to
   the password Edit, then `type-text` fills it and the output is exactly
   `ok`, without the text.
@@ -544,7 +572,7 @@ Run only these tests:
 
 ```
 set WINUSE_E2E=1
-go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted|OpenedAndClosed" ./test/e2e
+go test -tags e2e -v -run "Headless|SetValueOnOff|WindowActions|ElementScroll|Posted|OpenedAndClosed|SelfActivation" ./test/e2e
 ```
 
 ## The clipboard test
@@ -826,12 +854,17 @@ through UI Automation" note), a `set-value` on it must answer `ok`, and
 throughout. `TestLaunchAppCDPOnWebView2` needs `WINUSE_E2E_WEBVIEW2`, an
 executable that hosts a WebView2 control (it skips without it): the
 launch must print the WebView2 note, and the covered Window's State must
-come over CDP; the test logs it. Both end the App, the fixture and the
-helper.
+come over CDP; the test logs it. `TestAttachToRunningElectron` starts
+the same electron.exe the plain way (no debugging port), covers it, and
+runs `winuse browser attach <window>`: the Window State must then show
+the field read over CDP, `set-value` must be read back by `eval`, and
+`winuse browser detach <window>` must answer `ok (detached` after which
+`eval` fails. It sends the Node debug signal into the test's own Electron
+process only. All three end the App, the fixture and the helper.
 
 ```
 set WINUSE_E2E=1
 set WINUSE_E2E_ELECTRON=C:\electron-dist\electron-vX.Y.Z-win32-x64\electron.exe
 set WINUSE_E2E_WEBVIEW2=C:\path\to\WebView2App.exe
-go test -tags e2e -v -timeout 5m -run TestLaunchAppCDP ./test/e2e
+go test -tags e2e -v -timeout 5m -run "TestLaunchAppCDP|TestAttachToRunningElectron" ./test/e2e
 ```

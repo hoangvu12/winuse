@@ -138,7 +138,7 @@ func scrollElement(ctx context.Context, s Services, args json.RawMessage, a prot
 		return "", perr
 	}
 	// A Page Element routes over the Browser Connection (pageactions.go).
-	if out, rerr, ok := s.onPage(a.Window, plan.target, func(w win.WindowInfo, index int, o *page.Origin) (string, *Error) {
+	if out, rerr, ok := s.onPage(ctx, a.Window, plan.target, func(w win.WindowInfo, index int, o *page.Origin) (string, *Error) {
 		return s.pageScroll(ctx, w, index, o, plan, a.Headed)
 	}); ok {
 		return out, rerr
@@ -174,7 +174,7 @@ func scrollElement(ctx context.Context, s Services, args json.RawMessage, a prot
 			return "", Fail("scroll into-view is unavailable: no UIA client", "")
 		}
 		return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-			index, rerr := plan.target.resolve(s, w)
+			index, rerr := plan.target.resolve(ctx, s, w)
 			if rerr != nil {
 				return "", rerr
 			}
@@ -190,7 +190,7 @@ func scrollElement(ctx context.Context, s Services, args json.RawMessage, a prot
 	}
 	dx, dy := wheelDelta(plan.dir, plan.steps)
 	return s.runAction(ctx, a.Window, func(ctx context.Context, w win.WindowInfo) (string, *Error) {
-		index, rerr := plan.target.resolve(s, w)
+		index, rerr := plan.target.resolve(ctx, s, w)
 		if rerr != nil {
 			return "", rerr
 		}

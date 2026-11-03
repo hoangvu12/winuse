@@ -69,6 +69,10 @@ var commandTimeouts = map[string]time.Duration{
 	// waits up to 15 s for it to reconnect.
 	"browser-ext-install": BrowserTimeout,
 	"browser-ext-status":  BrowserTimeout,
+	// The attach to a running Electron App (headless-max 15): the signal,
+	// the inspector's port and the shim's install.
+	"browser-attach": BrowserTimeout,
+	"browser-detach": BrowserTimeout,
 	// The tab commands (ticket 07) may dial the Browser Connection first,
 	// which can wait for the browser's approval prompt.
 	"tab-list":   BrowserTimeout,
@@ -203,6 +207,21 @@ type LaunchArgs struct {
 	Cwd       string   `json:"cwd,omitempty"`       // the working directory, absolute (the CLI resolves it)
 	Env       []string `json:"env,omitempty"`       // KEY=VALUE entries over the helper's environment
 	CDP       bool     `json:"cdp,omitempty"`       // an Electron or WebView2 App with a loopback debugging port (headless-max 15)
+}
+
+// CloseAppArgs are close-app's arguments (desktop-parity ticket 10): the
+// App whose Windows to close, named as a Window reference names an App
+// (display name or executable name), and with Force, agent-desktop's
+// --force: end the App's processes still running after the posted close.
+type CloseAppArgs struct {
+	App   string `json:"app"`
+	Force bool   `json:"force,omitempty"`
+}
+
+// AttachArgs are the arguments of browser attach and browser detach
+// (headless-max 15): a Window of the running Electron App.
+type AttachArgs struct {
+	Window string `json:"window"`
 }
 
 // BrowserArgs are the arguments of browser status, use, launch, connect
@@ -359,6 +378,14 @@ type ResizeWindowArgs struct {
 	Window string `json:"window"`
 	Width  int    `json:"width"`
 	Height int    `json:"height"`
+}
+
+// MaximizeWindowArgs are maximize-window's arguments (desktop-parity
+// ticket 11): the one Headed Window Action. Windows has no non-activating
+// maximize, so without headed nothing is sent.
+type MaximizeWindowArgs struct {
+	Window string `json:"window"`
+	Headed bool   `json:"headed,omitempty"` // the global --headed flag: activate, then SW_MAXIMIZE
 }
 
 // TypeTextArgs are type-text's arguments — Codex's type_text parameters:
