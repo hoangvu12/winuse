@@ -24,7 +24,10 @@ import (
 
 const fakeEditHWND = 0x55 // the classic Edit's own window
 
-var chromeMenu = win.WindowInfo{ID: 780, PID: notepadPID, App: "Notepad", Class: win.ChromiumClass, ExStyle: toolWindow, Visible: true, Bounds: popupBounds}
+// chromeMenu has a Chrome menu popup's styles as measured: WS_POPUP,
+// WS_EX_TOOLWINDOW and WS_EX_NOACTIVATE, owned by its browser Window.
+var chromeMenu = win.WindowInfo{ID: 780, PID: notepadPID, App: "Notepad", Class: win.ChromiumClass,
+	Style: 0x96000000, ExStyle: 0x08200088, Owner: 790, Visible: true, Bounds: popupBounds}
 
 // contextMenuSpy is a headlessSpy whose element side is also a
 // ContextMenuActor, with the menu seams faked and recorded.
@@ -391,7 +394,9 @@ func TestMenuEscapeStepPerMenuKind(t *testing.T) {
 		{winFormsMenu, escape, true},
 		{winFormsMenu, json.RawMessage(`{"window":"1","key":"Return"}`), false},
 		{winFormsMenu, json.RawMessage(`{"window":"1","key":"Escape","post":true}`), false},
-		{chromeMenu, escape, false}, // ticket 20's window-message route
+		{chromeMenu, escape, true},
+		// The browser Window itself keeps ticket 20's window-message route.
+		{win.WindowInfo{Class: win.ChromiumClass, Style: 0x16cf0000, ExStyle: 0x200100, Title: "page - Google Chrome"}, escape, false},
 		{notepadMain, escape, false},
 	} {
 		if got := menuEscapeStep(c.args, c.w); got != c.want {

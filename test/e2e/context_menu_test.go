@@ -194,7 +194,8 @@ func TestContextMenuOnACoveredBrowserPage(t *testing.T) {
 		t.Fatalf("menu %d is %+v, want a Chromium menu popup", menu, w)
 	}
 
-	// Unmeasured: Escape through the window-message route on the popup.
+	// Escape posted to the menu popup (the menu route, not ticket 20's
+	// activation pair, on which Chrome sometimes dismissed the menu first).
 	stdout, stderr, exit = runAsMenuAgent(t, "press-key", m[1], "Escape")
 	if exit != 0 {
 		t.Errorf("press-key <menu> Escape: exit %d, stdout %q, stderr %q", exit, stdout, stderr)
