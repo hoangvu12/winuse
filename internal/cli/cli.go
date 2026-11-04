@@ -311,7 +311,7 @@ const usageTail = `);
                                Connection, one per line: * for the active
                                Tab, its id, title and URL
   tab new <window> [url]      open a Tab in the background of that Window and
-                               print its id
+                               print its id; work in it as <window>:<tab>
   tab close <window> <tab>    close a Tab by its id from tab list (4 or more
                                characters of it); the last Tab is refused,
                                run close-window to close the Window
@@ -436,7 +436,14 @@ const usageTail = `);
 
 a <window> is a Window ID, or an App name when that App has exactly one Window;
 an element index, name:<text>, id:<AutomationId> or @x,y (the latest
-screenshot's pixels) name an Element of the Window's latest Window State
+screenshot's pixels) name an Element of the Window's latest Window State.
+A Tab target, <window>:<tab> (a tab id from tab list or tab new), names a Tab
+of that browser shown or not: get-window-state, click, set-value, scroll,
+hover, drag, select-text, type-text, press-key, upload, navigate, back,
+forward, reload, dialog, wait, eval and batch read and act on that Tab
+through its Browser Connection, headless, without switching the Tab the
+user sees; its Element Indexes are its own, and --headed, --post and @x,y
+are refused
 `
 
 // Usage is the short command surface (grows as tickets land). The

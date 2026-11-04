@@ -193,7 +193,8 @@ func (e *Extension) Minimized(windowID int) bool {
 // OpenFromTab is the page in the tab opener opening a new tab, as a
 // target=_blank link or window.open does: the browser selects the new tab
 // in the opener's window, or opens it in a new popup window. Then
-// background.js's guard runs when the opener is held: the tab the user had
+// background.js's guard runs when the opener is held and not the tab its
+// window shows: the tab the user had
 // selected is selected again, the new tab joins its opener's group, and a
 // popup window is minimized. It returns the new tab's target id.
 func (e *Extension) OpenFromTab(opener, url string, popup bool) string {
@@ -208,7 +209,7 @@ func (e *Extension) OpenFromTab(opener, url string, popup bool) string {
 	if from == nil {
 		return ""
 	}
-	window, group := from.WindowID, from.Group
+	window, group, shown := from.WindowID, from.Group, from.Active
 	if popup {
 		window = 900 + len(e.Windows)
 		e.Windows = append(e.Windows, Window{WindowID: window, Width: 500, Height: 600, State: "normal"})
@@ -222,8 +223,8 @@ func (e *Extension) OpenFromTab(opener, url string, popup bool) string {
 		}
 	}
 	e.Tabs = append(e.Tabs, Tab{TargetID: id, URL: url, Title: url, TabID: 2000 + len(e.Tabs), WindowID: window, Active: true})
-	if !e.held[opener] {
-		return id
+	if !e.held[opener] || shown {
+		return id // the guard only covers a held tab in the background
 	}
 	n := &e.Tabs[len(e.Tabs)-1]
 	if popup {

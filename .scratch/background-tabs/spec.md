@@ -1,6 +1,7 @@
 # Background Tabs: agents work in their own Tabs while the user keeps theirs
 
-Status: ready-for-agent (decided by the user; design details in ADR 0017)
+Status: done offline (decided by the user; design details in ADR 0017);
+live verification is issue 06, ready-for-human
 
 ## Problem
 

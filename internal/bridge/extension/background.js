@@ -364,6 +364,11 @@ function unholdTarget(targetId) {
 // with its opener, and minimize a popup window it opened in.
 chrome.tabs.onCreated.addListener(async (tab) => {
   if (tab.openerTabId === undefined || !held.has(tab.openerTabId)) return;
+  // A tab opened from the tab the user is looking at is theirs to follow,
+  // even when an agent held that tab once (the new tab may already be the
+  // selected one here).
+  const s = selected.get(tab.windowId) || [];
+  if (s[1] === tab.openerTabId || (s[1] === tab.id && s[0] === tab.openerTabId)) return;
   spawned.set(tab.id, Date.now());
   if (tab.active) keepUsersTab(tab.windowId, tab.id);
   try {

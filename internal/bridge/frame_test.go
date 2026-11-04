@@ -262,6 +262,7 @@ func TestExtensionIdentity(t *testing.T) {
 		"await chrome.tabs.update(tab.id, { autoDiscardable: false });",
 		"chrome.tabs.update(tabId, { autoDiscardable: h.discardable })",
 		"tab.openerTabId === undefined || !held.has(tab.openerTabId)",
+		"if (s[1] === tab.openerTabId || (s[1] === tab.id && s[0] === tab.openerTabId)) return;",
 		"chrome.tabs.update(back, { active: true })",
 		"unholdTarget(targetId);",
 	} {

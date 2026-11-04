@@ -430,6 +430,22 @@ func TestTabTargetLinkOpensANewTabBesideTheUsersTab(t *testing.T) {
 	r.noUserImpact(t)
 }
 
+// TestTheUsersOwnLinksAreNotGuarded: a Tab the user is looking at, held
+// once by an agent, still lets the user follow a link into a new Tab.
+func TestTheUsersOwnLinksAreNotGuarded(t *testing.T) {
+	r := newBgRig(t)
+	if _, e := r.as(t, "claude", "get-window-state", protocol.GetWindowArgs{Window: "301:e100"}); e != nil {
+		t.Fatal(e.Msg)
+	}
+	if !r.ext.Held(bgInbox) {
+		t.Fatalf("holds = %v", r.ext.Holds())
+	}
+	id := r.ext.OpenFromTab(bgInbox, "https://user.test/", false)
+	if got := r.ext.ActiveTab(1); got != id {
+		t.Errorf("window 1 shows %s, not the Tab the user opened (%s)", got, id)
+	}
+}
+
 // TestTabTargetNativePopups: a click on a <select> or a date input of a
 // background Tab is refused (its popup would show on the user's screen),
 // and set-value sets them through the DOM.

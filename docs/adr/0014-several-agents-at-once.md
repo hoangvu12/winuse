@@ -123,6 +123,9 @@ State a reference came from.
   the lanes landed (ticket 06).
 - A Page lane is keyed by the browser Window, whose one active Tab its
   Page Actions act on; two agents in one browser Window take turns.
+  Amended by ADR 0017: an Action on a Tab target (`<window>:<tab>`) takes
+  a lane of its Tab, as Decision 1 has it, so agents in different Tabs of
+  one window run at once.
 - The Window identity records (ticket 09) are shared by every agent: when
   another agent lists or reads a Window that took over a closed Window's
   ID first, an agent still holding the old ID passes the check and acts

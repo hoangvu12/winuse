@@ -423,7 +423,8 @@ Codex's helper rejects concurrent requests ("already has an active
 request"); winuse's helper runs Actions in lanes (multi-agent 06, ADR 0014
 Decisions 1, 6 and 7). A Headless or Posted Action takes the lane of its
 target Window's UI thread, a Page Action the lane of its browser Window's
-Page, and a Headed Action (or a command that names no Window, such as the
+Page (one on a Tab target, `<window>:<tab>`, the lane of that Tab: ADR
+0017), and a Headed Action (or a command that names no Window, such as the
 clipboard's) the one desktop lane plus its Window's thread lane: one
 command still controls the real input and the foreground at a time, and
 so does one command per UI thread, while Actions on Windows of different
@@ -456,6 +457,23 @@ working until the next full read. A `name:`/`id:` reference the cached
 Window State cannot answer (a helper restart, a gone Element) is resolved
 in a fresh bounded read instead of failing (desktop-parity 17), and the
 output says so. **matched (extended)**.
+
+### background tabs
+
+Codex acts only in what the screen shows, so an agent in the user's
+browser takes over the Tab they look at. winuse's Page commands also take
+a Tab target, `<window>:<tab>` in place of `<window>` (background-tabs,
+ADR 0017): a Tab of that browser, shown or not, read over CDP alone into a
+Window State of its own (Element Indexes per Agent per Tab) and acted on
+Headless, in a lane of its own, so several agents work in their own Tabs
+of one window while the user keeps theirs. A Tab an agent works in is kept
+rendering and unfrozen (focus emulation, an active lifecycle) and, through
+the extension, never discarded; a Tab it opens never takes the user's
+place. `--headed`, `--post`, `@x,y` and the commands with no Page route are
+refused with nothing sent, a click that would open a native popup (a
+drop-down list, a date or colour picker) is refused in favour of
+`set-value`, a screenshot is bounded and falls back to the tree, and the
+Agent Cursor stays off a Tab the user cannot see. **extension**.
 
 ### extensions beyond Codex
 
@@ -496,7 +514,8 @@ Tabs it opened. The tab commands (`tab list|new|close|switch`) are
 Headless; `tab switch` on a browser winuse launched or cloned selects the
 Tab's item in the Window's UIA tab strip and reads IsSelected back
 (headless-max 05), and `--headed` switches with real keys in the
-foreground instead. Codex switches tabs only with keys.
+foreground instead. Codex switches tabs only with keys. A Tab the Window
+does not show is a Tab target (see background tabs).
 `clipboard-get`, `clipboard-set` and `clipboard-clear` read, replace and
 empty the clipboard (text, an image as PNG, a file list), like
 agent-desktop's: Desktop commands that name no Window, need no
