@@ -354,6 +354,7 @@ type headlessRun struct {
 // checkpoints sit after the cursor's travel (a stop there sent nothing)
 // and after the act (a stop there outranks the outcome, as in v1).
 func (s Services) runHeadless(ctx context.Context, ref string, actor HeadlessActor, run headlessRun) (string, *Error) {
+	ctx = withCursorTrace(ctx, run.cmd) // cursortrace.go
 	w, rerr := resolveWindow(s, ref)
 	if rerr != nil {
 		return "", rerr
@@ -390,9 +391,13 @@ func (s Services) runHeadless(ctx context.Context, ref string, actor HeadlessAct
 		return "", escStopBeforeActError()
 	}
 	err := run.act(ctx, w, index)
+	cursorTrace(ctx, "acted")
 	var verify *uia.VerifyError
 	if shown && (err == nil || errors.As(err, &verify)) {
 		// Delivered (a failed read-back was still delivered): the ripple.
+		// An act that refuses sends nothing, so the ripple waits for the
+		// act; a click's Invoke reads nothing back, so it follows the
+		// delivery closely (browser-ux 03).
 		s.cursorClick(ctx, w, rect)
 	}
 	if esc.Stopped() {
@@ -467,7 +472,9 @@ func (s Services) cursorTravelRect(ctx context.Context, w win.WindowInfo, target
 	if target.Width() <= 0 || target.Height() <= 0 {
 		return win.Rect{}, false
 	}
+	cursorTrace(ctx, "travel")
 	cursorBestEffort("travelling", func() { s.cursorFor(ctx, w).Travel(w.Bounds, target, label) })
+	cursorTrace(ctx, "landed")
 	return target, true
 }
 
@@ -489,7 +496,9 @@ func (s Services) cursorTravel(ctx context.Context, actor HeadlessActor, w win.W
 	if rect.Width() <= 0 || rect.Height() <= 0 {
 		return win.Rect{}, false
 	}
+	cursorTrace(ctx, "travel")
 	cursorBestEffort("travelling", func() { s.cursorFor(ctx, w).Travel(w.Bounds, rect, cursorLabel(verb, name)) })
+	cursorTrace(ctx, "landed")
 	return rect, true
 }
 

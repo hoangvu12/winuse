@@ -11,6 +11,7 @@ package helper
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/hoangvu12/winuse/internal/agent"
 	"image"
@@ -87,6 +88,8 @@ type pageRig struct {
 	scrolls   [][5]int32
 	textField map[string]any // select-text's textFieldJS answer
 	selection map[string]any // selectTextJS answer override; nil echoes the span
+
+	ripplesAtRelease []int // the cursor's ripples when each mouseReleased arrived
 }
 
 func newPageRig(t *testing.T) *pageRig {
@@ -242,6 +245,14 @@ func (r *pageRig) handlers() {
 		}
 		hold := r.holdPress && p["type"] == "mousePressed"
 		r.mu.Unlock()
+		if p["type"] == "mouseReleased" {
+			r.cursor.mu.Lock()
+			n := len(r.cursor.clicks)
+			r.cursor.mu.Unlock()
+			r.mu.Lock()
+			r.ripplesAtRelease = append(r.ripplesAtRelease, n)
+			r.mu.Unlock()
+		}
 		if hold {
 			c.Event(m.SessionID, "Page.javascriptDialogOpening", map[string]any{"type": "confirm", "message": "Leave this page?"})
 			return nil, cdptest.ErrNoReply
@@ -370,6 +381,40 @@ func TestPageRoutingTable(t *testing.T) {
 	}
 }
 
+// TestPageCursorOriginIsTheContentWindow (browser-ux 04): the Page's
+// screen origin is the browser's content child window when the Win32 read
+// finds one, with no UIA document read; with neither origin the cursor
+// stays put instead of gliding to the Window's centre.
+func TestPageCursorOriginIsTheContentWindow(t *testing.T) {
+	r := newPageRig(t)
+	r.svc.PageContent = func(hwnd uint64) (win.Rect, bool) {
+		return win.Rect{Left: 0, Top: 121, Right: 1200, Bottom: 1000}, hwnd == browserWindowID
+	}
+	if _, e := r.run(t, "click", protocol.ClickArgs{Window: "301", ElementIndex: idx(7)}); e != nil {
+		t.Fatal(e.Error())
+	}
+	// content (0, 121) + CSS (10, 20, 50x10) x 1.5
+	rect := win.Rect{Left: 15, Top: 151, Right: 90, Bottom: 166}
+	if len(r.cursor.targets) != 1 || r.cursor.targets[0] != rect {
+		t.Errorf("cursor %v, want %v", r.cursor.targets, rect)
+	}
+	if containsStep(r.recorded(), "bounds") {
+		t.Errorf("the document Element was read: %v", r.recorded())
+	}
+
+	r = newPageRig(t)
+	r.boundsErr = errors.New("the tree is thin")
+	if _, e := r.run(t, "click", protocol.ClickArgs{Window: "301", ElementIndex: idx(7)}); e != nil {
+		t.Fatal(e.Error())
+	}
+	if len(r.cursor.targets) != 0 || len(r.cursor.clicks) != 0 {
+		t.Errorf("no origin: cursor %v, clicks %v, want none", r.cursor.targets, r.cursor.clicks)
+	}
+	if len(r.sent()) == 0 {
+		t.Error("the click was not sent")
+	}
+}
+
 // TestPageClickSendsTrustedInputAndShowsTheCursor: the mouse sequence at
 // the box centre, and the Agent Cursor at the transformed rectangle with
 // the Element's name from the Window State.
@@ -395,6 +440,11 @@ func TestPageClickSendsTrustedInputAndShowsTheCursor(t *testing.T) {
 	}
 	if r.cursor.labels[0] != `double click "Sign in"` {
 		t.Errorf("label %q", r.cursor.labels[0])
+	}
+	// The ripple plays when the first press is accepted, before the
+	// release reaches the Page, not after the whole Action (browser-ux 03).
+	if got := r.ripplesAtRelease; len(got) != 2 || got[0] != 1 || got[1] != 1 {
+		t.Errorf("ripples when each release arrived = %v, want [1 1]", got)
 	}
 	if r.scrolled != 1 {
 		t.Errorf("scrollIntoViewIfNeeded ran %d times", r.scrolled)

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/wstate"
@@ -177,6 +178,23 @@ func (p storedPageTrees) StoredElements(ctx context.Context, hwnd uint64) ([]wst
 	defer p.mu.Unlock()
 	els, ok := p.state[hwnd]
 	return els, ok
+}
+
+// TestFindWithoutABrowserConnectionSaysSo (browser-ux 07): a find whose
+// read fell back to UI Automation does not claim a Browser Connection in
+// the note after the fallback note.
+func TestFindWithoutABrowserConnectionSaysSo(t *testing.T) {
+	s, trees := pageServices(t, &fakePages{err: &page.Unavailable{Reason: "no Browser Connection is open to Chrome"}}, -1)
+	s.Actions = storedPageTrees{trees}
+	out, e := runCommand(t, CommandsWith(s), "find", protocol.FindArgs{Window: "301", Role: "document"})
+	if e != nil {
+		t.Fatalf("find: %+v", e)
+	}
+	if !strings.Contains(out, "Note: "+page.FallbackPrefix) ||
+		!strings.Contains(out, "Note: find read window 301's Window State afresh, so its earlier") ||
+		strings.Contains(out, "through its Browser Connection") {
+		t.Errorf("find on the fallback:\n%s", out)
+	}
 }
 
 // A browser Window's Page is read whole over CDP: find filters a fresh

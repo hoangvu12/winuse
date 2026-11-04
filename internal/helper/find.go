@@ -29,6 +29,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
@@ -109,10 +110,14 @@ func findInFreshRead(s Services, ctx context.Context, w win.WindowInfo, q wstate
 		return "", noMatch(w, q, wstate.RolesPresent(tree.Elements))
 	}
 	out := header(w) + b.String() + "\n"
+	how := " through its Browser Connection"
 	for _, n := range tree.Notes {
 		out += notePrefix + n + "\n"
+		if strings.HasPrefix(n, page.FallbackPrefix) {
+			how = "" // read through UI Automation: saying otherwise contradicted the note above (browser-ux 07)
+		}
 	}
-	return out + fmt.Sprintf("%sfind read window %d's Window State afresh through its Browser Connection, so its earlier Element Indexes were replaced by these\n", notePrefix, w.ID), nil
+	return out + fmt.Sprintf("%sfind read window %d's Window State afresh%s, so its earlier Element Indexes were replaced by these\n", notePrefix, w.ID, how), nil
 }
 
 // noMatch is find's failure when nothing matched; a role filter lists the

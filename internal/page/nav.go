@@ -406,8 +406,13 @@ func (d *exceptionDetails) message() string {
 	return strings.TrimSpace(msg)
 }
 
-// EvalLimit caps the printed result of eval, in characters.
-const EvalLimit = 4000
+// EvalLimit caps the printed result of eval, in characters, unless the
+// agent asks for more with --max, up to EvalMaxLimit (browser-ux 06: an
+// agent paged a long result with one eval per 3900 characters).
+const (
+	EvalLimit    = 4000
+	EvalMaxLimit = 100000
+)
 
 // EvalResult is eval's printed value.
 type EvalResult struct {
@@ -427,6 +432,11 @@ var ErrNotJSON = errors.New("the result cannot be printed as JSON (a DOM node, a
 // not waited for) and polls stopped: on a stop, the running script is
 // terminated (Runtime.terminateExecution) and ErrStopped returned.
 func Eval(ctx context.Context, c *cdp.Client, session, expr string, stopped func() bool) (EvalResult, error) {
+	return EvalUpTo(ctx, c, session, expr, stopped, EvalLimit)
+}
+
+// EvalUpTo is Eval with its own cut, in characters (EvalLimit for 0).
+func EvalUpTo(ctx context.Context, c *cdp.Client, session, expr string, stopped func() bool, limit int) (EvalResult, error) {
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	type answer struct {
@@ -472,7 +482,7 @@ func Eval(ctx context.Context, c *cdp.Client, session, expr string, stopped func
 	if r.Result.Subtype == "node" || r.Result.Subtype == "window" || r.Result.Type == "function" {
 		return EvalResult{}, ErrNotJSON // by value these print as {}, which says nothing
 	}
-	return FormatResult(r.Result), nil
+	return formatResult(r.Result, limit), nil
 }
 
 // RemoteObject is the part of Runtime.RemoteObject eval prints.
@@ -487,7 +497,13 @@ type RemoteObject struct {
 // FormatResult prints a value compactly: a string as is, undefined and
 // the unserializable numbers (NaN, Infinity, -0, 123n) in their JS form,
 // anything else as compact JSON; cut at EvalLimit characters.
-func FormatResult(r RemoteObject) EvalResult {
+func FormatResult(r RemoteObject) EvalResult { return formatResult(r, EvalLimit) }
+
+// formatResult is FormatResult cut at limit characters (EvalLimit for 0).
+func formatResult(r RemoteObject, limit int) EvalResult {
+	if limit <= 0 {
+		limit = EvalLimit
+	}
 	var text string
 	switch {
 	case r.Type == "undefined":
@@ -510,8 +526,8 @@ func FormatResult(r RemoteObject) EvalResult {
 	}
 	runes := []rune(text)
 	res := EvalResult{Text: text, Total: len(runes)}
-	if len(runes) > EvalLimit {
-		res.Text = string(runes[:EvalLimit])
+	if len(runes) > limit {
+		res.Text = string(runes[:limit])
 	}
 	return res
 }

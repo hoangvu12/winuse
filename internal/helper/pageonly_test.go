@@ -571,8 +571,16 @@ func TestEval(t *testing.T) {
 	r.evalReply = map[string]any{"result": map[string]any{"type": "string", "value": strings.Repeat("a", page.EvalLimit+5)}}
 	out, e := r.run(t, "eval", protocol.EvalArgs{Window: "301", Expression: "big"})
 	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
-	if e != nil || len(lines) != 2 || len(lines[0]) != page.EvalLimit || lines[1] != fmt.Sprintf("note: the result has %d characters, and winuse printed the first %d; return less, for example with .slice(0, 1000)", page.EvalLimit+5, page.EvalLimit) {
+	if e != nil || len(lines) != 2 || len(lines[0]) != page.EvalLimit || lines[1] != fmt.Sprintf("note: the result has %d characters, and winuse printed the first %d; return less, for example with .slice(0, 1000), or raise the cut with --max (up to %d)", page.EvalLimit+5, page.EvalLimit, page.EvalMaxLimit) {
 		t.Errorf("cut: %d lines %+v", len(lines), e)
+	}
+	// --max raises the cut (browser-ux 06).
+	out, e = r.run(t, "eval", protocol.EvalArgs{Window: "301", Expression: "big", Max: page.EvalLimit + 5})
+	if e != nil || out != strings.Repeat("a", page.EvalLimit+5)+"\n" {
+		t.Errorf("--max: %d characters, %+v", len(out), e)
+	}
+	if _, e = r.run(t, "eval", protocol.EvalArgs{Window: "301", Expression: "big", Max: page.EvalMaxLimit + 1}); e == nil {
+		t.Error("--max past the ceiling was accepted")
 	}
 	r.passiveOnly(t)
 }

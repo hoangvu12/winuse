@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/bridge"
 	"github.com/hoangvu12/winuse/internal/bridge/bridgetest"
@@ -95,6 +96,38 @@ func twoWindows(t *testing.T) *pagetest.Browser {
 
 func windowOne() Geometry {
 	return Geometry{Title: "Docs - Google Chrome", Rect: box(DIPBounds{Left: 100, Top: 60, Width: 1200, Height: 800}, 96), DPI: 96}
+}
+
+// TestFindTabSettledWaitsOutATitleChange (browser-ux 05): right after a
+// navigation the Window's caption still shows the old title; the match
+// reads the caption again and finds the Tab once it caught up. A Window
+// whose title never matches still fails, after the settle time.
+func TestFindTabSettledWaitsOutATitleChange(t *testing.T) {
+	conn := twoWindows(t).Connection(t)
+	reads := 0
+	geo := func() Geometry {
+		reads++
+		g := windowOne()
+		if reads < 3 {
+			g.Title = "Loading... - Google Chrome"
+		}
+		return g
+	}
+	tab, err := FindTabSettled(context.Background(), conn, geo)
+	if err != nil || tab.TargetID != "BBBB000000000000000000000000000B" || reads != 3 {
+		t.Errorf("tab %s, err %v, reads %d", tab.TargetID, err, reads)
+	}
+
+	start := time.Now()
+	_, err = FindTabSettled(context.Background(), conn, func() Geometry {
+		g := windowOne()
+		g.Title = "Nothing - Google Chrome"
+		return g
+	})
+	var none *NoTabError
+	if !errors.As(err, &none) || time.Since(start) < tabSettle {
+		t.Errorf("never matching: %v after %v", err, time.Since(start))
+	}
 }
 
 func TestListWindowTabsOnALaunchedBrowser(t *testing.T) {

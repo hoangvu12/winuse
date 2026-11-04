@@ -349,7 +349,7 @@ only the user can do the last step, once per browser. Tell them:
   2. Turn on "Developer mode" (top right).
   3. Click "Load unpacked" and choose this folder:
      %s
-then run: winuse browser ext status chrome (exit 0 once it is connected)
+then run: winuse browser ext status chrome --wait 120 (exit 0 once it is connected)
 `, dir, bridge.Build(), f.exe, dir)
 	if out != want {
 		t.Errorf("output =\n%s\nwant\n%s", out, want)
@@ -412,6 +412,61 @@ then run: winuse browser ext status chrome (exit 0 once it is connected)
 	}
 	if _, err := m.ExtInstall(context.Background(), "vivaldi"); err == nil {
 		t.Error("installed for a browser that is not installed")
+	}
+}
+
+// TestExtInstallRegistersBraveUnderChromesKeyToo (browser-ux 01): Brave on
+// Windows reads Chrome's native messaging hosts key, not its vendor key;
+// registered under BraveSoftware alone its extension never connected. Both
+// keys are written, and status wants both.
+func TestExtInstallRegistersBraveUnderChromesKeyToo(t *testing.T) {
+	f := newExtFake(t)
+	f.install("brave")
+	if _, err := NewManager(f.sys).ExtInstall(context.Background(), "brave"); err != nil {
+		t.Fatal(err)
+	}
+	mp := f.sys.HostManifestPath()
+	for _, key := range []string{
+		`Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.hoangvu12.winuse`,
+		`Software\Google\Chrome\NativeMessagingHosts\com.hoangvu12.winuse`,
+	} {
+		if f.reg.keys[key] != mp {
+			t.Errorf("%s = %q, want %q", key, f.reg.keys[key], mp)
+		}
+	}
+	if len(f.reg.keys) != 2 {
+		t.Errorf("registry = %v", f.reg.keys)
+	}
+	// The session's state: registered under Brave's key only.
+	delete(f.reg.keys, `Software\Google\Chrome\NativeMessagingHosts\com.hoangvu12.winuse`)
+	_, err := NewManager(f.sys).ExtStatus(context.Background(), "brave")
+	problemOf(t, err, ExtNotRegistered)
+}
+
+// TestExtOpen (browser-ux 02): --open opens the extensions page in each
+// browser still waiting for the extension, then shows the folder in
+// Explorer once; a connected browser gets nothing.
+func TestExtOpen(t *testing.T) {
+	f := newExtFake(t)
+	brave := f.install("brave")
+	m := NewManager(f.sys)
+	out, err := m.ExtOpen(context.Background(), "brave")
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := f.startCalls()
+	if len(calls) != 2 || calls[0].path != brave || strings.Join(calls[0].args, " ") != "brave://extensions" ||
+		!strings.HasSuffix(calls[1].path, `explorer.exe`) || strings.Join(calls[1].args, " ") != "/select,"+f.sys.ExtensionDir() {
+		t.Errorf("starts = %+v", calls)
+	}
+	if !strings.Contains(out, "ok opened brave://extensions in Brave\n") || !strings.Contains(out, "drag it onto the extensions page") {
+		t.Errorf("output = %q", out)
+	}
+
+	f.connect("brave", "ab12cd34", nil)
+	out, err = m.ExtOpen(context.Background(), "brave")
+	if err != nil || out != "" || len(f.startCalls()) != 2 {
+		t.Errorf("connected: %q, %v, starts %+v", out, err, f.startCalls())
 	}
 }
 

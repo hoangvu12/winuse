@@ -96,8 +96,9 @@ type browserConn struct {
 	w      win.WindowInfo
 	name   string // the browser's short name
 	conn   *browser.Connection
-	g      page.Geometry // the Window as the Tab lookup sees it
-	reader *page.Reader  // the Window State reader, whose Tab sessions the page Actions share
+	g      page.Geometry        // the Window as the Tab lookup sees it
+	geo    func() page.Geometry // g read again: the caption now (page.FindTabSettled)
+	reader *page.Reader         // the Window State reader, whose Tab sessions the page Actions share
 }
 
 func (bc browserConn) id() string { return strconv.FormatUint(bc.w.ID, 10) }
@@ -130,7 +131,8 @@ func (s Services) browserWindow(ctx context.Context, ref, lacks, cmds string) (b
 	case err != nil:
 		return browserConn{}, windowConnError(err, w, name)
 	}
-	return browserConn{w: w, name: name, conn: conn, g: lp.geometry(w), reader: lp.reader}, nil
+	geo := func() page.Geometry { return lp.geometry(w) }
+	return browserConn{w: w, name: name, conn: conn, g: geo(), geo: geo, reader: lp.reader}, nil
 }
 
 // pageWin is a browser Window's active Tab, ready for a page Action.
@@ -150,7 +152,7 @@ func (s Services) pageWindow(ctx context.Context, ref string) (pageWin, *Error) 
 	if rerr != nil {
 		return pageWin{}, rerr
 	}
-	tab, err := page.FindTab(ctx, bc.conn, bc.g)
+	tab, err := page.FindTabSettled(ctx, bc.conn, bc.geo)
 	if err != nil {
 		return pageWin{}, tabListError(err, bc.w, bc.name)
 	}
@@ -349,6 +351,7 @@ func (s Services) runPageWindow(ctx context.Context, ref string, run pageWindowR
 		esc = noopEscWatch{}
 	}
 	defer armPassive(esc)()
+	ctx = withCursorTrace(ctx, run.label) // cursortrace.go
 	var rect win.Rect
 	shown := false
 	if run.target != nil {
@@ -358,9 +361,21 @@ func (s Services) runPageWindow(ctx context.Context, ref string, run pageWindowR
 	if esc.Stopped() {
 		return "", escStopBeforeActError()
 	}
-	out, delivered, e := run.act(ctx, pw, esc.Stopped)
-	if shown && delivered {
-		s.cursorClick(ctx, pw.w, rect)
+	rippled := false
+	ripple := func() {
+		if shown && !rippled {
+			rippled = true
+			cursorTrace(ctx, "delivered")
+			s.cursorClick(ctx, pw.w, rect)
+		}
+	}
+	// An act marks the moment the browser accepted its request
+	// (markDelivered), so a navigation's ripple plays then and not after
+	// the new page loaded (browser-ux 03).
+	out, delivered, e := run.act(withDelivered(ctx, ripple), pw, esc.Stopped)
+	cursorTrace(ctx, "acted")
+	if delivered {
+		ripple()
 	}
 	if esc.Stopped() {
 		if delivered {
@@ -372,6 +387,22 @@ func (s Services) runPageWindow(ctx context.Context, ref string, run pageWindowR
 		return "", e
 	}
 	return out, nil
+}
+
+type deliveredKey struct{}
+
+// withDelivered gives a page-only Action's act the hook it calls the
+// moment the browser accepted its request (markDelivered).
+func withDelivered(ctx context.Context, f func()) context.Context {
+	return context.WithValue(ctx, deliveredKey{}, f)
+}
+
+// markDelivered says the act's request reached the browser: the Agent
+// Cursor ripples now, while the act goes on to wait for its result.
+func markDelivered(ctx context.Context) {
+	if f, ok := ctx.Value(deliveredKey{}).(func()); ok {
+		f()
+	}
 }
 
 // frameElementRect is the live bounds of the first Element of the Window's
@@ -409,8 +440,12 @@ func (s Services) frameElementRect(ctx context.Context, w win.WindowInfo, match 
 	return win.Rect{}, false
 }
 
-// pageDocRect is the Page's UIA document Element on the screen.
+// pageDocRect is the Page on the screen: the web content area through
+// Win32, else the UIA document Element (browser-ux 04).
 func (s Services) pageDocRect(ctx context.Context, pw pageWin) (win.Rect, bool) {
+	if r, ok := s.pageContent(pw.w); ok {
+		return r, true
+	}
 	return s.frameElementRect(ctx, pw.w, func(role, name string) bool { return role == "document" })
 }
 
@@ -501,6 +536,7 @@ func (s Services) navigate(ctx context.Context, pw pageWin, cmd, target, state s
 		if err != nil {
 			return s.navFailure(err, pw, "navigation")
 		}
+		markDelivered(ctx)
 		if loader != "" {
 			committed = func(ctx context.Context) bool {
 				l, _, err := page.MainFrame(ctx, c, sess)
@@ -529,6 +565,7 @@ func (s Services) navigate(ctx context.Context, pw pageWin, cmd, target, state s
 		if err := page.GoToEntry(ctx, c, sess, entries[to].ID); err != nil {
 			return s.navFailure(err, pw, "move "+cmd)
 		}
+		markDelivered(ctx)
 		committed = func(ctx context.Context) bool {
 			now, _, err := page.History(ctx, c, sess)
 			return err == nil && now == to
@@ -538,6 +575,7 @@ func (s Services) navigate(ctx context.Context, pw pageWin, cmd, target, state s
 		if err := page.Reload(ctx, c, sess); err != nil {
 			return s.navFailure(err, pw, "reload")
 		}
+		markDelivered(ctx)
 		committed = func(ctx context.Context) bool {
 			l, _, err := page.MainFrame(ctx, c, sess)
 			return err == nil && l != before
@@ -590,6 +628,7 @@ func (s Services) navigateFromBrowserPage(ctx context.Context, pw pageWin, targe
 	if err := page.NavigateTabThroughExtension(ctx, c, pw.tab.TargetID, target); err != nil {
 		return s.navFailure(err, pw, "navigation")
 	}
+	markDelivered(ctx)
 	lctx, cancel := pageWaitContext(ctx, 0)
 	defer cancel()
 	var now page.Tab
@@ -874,11 +913,18 @@ func pageEval(s Services) Command {
 		if strings.TrimSpace(a.Expression) == "" {
 			return "", Fail("eval: an expression is required", evalUsageHint)
 		}
+		if a.Max < 0 || a.Max > page.EvalMaxLimit {
+			return "", Fail(fmt.Sprintf("eval: --max takes 1 to %d characters", page.EvalMaxLimit), evalUsageHint)
+		}
+		limit := a.Max
+		if limit == 0 {
+			limit = page.EvalLimit
+		}
 		return s.runPageWindow(ctx, a.Window, pageWindowRun{
 			acts: true,
 			act: func(ctx context.Context, pw pageWin, stopped func() bool) (string, bool, *Error) {
 				id := pw.id()
-				res, err := page.Eval(ctx, pw.conn.Client, pw.session, a.Expression, stopped)
+				res, err := page.EvalUpTo(ctx, pw.conn.Client, pw.session, a.Expression, stopped, limit)
 				var thrown *page.EvalError
 				var dialog *page.DialogError
 				var ce *cdp.Error
@@ -886,7 +932,7 @@ func pageEval(s Services) Command {
 				case err == nil:
 					out := res.Text + "\n"
 					if res.Cut() {
-						out += fmt.Sprintf("note: the result has %d characters, and winuse printed the first %d; return less, for example with .slice(0, 1000)\n", res.Total, page.EvalLimit)
+						out += fmt.Sprintf("note: the result has %d characters, and winuse printed the first %d; return less, for example with .slice(0, 1000), or raise the cut with --max (up to %d)\n", res.Total, limit, page.EvalMaxLimit)
 					}
 					return out, true, nil
 				case errors.Is(err, page.ErrStopped):

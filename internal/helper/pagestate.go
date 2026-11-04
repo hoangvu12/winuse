@@ -401,8 +401,12 @@ func newLivePages(b BrowserService, maximized func(uint64) bool) PageReader {
 	memory := page.NewWindowMemory()
 	return &livePages{browsers: pb, reader: page.NewReader(), geometry: func(w win.WindowInfo) page.Geometry {
 		r, _ := win.WindowRect(w.ID)
+		title := w.Title
+		if now := win.WindowTitle(w.ID, w.PID); now != "" {
+			title = now // the caption now: a loading page changes it (browser-ux 05)
+		}
 		return page.Geometry{
-			Title:     w.Title,
+			Title:     title,
 			Rect:      page.Box{Left: r.Left, Top: r.Top, Right: r.Right, Bottom: r.Bottom},
 			DPI:       win.WindowDPI(w.ID),
 			Minimized: w.Minimized,

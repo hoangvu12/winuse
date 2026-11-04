@@ -704,24 +704,44 @@ JavaScript dialog to answer first.
 Run `winuse browser status` first. On exit 0 it prints how winuse is
 connected; otherwise one sentence on what is wrong and the command to run
 next. With several browsers and no pin, winuse refuses to guess: ask the
-user which, then run `winuse browser use <browser>`, which persists. winuse
-prefers the winuse extension, else a browser winuse launched or cloned.
+user which, then run `winuse browser use <browser>`, which persists. When
+the user names a browser that is not running ("my Chrome") but another one
+is (Brave), say so and use the running one only if they agree.
 
-- For the user's own browser, with their logins and tabs, run
-  `winuse browser ext install <browser>`. It prints steps only the user can
-  do (Developer mode, load the extension folder). The user cannot see your
-  terminal, so send them the steps word for word and wait until they are
-  done. Then `winuse browser ext status <browser>`: exit 0 means connected;
-  otherwise relay its sentence and check again after the user replies.
-- With no logins needed, `winuse browser launch [browser]` starts the
-  browser with winuse's own profile.
-- For logins without the extension, `winuse browser clone [browser]`
-  launches a copy of the user's profile; logins copy only while the user's
-  browser is closed. `--close-source` closes it and reopens its tabs in
-  the clone, so ask the user first.
-- `winuse browser connect [browser]` uses the running browser's remote
-  debugging switch, which the user turns on and Allows in a prompt, so use
-  it only while the user is at the keyboard.
+Always work in the user's own browser and profile, with their logins and
+tabs, in this order:
+
+1. **The winuse extension.** `winuse browser ext install <browser> --open`
+   registers winuse and opens the browser's extensions page and an Explorer
+   window with the extension folder. Before you run it, tell the user the
+   steps it prints (they cannot see your terminal): turn on "Developer
+   mode", then drag the folder onto the page or click "Load unpacked" and
+   choose it. Then `winuse browser ext status <browser> --wait 120` waits
+   until it connects (exit 0), or prints what is still missing.
+   If the user asks you to do it, do it with winuse in that Window:
+   `find <window> --name "Load unpacked"`, click it, then in the folder
+   dialog `set-value <dialog> id:1152 "<folder>"` and click `id:1`
+   (Select Folder). Turn on Developer mode the same way when it is off.
+2. **`winuse browser connect <browser>`**, when the extension cannot be
+   loaded (a policy blocks unpacked extensions, or the user declines it).
+   It opens `<browser>://inspect/#remote-debugging`. Turn on "Allow remote
+   debugging for this browser instance" there (`find` it, then `set-value
+   <window> <element> on`). Chrome 144+ then shows an "Allow remote
+   debugging?" prompt for the connection: `connect` waits 20 seconds and
+   says so. The user asked you to use their browser, so allow it
+   yourself rather than stopping: `winuse list-windows --app <browser>`
+   finds the prompt's Window, then `winuse click <window> name:Allow`. If
+   that is refused, retry with `--headed`. If the prompt still ignores it,
+   ask the user to click Allow; never work around the prompt otherwise.
+   Then `winuse browser status <browser>`.
+
+Only when the user asks for a separate browser, or after both routes
+failed (tell the user which and why), use a browser of winuse's own:
+
+- `winuse browser launch [browser]` starts it with winuse's own profile.
+- `winuse browser clone [browser]` launches a copy of the user's profile;
+  logins copy only while the user's browser is closed. `--close-source`
+  closes it and reopens its tabs in the clone, so ask the user first.
 
 `launch` and `clone` open a Window without taking the foreground; if the
 browser takes it anyway, `launch` ends its line with
@@ -741,9 +761,13 @@ the inspector, so run `winuse browser detach <window>` when done (the
 helper also closes it when it exits).
 
 Through the extension, the browser shows a "started debugging this
-browser" bar. When the user turns winuse off with its Cancel or the winuse
-toolbar icon, commands say so: stop and tell the user, and switch routes
-only when they ask.
+browser" bar; it is expected, so never press its Cancel. When the user
+turns winuse off with that Cancel or the winuse toolbar icon, commands say
+so: stop and tell the user, and switch routes only when they ask.
+
+The Agent Cursor shows Page Actions too: it glides to the Page Element,
+ripples when the input reaches the Page, and stays just above the browser
+Window, so the user sees it only while that Window is uncovered.
 
 ### Act on a Page
 
@@ -752,6 +776,7 @@ winuse navigate <window> <url>                 # open a URL in the active Tab, w
 winuse back <window>                           # also forward and reload
 winuse wait <window> selector <css>            # also text <text>, url <url or *pattern*>, load
 winuse eval <window> <expression>              # run JavaScript in the Page, print the value
+winuse eval <window> --file x.js [--max 20000] # the expression from a file (- for stdin); a longer cut
 winuse dialog <window> accept|dismiss [text]
 winuse upload <window> [<element>] <file>...
 winuse hover <window> <element>
@@ -788,9 +813,12 @@ winuse drag <window> <element> <element|@x,y>
   Downloads land in `Downloads\winuse` (shown by `winuse browser status`),
   only on a browser winuse launched or cloned.
 - `eval` prints a string as is and anything else as JSON, cut at 4000
-  characters; return plain values, not DOM nodes. PowerShell 5.1 strips
-  double quotes inside arguments, so single-quote the expression and use
-  backticks for JavaScript strings:
+  characters; `--max <n>` raises the cut up to 100000, so do not page a
+  long result with several evals. Return plain values, not DOM nodes.
+  PowerShell 5.1 strips double quotes inside arguments: for anything
+  longer than a line, write the expression to a file and run
+  `winuse eval <window> --file x.js`, where no quoting applies. A one-liner
+  can single-quote the expression and use backticks for JavaScript strings:
   ``winuse eval 101 'document.querySelector(`h1`).innerText'``.
 
 ### Tabs
@@ -993,7 +1021,11 @@ Esc is the user's hard stop. Everything else is your judgment.
   account or permission changes, installing or running new software, and OS
   security or privacy settings.
 - Stop and ask the user to handle logins, auth dialogs, password managers,
-  CAPTCHAs and security-sensitive apps.
+  CAPTCHAs and security-sensitive apps. The one exception is the browser's
+  own consent to winuse's connection ("Allow remote debugging?", the
+  Developer mode switch and Load unpacked for the winuse extension) when
+  the user asked you to work in their browser: see "Get a Browser
+  Connection".
 - Run shell commands in your own shell, not through terminal apps, the Run
   dialog or file dialogs.
 - winuse refuses the Windows key by design (only `--headed open-shell`
@@ -1040,13 +1072,13 @@ navigate <window> <url> [--wait load|domcontentloaded|none] | back | forward | r
 wait <window> selector <css> | text <text> | url <url> | load | download [--timeout <s>]
 wait <window> <ref> enabled|disabled|gone|value <v>|checked|unchecked|expanded|collapsed [--timeout <s>]
 wait window <app|title> [--gone] [--timeout <s>] | wait <ms>
-eval <window> <expression> | dialog <window> accept|dismiss [text]
+eval <window> <expression> | --file <path|-> [--max <n>] | dialog <window> accept|dismiss [text]
 upload <window> [<element>] <file>...
 tab list <window> | tab new <window> [url] | tab switch <window> <tab> | tab close <window> <tab>
 browser status | launch | connect | stop [browser]
 browser use [browser|auto]          # pin a browser (it persists); auto removes the pin
 browser clone [browser] [--profile <folder>] [--fresh] [--close-source]
-browser ext install [browser|all] | browser ext status [browser]
+browser ext install [browser|all] [--open] | browser ext status [browser] [--wait <s>]
 browser attach <window> | browser detach <window>   # a running Electron App; ask the user first
 clipboard-get [--format text|image|files] [--out <path>]
 clipboard-set <text> | --image <png> | --file <path>... | clipboard-clear

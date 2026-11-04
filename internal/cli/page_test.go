@@ -86,6 +86,42 @@ func TestParsePageArgsRefusals(t *testing.T) {
 	}
 }
 
+// TestParseEvalArgs (browser-ux 06): --max raises the printed cut, and
+// --file reads the expression (quotes and all, a BOM dropped) where no
+// shell quoting reaches it.
+func TestParseEvalArgs(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "x.js")
+	js := "[...document.querySelectorAll(\"a[href*='t.co']\")].map(a => a.href).join(\"\\n\")"
+	if err := os.WriteFile(path, []byte("\uFEFF"+js), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a, err := parseEvalArgs([]string{"--file", path, "--max", "20000"}, readEvalFile)
+	if err != nil || a.Expression != js || a.Max != 20000 {
+		t.Errorf("--file --max: %+v %v", a, err)
+	}
+	a, err = parseEvalArgs([]string{"document.title", "--max", "100000"}, readEvalFile)
+	if err != nil || a.Expression != "document.title" || a.Max != 100000 {
+		t.Errorf("--max after the expression: %+v %v", a, err)
+	}
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--file"}, "--file needs a path"},
+		{[]string{"x", "--max"}, "--max needs a number"},
+		{[]string{"x", "--max", "100001"}, "--max takes 1 to 100000"},
+		{[]string{"x", "--max", "0"}, "--max takes 1 to 100000"},
+		{[]string{"--file", path, "1+1"}, "not both"},
+		{[]string{"--file", filepath.Join(dir, "missing.js")}, "reading the expression from"},
+		{[]string{"--max", "10"}, "eval needs an expression"},
+	} {
+		if _, err := parseEvalArgs(c.args, readEvalFile); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%q: %v, want %q", c.args, err, c.want)
+		}
+	}
+}
+
 func TestParseHoverAndDragPageForms(t *testing.T) {
 	seven, eight := 7, 8
 	h, err := parseHoverTokens([]string{"7"})
