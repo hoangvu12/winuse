@@ -371,8 +371,8 @@ func TestPlacePillBesideTheTipAndFlipsAtWorkAreaEdges(t *testing.T) {
 	work := Rect{Left: 0, Top: 0, Right: 1920, Bottom: 1040}
 	const w, h = 200, 24
 	ox, oy := scaled(cursorPillOffsetX, 1), scaled(cursorPillOffsetY, 1)
-	if ox != 13 || oy != 12 {
-		t.Fatalf("tag offsets = %d, %d; want 13 (12.5 rounded), 12: over the arrow's back", ox, oy)
+	if ox != 13 || oy != 16 {
+		t.Fatalf("tag offsets = %d, %d; want 13 (12.5 rounded), 16: clear of the arrow at any lean", ox, oy)
 	}
 
 	got := placePill(fpoint{500, 400}, w, h, work, 1)

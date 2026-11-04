@@ -155,9 +155,10 @@ insertion caret and showing what each Action does.
    the per-Action reveal and its pop are gone. It stays upright while the
    arrow turns. The tag is 22 px tall, its corners rounded by 5.5 px,
    padded 8 px at each end, its top-left 12.5 px right of and 12 px below
-   the tip, over the arrow's back (3.4 px between their rims at rest; at
-   lean's full 30° a wing's rim touches the tag's, under 2 px² of overlap,
-   the arrow drawn over the tag); a 1 px white rim and the arrow's soft
+   the tip, over the arrow's back (16 px below since cursor-turn, the
+   user's call: at Mural's 12 a wing leaning the full 30° touched the tag;
+   at 16 their rims are 1.6 px apart or more at every lean, 5.0 px at
+   rest); a 1 px white rim and the arrow's soft
    shadow; flat fill; the text white or near-black by contrast, as before.
    The name is capped at 24 characters with an ellipsis and set in
    **Figtree Bold** at 12.5 px, the closest free match to Mural's font,

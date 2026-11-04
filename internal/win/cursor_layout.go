@@ -132,11 +132,13 @@ const (
 	cursorPillShadowOpacity = cursorArrowShadowOp
 	cursorPillShadowOffset  = cursorArrowShadowOff
 	cursorPillShadowBlur    = cursorArrowShadowBlur
-	// The tag's top-left sits this far right of and below the tip, over
-	// the arrow's back as Mural's does, and the tag as far left of and
-	// above the tip when flipped (layout.rs LABEL_OFFSET_X/Y).
+	// The tag's top-left sits this far right of and below the tip, by the
+	// arrow's back, and the tag as far left of and above the tip when
+	// flipped (layout.rs LABEL_OFFSET_X/Y). Mural's 12 below left 3.4 px
+	// between the rims at rest, but a wing leaning 30° touched the tag; 16
+	// keeps 1.6 px or more at every lean and 5.0 px at rest (cursor-turn).
 	cursorPillOffsetX = 12.5
-	cursorPillOffsetY = 12.0
+	cursorPillOffsetY = 16.0
 
 	cursorLabelMaxRunes = 200 // names are cut before measuring
 )

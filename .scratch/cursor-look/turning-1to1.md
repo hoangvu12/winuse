@@ -238,7 +238,7 @@ the arrow's back.
 ## The user's final pick: Mural's pose, cua's `lean`
 
 The user kept the dart in Mural's pose (axis −136.2°, tag back at
-(12.5, 12)) and chose cua's other turning mode, `lean`
+(12.5, 12), then moved to (12.5, 16), below) and chose cua's other turning mode, `lean`
 (`cursor_pose.rs:117-120`, `:179-185`, `:201-212`): the same pipeline,
 but the ramps are **not stretched** (`stretch` is 1 for every mode but
 heading, `:182-185`), and the heading turn is shaped
@@ -277,9 +277,8 @@ cua's behaviour and is kept 1:1, not a flicker within a move.
 as before. Leaning, a wing swings toward the tag's corner: at ±15° the
 rims are 0–0.5 px apart (0.4 px² overlap at +15°), at +30° they touch
 with 1.6 px² of overlap, at −30° 0.1 px²; the arrow is drawn over the
-tag. A tag 4 px lower (y 16) would keep 1.6 px clear at every lean and
-5.0 px at rest. The offset is kept at Mural's 12, as asked, pending the
-user's word.
+tag. A tag 4 px lower (y 16) keeps 1.6 px clear at every lean and 5.0 px
+at rest. **The user took it: the tag's top-left is now (12.5, 16).**
 
 ## Not ported: the float's tilt and its float in travel
 
