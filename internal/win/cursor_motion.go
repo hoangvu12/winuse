@@ -2,7 +2,7 @@ package win
 
 // The Agent Cursor's motion and timeline (headless ticket 03): pure
 // functions of time and screen points, so the path, the easing, the
-// ripple/outline/fade timeline and the idle decision are unit-tested
+// press/outline/float/fade timeline and the idle decision are unit-tested
 // offline. The window side (cursor_view.go) only renders the frames this
 // model produces; the controller (cursor.go) feeds it the clock.
 //

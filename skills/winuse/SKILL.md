@@ -349,7 +349,7 @@ unless it left a menu or dialog open, which a `Note:` names. After a right
 click it waits up to 2.5 s for a late context menu (Explorer's) first.
 
 The user sees each Headless Action through the Agent Cursor, a second cursor
-that glides to the Element with a label such as `click "Save"` and ripples
+that glides to the Element with a label such as `click "Save"` and presses
 on a click. It sits just above its Window, leaves the user's pointer alone,
 never appears in your screenshots, and needs nothing from you.
 
@@ -766,7 +766,7 @@ turns winuse off with that Cancel or the winuse toolbar icon, commands say
 so: stop and tell the user, and switch routes only when they ask.
 
 The Agent Cursor shows Page Actions too: it glides to the Page Element,
-ripples when the input reaches the Page, and stays just above the browser
+presses when the input reaches the Page, and stays just above the browser
 Window, so the user sees it only while that Window is uncovered.
 
 ### Act on a Page

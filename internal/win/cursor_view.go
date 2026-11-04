@@ -1,8 +1,9 @@
 package win
 
-// The Agent Cursor's windows (headless ticket 03): three per-pixel-alpha
-// layered windows on the UI thread — the dart with its label pill, the
-// click ripple, and the target's highlight — each the size of what it
+// The Agent Cursor's windows (headless ticket 03, cursor-look): four
+// per-pixel-alpha layered windows on the UI thread — the arrow with its
+// label pill, the optional trail, the target's highlight and the
+// insertion caret — each the size of what it
 // shows and updated with UpdateLayeredWindow from a 32bpp top-down
 // premultiplied DIB section. They are WS_EX_LAYERED|TRANSPARENT|
 // NOACTIVATE|TOOLWINDOW popups, not topmost but placed just above the
@@ -12,16 +13,20 @@ package win
 // software's captures where supported, best effort like the banner;
 // winuse's own captures hide them through HideWhile.
 //
-// The arrow window is rendered only when its look (label, scale, pill
-// side) changes and merely moved while the cursor travels: the pill and
-// the dart are rendered into two kept buffers, and the window's pixels
-// are the pill dimmed by its reveal (and scaled by its pop) with the dart
-// over it, recomposed only while the reveal plays. The idle fade and the
-// outline's fade use UpdateLayeredWindow's constant alpha, so the outline
-// (possibly large) is rendered once per click, plus a band per frame
-// while its pop runs. The ripple window is small and re-rendered per
-// frame. Frames come from a SetTimer timer on the arrow window,
-// dispatched to cursorWndProc by the UI thread's message loop.
+// The arrow window's pill is rendered only when its look (label, scale,
+// pill side) changes. The arrow itself is drawn exactly once per Agent and
+// DPI, finer than the screen (newArrowMaster); every turned (each 3°) or
+// pressed (each 0.005) arrow is a sprite sampled from it once and kept, so
+// a frame is the pill as shown copied in with a kept sprite over it — or,
+// when neither the reveal, the turn nor the press changed, the window is
+// merely moved (the travel, the float). The idle fade and the outline's
+// fade use UpdateLayeredWindow's constant alpha, so the outline (possibly
+// large) is rendered once per click, plus a band per step of its pop. A
+// window whose place, opacity and pixels are unchanged is not presented
+// again. While anything animates, frames come at about 120 per second from
+// a frame clock posting to the arrow window, with the timer resolution
+// raised; otherwise from a SetTimer timer; both are dispatched to
+// cursorWndProc by the UI thread's message loop.
 //
 // The label's text follows vercel-labs/agent-desktop at HEAD 9eb9b29
 // (Apache-2.0; see third_party/agent-desktop/LICENSE),
@@ -31,7 +36,7 @@ package win
 // else Segoe UI Semibold, asked for by face name for a true semibold. We
 // draw it with ClearType white onto black and fold the subpixels into
 // grayscale coverage (cursor_raster.go putText), which reads smoother
-// than GDI's grayscale antialiasing; the pill/dart split for the reveal
+// than GDI's grayscale antialiasing; the pill/arrow split for the reveal
 // and the pops follows their fade.rs and reveal.rs and the macOS
 // bridge's ADShowBubble and ADHighlightShow
 // (crates/macos/src/system/cursor_overlay/cursor_overlay_chrome_bridge.m).
@@ -781,7 +786,7 @@ func (w *cursorWin) composed() {
 }
 
 // raise puts the windows just above anchor (cursor_zorder.go), the arrow
-// on top of its own ripple and outline.
+// on top of its own trail, caret and outline.
 func (w *cursorWin) raise(anchor uint64) {
 	placeAbove(uintptr(anchor), w.outline, w.trail, w.caret, w.arrow)
 }

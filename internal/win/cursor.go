@@ -2,7 +2,7 @@ package win
 
 // The Agent Cursor (headless spec, ADR 0010, ticket 03): a
 // presentation-only second cursor that glides to the Element a Headless
-// Action targets, says what is happening in a label pill, and ripples on
+// Action targets, says what is happening in a label pill, and presses on
 // the click — so headless work is never invisible, without taking the
 // user's pointer, keyboard or foreground.
 //
@@ -38,8 +38,8 @@ import (
 )
 
 // AgentCursorClassName is the class of the Agent Cursor's layered windows
-// (the dart with its label pill, the ripple, the outline). The e2e tests find
-// the cursor on the desktop by it.
+// (the arrow with its label pill, the trail, the outline, the caret). The
+// e2e tests find the cursor on the desktop by it.
 const AgentCursorClassName = "winuse.cursor"
 
 // cursorTravelSlack is added to Travel's bound (twice the estimated

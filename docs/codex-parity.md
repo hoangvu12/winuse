@@ -496,7 +496,7 @@ more: the global `--headed` flag (before or after the command, and on a
 Batch) that restores Codex's foreground, real-input behaviour for any
 Action, and the Agent Cursor — a presentation-only second cursor that
 glides to the Element of each Headless Action with a short label and
-ripples on the click, click-through, never activated, and hidden from
+presses on the click, click-through, never activated, and hidden from
 winuse's own captures. `select-text` selects a span of a field's text, or
 all of it, with no keys and no foreground (a classic edit control's
 EM_SETSEL, a UI Automation Text pattern, or a Page field through the

@@ -3,8 +3,8 @@ package win
 // The insertion caret (multi-agent ticket 11, from desktop-parity 21):
 // after a Headless write into a text field, the Agent Cursor draws a short
 // bar in the Agent's colour where the field's caret now is, for a moment,
-// then fades it. It is the cursor's fourth window beside the dart, the
-// ripple and the outline: placed above the same Window, hidden from
+// then fades it. It is the cursor's fourth window beside the arrow, the
+// trail and the outline: placed above the same Window, hidden from
 // winuse's own captures with the rest (HideWhile), and never activated.
 // The timing and the bar are pure; the drawing is in cursor_view.go.
 

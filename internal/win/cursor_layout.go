@@ -67,11 +67,12 @@ const (
 	// cursorPressMax is the largest the click's press grows the arrow.
 	cursorPressMax = 1.03
 	// cursorArrowNarrow and cursorArrowTall reshape cua's outline about
-	// its tip: narrower and taller, so its tip (about 43° instead of 56°,
-	// the system arrow's is 45°) is its sharpest corner. cua's upright dart is nearly equilateral: at
-	// rest it read as a "▶" pointing right, past its own tip, and turned a
-	// little another corner read as the point (ADR 0018). The left edge
-	// stays vertical; the area stays about the same.
+	// its tip: narrower and taller, so its tip (about 43° instead of 56°;
+	// the system arrow's is 45°) is its sharpest corner. cua's upright
+	// dart is nearly equilateral: at rest it read as a "▶" pointing right,
+	// past its own tip, and turned a little another corner read as the
+	// point (ADR 0018). The left edge stays vertical; the area stays about
+	// the same.
 	cursorArrowNarrow = 0.82
 	cursorArrowTall   = 1.18
 )
@@ -274,7 +275,7 @@ func pillSize(textW int32, scale float64) (w, h int32) {
 }
 
 // placePill places a w×h pill beside the tip, in screen pixels
-// (place_label): below and right of the dart by default, flipped to the
+// (place_label): below and right of the arrow by default, flipped to the
 // tip's left when it would cross the work area's right edge and above the
 // tip when it would cross the bottom, then clamped into the work area (a
 // pill wider than the work area keeps its left edge on the area's left).
