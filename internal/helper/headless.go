@@ -466,6 +466,11 @@ func (s Services) cursorTravelRect(ctx context.Context, w win.WindowInfo, target
 	if s.Cursor == nil {
 		return win.Rect{}, false
 	}
+	if bt := tabTargetOf(ctx); bt != nil && (!bt.active || target.Width() <= 0 || target.Height() <= 0) {
+		// A background Tab has nothing on the screen to point at, and a shown
+		// one is pointed at only where its Page is (ADR 0017).
+		return win.Rect{}, false
+	}
 	if target.Width() <= 0 || target.Height() <= 0 {
 		target = w.Bounds
 	}

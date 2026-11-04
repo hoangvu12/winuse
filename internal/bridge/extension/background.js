@@ -25,8 +25,15 @@
 // their Agent's tab group ("winuse" for the default Agent); Page.bringToFront and Target.activateTarget are
 // refused; Winuse.activateTab switches a tab inside its window and never
 // focuses or raises the window; Winuse.navigateTab only changes a tab's
-// URL. chrome.windows is only read (getAll, for Winuse.windows), never
-// updated.
+// URL. chrome.windows is read (getAll, for Winuse.windows) and updated
+// only to minimize a popup window a held tab opened.
+//
+// Background tabs (ADR 0017): Winuse.holdTab keeps a tab an agent works in
+// from being discarded (autoDiscardable:false, restored by
+// Winuse.releaseTab or when the debugger detaches). A tab a held tab opens
+// (a target=_blank link, window.open) never stays the selected one: the
+// user's tab is selected again, the new tab joins its opener's group, and
+// a popup window it opened in is minimized.
 //
 // The user stays in charge: the browser shows its "started debugging" bar
 // while a tab is attached, and Cancel there, or a click on the toolbar
@@ -60,6 +67,14 @@ const attached = new Map(); // tab target id -> idle timer
 const children = new Map(); // child session id -> its tab's target id
 const conns = new Map(); // winuse connection id -> Set of tab target ids it attached
 const partial = new Map(); // winuse connection id -> a chunked command so far
+const held = new Map(); // tab id -> {targetId, discardable}: the tabs agents work in (Winuse.holdTab)
+const spawned = new Map(); // tab id -> when a held tab opened it
+const selected = new Map(); // window id -> [the tab selected before, the tab selected now]
+
+// SPAWN_GUARD_MS is how long after a held tab opened a tab that tab is
+// kept from becoming the selected one: long enough for the browser's own
+// selection, short enough that the user can click it afterwards.
+const SPAWN_GUARD_MS = 2000;
 
 class BridgeError extends Error {
   constructor(code, message) {
@@ -184,6 +199,8 @@ async function handle(c, m) {
   if (m.method === "Winuse.activateTab") return activateTab(m.params || {});
   if (m.method === "Winuse.windows") return listWindows();
   if (m.method === "Winuse.navigateTab") return navigateTab(m.params || {});
+  if (m.method === "Winuse.holdTab") return holdTab(m.params || {});
+  if (m.method === "Winuse.releaseTab") return releaseTab(m.params || {});
   return m.sessionId ? sessionCall(m) : browserCall(c, m);
 }
 
@@ -306,6 +323,88 @@ async function navigateTab(p) {
   return {};
 }
 
+// holdTab marks a tab an agent works in while the user looks at another
+// one (ADR 0017): the browser must not discard it, and the tabs it opens
+// are guarded. The tab's own autoDiscardable is remembered for the release.
+async function holdTab(p) {
+  const tab = await tabFor(p.targetId);
+  if (!held.has(tab.id)) held.set(tab.id, { targetId: p.targetId, discardable: tab.autoDiscardable !== false });
+  await chrome.tabs.update(tab.id, { autoDiscardable: false });
+  // The service worker may have started after the user's last switch:
+  // note the tab selected now, the one a guarded new tab gives way to.
+  const [now] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
+  const s = selected.get(tab.windowId) || [];
+  if (now && s[1] !== now.id) selected.set(tab.windowId, [s[1], now.id]);
+  return {};
+}
+
+async function releaseTab(p) {
+  const tab = await tabFor(p.targetId);
+  unhold(tab.id);
+  return {};
+}
+
+// unhold gives a held tab its own autoDiscardable back.
+function unhold(tabId) {
+  const h = held.get(tabId);
+  if (!h) return;
+  held.delete(tabId);
+  chrome.tabs.update(tabId, { autoDiscardable: h.discardable }).catch(() => {});
+}
+
+// unholdTarget releases the held tab of a target id (its debugger
+// detached).
+function unholdTarget(targetId) {
+  for (const [tabId, h] of [...held]) {
+    if (h.targetId === targetId) unhold(tabId);
+  }
+}
+
+// A held tab opened a tab: guard the user's selection, group the new tab
+// with its opener, and minimize a popup window it opened in.
+chrome.tabs.onCreated.addListener(async (tab) => {
+  if (tab.openerTabId === undefined || !held.has(tab.openerTabId)) return;
+  spawned.set(tab.id, Date.now());
+  if (tab.active) keepUsersTab(tab.windowId, tab.id);
+  try {
+    const opener = await chrome.tabs.get(tab.openerTabId);
+    if (opener.windowId === tab.windowId && opener.groupId >= 0) {
+      await chrome.tabs.group({ tabIds: [tab.id], groupId: opener.groupId });
+      return;
+    }
+    const w = await chrome.windows.get(tab.windowId);
+    if (w.type === "popup") await chrome.windows.update(tab.windowId, { state: "minimized" });
+  } catch (_) {
+    // grouping and minimizing are best effort; the Action's note names the tab
+  }
+});
+
+chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
+  const at = spawned.get(tabId);
+  if (at !== undefined && Date.now() - at < SPAWN_GUARD_MS) {
+    keepUsersTab(windowId, tabId);
+    return;
+  }
+  const s = selected.get(windowId) || [];
+  selected.set(windowId, [s[1], tabId]);
+});
+
+chrome.tabs.onRemoved.addListener((tabId, info) => {
+  spawned.delete(tabId);
+  held.delete(tabId);
+  if (info && info.isWindowClosing) selected.delete(info.windowId);
+});
+
+// keepUsersTab selects again the tab the user had selected in a window
+// before a held tab's new tab took its place. Only the selection inside
+// the window changes; the window is never focused.
+function keepUsersTab(windowId, tabId) {
+  const s = selected.get(windowId) || [];
+  const back = s[1] === tabId ? s[0] : s[1];
+  if (back === undefined || back === tabId) return;
+  chrome.tabs.update(back, { active: true }).catch(() => {});
+}
+
 // The colours chrome.tabGroups accepts.
 const GROUP_COLORS = ["grey", "blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange"];
 
@@ -388,6 +487,7 @@ function touch(targetId) {
 function detach(targetId) {
   clearTimeout(attached.get(targetId));
   attached.delete(targetId);
+  unholdTarget(targetId);
   dropChildren(targetId);
   chrome.debugger.detach({ targetId }).catch(() => {});
   updateBadge();
@@ -432,6 +532,7 @@ chrome.debugger.onDetach.addListener((source, reason) => {
   if (id) {
     clearTimeout(attached.get(id));
     attached.delete(id);
+    unholdTarget(id);
     dropChildren(id);
     forward(id, { method: "Target.detachedFromTarget", params: { sessionId: id, targetId: id } });
   }

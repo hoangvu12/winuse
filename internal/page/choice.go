@@ -46,6 +46,93 @@ type Choice struct {
 	Multiple bool     `json:"multiple"`
 	Options  []Option `json:"options"`
 	More     int      `json:"more"` // options left out after the first 500
+	// Type and Value are a "picker"'s: a date, time or colour input, whose
+	// click opens a popup the browser draws on the screen (ADR 0017).
+	Type  string `json:"type"`
+	Value string `json:"value"`
+}
+
+// pickerJS writes a date, time or colour input's value from the page's
+// own JS and fires bubbling input and change events, as a choice in its
+// popup does; it returns the value the input kept (a value it does not
+// take leaves it empty).
+const pickerJS = `function(v) {
+  /* winuse:picker */
+  const el = this.nodeType === 1 ? this : this.parentElement;
+  el.value = v;
+  el.dispatchEvent(new Event('input', {bubbles: true}));
+  el.dispatchEvent(new Event('change', {bubbles: true}));
+  return String(el.value);
+}`
+
+// SetPicker writes a date, time or colour input's value and reads it back:
+// the input keeps only a value in its own format (2026-11-04 for a date,
+// 13:30 for a time, #ff8800 for a colour). The write is the page's own
+// JS, so the caller counts it as delivered.
+func (o Origin) SetPicker(ctx context.Context, ch Choice, value string) error {
+	c, err := o.caller()
+	if err != nil {
+		return err
+	}
+	var got string
+	if err := callWith(ctx, c, o.SessionID, o.BackendNodeID, pickerJS, []any{value}, &got); err != nil {
+		return staleOr(err)
+	}
+	if got != value {
+		return &VerifyError{Msg: fmt.Sprintf("the %s input did not keep %q (it holds %q now); give the value in the input's own format, such as %s", ch.Type, value, got, pickerFormat(ch.Type))}
+	}
+	return nil
+}
+
+// pickerFormat is an example of the value a picker input takes.
+func pickerFormat(typ string) string {
+	switch typ {
+	case "date":
+		return "2026-11-04"
+	case "datetime-local":
+		return "2026-11-04T13:30"
+	case "month":
+		return "2026-11"
+	case "week":
+		return "2026-W45"
+	case "time":
+		return "13:30"
+	case "color":
+		return "#ff8800"
+	}
+	return "its value"
+}
+
+// nativePickerJS names the popup the browser would draw on the screen for
+// a click on the node: "list" for a <select> drop-down (or one of its
+// options), the input type of a date, time or colour input, "" otherwise.
+const nativePickerJS = `function() {
+  /* winuse:nativepicker */
+  const el = this.nodeType === 1 ? this : this.parentElement;
+  if (!el || !el.isConnected) return '';
+  const s = el.closest('select');
+  if (s && !s.multiple && (s.size || 0) <= 1) return 'list';
+  if (el.tagName === 'INPUT') {
+    const t = (el.getAttribute('type') || '').toLowerCase();
+    if (/^(date|datetime-local|month|week|time|color)$/.test(t)) return t;
+  }
+  return '';
+}`
+
+// NativePicker names the popup a click on the node would open on the
+// user's screen: "list" for a <select> drop-down, a date, time or colour
+// input's type, or "" for none. A background Tab refuses such a click
+// (ADR 0017): its popup would show over whatever the user looks at.
+func (o Origin) NativePicker(ctx context.Context) (string, error) {
+	c, err := o.caller()
+	if err != nil {
+		return "", err
+	}
+	var kind string
+	if err := callWith(ctx, c, o.SessionID, o.BackendNodeID, nativePickerJS, nil, &kind); err != nil {
+		return "", staleOr(err)
+	}
+	return kind, nil
 }
 
 const choiceJS = `function() {
@@ -61,6 +148,9 @@ const choiceJS = `function() {
   const t = (el.getAttribute('type') || '').toLowerCase();
   if (el.tagName === 'INPUT' && (t === 'checkbox' || t === 'radio')) {
     return {kind: t === 'radio' ? 'radio' : 'check', checked: el.checked, mixed: !!el.indeterminate, disabled};
+  }
+  if (el.tagName === 'INPUT' && /^(date|datetime-local|month|week|time|color)$/.test(t)) {
+    return {kind: 'picker', type: t, value: String(el.value), disabled: disabled || !!el.readOnly};
   }
   const role = (el.getAttribute('role') || '').toLowerCase();
   if (role === 'checkbox' || role === 'switch' || role === 'menuitemcheckbox' || role === 'radio' || role === 'menuitemradio') {

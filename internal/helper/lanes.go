@@ -23,8 +23,11 @@ package helper
 //     step its opener's (desktop-parity ticket 24, batchLanes).
 //   - Reads take no lane, as before.
 //
+// A command on a Tab target (<window>:<tab>, ADR 0017) takes that Tab's own
+// lane instead, so Agents in different Tabs of one window run at once.
+//
 // Lanes are taken in one fixed order (the desktop, then threads by id,
-// then Pages), so two Batches cannot deadlock. A request waits for its
+// then Pages, then Tabs), so two Batches cannot deadlock. A request waits for its
 // lanes up to laneWaitLimit, clamped by its own budget; past it, it is
 // refused with nothing sent, naming the agent that holds the lane. The
 // user's Esc stops a waiting request too (multi-agent ticket 05,
@@ -60,6 +63,10 @@ const desktopLane = "0 desktop"
 // by id after the desktop.
 func threadLane(tid uint32) string { return fmt.Sprintf("1 thread %010d", tid) }
 func pageLane(hwnd uint64) string  { return fmt.Sprintf("2 page %020d", hwnd) }
+
+// tabLane is the lane of a Tab target (ADR 0017): one per Tab, so Agents in
+// different Tabs of one browser window run at once.
+func tabLane(targetID string) string { return "3 tab " + targetID }
 func windowLane(hwnd uint64) string {
 	return fmt.Sprintf("1 window %020d", hwnd) // a Window whose thread cannot be read
 }
@@ -176,6 +183,11 @@ func (s Services) lanesFor(ctx context.Context, name string, args json.RawMessag
 	w, rerr := resolveWindow(s, a.Window)
 	if rerr != nil {
 		return newLaneSet(0, desktopLane) // it fails on the Window anyway
+	}
+	if bt := tabTargetOf(ctx); bt != nil {
+		// A Tab target: every step is a Page Action of that Tab (tabtarget.go
+		// refused the rest), a Batch included.
+		return newLaneSet(w.ID, tabLane(bt.tab.TargetID))
 	}
 	if name == "batch" {
 		return s.batchLanes(ctx, args, w)

@@ -152,9 +152,20 @@ func (s Services) pageWindow(ctx context.Context, ref string) (pageWin, *Error) 
 	if rerr != nil {
 		return pageWin{}, rerr
 	}
-	tab, err := page.FindTabSettled(ctx, bc.conn, bc.geo)
-	if err != nil {
-		return pageWin{}, tabListError(err, bc.w, bc.name)
+	var tab page.Tab
+	if bt := tabTargetOf(ctx); bt != nil {
+		// A Tab target: its own Tab, shown or not (ADR 0017), as it is now.
+		tab = bt.tab
+		if now, err := page.TabNow(ctx, bc.conn.Client, tab.TargetID); err == nil {
+			tab = now
+		} else if errors.Is(err, page.ErrTabGone) {
+			return pageWin{}, Fail(fmt.Sprintf("tab %s of window %d closed", bt.short(), bc.w.ID), "list the Tabs and their ids: winuse tab list "+bc.id())
+		}
+	} else {
+		var err error
+		if tab, err = page.FindTabSettled(ctx, bc.conn, bc.geo); err != nil {
+			return pageWin{}, tabListError(err, bc.w, bc.name)
+		}
 	}
 	pw := pageWin{browserConn: bc, tab: tab}
 	if !tab.Internal {
@@ -354,7 +365,7 @@ func (s Services) runPageWindow(ctx context.Context, ref string, run pageWindowR
 	ctx = withCursorTrace(ctx, run.label) // cursortrace.go
 	var rect win.Rect
 	shown := false
-	if run.target != nil {
+	if bt := tabTargetOf(ctx); run.target != nil && (bt == nil || bt.active) {
 		target, _ := run.target(ctx, pw)
 		rect, shown = s.cursorTravelRect(ctx, pw.w, target, run.label)
 	}

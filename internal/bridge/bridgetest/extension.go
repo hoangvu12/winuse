@@ -152,6 +152,97 @@ type Extension struct {
 	navigated []string
 	reloads   int
 	closed    bool
+	held      map[string]bool // Winuse.holdTab's tabs, by target id
+	holds     []string        // every hold and release, as "hold <id>" or "release <id>"
+	minimized map[int]bool    // popup windows the guard minimized
+}
+
+// Held reports whether a tab is held (Winuse.holdTab, ADR 0017).
+func (e *Extension) Held(targetID string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.held[targetID]
+}
+
+// Holds lists every Winuse.holdTab and Winuse.releaseTab, in order.
+func (e *Extension) Holds() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]string(nil), e.holds...)
+}
+
+// ActiveTab is the target id of a window's selected tab ("" for none).
+func (e *Extension) ActiveTab(windowID int) string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, t := range e.Tabs {
+		if t.WindowID == windowID && t.Active {
+			return t.TargetID
+		}
+	}
+	return ""
+}
+
+// Minimized reports whether the guard minimized a popup window.
+func (e *Extension) Minimized(windowID int) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.minimized[windowID]
+}
+
+// OpenFromTab is the page in the tab opener opening a new tab, as a
+// target=_blank link or window.open does: the browser selects the new tab
+// in the opener's window, or opens it in a new popup window. Then
+// background.js's guard runs when the opener is held: the tab the user had
+// selected is selected again, the new tab joins its opener's group, and a
+// popup window is minimized. It returns the new tab's target id.
+func (e *Extension) OpenFromTab(opener, url string, popup bool) string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var from *Tab
+	for i := range e.Tabs {
+		if e.Tabs[i].TargetID == opener {
+			from = &e.Tabs[i]
+		}
+	}
+	if from == nil {
+		return ""
+	}
+	window, group := from.WindowID, from.Group
+	if popup {
+		window = 900 + len(e.Windows)
+		e.Windows = append(e.Windows, Window{WindowID: window, Width: 500, Height: 600, State: "normal"})
+	}
+	id := fmt.Sprintf("OPENED%d", len(e.Tabs)+1)
+	users := ""
+	for i := range e.Tabs {
+		if e.Tabs[i].WindowID == window && e.Tabs[i].Active {
+			users = e.Tabs[i].TargetID
+			e.Tabs[i].Active = false
+		}
+	}
+	e.Tabs = append(e.Tabs, Tab{TargetID: id, URL: url, Title: url, TabID: 2000 + len(e.Tabs), WindowID: window, Active: true})
+	if !e.held[opener] {
+		return id
+	}
+	n := &e.Tabs[len(e.Tabs)-1]
+	if popup {
+		if e.minimized == nil {
+			e.minimized = map[int]bool{}
+		}
+		e.minimized[window] = true
+		return id
+	}
+	n.Group = group
+	if users != "" {
+		n.Active = false
+		for i := range e.Tabs {
+			if e.Tabs[i].TargetID == users {
+				e.Tabs[i].Active = true
+			}
+		}
+	}
+	return id
 }
 
 // Start runs a host for the fake in dir (the bridges directory) and waits
@@ -368,6 +459,10 @@ func (e *Extension) Emit(tabID, sessionID, method string, params any) {
 func (e *Extension) Detach(tabID, reason string) {
 	e.mu.Lock()
 	delete(e.attached, tabID)
+	if e.held[tabID] {
+		e.held[tabID] = false // background.js's unholdTarget
+		e.holds = append(e.holds, "release "+tabID)
+	}
 	var kids []string
 	for sid, parent := range e.children {
 		if parent == tabID {
@@ -578,6 +673,30 @@ func (e *Extension) handle(c int, method, sessionID string, params json.RawMessa
 	}
 	if method == bridge.MethodNavigateTab {
 		return nil, e.navigateTab(p.TargetID, p.URL)
+	}
+	if method == bridge.MethodHoldTab || method == bridge.MethodReleaseTab {
+		// background.js's holdTab and releaseTab: autoDiscardable off while
+		// held, the tab's own value back on release.
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		known := false
+		for _, tab := range e.Tabs {
+			known = known || tab.TargetID == p.TargetID
+		}
+		if !known {
+			return nil, fmt.Errorf("no tab with target id %s", p.TargetID)
+		}
+		if e.held == nil {
+			e.held = map[string]bool{}
+		}
+		hold := method == bridge.MethodHoldTab
+		e.held[p.TargetID] = hold
+		word := "release"
+		if hold {
+			word = "hold"
+		}
+		e.holds = append(e.holds, word+" "+p.TargetID)
+		return nil, nil
 	}
 	if method == bridge.MethodActivateTab {
 		e.mu.Lock()
