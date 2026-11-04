@@ -150,6 +150,12 @@ func (s Services) tabTargeted(name string, cmd Command) Command {
 		if !ok {
 			return cmd(ctx, args)
 		}
+		if first, _, twice := strings.Cut(window, ":"); twice {
+			// 301:301:ab12cd34: the Window named twice. Refused rather than
+			// guessed, so a typo never lands in another Window or Tab.
+			return "", nothingSent(Fail(fmt.Sprintf("%s names more than one Window: a Tab target is one Window and one tab id, <window>:<tab>", a.Window),
+				"run it on "+strings.TrimSpace(first)+":"+tabRef))
+		}
 		plain, err := withWindow(window, args)
 		if err != nil {
 			return cmd(ctx, args)

@@ -587,6 +587,7 @@ func TestTabTargetRefusals(t *testing.T) {
 		{"batch", protocol.BatchArgs{Window: "301:e200", Steps: []protocol.Step{{Kind: "click", Window: "302", Args: json.RawMessage(`{"element_index":1}`)}}}, "Action 1 of a Batch on a Tab target names its own Window"},
 		{"batch", protocol.BatchArgs{Window: "301:e200", Steps: []protocol.Step{{Kind: "click", Args: json.RawMessage(`{"element_index":1,"headed":true}`)}}}, "--headed does not reach a Tab target"},
 		{"click", protocol.ClickArgs{Window: "301:ffff", ElementIndex: idx(1)}, `no tab has the id "ffff" in the Chrome of window 301`},
+		{"click", protocol.ClickArgs{Window: "301:301:e200", ElementIndex: idx(1)}, "301:301:e200 names more than one Window: a Tab target is one Window and one tab id, <window>:<tab>"},
 	} {
 		_, e := r.as(t, "claude", c.cmd, c.args)
 		if e == nil || !strings.HasPrefix(e.Msg, c.msg) || !strings.HasSuffix(e.Msg, nothingSentNote) {

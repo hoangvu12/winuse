@@ -1,6 +1,6 @@
 # 06: Live verification in the user's own browser
 
-Status: ready-for-human
+Status: done (checks 1-4 passed on Brave, d99e69a; see 07; the user scrolling during check 4, the tab group look and the active-Tab date input were not checked)
 
 Everything above is verified offline only (bridgetest, no browser). The
 installed winuse and extension were not touched; this needs the new

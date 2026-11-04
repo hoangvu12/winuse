@@ -67,3 +67,5 @@ kept the extension's port, so no new host started and no winuse saw it.
   `TestExtStatusLeavesAHostWithABridgeFile`, the problem table.
 
 ## Comments
+
+2026-11-04, second live check (d99e69a): the upgrade, target=_blank and date input fixes pass on Brave. A Tab target that names the Window twice (`W:W:tab`) is now refused with nothing sent and the right form in the hint (`TestTabTargetRefusals`).
