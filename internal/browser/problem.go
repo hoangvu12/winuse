@@ -214,15 +214,15 @@ func (p *Problem) Next() string {
 	case Ambiguous:
 		return "run winuse browser use " + p.Others[0] + " to pin one (the pin persists)"
 	case NotRunning:
-		return "run winuse browser launch" + b + " for a winuse profile, or winuse browser clone" + b + " for a copy with your logins"
+		return "ask the user to open " + p.name() + " to work in their own profile (then winuse browser ext install" + b + " --open); only if they want a separate browser, winuse browser launch" + b + " for a winuse profile, or winuse browser clone" + b + " for a copy with their logins"
 	case NoDebugging:
-		return "run winuse browser ext install" + b + " to drive the running browser through the winuse extension, winuse browser clone" + b + " for a copy with your logins (--close-source moves your open tabs into it), winuse browser launch" + b + " for a winuse profile, or winuse browser connect" + b + " to use the running browser through its inspect toggle"
+		return "for the user's own browser with their logins and tabs, run winuse browser ext install" + b + " --open (the user loads the extension once; then winuse browser ext status" + b + " --wait 120); otherwise winuse browser clone" + b + " for a copy with your logins (--close-source moves your open tabs into it), winuse browser launch" + b + " for a winuse profile, or winuse browser connect" + b + " to use the running browser through its inspect toggle"
 	case WrongOwner, UnknownOwner, NotLoopback:
 		return "run winuse browser launch" + b + " for a browser winuse starts itself"
 	case AwaitingApproval:
-		return "click Allow in " + p.name() + "'s \"Allow remote debugging?\" prompt, then run winuse browser status" + b + "; winuse browser clone" + b + " never asks"
+		return "click Allow in " + p.name() + "'s \"Allow remote debugging?\" prompt (find its Window with winuse list-windows --app " + p.Browser + ", then winuse click <window> name:Allow; --headed if that is refused), then run winuse browser status" + b
 	case Refused:
-		return "run winuse browser connect" + b + " and click Allow, or winuse browser clone" + b + " for a copy that never asks"
+		return "run winuse browser connect" + b + " again and click Allow in the prompt (winuse click <window> name:Allow); if it cannot be allowed, tell the user and offer winuse browser clone" + b + " for a copy that never asks"
 	case Unreachable:
 		return "run winuse browser status" + b + " again; if the browser closed, winuse browser launch" + b
 	case ToggleOff:
@@ -242,13 +242,13 @@ func (p *Problem) Next() string {
 	case ExtNotInstalled, ExtNotRegistered:
 		return "run winuse browser ext install" + b
 	case ExtNotLoaded:
-		return "tell the user: in " + p.name() + ", open " + Scheme(p.Browser) + `://extensions, turn on "Developer mode", click "Load unpacked" and choose ` + p.Dir + "; then run winuse browser ext status" + b + " (if they just did, wait a few seconds)"
+		return "tell the user: in " + p.name() + ", open " + Scheme(p.Browser) + `://extensions, turn on "Developer mode", click "Load unpacked" and choose ` + p.Dir + "; then run winuse browser ext status" + b + " --wait 120"
 	case ExtDisabled:
 		return "tell the user: in " + p.name() + ", open " + Scheme(p.Browser) + `://extensions and turn on "winuse"; then run winuse browser ext status` + b
 	case ExtBrowserClosed:
 		return "ask the user to open " + p.name() + " (the extension connects when it starts), then run winuse browser ext status" + b
 	case ExtNotConnected:
-		return "run winuse browser ext install" + b + ", then tell the user: in " + p.name() + ", open " + Scheme(p.Browser) + `://extensions and click the reload icon on "winuse"; if its toolbar icon shows a red "!", hovering it shows why`
+		return "run winuse browser ext install" + b + " (it registers the native host under every registry key " + p.name() + " may read), then reload the extension: in " + p.name() + ", open " + Scheme(p.Browser) + `://extensions and click the reload icon on "winuse"; if its toolbar icon shows a red "!", hovering it shows why`
 	case ExtOutdated, ExtUnreachable:
 		return "tell the user: in " + p.name() + ", open " + Scheme(p.Browser) + `://extensions and click the reload icon on "winuse"; then run winuse browser ext status` + b
 	case ExtPaused:

@@ -68,7 +68,7 @@ func (p *livePages) PageActiveTab(ctx context.Context, w win.WindowInfo) (string
 	case err != nil:
 		return "", &page.Unavailable{Reason: fmt.Sprintf("no Browser Connection is open to %s", name)}
 	}
-	tab, err := page.FindTab(ctx, conn, p.geometry(w))
+	tab, err := page.FindTabSettled(ctx, conn, func() page.Geometry { return p.geometry(w) })
 	if err != nil {
 		return "", err
 	}
@@ -219,15 +219,32 @@ func (s Services) pageDocTopLeft(ctx context.Context, w win.WindowInfo, o *page.
 }
 
 // pageScreenRect turns a CSS rectangle of the Page into physical screen
-// pixels (page.ToScreen); false when the document Element cannot be read.
+// pixels (page.ToScreen). The origin is the Window's web content area
+// read through Win32 (Services.PageContent: no round trip, and there while
+// the Window is covered and Chromium's accessibility tree thin), else the
+// UIA document Element; false when neither can be read (browser-ux 04).
 func (s Services) pageScreenRect(ctx context.Context, w win.WindowInfo, o *page.Origin, r page.Rect) (win.Rect, bool) {
-	l, t, _, _, err := s.pageDocTopLeft(ctx, w, o)
-	if err != nil {
-		log.Printf("reading the document Element %d of window %d for the Agent Cursor: %v", o.DocIndex, w.ID, err)
-		return win.Rect{}, false
+	var l, t int32
+	if c, ok := s.pageContent(w); ok {
+		l, t = c.Left, c.Top
+	} else {
+		var err error
+		if l, t, _, _, err = s.pageDocTopLeft(ctx, w, o); err != nil {
+			log.Printf("reading the document Element %d of window %d for the Agent Cursor: %v", o.DocIndex, w.ID, err)
+			return win.Rect{}, false
+		}
 	}
 	left, top, right, bottom := page.ToScreen(l, t, r)
 	return win.Rect{Left: left, Top: top, Right: right, Bottom: bottom}, true
+}
+
+// pageContent is the Window's web content area through Win32, when the
+// helper has that seam.
+func (s Services) pageContent(w win.WindowInfo) (win.Rect, bool) {
+	if s.PageContent == nil {
+		return win.Rect{}, false
+	}
+	return s.PageContent(w.ID)
 }
 
 // pageElementName is the Element's name in the latest Window State, for
@@ -274,6 +291,7 @@ type pageRun struct {
 // section 4), so there is no Ready or integrity refusal.
 func (s Services) runPage(ctx context.Context, run pageRun) (string, *Error) {
 	w, o := run.w, run.origin
+	ctx = withCursorTrace(ctx, run.verb) // cursortrace.go
 	noteRoute(ctx, w, protocol.RouteCDP) // trace.go
 	if locked, desktop := s.Locked(); locked {
 		return "", nothingSent(lockedDesktopFailure(desktop))
@@ -301,8 +319,13 @@ func (s Services) runPage(ctx context.Context, run pageRun) (string, *Error) {
 		return "", pageFailure(err, run, 0)
 	}
 	label := cursorLabel(run.verb, s.pageElementName(ctx, w, run.index, aim.Name))
-	rect, _ := s.pageScreenRect(ctx, w, o, aim.Rect)
-	rect, shown := s.cursorTravelRect(ctx, w, rect, label)
+	// No origin, no cursor: gliding to the Window's centre and rippling
+	// the whole Window looked like a misfire (browser-ux 04).
+	var rect win.Rect
+	shown := false
+	if r, ok := s.pageScreenRect(ctx, w, o, aim.Rect); ok {
+		rect, shown = s.cursorTravelRect(ctx, w, r, label)
+	}
 	if esc.Stopped() {
 		return "", escStopBeforeActError()
 	}
@@ -322,10 +345,9 @@ func (s Services) runPage(ctx context.Context, run pageRun) (string, *Error) {
 	defer in.Close()
 	defer s.holdChoosers(ctx, w, o)() // file chooser interception for this Action (ticket 06)
 	s.watchNewTabs(ctx, o)
+	rippled := s.rippleOnDelivery(ctx, w, rect, shown, in)
 	err = run.act(ctx, in, aim)
-	if shown && in.Sent > 0 {
-		s.cursorClick(ctx, w, rect)
-	}
+	rippled()
 	if esc.Stopped() {
 		if in.Sent == 0 {
 			return "", escStopBeforeActError()
@@ -702,6 +724,7 @@ type pageInput struct {
 // Cursor, the input with its Esc checkpoints and dialog race, and the
 // ripple once something was delivered.
 func (s Services) runPageInput(ctx context.Context, w win.WindowInfo, o *page.Origin, p pageInput) (string, *Error) {
+	ctx = withCursorTrace(ctx, p.noun)   // cursortrace.go
 	noteRoute(ctx, w, protocol.RouteCDP) // trace.go
 	if locked, desktop := s.Locked(); locked {
 		return "", nothingSent(lockedDesktopFailure(desktop))
@@ -731,10 +754,9 @@ func (s Services) runPageInput(ctx context.Context, w win.WindowInfo, o *page.Or
 	defer in.Close()
 	defer s.holdChoosers(ctx, w, o)() // Enter or Space on a file input opens a chooser too
 	s.watchNewTabs(ctx, o)
+	rippled := s.rippleOnDelivery(ctx, w, rect, shown, in)
 	err = p.act(ctx, in)
-	if shown && in.Sent > 0 {
-		s.cursorClick(ctx, w, rect)
-	}
+	rippled()
 	if esc.Stopped() {
 		if in.Sent == 0 {
 			return "", escStopBeforeActError()
@@ -748,6 +770,33 @@ func (s Services) runPageInput(ctx context.Context, w win.WindowInfo, o *page.Or
 		return "", pageFailure(err, run, in.Sent)
 	}
 	return okOutput, nil
+}
+
+// rippleOnDelivery plays the Agent Cursor's ripple the moment the Page
+// accepts the first event that acts (page.Input.OnDelivered), so it
+// coincides with the press rather than following the whole Action and its
+// read-back (browser-ux 03). The returned func, called after the act,
+// ripples once if something reached the Page but nothing acted yet (a
+// hover's bare move), as before.
+func (s Services) rippleOnDelivery(ctx context.Context, w win.WindowInfo, rect win.Rect, shown bool, in *page.Input) (after func()) {
+	if !shown {
+		return func() { cursorTrace(ctx, "acted") }
+	}
+	done := false
+	ripple := func() {
+		if !done {
+			done = true
+			cursorTrace(ctx, "delivered")
+			s.cursorClick(ctx, w, rect)
+		}
+	}
+	in.OnDelivered = ripple
+	return func() {
+		cursorTrace(ctx, "acted")
+		if in.Sent > 0 {
+			ripple()
+		}
+	}
 }
 
 // pageHasFocus is the pure keyboard decision: the Page holds the focus

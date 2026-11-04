@@ -106,7 +106,7 @@ func (o Origin) SelectText(ctx context.Context, in *Input, start, length int, al
 	} else {
 		args = []any{start, start + length}
 	}
-	in.Sent++
+	in.accepted("DOM.focus", nil) // the focus moved: delivered
 	var got struct {
 		Start  int `json:"start"`
 		End    int `json:"end"`

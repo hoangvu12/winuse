@@ -154,8 +154,11 @@ func (e *InternalPageError) Error() string {
 // FallbackNote is the one note line a browser Window's State carries when
 // its Page falls back to UI Automation.
 func FallbackNote(reason string) string {
-	return "the Page is read through UI Automation because " + reason + "."
+	return FallbackPrefix + reason + "."
 }
+
+// FallbackPrefix starts FallbackNote: how a reader tells the fallback.
+const FallbackPrefix = "the Page is read through UI Automation because "
 
 // ErrStale reports that a Page Element Index no longer points at a live
 // node: the page navigated (its document changed), the node is gone, or

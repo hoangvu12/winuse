@@ -257,6 +257,16 @@ type BrowserArgs struct {
 	Browser string `json:"browser,omitempty"`
 }
 
+// BrowserExtArgs are the arguments of browser ext install and status
+// (browser-ux 02). Open asks install to open the browser's extensions page
+// and the extension folder. Wait is status --wait's seconds; the CLI polls
+// with it and the helper ignores it.
+type BrowserExtArgs struct {
+	Browser string `json:"browser,omitempty"`
+	Open    bool   `json:"open,omitempty"`
+	Wait    int    `json:"wait,omitempty"`
+}
+
 // BrowserCloneArgs are browser clone's arguments.
 type BrowserCloneArgs struct {
 	Browser     string `json:"browser,omitempty"`

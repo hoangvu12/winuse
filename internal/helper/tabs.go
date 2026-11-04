@@ -132,7 +132,7 @@ func tabListError(err error, w win.WindowInfo, name string) *Error {
 	switch {
 	case errors.As(err, &none):
 		return Fail(fmt.Sprintf("no Tab of the Browser Connection matches window %d's title and bounds", w.ID),
-			"the Window may belong to another profile of the browser; run winuse browser status "+name)
+			"the page may still be changing its title (retry in a moment), or the Window belongs to another profile of the browser: run winuse browser status "+name)
 	case errors.As(err, &several):
 		return Fail(fmt.Sprintf("%s, so winuse cannot tell which browser window window %d is", several.Error(), w.ID),
 			"move one of the Windows a little (winuse move-window "+id+" <x> <y>) and retry")
@@ -218,7 +218,7 @@ func tabNew(s Services) Command {
 			return "", nothingSent(e)
 		}
 		return s.tabHeadless(ctx, tw, nil, "open tab", func(ctx context.Context) (string, *Error, bool) {
-			id, err := page.NewTab(ctx, tw.conn, tw.tabs.WindowID, a.URL)
+			id, err := page.NewTab(ctx, tw.conn, tw.tabs.WindowID, a.URL, s.agentTabGroup(ctx))
 			var other *page.OtherWindowError
 			switch {
 			case errors.As(err, &other):

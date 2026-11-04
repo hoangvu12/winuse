@@ -37,21 +37,41 @@ type Registry interface {
 	Default(key string) (string, error)
 }
 
-// hostKeys is each browser's native messaging hosts key under HKCU
-// (ub/ext.go:449-458). Chrome documents only its own; the others read
-// their vendor key. Opera reads Chrome's.
-var hostKeys = map[string]string{
-	"chrome":   `Software\Google\Chrome\NativeMessagingHosts\`,
-	"chromium": `Software\Chromium\NativeMessagingHosts\`,
-	"edge":     `Software\Microsoft\Edge\NativeMessagingHosts\`,
-	"brave":    `Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\`,
-	"vivaldi":  `Software\Vivaldi\NativeMessagingHosts\`,
-	"opera":    `Software\Google\Chrome\NativeMessagingHosts\`,
+// chromeHostKey is Chrome's native messaging hosts key under HKCU, which
+// Chromium forks may read instead of their own.
+const chromeHostKey = `Software\Google\Chrome\NativeMessagingHosts\`
+
+// hostKeys are the native messaging hosts keys under HKCU each browser may
+// read (ub/ext.go:449-458), its own first. Chrome documents only its own.
+// Brave on Windows reads Chrome's and not its vendor key (browser-ux 01:
+// registered under BraveSoftware only, the extension never connected), so
+// the forks get both; Opera reads Chrome's. Our host's manifest allows the
+// winuse extension alone, so the extra key opens nothing else.
+var hostKeys = map[string][]string{
+	"chrome":   {chromeHostKey},
+	"chromium": {`Software\Chromium\NativeMessagingHosts\`, chromeHostKey},
+	"edge":     {`Software\Microsoft\Edge\NativeMessagingHosts\`},
+	"brave":    {`Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\`, chromeHostKey},
+	"vivaldi":  {`Software\Vivaldi\NativeMessagingHosts\`, chromeHostKey},
+	"opera":    {chromeHostKey},
 }
 
-// HostKey is the registry key (under HKCU) that registers winuse's native
-// host for a browser.
-func HostKey(name string) string { return hostKeys[name] + bridge.HostName }
+// HostKey is the browser's own registry key (under HKCU) that registers
+// winuse's native host.
+func HostKey(name string) string { return HostKeys(name)[0] }
+
+// HostKeys are every registry key (under HKCU) that registers winuse's
+// native host for a browser: `ext install` writes them all.
+func HostKeys(name string) []string {
+	var out []string
+	for _, k := range hostKeys[name] {
+		out = append(out, k+bridge.HostName)
+	}
+	if len(out) == 0 {
+		out = []string{bridge.HostName} // an unknown name: never reached, Known guards it
+	}
+	return out
+}
 
 // ExtensionDir is where `ext install` writes the unpacked extension the
 // user loads.
@@ -291,8 +311,8 @@ func AsProblem(err error, browser string) (*Problem, bool) {
 // unpacked extension and the native host manifest, register the host for
 // each browser, and print the one step only the user can do: load the
 // extension. It opens nothing in the user's browser (that would take the
-// foreground). With no browser it installs for the pinned one, else for
-// every installed one.
+// foreground); `--open` adds ExtOpen. With no browser it installs for the
+// pinned one, else for every installed one.
 func (m *Manager) ExtInstall(ctx context.Context, name string) (string, error) {
 	targets, err := m.extTargets(name)
 	if err != nil {
@@ -318,8 +338,10 @@ func (m *Manager) ExtInstall(ctx context.Context, name string) (string, error) {
 	}
 	var names []string
 	for _, b := range targets {
-		if err := s.Registry.SetDefault(HostKey(b.Name), mp); err != nil {
-			return "", fmt.Errorf("registering the native host for %s: %w", b.Display(), err)
+		for _, k := range HostKeys(b.Name) {
+			if err := s.Registry.SetDefault(k, mp); err != nil {
+				return "", fmt.Errorf("registering the native host for %s: %w", b.Display(), err)
+			}
 		}
 		names = append(names, b.Name)
 	}
@@ -347,7 +369,46 @@ func (m *Manager) ExtInstall(ctx context.Context, name string) (string, error) {
 		out.WriteString(LoadSteps(b.Name, s.ExtensionDir()))
 	}
 	for _, b := range waiting {
-		fmt.Fprintf(&out, "then run: winuse browser ext status %s (exit 0 once it is connected)\n", b.Name)
+		fmt.Fprintf(&out, "then run: winuse browser ext status %s --wait 120 (exit 0 once it is connected)\n", b.Name)
+	}
+	return out.String(), nil
+}
+
+// ExtOpen answers `winuse browser ext install [browser] --open` after the
+// install (browser-ux 02): for each browser the extension is not yet
+// connected to, it opens <scheme>://extensions in that browser (a new Tab
+// of the running browser, which takes the foreground: only on request),
+// then one Explorer window with the extension folder selected, so the user
+// can drag the folder onto the page or copy its path. Nothing is clicked
+// for the user.
+func (m *Manager) ExtOpen(ctx context.Context, name string) (string, error) {
+	targets, err := m.extTargets(name)
+	if err != nil {
+		return "", err
+	}
+	s := m.sys
+	var out strings.Builder
+	opened := 0
+	for _, b := range targets {
+		if len(s.liveBridges(b.Name)) > 0 {
+			continue // already connected: nothing to load
+		}
+		page := Scheme(b.Name) + "://extensions"
+		if _, err := s.Start(b.Path, []string{page}); err != nil {
+			fmt.Fprintf(&out, "note: could not open %s in %s (%v); the user types it in the address bar\n", page, b.Display(), err)
+			continue
+		}
+		fmt.Fprintf(&out, "ok opened %s in %s\n", page, b.Display())
+		opened++
+	}
+	if opened == 0 {
+		return out.String(), nil
+	}
+	explorer := filepath.Join(os.Getenv("WINDIR"), "explorer.exe")
+	if _, err := s.Start(explorer, []string{"/select," + s.ExtensionDir()}); err != nil {
+		fmt.Fprintf(&out, "note: could not show the extension folder in Explorer (%v)\n", err)
+	} else {
+		fmt.Fprintf(&out, "ok showed the extension folder in Explorer: with Developer mode on, the user can drag it onto the extensions page instead of using Load unpacked\n")
 	}
 	return out.String(), nil
 }
@@ -507,9 +568,11 @@ func (s *System) hostProblem(name string) *Problem {
 	if !s.Exists(hm.Path) {
 		return &Problem{Kind: ExtNotInstalled, Browser: name, Detail: hm.Path}
 	}
-	v, err := s.Registry.Default(HostKey(name))
-	if err != nil || !strings.EqualFold(filepath.Clean(v), filepath.Clean(s.HostManifestPath())) {
-		return &Problem{Kind: ExtNotRegistered, Browser: name}
+	for _, k := range HostKeys(name) {
+		v, err := s.Registry.Default(k)
+		if err != nil || !strings.EqualFold(filepath.Clean(v), filepath.Clean(s.HostManifestPath())) {
+			return &Problem{Kind: ExtNotRegistered, Browser: name}
+		}
 	}
 	return nil
 }

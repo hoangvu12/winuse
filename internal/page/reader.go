@@ -105,6 +105,34 @@ func FindTab(ctx context.Context, conn *browser.Connection, g Geometry) (Tab, er
 	return tab, err
 }
 
+// How long FindTabSettled keeps trying while no Tab matches.
+const (
+	tabSettle      = time.Second
+	tabSettleEvery = 150 * time.Millisecond
+)
+
+// FindTabSettled is FindTab for an Action: while no Tab matches (a
+// *NoTabError), it reads the Window (geo) and the Tabs again for up to
+// tabSettle. Right after a navigation the Window's caption and the Tab's
+// title change at different moments, and the first match failed
+// ("no Tab ... matches"), the next one a moment later worked
+// (browser-ux 05). Any other answer returns at once.
+func FindTabSettled(ctx context.Context, conn *browser.Connection, geo func() Geometry) (Tab, error) {
+	deadline := time.Now().Add(tabSettle)
+	for {
+		tab, err := FindTab(ctx, conn, geo())
+		var none *NoTabError
+		if !errors.As(err, &none) || !time.Now().Before(deadline) {
+			return tab, err
+		}
+		select {
+		case <-ctx.Done():
+			return tab, err
+		case <-time.After(tabSettleEvery):
+		}
+	}
+}
+
 // windowTab is FindTab, also returning every Tab it listed.
 func windowTab(ctx context.Context, conn *browser.Connection, g Geometry) (Tab, []Tab, error) {
 	tabs, err := pageTabs(ctx, conn.Client)

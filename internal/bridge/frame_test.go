@@ -236,6 +236,11 @@ func TestExtensionIdentity(t *testing.T) {
 	for _, want := range []string{
 		`const HOST = "` + HostName + `";`,
 		`const GROUP_TITLE = "winuse";`,
+		// Each Agent's tabs join its own group (browser-ux 10), the fake's
+		// tabGroupFor in internal/bridge/bridgetest.
+		`createTab(p.url || "about:blank", p.windowId, p.winuseGroup)`,
+		`const GROUP_COLORS = ["grey", "blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange"];`,
+		"chrome.tabGroups.query({ title: want.title, color: want.color, windowId: tab.windowId })",
 		`const IDLE_DETACH_MS = 5 * 60 * 1000;`,
 		"const CODE_FAILED = -32000;",
 		"const CODE_REFUSED = -32010;",

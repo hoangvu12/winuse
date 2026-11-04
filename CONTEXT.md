@@ -23,7 +23,7 @@ A Window of the Windows shell itself rather than of an App a person works in: th
 _Avoid_: System surface, shell window, taskbar App
 
 **Tab**:
-One web page slot in a browser Window. A browser Window shows exactly one active Tab; the others are in the background.
+One web page slot in a browser Window. A browser Window shows exactly one active Tab; the others are in the background. Through the winuse extension, the Tabs an Agent opens join that Agent's tab group: its Agent Cursor's name ("winuse" for the default Agent) in the nearest tab group colour to its cursor's.
 _Avoid_: Target, page (for the slot)
 
 **Page**:
@@ -97,7 +97,7 @@ A key combination press-key refuses, with nothing sent, unless the agent passes 
 _Avoid_: Dangerous key, forbidden shortcut
 
 **Agent Cursor**:
-The second, presentation-only cursor that shows the user each Headless Action: it travels to the Element, says what is happening in a label and ripples on the click. It never takes the user's pointer, keyboard or foreground and never appears in winuse's own screenshots.
+The second, presentation-only cursor that shows the user each Headless Action: it travels to the Element, says what is happening in a label that is whole by the time it lands, and ripples when the Action is delivered (a Page's first press, key or text, a navigation the browser accepted), not when the Action and its read-back end. It never takes the user's pointer, keyboard or foreground and never appears in winuse's own screenshots. On a Page it is the same native cursor, placed through the browser's content area (ADR 0016), never drawn inside the Page.
 Each Agent has its own Agent Cursor (ADR 0014), with its own colour and its name in the label, placed just above the Window it acts on rather than topmost; it closes when its Agent has gone idle. After a Headless set-value or typing into a named field it briefly shows an insertion caret where the field's caret now is.
 _Avoid_: Fake cursor, ghost cursor, pointer
 

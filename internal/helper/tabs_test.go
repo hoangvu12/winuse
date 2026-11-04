@@ -381,6 +381,11 @@ func TestTabNewOnTheExtension(t *testing.T) {
 	if !strings.Contains(out, "  newtab5 \"\" https://a.test/") {
 		t.Errorf("the new Tab is not in window 2 in the background:\n%s", out)
 	}
+	// The default Agent's Tabs join the blue "winuse" group (browser-ux 10;
+	// TestAgentTabGroup covers the other Agents).
+	if g := ext.Group("NEWTAB5"); g != (bridgetest.TabGroup{Title: "winuse", Color: "blue"}) {
+		t.Errorf("group = %+v", g)
+	}
 	noForegroundCalls(t, extMethods(ext))
 }
 

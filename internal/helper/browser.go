@@ -68,6 +68,41 @@ func browserClone(s Services) Command {
 	}
 }
 
+// extOpener is the BrowserService's optional --open side of ext install
+// (browser-ux 02): *browser.Manager.
+type extOpener interface {
+	ExtOpen(ctx context.Context, name string) (string, error)
+}
+
+// browserExtInstall is browser ext install's handler: the install, then,
+// with --open, the extensions page and the folder opened for the user.
+func browserExtInstall(s Services) Command {
+	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
+		var a protocol.BrowserExtArgs
+		if len(args) > 0 && string(args) != "null" {
+			if err := json.Unmarshal(args, &a); err != nil {
+				return "", Fail("browser-ext-install: invalid arguments: "+err.Error(), browserUsageHint("browser-ext-install"))
+			}
+		}
+		out, err := s.Browser.ExtInstall(ctx, a.Browser)
+		if err != nil {
+			return "", browserError(err)
+		}
+		if a.Open {
+			o, ok := s.Browser.(extOpener)
+			if !ok {
+				return out + notePrefix + "this helper cannot open the extensions page; the user opens it\n", nil
+			}
+			more, err := o.ExtOpen(ctx, a.Browser)
+			if err != nil {
+				return "", browserError(err)
+			}
+			out += more
+		}
+		return out, nil
+	}
+}
+
 // browserCommands are the registry entries.
 func browserCommands(s Services) map[string]Command {
 	b := s.Browser
@@ -79,7 +114,7 @@ func browserCommands(s Services) map[string]Command {
 		"browser-connect": browserNamed("browser-connect", b.Connect),
 		"browser-stop":    browserNamed("browser-stop", b.Stop),
 		// The winuse extension (browser merge ticket 02).
-		"browser-ext-install": browserNamed("browser-ext-install", b.ExtInstall),
+		"browser-ext-install": browserExtInstall(s),
 		"browser-ext-status":  browserNamed("browser-ext-status", b.ExtStatus),
 		// The attach to a running Electron App (attach.go, headless-max 15).
 		"browser-attach": browserAttach(s),
@@ -134,7 +169,7 @@ func browserError(err error) *Error {
 func browserUsageHint(cmd string) string {
 	sub := strings.Replace(cmd[len("browser-"):], "ext-", "ext ", 1)
 	if sub == "ext install" {
-		return "usage: winuse browser ext install [browser|all]"
+		return "usage: winuse browser ext install [browser|all] [--open]"
 	}
 	return "usage: winuse browser " + sub + " [browser]"
 }

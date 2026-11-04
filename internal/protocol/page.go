@@ -26,7 +26,7 @@ func PageUsage(cmd string) string {
 			"       winuse wait notification [--app <name>] [--text <text>] [--timeout <seconds>]\n" +
 			"       winuse wait <milliseconds>"
 	case "eval":
-		return "usage: winuse eval <window> <expression>"
+		return "usage: winuse eval <window> <expression> | --file <path or -> [--max <characters>]"
 	}
 	return "usage: winuse " + cmd + " <window> [--wait load|domcontentloaded|none]" // back, forward, reload
 }
@@ -103,8 +103,10 @@ const (
 var WaitStates = []string{"enabled", "disabled", "gone", "value", "checked", "unchecked", "expanded", "collapsed"}
 
 // EvalArgs are eval's arguments: one JavaScript expression run in the
-// Tab's page.
+// Tab's page (the CLI reads it from --file when given), and Max, the
+// printed result's cut in characters (0: the default 4000; browser-ux 06).
 type EvalArgs struct {
 	Window     string `json:"window"`
 	Expression string `json:"expression"`
+	Max        int    `json:"max,omitempty"`
 }

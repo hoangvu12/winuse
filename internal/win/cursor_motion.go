@@ -331,9 +331,11 @@ type cursorModel struct {
 	fading    bool
 	fadeStart time.Time
 
-	// The label pill's reveal (reveal.rs): pending while a travel with a
-	// new label is in flight (the pill is not drawn), then revealing from
-	// the arrival; settled (drawn in full) otherwise.
+	// The label pill's reveal (reveal.rs, re-timed): pending while a travel
+	// with a new label is in flight (the pill is not drawn), then revealing
+	// over the travel's last cursorLabelReveal, so it is whole when the
+	// cursor lands and the Action runs (browser-ux 03); settled (drawn in
+	// full) otherwise.
 	labelPending   bool
 	labelRevealing bool
 	labelStart     time.Time
@@ -341,19 +343,29 @@ type cursorModel struct {
 	lastActive time.Time // the last Travel or Click
 }
 
-// revealLabel holds the label pill back until the travel just started
-// lands, then eases it in. The controller calls it after startTravel
-// when the label is new.
+// revealLabel holds the label pill back while the travel just started
+// covers most of its way, then eases it in so the reveal ends as the
+// cursor lands. agent-desktop reveals after the arrival, but winuse acts
+// at the arrival: the user read `click "Search"` after the click. The
+// controller calls it after startTravel when the label is new.
 func (m *cursorModel) revealLabel() {
 	m.labelPending, m.labelRevealing = true, false
+}
+
+// labelRevealStart is when a pending label starts revealing: the reveal's
+// length before the arrival, or the travel's start for a shorter travel.
+func (m *cursorModel) labelRevealStart() time.Time {
+	return m.start.Add(max(m.path.dur-cursorLabelReveal, 0))
 }
 
 // labelReveal advances the label's reveal to now and returns the pill's
 // opacity and scale (its pop).
 func (m *cursorModel) labelReveal(now time.Time) (op, pop float64) {
-	if m.labelPending && !m.travel {
-		m.labelPending, m.labelRevealing = false, true
-		m.labelStart = m.start.Add(m.path.dur) // the arrival
+	if m.labelPending {
+		if from := m.labelRevealStart(); !m.travel || !now.Before(from) {
+			m.labelPending, m.labelRevealing = false, true
+			m.labelStart = from
+		}
 	}
 	switch {
 	case m.labelPending:

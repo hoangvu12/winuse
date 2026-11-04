@@ -97,7 +97,7 @@ func TestBrowserCommandsCallTheService(t *testing.T) {
 	if _, e := cmds["browser-launch"](ctx, json.RawMessage(`{"browser":`)); e == nil || e.Hint != "usage: winuse browser launch [browser]" {
 		t.Errorf("malformed args = %+v", e)
 	}
-	if _, e := cmds["browser-ext-install"](ctx, json.RawMessage(`[`)); e == nil || e.Hint != "usage: winuse browser ext install [browser|all]" {
+	if _, e := cmds["browser-ext-install"](ctx, json.RawMessage(`[`)); e == nil || e.Hint != "usage: winuse browser ext install [browser|all] [--open]" {
 		t.Errorf("malformed ext install args = %+v", e)
 	}
 	if _, e := cmds["browser-ext-status"](ctx, json.RawMessage(`[`)); e == nil || e.Hint != "usage: winuse browser ext status [browser]" {
@@ -129,7 +129,7 @@ func TestBrowserProblemsBecomeOneSentenceAndANextCommand(t *testing.T) {
 	if e.Msg != `Chrome is waiting for the user to approve remote debugging in its "Allow remote debugging?" prompt` {
 		t.Errorf("msg = %q", e.Msg)
 	}
-	if e.Hint != `click Allow in Chrome's "Allow remote debugging?" prompt, then run winuse browser status chrome; winuse browser clone chrome never asks` {
+	if e.Hint != `click Allow in Chrome's "Allow remote debugging?" prompt (find its Window with winuse list-windows --app chrome, then winuse click <window> name:Allow; --headed if that is refused), then run winuse browser status chrome` {
 		t.Errorf("hint = %q", e.Hint)
 	}
 	fb.err = errors.New("starting chrome.exe: access denied")

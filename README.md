@@ -97,21 +97,32 @@ a connection to the browser, winuse reads the page through the browser
 and numbers the page's elements together with the window's own. It
 clicks, types, scrolls, hovers, drags, navigates, uploads files and
 answers dialogs in the page without the real mouse or keyboard, and it
-opens new tabs in the background.
+opens new tabs in the background. Through the extension, each agent's
+tabs gather in a tab group named after it, in its cursor's colour.
 
-Run `winuse browser status` to see how winuse is connected. You can
-connect in four ways.
+Run `winuse browser status` to see how winuse is connected. winuse works
+in the browser you already use first, with your logins and tabs:
 
-- `winuse browser ext install` sets up the winuse extension, which drives
-  the browser you already use, with your logins. You load the extension
-  once from the browser's extensions page in Developer mode.
+- `winuse browser ext install <browser> --open` sets up the winuse
+  extension and opens the browser's extensions page and the extension
+  folder. Turn on Developer mode and drag the folder onto the page (or
+  use Load unpacked), once per browser. `winuse browser ext status
+  <browser> --wait 120` waits until it connects.
+- `winuse browser connect` uses your running browser after its remote
+  debugging switch is on and the connection is allowed; an agent you
+  asked to use your browser turns the switch on and allows it with
+  winuse.
+
+When you want a separate browser instead:
+
 - `winuse browser launch` starts the browser with a separate profile for
   winuse. A browser winuse launches or clones keeps rendering while other
   windows cover it.
 - `winuse browser clone` copies your profile, logins included, and
   starts the copy.
-- `winuse browser connect` uses your running browser after you turn on
-  its remote debugging switch and allow the connection.
+
+The agent's cursor shows page actions too, gliding to the element on the
+page and rippling when the click reaches it.
 
 Without a connection, winuse reads the page through UI Automation like
 any other window. Chromium builds that tree slowly the first time, so
@@ -137,7 +148,7 @@ at all, and winuse says so.
 | `close-app <app> [--force]` | Closes every window of an app and waits for it to exit; `--force` ends it if it stays open |
 | `batch <window> [--timeout <s>] [--stop-on-error] ... then ...` | Runs several actions in one call and prints each one's output; a failed action does not stop the rest unless `--stop-on-error`; `batch -` reads it from stdin, one action per line; `in <window>` before an action runs it in another Window, `in new` in the one the action before opened |
 | `navigate`, `back`, `forward`, `reload` | Opens a URL or moves through a tab's history |
-| `wait`, `eval` | Waits for an element, text, URL, load or download, or runs JavaScript in the page |
+| `wait`, `eval` | Waits for an element, text, URL, load or download, or runs JavaScript in the page (`--file` reads it from a file, `--max` prints up to 100000 characters) |
 | `wait window`, `wait <window> <element> <state>`, `wait <ms>` | Waits for a Window to show or close, for text in any Window, for an Element to become enabled, disabled, gone, checked, expanded or reach a value, or pauses |
 | `dialog`, `upload` | Answers a JavaScript dialog, or gives files to a file input |
 | `tab list`, `tab new`, `tab switch`, `tab close` | Manages a browser window's tabs |

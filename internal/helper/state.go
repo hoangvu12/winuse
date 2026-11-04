@@ -187,6 +187,10 @@ type Services struct {
 	Minimized       func(hwnd uint64) bool                 // the Window is minimized: nothing to capture headless
 	Shots           *shot.Store                            // per-Window latest screenshot mappings (`@x,y`, zoom)
 	FrameOrigin     func(hwnd uint64) (image.Point, error) // the Window's extended frame bounds top-left, read fresh at Action time
+	// PageContent is a Chromium Window's web content area on the screen
+	// (win.ChromiumContentRect): the Agent Cursor's page-to-screen origin,
+	// before the UIA document Element (browser-ux 04). Nil asks UIA alone.
+	PageContent func(hwnd uint64) (win.Rect, bool)
 
 	// The pointer input (ticket 10). Nil values fall back to the real
 	// SendInput implementations; tests fake them. dx/dy are Codex's
@@ -749,6 +753,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.FrameOrigin == nil {
 		s.FrameOrigin = win.FrameOrigin
+	}
+	if s.PageContent == nil {
+		s.PageContent = win.ChromiumContentRect
 	}
 	if s.RestoreWindow == nil {
 		s.RestoreWindow = win.RestoreNoActivate

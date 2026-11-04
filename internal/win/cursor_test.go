@@ -873,26 +873,30 @@ func TestChooseLabelFaceTakesTheFirstInstalled(t *testing.T) {
 	}
 }
 
-func TestLabelRevealWaitsForTheArrival(t *testing.T) {
+// TestLabelRevealIsWholeOnArrival (browser-ux 03): the Action runs when
+// the cursor lands, so a new label reveals over the travel's last
+// cursorLabelReveal and is whole at the arrival, never after the click.
+func TestLabelRevealIsWholeOnArrival(t *testing.T) {
 	var m cursorModel
 	window := Rect{Right: 1000, Bottom: 800}
 	target := Rect{Left: 100, Top: 100, Right: 120, Bottom: 120}
 	m.startTravel(t0, window, target, 1)
 	m.revealLabel()
 	arrival := t0.Add(m.path.dur)
-	if f := m.advance(t0.Add(m.path.dur / 2)); !f.Cursor || f.LabelOp != 0 {
-		t.Errorf("mid-travel a new label is held back: %+v", f)
+	from := arrival.Add(-cursorLabelReveal)
+	if m.path.dur <= cursorLabelReveal {
+		t.Fatalf("the test travel (%v) must be longer than the reveal", m.path.dur)
 	}
-	if d, ok := m.nextWake(arrival.Add(time.Millisecond)); !ok || d != cursorFrameInterval {
-		t.Error("the reveal animates at the frame rate")
+	if f := m.advance(from.Add(-time.Millisecond)); !f.Cursor || f.LabelOp != 0 {
+		t.Errorf("early in the travel a new label is held back: %+v", f)
 	}
-	// Frames may come late: the reveal runs from the arrival, not the frame.
-	half := m.advance(arrival.Add(cursorLabelReveal / 2)).LabelOp
+	// Frames may come late: the reveal runs from its start, not the frame.
+	half := m.advance(from.Add(cursorLabelReveal / 2)).LabelOp
 	if want := revealOpacity(cursorLabelReveal / 2); half != want || half <= 0.5 || half >= 1 {
 		t.Errorf("half-way through the reveal LabelOp = %v, want %v (eased out)", half, want)
 	}
-	if f := m.advance(arrival.Add(cursorLabelReveal)); f.LabelOp != 1 {
-		t.Errorf("after %v the label is whole: %+v", cursorLabelReveal, f)
+	if f := m.advance(arrival); f.LabelOp != 1 || f.LabelPop != 1 {
+		t.Errorf("at the arrival the label is whole: %+v", f)
 	}
 	if m.animating() {
 		t.Error("a finished reveal needs no frames")
@@ -902,16 +906,26 @@ func TestLabelRevealWaitsForTheArrival(t *testing.T) {
 	if f := m.advance(arrival.Add(time.Second + time.Millisecond)); !f.Travelling || f.LabelOp != 1 || f.LabelPop != 1 {
 		t.Errorf("a label already shown travels with the cursor, whole: %+v", f)
 	}
-	// The pop runs with the reveal: small at the arrival, whole at its end.
+	// The pop runs with the reveal: small at its start, whole at the arrival.
 	var p cursorModel
 	p.startTravel(t0, window, target, 1)
 	p.revealLabel()
-	at := t0.Add(p.path.dur)
+	at := p.labelRevealStart()
 	if f := p.advance(at.Add(40 * time.Millisecond)); f.LabelPop != labelPop(40*time.Millisecond) || f.LabelPop <= 0.94 || f.LabelPop >= 1 {
-		t.Errorf("40 ms after the arrival the label is mid-pop: %+v", f)
+		t.Errorf("40 ms into the reveal the label is mid-pop: %+v", f)
 	}
 	if f := p.advance(at.Add(cursorLabelReveal)); f.LabelPop != 1 || f.LabelOp != 1 {
 		t.Errorf("after the reveal the label is whole: %+v", f)
+	}
+	// A travel shorter than the reveal reveals from its start.
+	var s cursorModel
+	s.startTravel(t0, Rect{Left: 100, Top: 100, Right: 104, Bottom: 104}, Rect{Left: 103, Top: 103, Right: 107, Bottom: 107}, 1)
+	s.revealLabel()
+	if s.path.dur <= 0 || s.path.dur >= cursorLabelReveal {
+		t.Fatalf("short travel %v", s.path.dur)
+	}
+	if !s.labelRevealStart().Equal(t0) {
+		t.Errorf("a short travel's reveal starts at %v, want its start", s.labelRevealStart())
 	}
 	// A travel with nowhere to go reveals at once.
 	var n cursorModel
@@ -1171,7 +1185,7 @@ func TestTravelReturnsWhenTheTravelCompletes(t *testing.T) {
 	if st := view.state(); st.tip != rectCentre(target) {
 		t.Errorf("the cursor rests at the target's centre, got %+v", st.tip)
 	}
-	// The label fades in after the arrival.
+	// The label has faded in by the arrival.
 	clock.set(t0.Add(cursorTravelMax + cursorLabelReveal))
 	c.postWait(func() { c.ui.tick() }, time.Second)
 	if st := view.state(); st.labelOp != 1 {

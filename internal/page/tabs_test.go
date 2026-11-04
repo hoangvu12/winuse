@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/bridge"
 	"github.com/hoangvu12/winuse/internal/bridge/bridgetest"
@@ -95,6 +96,38 @@ func twoWindows(t *testing.T) *pagetest.Browser {
 
 func windowOne() Geometry {
 	return Geometry{Title: "Docs - Google Chrome", Rect: box(DIPBounds{Left: 100, Top: 60, Width: 1200, Height: 800}, 96), DPI: 96}
+}
+
+// TestFindTabSettledWaitsOutATitleChange (browser-ux 05): right after a
+// navigation the Window's caption still shows the old title; the match
+// reads the caption again and finds the Tab once it caught up. A Window
+// whose title never matches still fails, after the settle time.
+func TestFindTabSettledWaitsOutATitleChange(t *testing.T) {
+	conn := twoWindows(t).Connection(t)
+	reads := 0
+	geo := func() Geometry {
+		reads++
+		g := windowOne()
+		if reads < 3 {
+			g.Title = "Loading... - Google Chrome"
+		}
+		return g
+	}
+	tab, err := FindTabSettled(context.Background(), conn, geo)
+	if err != nil || tab.TargetID != "BBBB000000000000000000000000000B" || reads != 3 {
+		t.Errorf("tab %s, err %v, reads %d", tab.TargetID, err, reads)
+	}
+
+	start := time.Now()
+	_, err = FindTabSettled(context.Background(), conn, func() Geometry {
+		g := windowOne()
+		g.Title = "Nothing - Google Chrome"
+		return g
+	})
+	var none *NoTabError
+	if !errors.As(err, &none) || time.Since(start) < tabSettle {
+		t.Errorf("never matching: %v after %v", err, time.Since(start))
+	}
 }
 
 func TestListWindowTabsOnALaunchedBrowser(t *testing.T) {
@@ -292,7 +325,7 @@ func extensionConn(t *testing.T, ext *bridgetest.Extension) *browser.Connection 
 func TestNewTabOnALaunchedBrowser(t *testing.T) {
 	b := twoWindows(t)
 	conn := b.Connection(t)
-	id, err := NewTab(context.Background(), conn, 1, "example.com")
+	id, err := NewTab(context.Background(), conn, 1, "example.com", TabGroup{Title: "reviewer", Color: "orange"})
 	if err != nil || len(b.Window(1).Tabs) != 4 {
 		t.Fatalf("new tab %s: %v", id, err)
 	}
@@ -303,12 +336,12 @@ func TestNewTabOnALaunchedBrowser(t *testing.T) {
 		}
 	}
 	// Background, in no new window; CDP has no window parameter.
-	if params["background"] != true || params["newWindow"] != false || params["url"] != "https://example.com" || params["windowId"] != nil {
+	if params["background"] != true || params["newWindow"] != false || params["url"] != "https://example.com" || params["windowId"] != nil || params["winuseGroup"] != nil {
 		t.Errorf("createTarget params = %v", params)
 	}
 
 	// Chrome puts it in the last active window, which is not window 2.
-	id, err = NewTab(context.Background(), conn, 2, "")
+	id, err = NewTab(context.Background(), conn, 2, "", TabGroup{})
 	var other *OtherWindowError
 	if !errors.As(err, &other) || other.WindowID != 1 || id == "" {
 		t.Fatalf("landing elsewhere: %s, %v", id, err)
@@ -321,9 +354,13 @@ func TestNewTabOnTheExtensionNamesTheWindow(t *testing.T) {
 			{TargetID: "E3", Title: "Shop", TabID: 21, WindowID: 2, Active: true}},
 	})
 	conn := extensionConn(t, ext)
-	id, err := NewTab(context.Background(), conn, 2, "")
+	id, err := NewTab(context.Background(), conn, 2, "", TabGroup{Title: "reviewer", Color: "orange"})
 	if err != nil || id == "" {
 		t.Fatalf("new tab: %s, %v", id, err)
+	}
+	// The Tab joined its Agent's group (browser-ux 10).
+	if g := ext.Group(id); g != (bridgetest.TabGroup{Title: "reviewer", Color: "orange"}) {
+		t.Errorf("group = %+v", g)
 	}
 	for _, cmd := range ext.Commands() {
 		if cmd.Method == "Target.createTarget" {

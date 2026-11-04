@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
 )
@@ -33,11 +34,17 @@ func TestParseBrowserArgs(t *testing.T) {
 			want: protocol.BrowserCloneArgs{Browser: "chrome", Profile: "Profile 1", Fresh: true, CloseSource: true}},
 		{args: nil, wantErr: "browser needs a subcommand"},
 		{args: []string{"open"}, wantErr: `unknown browser subcommand "open"`},
-		{args: []string{"ext", "install"}, cmd: "browser-ext-install", want: protocol.BrowserArgs{}},
-		{args: []string{"ext", "install", "All"}, cmd: "browser-ext-install", want: protocol.BrowserArgs{Browser: "all"}},
-		{args: []string{"ext", "install", "edge"}, cmd: "browser-ext-install", want: protocol.BrowserArgs{Browser: "edge"}},
-		{args: []string{"ext", "status"}, cmd: "browser-ext-status", want: protocol.BrowserArgs{}},
-		{args: []string{"ext", "status", "Brave"}, cmd: "browser-ext-status", want: protocol.BrowserArgs{Browser: "brave"}},
+		{args: []string{"ext", "install"}, cmd: "browser-ext-install", want: protocol.BrowserExtArgs{}},
+		{args: []string{"ext", "install", "All"}, cmd: "browser-ext-install", want: protocol.BrowserExtArgs{Browser: "all"}},
+		{args: []string{"ext", "install", "edge"}, cmd: "browser-ext-install", want: protocol.BrowserExtArgs{Browser: "edge"}},
+		{args: []string{"ext", "status"}, cmd: "browser-ext-status", want: protocol.BrowserExtArgs{}},
+		{args: []string{"ext", "status", "Brave"}, cmd: "browser-ext-status", want: protocol.BrowserExtArgs{Browser: "brave"}},
+		{args: []string{"ext", "install", "brave", "--open"}, cmd: "browser-ext-install", want: protocol.BrowserExtArgs{Browser: "brave", Open: true}},
+		{args: []string{"ext", "status", "--wait", "120", "brave"}, cmd: "browser-ext-status", want: protocol.BrowserExtArgs{Browser: "brave", Wait: 120}},
+		{args: []string{"ext", "status", "--wait"}, wantErr: "--wait needs a number of seconds"},
+		{args: []string{"ext", "status", "--wait", "0"}, wantErr: "--wait takes 1 to 600 seconds"},
+		{args: []string{"ext", "install", "--wait", "5"}, wantErr: "browser ext install has no option --wait"},
+		{args: []string{"ext", "status", "--open"}, wantErr: "browser ext status has no option --open"},
 		{args: []string{"ext"}, wantErr: "browser ext needs install or status"},
 		{args: []string{"ext", "uninstall"}, wantErr: `unknown browser ext subcommand "uninstall"`},
 		{args: []string{"ext", "install", "chrome", "edge"}, wantErr: "browser ext install takes at most one browser name"},
@@ -64,6 +71,46 @@ func TestParseBrowserArgs(t *testing.T) {
 		if cmd != tc.cmd || req != tc.want {
 			t.Errorf("%q: = %s %+v, want %s %+v", tc.args, cmd, req, tc.cmd, tc.want)
 		}
+	}
+}
+
+// TestExtStatusWait (browser-ux 02): --wait polls once a second while the
+// failure is one the user's next step in the browser clears, returns the
+// first success, and the last failure when the time is up; a failure that
+// needs a command returns at once.
+func TestExtStatusWait(t *testing.T) {
+	now := time.Unix(0, 0)
+	clock := func() time.Time { return now }
+	sleep := func(d time.Duration) { now = now.Add(d) }
+	notLoaded := &exitError{msg: "the winuse extension is not loaded in Brave yet", code: 1}
+	notConnected := &exitError{msg: "the winuse extension is loaded in Brave but has not connected to winuse", code: 1}
+
+	calls := 0
+	err := extStatusWait(protocol.BrowserExtArgs{Wait: 30}, func() error {
+		calls++
+		switch {
+		case calls < 3:
+			return notLoaded
+		case calls < 5:
+			return notConnected
+		}
+		return nil
+	}, sleep, clock)
+	if err != nil || calls != 5 {
+		t.Errorf("connected on the 5th call: err %v, calls %d", err, calls)
+	}
+
+	calls, now = 0, time.Unix(0, 0)
+	err = extStatusWait(protocol.BrowserExtArgs{Wait: 3}, func() error { calls++; return notLoaded }, sleep, clock)
+	if err != notLoaded || calls != 4 {
+		t.Errorf("time up: err %v, calls %d", err, calls)
+	}
+
+	calls = 0
+	notRegistered := &exitError{msg: "the winuse native host is not registered for Brave, so Brave cannot start it", code: 1}
+	err = extStatusWait(protocol.BrowserExtArgs{Wait: 30}, func() error { calls++; return notRegistered }, sleep, clock)
+	if err != notRegistered || calls != 1 {
+		t.Errorf("not registered: err %v, calls %d", err, calls)
 	}
 }
 

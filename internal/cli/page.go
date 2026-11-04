@@ -12,8 +12,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -213,12 +215,79 @@ func parsePageArgs(cmd string, tokens []string) (any, error) {
 		}
 		return parseWaitArgs(tokens)
 	case "eval":
-		if len(tokens) == 0 {
-			return nil, errors.New("eval needs an expression")
-		}
-		return protocol.EvalArgs{Expression: strings.Join(tokens, " ")}, nil
+		return parseEvalArgs(tokens, readEvalFile)
 	}
 	return nil, fmt.Errorf("unknown page command %q", cmd)
+}
+
+// maxEvalChars mirrors page.EvalMaxLimit, eval --max's ceiling.
+const maxEvalChars = 100000
+
+// parseEvalArgs parses eval's expression, or --file <path> (- for stdin)
+// to read it from, which no shell quoting touches (PowerShell 5.1 strips
+// the double quotes inside a native argument), and --max <characters>
+// (browser-ux 06). read reads the file.
+func parseEvalArgs(tokens []string, read func(path string) (string, error)) (protocol.EvalArgs, error) {
+	var a protocol.EvalArgs
+	var rest []string
+	file := ""
+	for i := 0; i < len(tokens); i++ {
+		switch t := tokens[i]; t {
+		case "--file", "--max":
+			if i+1 >= len(tokens) {
+				if t == "--file" {
+					return a, errors.New("--file needs a path, or - for stdin")
+				}
+				return a, errors.New("--max needs a number of characters")
+			}
+			i++
+			if t == "--file" {
+				file = tokens[i]
+				continue
+			}
+			n, err := strconv.Atoi(tokens[i])
+			if err != nil || n < 1 || n > maxEvalChars {
+				return a, fmt.Errorf("--max takes 1 to %d characters, not %q", maxEvalChars, tokens[i])
+			}
+			a.Max = n
+		default:
+			rest = append(rest, t)
+		}
+	}
+	switch {
+	case file != "" && len(rest) > 0:
+		return a, errors.New("eval takes an expression or --file, not both")
+	case file != "":
+		expr, err := read(file)
+		if err != nil {
+			return a, fmt.Errorf("reading the expression from %s: %v", file, err)
+		}
+		if strings.TrimSpace(expr) == "" {
+			return a, fmt.Errorf("%s holds no expression", file)
+		}
+		a.Expression = expr
+	case len(rest) == 0:
+		return a, errors.New("eval needs an expression, or --file <path>")
+	default:
+		a.Expression = strings.Join(rest, " ")
+	}
+	return a, nil
+}
+
+// readEvalFile reads eval --file's expression: a file, or stdin for -.
+// A UTF-8 byte order mark (PowerShell's Out-File writes one) is dropped.
+func readEvalFile(path string) (string, error) {
+	var b []byte
+	var err error
+	if path == "-" {
+		b, err = io.ReadAll(os.Stdin)
+	} else {
+		b, err = os.ReadFile(path)
+	}
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimPrefix(string(b), "\xEF\xBB\xBF"), nil
 }
 
 // withWindowField sets the Window on a page command's wire arguments.

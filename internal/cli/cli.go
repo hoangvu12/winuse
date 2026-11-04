@@ -291,14 +291,16 @@ const usageTail = `);
                                Chrome asks once to allow the connection
   browser stop [browser]      close a browser winuse launched or cloned,
                                keeping its profile
-  browser ext install [browser|all]
+  browser ext install [browser|all] [--open]
                                set up the winuse extension, which drives your
                                running browser with your logins and no
                                prompts, and print the one step the user does
-                               (Developer mode, Load unpacked)
-  browser ext status [browser]
+                               (Developer mode, Load unpacked); --open also
+                               opens the extensions page and the folder
+  browser ext status [browser] [--wait <seconds>]
                                say whether the extension is connected, or in
-                               one sentence what is missing and what to run
+                               one sentence what is missing and what to run;
+                               --wait polls until it connects (up to 600 s)
   browser attach <window>     give a running Electron App's Window a Browser
                                Connection: opens the App's Node.js inspector
                                and runs winuse's code inside the App, so ask
@@ -358,9 +360,12 @@ const usageTail = `);
                                read and poll, take --timeout like the Page's,
                                and never hold up an Action
   wait <milliseconds>         pause, up to 300000 (300 s)
-  eval <window> <expression>  run a JavaScript expression in the Page and
+  eval <window> <expression> | --file <path or -> [--max <n>]
+                               run a JavaScript expression in the Page and
                                print its value (JSON for objects, cut at 4000
-                               characters)
+                               characters or --max, up to 100000); --file
+                               reads it from a file or stdin, past any shell
+                               quoting
   clipboard-get [--format text|image|files] [--out <path>]
                                print the clipboard's text exactly as it is
                                (the default), its files one path per line, or

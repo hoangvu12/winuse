@@ -432,6 +432,26 @@ type Input struct {
 
 	// Sent counts the events that reached the Page (or may have).
 	Sent int
+
+	// OnDelivered, when set, runs once, as soon as the Page accepted the
+	// first event that acts (any but a bare mouseMoved): the Agent Cursor's
+	// ripple then coincides with the press, not with the end of the Action
+	// and its read-back (browser-ux 03).
+	OnDelivered func()
+	acted       bool
+}
+
+// accepted counts an event the Page took and fires OnDelivered on the
+// first one that acts.
+func (in *Input) accepted(method string, params map[string]any) {
+	in.Sent++
+	if in.acted || (method == "Input.dispatchMouseEvent" && params["type"] == "mouseMoved") {
+		return
+	}
+	in.acted = true
+	if in.OnDelivered != nil {
+		in.OnDelivered()
+	}
 }
 
 // NewInput starts input into the Tab session, watching for dialogs there
@@ -507,7 +527,7 @@ func (in *Input) send(ctx context.Context, method string, params map[string]any)
 	select {
 	case err := <-done:
 		if err == nil {
-			in.Sent++
+			in.accepted(method, params)
 			return nil
 		}
 		var ce *cdp.Error
@@ -527,7 +547,7 @@ func (in *Input) send(ctx context.Context, method string, params map[string]any)
 	case ev := <-in.dialogs:
 		// The event's own handler opened the dialog: it was delivered, and
 		// its answer waits for the dialog to close.
-		in.Sent++
+		in.accepted(method, params)
 		return dialogFrom(ev)
 	}
 }
