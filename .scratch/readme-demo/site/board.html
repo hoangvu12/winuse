@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Launch board</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body { background: #f6f5fb; color: #1d1f2c; font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; }
+  .wrap { padding: 16px 20px; }
+  header { display: flex; align-items: baseline; gap: 10px; }
+  h1 { font-size: 27px; margin: 0; font-weight: 700; }
+  .sub { color: #7a7d93; font-size: 17px; }
+  .bar { margin: 14px 0 6px; height: 10px; border-radius: 6px; background: #e4e2f1; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #6b58ce, #9d8cf0); border-radius: 6px; transition: width .5s cubic-bezier(.2,.8,.2,1); }
+  .count { font-size: 17px; color: #5b5e75; display: flex; justify-content: space-between; align-items: center; }
+  select { font: inherit; font-size: 17px; padding: 4px 8px; border-radius: 8px; border: 1px solid #d6d4e6; background: #fff; }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .8px; color: #8a8ca3; margin: 18px 0 8px; }
+  .list { display: flex; flex-direction: column; gap: 8px; min-height: 40px; }
+  .card {
+    display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 12px; padding: 12px 14px;
+    box-shadow: 0 2px 8px rgba(30,30,70,.08); font-size: 19px; font-weight: 550;
+    transition: transform .45s cubic-bezier(.2,.8,.2,1), background-color .3s, color .3s;
+  }
+  .card .tag { margin-left: auto; font-size: 14px; font-weight: 600; color: #6b58ce; background: #eeebfb; padding: 2px 8px; border-radius: 10px; }
+  .check {
+    width: 30px; height: 30px; border-radius: 50%; border: 2px solid #c9c6dd; background: #fff; cursor: pointer; flex: none;
+    display: grid; place-items: center; color: transparent; font-size: 15px; font-weight: 800; padding: 0; transition: all .25s;
+  }
+  .card.done { background: #eaf7ee; color: #4f6b58; }
+  .card.done .check { background: #1f853e; border-color: #1f853e; color: #fff; }
+  .card.done .title { text-decoration: line-through; text-decoration-color: #9bbfa6; }
+  .ship {
+    margin-top: 18px; width: 100%; padding: 13px; border: 0; border-radius: 12px; font-weight: 700; font-size: 20px; font-family: inherit;
+    background: #d9d6ea; color: #fff; transition: background .3s, transform .15s;
+  }
+  .ship.ready { background: #6b58ce; box-shadow: 0 6px 18px rgba(107,88,206,.35); }
+  .shipped { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; opacity: 0; transition: opacity .4s; }
+  .shipped div { background: #fff; padding: 18px 26px; border-radius: 16px; font-size: 30px; font-weight: 800; box-shadow: 0 12px 40px rgba(30,30,70,.25); transform: scale(.8); transition: transform .45s cubic-bezier(.2,1.4,.4,1); }
+  body.is-shipped .shipped { opacity: 1; }
+  body.is-shipped .shipped div { transform: scale(1); }
+  canvas { position: fixed; inset: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>Launch board</h1><span class="sub">v2.0</span></header>
+  <div class="bar"><i id="bar"></i></div>
+  <div class="count"><span id="count">0 of 5 done</span>
+    <label>Owner <select id="owner" aria-label="Board owner"><option>Unassigned</option><option>Agents</option><option>Release team</option></select></label></div>
+  <h2>To do</h2>
+  <div class="list" id="todo"></div>
+  <h2>Done</h2>
+  <div class="list" id="done"></div>
+  <button class="ship" id="ship" aria-label="Ship v2.0" disabled>Ship v2.0</button>
+</div>
+<div class="shipped"><div>🚀 Shipped!</div></div>
+<canvas id="fx"></canvas>
+<script>
+const TASKS = [["Write changelog", "docs"], ["Record demo", "video"], ["Update docs", "docs"], ["Tag the release", "git"], ["Announce it", "news"]];
+const todo = document.getElementById("todo"), done = document.getElementById("done");
+let n = 0;
+for (const [t, tag] of TASKS) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `<button class="check" aria-label="Done: ${t}">✓</button><span class="title">${t}</span><span class="tag">${tag}</span>`;
+  card.querySelector("button").onclick = () => complete(card);
+  todo.appendChild(card);
+}
+// FLIP: the card slides from its place in To do to its place in Done.
+function complete(card) {
+  if (card.classList.contains("done")) return;
+  const cards = [...document.querySelectorAll(".card")];
+  const before = new Map(cards.map(c => [c, c.getBoundingClientRect().top]));
+  card.classList.add("done");
+  done.appendChild(card);
+  for (const c of cards) {
+    const dy = before.get(c) - c.getBoundingClientRect().top;
+    if (!dy) continue;
+    c.style.transition = "none"; c.style.transform = `translateY(${dy}px)`;
+    requestAnimationFrame(() => requestAnimationFrame(() => { c.style.transition = ""; c.style.transform = ""; }));
+  }
+  n++;
+  document.getElementById("bar").style.width = (n / TASKS.length * 100) + "%";
+  document.getElementById("count").textContent = `${n} of ${TASKS.length} done`;
+  if (n === TASKS.length) { const s = document.getElementById("ship"); s.disabled = false; s.classList.add("ready"); }
+}
+// #done previews the shipped board (record-demo.ps1 never uses it).
+if (location.hash === "#done") { document.querySelectorAll(".check").forEach(b => b.click()); setTimeout(() => document.getElementById("ship").click(), 600); }
+document.getElementById("ship").onclick = () => { document.body.classList.add("is-shipped"); confetti(); };
+function confetti() {
+  const cv = document.getElementById("fx"), x = cv.getContext("2d");
+  cv.width = innerWidth * devicePixelRatio; cv.height = innerHeight * devicePixelRatio; x.scale(devicePixelRatio, devicePixelRatio);
+  const cols = ["#6b58ce", "#ff9f1c", "#1f853e", "#e5484d", "#4cc3ff", "#ffd166"];
+  const ps = Array.from({ length: 140 }, () => ({
+    x: innerWidth / 2, y: innerHeight / 2, vx: (Math.random() - .5) * 13, vy: -Math.random() * 13 - 3,
+    s: 5 + Math.random() * 6, r: Math.random() * 6, vr: (Math.random() - .5) * .4, c: cols[Math.floor(Math.random() * cols.length)],
+  }));
+  const t0 = performance.now();
+  (function frame(t) {
+    x.clearRect(0, 0, innerWidth, innerHeight);
+    for (const p of ps) {
+      p.vy += .35; p.x += p.vx; p.y += p.vy; p.r += p.vr;
+      x.save(); x.translate(p.x, p.y); x.rotate(p.r); x.fillStyle = p.c; x.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); x.restore();
+    }
+    if (t - t0 < 4000) requestAnimationFrame(frame);
+  })(t0);
+}
+</script>
+</body>
+</html>

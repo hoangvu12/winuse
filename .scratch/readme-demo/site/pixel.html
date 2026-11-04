@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pixel studio</title>
+<style>
+  :root { --ink: #2b2d42; --blank: #eef0f5; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #fbfbfd; color: #1d1f2c;
+    font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  header { width: 100%; box-sizing: border-box; padding: 16px 22px 8px; display: flex; align-items: baseline; gap: 10px; }
+  h1 { font-size: 27px; margin: 0; font-weight: 700; }
+  .sub { color: #7a7d93; font-size: 17px; }
+  .palette { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 8px 10px 14px; max-width: 490px; }
+  .swatch {
+    border: 0; border-radius: 10px; padding: 5px 8px 5px 5px; background: #f0f1f6; cursor: pointer;
+    display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 15px; font-family: inherit; color: #3a3d52;
+    transition: box-shadow .15s, background .15s;
+  }
+  .swatch i { width: 22px; height: 22px; border-radius: 6px; display: block; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
+  .swatch.on { background: #fff; box-shadow: 0 0 0 2px #1d1f2c, 0 3px 10px rgba(0,0,0,.12); }
+  .grid { display: grid; grid-template-columns: repeat(14, 30px); gap: 2px; padding: 10px; background: #fff; border-radius: 14px; box-shadow: 0 6px 24px rgba(20,22,50,.10); }
+  .px { width: 30px; height: 30px; border: 0; padding: 0; border-radius: 4px; background: var(--blank); transition: background-color .22s, transform .22s; }
+  .px.ink { background: var(--ink); }
+  .px.pop { transform: scale(1.18); }
+  .px.star { background: #ffd166; }
+  .done .px.star { animation: twinkle 1.2s ease-in-out infinite alternate; }
+  @keyframes twinkle { from { box-shadow: 0 0 0 0 rgba(255,209,102,.0); } to { box-shadow: 0 0 10px 3px rgba(255,209,102,.85); } }
+  .badge { margin-top: 14px; height: 30px; font-weight: 700; font-size: 21px; color: #1f853e; opacity: 0; transform: translateY(6px); transition: all .35s; }
+  .done .badge { opacity: 1; transform: none; }
+</style>
+</head>
+<body>
+  <header><h1>Pixel studio</h1><span class="sub">colour the rocket</span></header>
+  <div class="palette" id="palette"></div>
+  <div class="grid" id="grid" aria-label="Canvas"></div>
+  <div class="badge" id="badge">✓ Ready for launch</div>
+<script>
+// '#' outline, '*' a star, '.' sky; letters are the rocket's parts. Every
+// cell starts blank but the outline and the stars; a click fills the
+// blank region under it with the chosen colour, rippling out.
+const MAP = [
+  "..............",
+  ".*....##....*.",
+  ".....#nn#.....",
+  "....#nnnn#....",
+  "....######....",
+  "...#bbbbbb#...",
+  "...#bb##bb#...",
+  "...#b#ww#b#.*.",
+  "...#b#ww#b#...",
+  ".*.#bb##bb#...",
+  "..##bbbbbb##..",
+  ".#ll#bbbb#rr#.",
+  ".#ll#bbbb#rr#.",
+  ".############.",
+  "....#xxxx#..*.",
+  ".....#xx#.....",
+];
+const COLOURS = [
+  ["Silver", "#c3cbdc"], ["Sky", "#4cc3ff"], ["Red", "#e5484d"],
+  ["Orange", "#ff9f1c"], ["Midnight", "#1f2a55"],
+];
+const W = MAP[0].length, H = MAP.length;
+let current = COLOURS[0][1];
+const pal = document.getElementById("palette");
+for (const [name, hex] of COLOURS) {
+  const b = document.createElement("button");
+  b.className = "swatch"; b.setAttribute("aria-label", name);
+  b.innerHTML = `<i style="background:${hex}"></i>${name}`;
+  b.onclick = () => { current = hex; for (const s of pal.children) s.classList.toggle("on", s === b); };
+  pal.appendChild(b);
+}
+pal.children[0].classList.add("on");
+const grid = document.getElementById("grid");
+const cells = [];
+for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+  const b = document.createElement("button");
+  b.className = "px"; b.setAttribute("aria-label", `Pixel ${r + 1}-${c + 1}`);
+  const ch = MAP[r][c];
+  if (ch === "#") b.classList.add("ink");
+  if (ch === "*") b.classList.add("star");
+  b.dataset.fill = (ch === "#" || ch === "*") ? "fixed" : "";
+  b.onclick = () => fill(r, c);
+  grid.appendChild(b); cells.push(b);
+}
+const at = (r, c) => cells[r * W + c];
+function fill(r0, c0) {
+  const start = at(r0, c0);
+  if (start.dataset.fill === "fixed") return;
+  const from = start.dataset.fill, to = current;
+  if (from === to) return;
+  const seen = new Set([r0 * W + c0]);
+  let ring = [[r0, c0]], d = 0;
+  while (ring.length) {
+    const next = [];
+    for (const [r, c] of ring) {
+      const cell = at(r, c);
+      cell.dataset.fill = to;
+      setTimeout(() => {
+        cell.style.backgroundColor = to; cell.classList.add("pop");
+        setTimeout(() => cell.classList.remove("pop"), 180);
+      }, d * 28);
+      for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const rr = r + dr, cc = c + dc, k = rr * W + cc;
+        if (rr < 0 || cc < 0 || rr >= H || cc >= W || seen.has(k)) continue;
+        if (at(rr, cc).dataset.fill !== from) continue;
+        seen.add(k); next.push([rr, cc]);
+      }
+    }
+    ring = next; d++;
+  }
+  setTimeout(check, d * 28 + 250);
+}
+// #done previews the finished picture (record-demo.ps1 never uses it).
+if (location.hash === "#done") {
+  for (const [colour, r, c] of [[1, 5, 4], [2, 7, 6], [3, 3, 6], [3, 11, 2], [3, 11, 11], [4, 14, 6], [5, 0, 0]]) {
+    current = COLOURS[colour - 1][1]; fill(r, c);
+  }
+}
+function check() {
+  if (cells.every(c => c.dataset.fill !== "")) document.body.classList.add("done");
+}
+</script>
+</body>
+</html>
