@@ -5,8 +5,8 @@
 //
 // The toast tests raise their own toasts from Windows PowerShell's App
 // User Model ID, in their own group (fixture.Toaster: the group is removed
-// from the Notification Center after, and so is the settings key Windows
-// adds when it was not there), and hear their buttons in this process, so
+// from the Notification Center after, and so are the settings and backup
+// keys Windows adds when they were not there), and hear their buttons in this process, so
 // they never act on a notification of the user's. They show
 // toasts on the user's screen and need the user's notifications turned on
 // (Settings > System > Notifications), so they skip unless
