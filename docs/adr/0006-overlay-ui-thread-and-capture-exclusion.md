@@ -63,6 +63,13 @@ the agent's whole turn ends (a known bug).
    is still applied, best-effort, for *other* software's captures, with
    no `WDA_MONITOR` fallback (a black box in a recording is worse than a
    visible indicator).
+   *Note (readme-demo):* a helper started with `WINUSE_CURSOR_CAPTURE=1`
+   in its environment (the command that starts it passes it on) leaves
+   `WDA_EXCLUDEFROMCAPTURE` off the Agent Cursors' windows, so a screen
+   recorder sees them, for recording a demo. It is read once at the
+   helper's start, so a helper started without it is never affected; the
+   in-control banner stays excluded, and winuse's own screenshots still
+   hide the cursors through `HideWhile`.
 
 5. The overlay stays out of winuse's own window listings and capture
    regions by the existing `OwnProcess` rule (windows of the helper's own

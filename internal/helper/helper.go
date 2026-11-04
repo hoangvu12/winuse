@@ -152,6 +152,9 @@ func Main() int {
 			defer cursor.Close()
 		}
 	}
+	if win.CursorRecordable() {
+		log.Printf("%s=1: the Agent Cursors show in screen recordings (winuse's own screenshots still hide them)", win.CursorCaptureEnv)
+	}
 
 	// The Browser Connections (browser merge ticket 01): one connection per
 	// browser, held for the helper's lifetime, so Chrome's approval prompt
