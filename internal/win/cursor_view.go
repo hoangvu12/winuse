@@ -361,9 +361,11 @@ type cursorWin struct {
 	outPop    float64 // the scale the outline's pixels are drawn at
 	outPos    Rect    // the outline window's screen rectangle; empty: none
 	fonts     map[int32]uintptr
-	face      string        // the label's font face; "" until chosen
-	interval  time.Duration // the armed timer's period; 0: none
-	hidden    bool          // something was hidden since the last composed
+	face      string // the label's font face; "" until chosen
+	// faceRegular is the regular face, for a named Agent's action line.
+	faceRegular string
+	interval    time.Duration // the armed timer's period; 0: none
+	hidden      bool          // something was hidden since the last composed
 }
 
 // newCursorWin registers the class and creates the three hidden windows,
@@ -431,18 +433,23 @@ func (w *cursorWin) monitorAt(p fpoint) (Rect, uint32) {
 }
 
 // createLabelFont creates the label font face at pixel height h, at
-// FW_SEMIBOLD (which these semibold faces are).
-func createLabelFont(face string, h int32) uintptr {
+// FW_SEMIBOLD (which the semibold faces are) or, regular, FW_NORMAL.
+func createLabelFont(face string, h int32, regular bool) uintptr {
 	const (
 		defaultCharset = 1
+		fwNormal       = 400
 		fwSemibold     = 600
 	)
 	name, err := windows.UTF16PtrFromString(face)
 	if err != nil {
 		return 0
 	}
+	weight := uintptr(fwSemibold)
+	if regular {
+		weight = fwNormal
+	}
 	f, _, _ := procCreateFontW.Call(
-		uintptr(int32ToU32(-h)), 0, 0, 0, fwSemibold, 0, 0, 0,
+		uintptr(int32ToU32(-h)), 0, 0, 0, weight, 0, 0, 0,
 		defaultCharset, 0, 0, cursorLabelQuality, 0, uintptr(unsafe.Pointer(name)))
 	return f
 }
@@ -460,12 +467,17 @@ func (w *cursorWin) selectedFace(f uintptr) string {
 	return windows.UTF16ToString(buf)
 }
 
-// labelFace chooses the label's face once: the first of cursorLabelFaces
-// GDI really provides.
-func (w *cursorWin) labelFace() string {
-	if w.face == "" {
-		w.face = chooseLabelFace(cursorLabelFaces, func(face string) string {
-			f := createLabelFont(face, 13)
+// labelFace chooses the label's semibold face (or, regular, its regular
+// one) once: the first of cursorLabelFaces (cursorLabelRegularFaces) GDI
+// really provides.
+func (w *cursorWin) labelFace(regular bool) string {
+	faces, chosen := cursorLabelFaces, &w.face
+	if regular {
+		faces, chosen = cursorLabelRegularFaces, &w.faceRegular
+	}
+	if *chosen == "" {
+		*chosen = chooseLabelFace(faces, func(face string) string {
+			f := createLabelFont(face, 13, regular)
 			if f == 0 {
 				return ""
 			}
@@ -473,29 +485,33 @@ func (w *cursorWin) labelFace() string {
 			return w.selectedFace(f)
 		})
 	}
-	return w.face
+	return *chosen
 }
 
-// font returns the label face at px logical pixels at scale (cached per
-// pixel height).
-func (w *cursorWin) font(px, scale float64) uintptr {
+// font returns the label face at px logical pixels at scale, semibold or
+// regular (cached per pixel height and weight).
+func (w *cursorWin) font(px, scale float64, regular bool) uintptr {
 	h := scaled(px, scale)
-	if f, ok := w.fonts[h]; ok {
+	key := h
+	if regular {
+		key = -h
+	}
+	if f, ok := w.fonts[key]; ok {
 		return f
 	}
-	f := createLabelFont(w.labelFace(), h)
+	f := createLabelFont(w.labelFace(regular), h, regular)
 	if f != 0 {
-		w.fonts[h] = f
+		w.fonts[key] = f
 	}
 	return f
 }
 
-func (w *cursorWin) measureLabel(text string, px, scale float64) int32 {
+func (w *cursorWin) measureLabel(text string, px, scale float64, regular bool) int32 {
 	u, err := windows.UTF16FromString(text)
 	if err != nil || len(u) <= 1 {
 		return 0
 	}
-	f := w.font(px, scale)
+	f := w.font(px, scale, regular)
 	if f == 0 {
 		return 0
 	}
@@ -541,13 +557,14 @@ func (w *cursorWin) renderArrow(look cursorLook) bool {
 	s.clear()
 	if w.layout.Pill.Width() > 0 {
 		s.drawPill(w.layout.Pill, look.Scale, w.accent)
+		ink := pillTextColor(w.accent)
 		if look.Name != "" {
-			// Two lines, left-aligned: the name, smaller and in the
-			// Agent's colour, over the action.
-			w.drawLine(look.Name, w.layout.Name, cursorPillNameFontPx, look.Scale, nameColor(w.accent), dtLeft, cursorPillTextShadow)
-			w.drawLine(look.Label, w.layout.Text, cursorPillFontPx, look.Scale, cursorTextColor, dtLeft, cursorPillTextShadow)
+			// Two lines, left-aligned: the name, semibold, over the
+			// action, regular and a little lighter (refs/README.md).
+			w.drawLine(look.Name, w.layout.Name, cursorPillNameFontPx, look.Scale, ink, 1, dtLeft, false)
+			w.drawLine(look.Label, w.layout.Text, cursorPillFontPx, look.Scale, ink, cursorPillActionOpacity, dtLeft, true)
 		} else {
-			w.drawLabel(look.Label, w.layout.Text, look.Scale)
+			w.drawLine(look.Label, w.layout.Text, cursorPillFontPx, look.Scale, ink, 1, dtCenter, false)
 		}
 	}
 	w.card = append(w.card[:0], s.pix...)
@@ -677,18 +694,18 @@ func (w *cursorWin) composeArrow(k spriteKey) {
 // in the text colour at the coverage GDI left. The text is centred, as
 // their text.rs sets it.
 func (w *cursorWin) drawLabel(text string, r Rect, scale float64) {
-	w.drawLine(text, r, cursorPillFontPx, scale, cursorTextColor, dtCenter, 0)
+	w.drawLine(text, r, cursorPillFontPx, scale, cursorTextColor, 1, dtCenter, false)
 }
 
 // drawLine draws one line of text into r as drawLabel does, at px logical
-// pixels in c, aligned by align (dtCenter or dtLeft), over a dark copy of
-// itself at opacity shadow a pixel lower (none at 0).
-func (w *cursorWin) drawLine(text string, r Rect, px, scale float64, c color.RGBA, align uint32, shadow float64) {
+// pixels, semibold or regular, in c at opacity op, aligned by align
+// (dtCenter or dtLeft).
+func (w *cursorWin) drawLine(text string, r Rect, px, scale float64, c color.RGBA, op float64, align uint32, regular bool) {
 	u, err := windows.UTF16PtrFromString(text)
 	if err != nil {
 		return
 	}
-	f := w.font(px, scale)
+	f := w.font(px, scale, regular)
 	if f == 0 {
 		return
 	}
@@ -704,7 +721,7 @@ func (w *cursorWin) drawLine(text string, r Rect, px, scale float64, c color.RGB
 	procSetTextColor.Call(dc, uintptr(overlayTextColor)) // white, onto takeText's black
 	drawText(dc, u, &r, align|dtVCenter|dtSingleLine|dtEndEllipsis|dtNoPrefix)
 	procGdiFlush.Call()
-	s.putTextShadowed(r, saved, c, shadow, int(scaled(1, scale)))
+	s.putTextAt(r, saved, c, op)
 }
 
 func (w *cursorWin) hideCursor() {

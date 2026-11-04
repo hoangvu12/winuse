@@ -154,33 +154,37 @@ func arrowBounds(scale float64) Rect {
 	return Rect{Left: -r, Top: -r, Right: r + 1, Bottom: r + 1}
 }
 
-// The label pill, logical pixels: fully rounded, white text centred in
-// it, in the Agent's colour (cua's verbose badge; colours in
-// cursor_raster.go). The sizes started from agent-desktop's
-// label_pill.rs.
+// The label pill, logical pixels: a flat tag in the Agent's colour with
+// white or near-black text, as multiplayer apps tag a collaborator's
+// cursor (cursor-look issue 10, .scratch/cursor-look/refs/: Figma's tags
+// are flat, nearly square, just past the arrow's tail; colours in
+// cursor_raster.go). The sizes started from agent-desktop's label_pill.rs.
 const (
-	cursorPillHeight    = 26.0  // the radius is half of it
+	cursorPillHeight    = 26.0
+	cursorPillRadius    = 4.0   // Figma's are 1–2 px on a 21 px tag; ours is taller and rounded like the arrow
 	cursorPillPadX      = 11.0  // each end
 	cursorPillMaxWidth  = 360.0 // LABEL_PILL_MAX_WIDTH; longer labels are ellipsized
-	cursorPillFontPx    = 12.5  // semibold (cursorLabelFaces)
+	cursorPillFontPx    = 12.5  // the action: semibold alone, regular under a name (cursorLabelFaces)
 	cursorPillTextInset = 2.0   // render.rs TEXT_VERTICAL_INSET
 	// A named Agent's pill has two lines (ADR 0018 Decision 8): its name,
-	// smaller and in its colour, over the action. The lines' boxes stack
-	// between the vertical padding; the corners keep the one-line pill's
-	// radius, half cursorPillHeight.
-	cursorPillNameFontPx = 10.5
-	cursorPillNameLine   = 14.0
+	// semibold, over the action, regular and a little lighter. The lines'
+	// boxes stack between the vertical padding.
+	cursorPillNameFontPx = 12.0
+	cursorPillNameLine   = 15.0
 	cursorPillLine       = 17.0
 	cursorPillPadY       = 4.5
+	// cursorNameMaxRunes caps a name before it is measured: longer ones
+	// end in "…" within this many characters.
+	cursorNameMaxRunes = 24
 	// The pill's shadow: black at this opacity, offset down and blurred,
-	// under a glow in the Agent's colour (session_badge.rs).
+	// soft as Figma's tags'.
 	cursorPillShadowOpacity = 0.22
 	cursorPillShadowOffset  = 2.0
 	cursorPillShadowBlur    = 3.0
-	cursorPillGlowOpacity   = 0.30
-	// The pill sits this far right of and below the tip, and as far left
-	// of and above it when flipped (layout.rs LABEL_OFFSET_X/Y).
-	cursorPillOffsetX = 20.0
+	// The pill's top-left sits this far right of and below the tip, just
+	// past the arrow's tail as Figma's tag does, and the pill as far left
+	// of and above the tip when flipped (layout.rs LABEL_OFFSET_X/Y).
+	cursorPillOffsetX = 14.0
 	cursorPillOffsetY = 30.0
 	// cursorPillMargin is the macOS bubble window's margin around the pill
 	// (ADBubbleMargin): its pop grows from that window's corner.
@@ -295,10 +299,19 @@ func pillHeight2(scale float64) int32 {
 	return 2*scaled(cursorPillPadY, scale) + scaled(cursorPillNameLine, scale) + scaled(cursorPillLine, scale)
 }
 
-// pillRadius is the pill's corner radius at scale: fully rounded for one
-// line, the same radius for two.
+// pillRadius is the pill's corner radius at scale, one line or two.
 func pillRadius(pill Rect, scale float64) float64 {
-	return math.Min(float64(pill.Height())/2, float64(scaled(cursorPillHeight, scale))/2)
+	return math.Min(float64(pill.Height())/2, cursorPillRadius*scale)
+}
+
+// capName cuts a name longer than cursorNameMaxRunes to that many
+// characters, the last an ellipsis.
+func capName(name string) string {
+	r := []rune(name)
+	if len(r) <= cursorNameMaxRunes {
+		return name
+	}
+	return strings.TrimRight(string(r[:cursorNameMaxRunes-1]), " ") + "…"
 }
 
 // placePill places a w×h pill beside the tip, in screen pixels
@@ -412,6 +425,10 @@ func trailWindowRect(pts []fpoint, scale float64) Rect {
 // own, so a true semibold is asked for by name: their "Segoe UI" at
 // FW_SEMIBOLD gets its Bold.
 var cursorLabelFaces = []string{"Segoe UI Variable Text Semibold", "Segoe UI Semibold"}
+
+// cursorLabelRegularFaces are the regular faces of the same families, for
+// a named Agent's action line under its semibold name.
+var cursorLabelRegularFaces = []string{"Segoe UI Variable Text", "Segoe UI"}
 
 // chooseLabelFace returns the first face resolve (which creates the font
 // and reports the face GDI actually selected, "" when it could not)

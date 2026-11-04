@@ -142,7 +142,7 @@ func TestAgentCursorVisualDemo(t *testing.T) {
 		{box(0.5, 0.5, 600, 400), `select "A very long label that is cut short with an ellipsis because it is far wider than the pill may grow"`},
 	}
 	if cw, ok := c.ui.view.(*cursorWin); ok {
-		_ = th.do(func() { t.Logf("label font: %q", cw.labelFace()) })
+		_ = th.do(func() { t.Logf("label font: %q", cw.labelFace(false)) })
 	}
 	// at waits until d after since and takes a shot there, logging when
 	// it really was (a capture takes a few milliseconds of its own).

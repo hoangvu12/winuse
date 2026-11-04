@@ -7,11 +7,12 @@ package win
 // compositing, the text blend and the shapes are tested offline; the
 // window side points a surface at its DIB section's bits.
 //
-// The arrow, its colours, the pill's colours and the trail are trycua/cua's
-// at ecaf10b (MIT; see third_party/cua/LICENSE): cursor-overlay's
-// build_default_theme.py (the white rim, the eight glow strokes), theme.rs
-// (#5EC0E8), cursor_pose.rs (the halo), session_badge.rs (the badge's
-// gradient, rim and glow) and effects.rs (the trail, the lifted colour).
+// The arrow, its colours and the trail are trycua/cua's at ecaf10b (MIT;
+// see third_party/cua/LICENSE): cursor-overlay's build_default_theme.py
+// (the white rim, the eight glow strokes), theme.rs (#5EC0E8),
+// cursor_pose.rs (the halo) and effects.rs (the trail, the lifted
+// colour). The label is a flat tag like a multiplayer app's (cursor-look
+// issue 10).
 // cua paints with tiny-skia; we draw the upright arrow exactly once per
 // look, finer than the screen, and sample every turned or pressed sprite
 // from it.
@@ -55,44 +56,49 @@ var (
 	cursorRimColor = color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
 	// cursorShadowColor is the pill's shadow.
 	cursorShadowColor = color.RGBA{A: 0xFF}
-	// cursorTextColor is the label's text.
+	// cursorTextColor is light text: white.
 	cursorTextColor = color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
-	// cursorPillStops is the pill's diagonal gradient before it is mixed
-	// toward the Agent's colour by cursorPillMix (session_badge.rs).
-	cursorPillStops = [3]color.RGBA{
-		{R: 0x5E, G: 0x97, B: 0xB2, A: 0xFF},
-		{R: 0x2B, G: 0x5C, B: 0x77, A: 0xFF},
-		{R: 0x0D, G: 0x1B, B: 0x26, A: 0xFF},
-	}
+	// cursorInkColor is dark text: a near-black, for light Agent colours.
+	cursorInkColor = color.RGBA{R: 0x16, G: 0x18, B: 0x1D, A: 0xFF}
 )
 
 const (
-	cursorPillAlpha    = 0.95 // the pill body's opacity
-	cursorPillRimAlpha = 0.75 // its 1 px rim: white mixed toward the Agent's colour
-	cursorPillRimMix   = 0.55
 	// cursorEffectLift lifts the accent toward white for the effects (the
 	// trail), as cua's effects.rs does.
 	cursorEffectLift = 0.45
+	// cursorPillActionOpacity is a named Agent's action line's opacity
+	// under its name: the name leads, the action reads a little lighter
+	// (refs/README.md).
+	cursorPillActionOpacity = 0.82
 )
 
-// cursorPillNameLift lifts the Agent's colour toward white for the name
-// line, so the name reads in its colour on the pill, whose light end is
-// mixed toward that colour too.
-const cursorPillNameLift = 0.72
-
-// cursorPillTextShadow is the two-line pill's text shadow: a copy of each
-// line in black at this opacity, a pixel lower.
-const cursorPillTextShadow = 0.45
-
-// nameColor is the name line's colour for an Agent drawn in accent.
-func nameColor(accent color.RGBA) color.RGBA {
-	return mixColor(accent, cursorRimColor, cursorPillNameLift)
+// pillTextColor is the text on a pill filled with accent: white or
+// near-black, whichever contrasts more with it (WCAG relative luminance).
+// cua's pastels mostly take the near-black, saturated colours white.
+func pillTextColor(accent color.RGBA) color.RGBA {
+	if contrast(cursorTextColor, accent) >= contrast(cursorInkColor, accent) {
+		return cursorTextColor
+	}
+	return cursorInkColor
 }
 
-// cursorPillMix is how far each gradient stop is mixed toward the Agent's
-// colour (session_badge.rs). The dark end stays dark so white text reads
-// whatever the colour.
-var cursorPillMix = [3]float64{0.66, 0.52, 0.26}
+// contrast is the WCAG contrast ratio of a and b, from 1 to 21.
+func contrast(a, b color.RGBA) float64 {
+	la, lb := luminance(a), luminance(b)
+	return (math.Max(la, lb) + 0.05) / (math.Min(la, lb) + 0.05)
+}
+
+// luminance is c's WCAG relative luminance.
+func luminance(c color.RGBA) float64 {
+	ch := func(v uint8) float64 {
+		s := float64(v) / 255
+		if s <= 0.03928 {
+			return s / 12.92
+		}
+		return math.Pow((s+0.055)/1.055, 2.4)
+	}
+	return 0.2126*ch(c.R) + 0.7152*ch(c.G) + 0.0722*ch(c.B)
+}
 
 // mixColor is a mixed f of the way toward b.
 func mixColor(a, b color.RGBA, f float64) color.RGBA {
@@ -387,22 +393,10 @@ func (s *surface) drawArrowSprite(m *arrowMaster, tip fpoint, angle, press float
 	}
 }
 
-// pillColor is the pill's body colour at t ∈ [0, 1] along its diagonal:
-// the three gradient stops, each mixed toward accent.
-func pillColor(accent color.RGBA, t float64) color.RGBA {
-	a := mixColor(cursorPillStops[0], accent, cursorPillMix[0])
-	b := mixColor(cursorPillStops[1], accent, cursorPillMix[1])
-	c := mixColor(cursorPillStops[2], accent, cursorPillMix[2])
-	if t < 0.5 {
-		return mixColor(a, b, t*2)
-	}
-	return mixColor(b, c, t*2-1)
-}
-
-// drawPill draws the label pill into r in the Agent's colour (cua's
-// verbose badge, session_badge.rs): a soft black shadow below and a glow
-// in accent, the fully rounded body in a diagonal gradient of dark stops
-// mixed toward accent, and a 1 px rim of white mixed toward accent.
+// drawPill draws the label pill into r as the multiplayer apps draw a
+// collaborator's tag (refs/README.md: Figma, FigJam): a soft black shadow
+// below, and the body flat and opaque in the Agent's colour, its corners
+// barely rounded. No gradient, glow or rim.
 func (s *surface) drawPill(r Rect, scale float64, accent color.RGBA) {
 	if r.Width() <= 0 || r.Height() <= 0 {
 		return
@@ -414,31 +408,7 @@ func (s *surface) drawPill(r Rect, scale float64, accent color.RGBA) {
 	s.fillSoft(pillShadowBounds(r, scale), cursorShadowColor, cursorPillShadowOpacity, func(x, y float64) float64 {
 		return shadowStrength(roundRectSD(l, t+off, rt, b+off, rad, x, y), blur)
 	})
-	s.fillSoft(pillShadowBounds(r, scale), accent, cursorPillGlowOpacity, func(x, y float64) float64 {
-		return shadowStrength(roundRectSD(l, t, rt, b, rad, x, y), blur)
-	})
-	sd := func(x, y float64) float64 { return roundRectSD(l, t, rt, b, rad, x, y) }
-	// The diagonal runs from the top-left to the bottom-right corner.
-	dx, dy := rt-l, b-t
-	d2 := dx*dx + dy*dy
-	x0, y0, x1, y1 := s.clipBox(r)
-	for y := y0; y < y1; y++ {
-		cy := float64(y) + 0.5
-		for x := x0; x < x1; x++ {
-			cx := float64(x) + 0.5
-			cov := clamp01(0.5 - sd(cx, cy))
-			if cov <= 0 {
-				continue
-			}
-			c := pillColor(accent, ((cx-l)*dx+(cy-t)*dy)/d2)
-			i := y*s.w + x
-			s.pix[i] = over(s.pix[i], premultiply(c, cursorPillAlpha*cov))
-		}
-	}
-	// A one-pixel band just inside the outline: distance ∈ [−1, 0].
-	s.fillSDF(r, mixColor(cursorRimColor, accent, cursorPillRimMix), cursorPillRimAlpha, func(x, y float64) float64 {
-		return math.Abs(sd(x, y)+0.5) - 0.5
-	})
+	s.fillSDF(r, accent, 1, func(x, y float64) float64 { return roundRectSD(l, t, rt, b, rad, x, y) })
 }
 
 // clipBox clips r to the surface.
@@ -473,33 +443,22 @@ func textCoverage(p uint32) float64 {
 // putText composites c at the coverage GDI left in r over the pixels
 // takeText saved from there, so every pixel keeps the pill's alpha.
 func (s *surface) putText(r Rect, saved []uint32, c color.RGBA) {
-	s.putTextShadowed(r, saved, c, 0, 0)
+	s.putTextAt(r, saved, c, 1)
 }
 
-// putTextShadowed is putText with a dark copy of the text under it, off
-// pixels down, at opacity shadow (none at 0): the two-line pill's text
-// keeps its edge on the pill's light end.
-func (s *surface) putTextShadowed(r Rect, saved []uint32, c color.RGBA, shadow float64, off int) {
+// putTextAt is putText with the text at opacity op: a named Agent's
+// action line, a little lighter than its name.
+func (s *surface) putTextAt(r Rect, saved []uint32, c color.RGBA, op float64) {
 	x0, y0, x1, y1 := s.clipBox(r)
-	w := x1 - x0
-	if x1 <= x0 || y1 <= y0 || len(saved) != w*(y1-y0) {
+	if x1 <= x0 || y1 <= y0 || len(saved) != (x1-x0)*(y1-y0) {
 		return
 	}
-	cov := make([]float64, len(saved))
-	for y := y0; y < y1; y++ {
-		for x, p := range s.pix[y*s.w+x0 : y*s.w+x1] {
-			cov[(y-y0)*w+x] = textCoverage(p)
-		}
-	}
+	k := 0
 	for y := y0; y < y1; y++ {
 		row := s.pix[y*s.w+x0 : y*s.w+x1]
-		for x := range row {
-			k := (y-y0)*w + x
-			p := saved[k]
-			if j := k - off*w; shadow > 0 && j >= 0 && cov[j] > 0 {
-				p = over(p, premultiply(cursorShadowColor, shadow*cov[j]))
-			}
-			row[x] = over(p, premultiply(c, cov[k]))
+		for x, p := range row {
+			row[x] = over(saved[k], premultiply(c, op*textCoverage(p)))
+			k++
 		}
 	}
 }

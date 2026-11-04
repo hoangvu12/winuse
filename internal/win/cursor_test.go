@@ -369,8 +369,8 @@ func TestPlacePillBesideTheTipAndFlipsAtWorkAreaEdges(t *testing.T) {
 	work := Rect{Left: 0, Top: 0, Right: 1920, Bottom: 1040}
 	const w, h = 200, 24
 	ox, oy := scaled(cursorPillOffsetX, 1), scaled(cursorPillOffsetY, 1)
-	if ox != 20 || oy != 30 {
-		t.Fatalf("pill offsets = %d, %d; want agent-desktop's 20, 30", ox, oy)
+	if ox != 14 || oy != 30 {
+		t.Fatalf("pill offsets = %d, %d; want 14, 30, just past the arrow's tail", ox, oy)
 	}
 
 	got := placePill(fpoint{500, 400}, w, h, work, 1)
@@ -551,10 +551,11 @@ func TestNamedAgentsPillHasTwoLines(t *testing.T) {
 			t.Errorf("scale %v: the two-line pill's corners differ from one line's", scale)
 		}
 	}
-	// Each line is cut on its own, to the same cap.
+	// Each line is cut on its own: a long name to 24 characters, a long
+	// action to the pill's width.
 	long := strings.Repeat("n", 300)
 	l := u.lookFor(tip, long, `click "Save"`, work, 1)
-	if w := l.Pill.Width(); !strings.HasSuffix(l.Name, "…") || l.Label != `click "Save"` || w > scaled(cursorPillMaxWidth, 1) || w < scaled(cursorPillMaxWidth, 1)-8 {
+	if !strings.HasSuffix(l.Name, "…") || l.Label != `click "Save"` || l.Pill.Width() > scaled(cursorPillMaxWidth, 1) {
 		t.Errorf("a long name is cut, the action kept: %q / %q, width %d", l.Name, l.Label, l.Pill.Width())
 	}
 	l = u.lookFor(tip, "reviewer", long, work, 1)
@@ -565,9 +566,43 @@ func TestNamedAgentsPillHasTwoLines(t *testing.T) {
 	if l := u.lookFor(tip, "painter", "", work, 1); l.Name != "" || l.Label != "painter" {
 		t.Errorf("a name alone = %+v, want it as the one line", l)
 	}
-	// The name reads in the Agent's colour, lighter.
-	if c := nameColor(CursorPalette[0]); c.R <= CursorPalette[0].R || c.B < CursorPalette[0].B {
-		t.Errorf("the name colour %v is the Agent's %v lightened", c, CursorPalette[0])
+	// Names are capped at 24 characters, the last an ellipsis, before they
+	// are measured.
+	l = u.lookFor(tip, "release-notes-writer-for-the-quarterly-report", `click "Save"`, work, 1)
+	if r := []rune(l.Name); len(r) != cursorNameMaxRunes || r[len(r)-1] != '…' {
+		t.Errorf("a long name = %q, want 24 characters ending in …", l.Name)
+	}
+	if capName("reviewer") != "reviewer" || capName(strings.Repeat("a", 24)) != strings.Repeat("a", 24) {
+		t.Error("a name of 24 characters or fewer is kept whole")
+	}
+}
+
+// TestPillTextColorHasTheBetterContrast (cursor-look 10): the text on the
+// flat pill is white or near-black, whichever contrasts more with the
+// Agent's colour, at least 4.5:1 (WCAG AA) on the default and every
+// palette colour but the saturated reds, where white still leads.
+func TestPillTextColorHasTheBetterContrast(t *testing.T) {
+	for _, c := range append([]color.RGBA{cursorAccent}, CursorPalette...) {
+		ink := pillTextColor(c)
+		other := cursorTextColor
+		if ink == cursorTextColor {
+			other = cursorInkColor
+		}
+		if contrast(ink, c) < contrast(other, c) {
+			t.Errorf("%v: text %v has the lower contrast", c, ink)
+		}
+		if contrast(ink, c) < 4.5 {
+			t.Logf("%v: text %v at %.1f:1", c, ink, contrast(ink, c))
+		}
+	}
+	if pillTextColor(cursorAccent) != cursorInkColor {
+		t.Error("the default pastel blue takes near-black text")
+	}
+	if pillTextColor(color.RGBA{R: 0x1A, G: 0x40, B: 0x9A, A: 0xFF}) != cursorTextColor {
+		t.Error("a dark blue takes white text")
+	}
+	if c := contrast(cursorTextColor, color.RGBA{A: 0xFF}); math.Abs(c-21) > 0.01 {
+		t.Errorf("white on black is %v:1, want 21:1", c)
 	}
 }
 
@@ -706,46 +741,32 @@ func TestDrawPillBodyAndShadow(t *testing.T) {
 	pill := Rect{Left: 10, Top: 10, Right: 130, Bottom: 36} // 26 tall, like scale 1
 	s.drawPill(pill, 1, cursorAccent)
 	at := func(x, y int) uint32 { return s.pix[y*w+x] }
-	rgb := func(p uint32) (r, g, b float64) {
-		a := float64(p >> 24)
-		return float64(p>>16&0xFF) / a * 255, float64(p>>8&0xFF) / a * 255, float64(p&0xFF) / a * 255
-	}
-	// The body is nearly opaque, a diagonal gradient from a light end
-	// mixed toward the Agent's colour to a dark end, so white text reads.
-	left, mid, right := at(16, 23), at(70, 23), at(124, 23)
-	for _, p := range []uint32{left, mid, right} {
-		if p>>24 < 0xF0 {
-			t.Errorf("the pill's body = %#08x, want nearly opaque", p)
+	// The body is flat and opaque in the Agent's colour, edge to edge: no
+	// gradient, no rim (cursor-look 10).
+	for _, xy := range [][2]int{{10, 23}, {70, 10}, {70, 23}, {70, 35}, {129, 23}} {
+		if p := at(xy[0], xy[1]); p != premultiply(cursorAccent, 1) {
+			t.Errorf("the pill at %v = %#08x, want the flat accent", xy, p)
 		}
 	}
-	lr, lg, lb := rgb(left)
-	rr, rg, rb := rgb(right)
-	if lr+lg+lb <= rr+rg+rb+150 {
-		t.Errorf("the gradient runs light to dark: left %#08x, right %#08x", left, right)
-	}
-	if mr, mg, mb := rgb(mid); mb <= mr || mg <= mr {
-		t.Errorf("the default Agent's pill is tinted blue: %.0f,%.0f,%.0f", mr, mg, mb)
-	}
-	if want := pillColor(cursorAccent, 0); want != mixColor(cursorPillStops[0], cursorAccent, cursorPillMix[0]) {
-		t.Errorf("the first stop is mixed %v toward the Agent: %v", cursorPillMix[0], want)
-	}
-	// The rim: a light, tinted 1 px band at the outline.
-	er, eg, eb := rgb(at(70, 10))
-	ir, ig, ib := rgb(at(70, 13))
-	if er+eg+eb < ir+ig+ib+60 {
-		t.Errorf("the pill's top edge = %.0f,%.0f,%.0f, want its rim lighter than the body %.0f,%.0f,%.0f", er, eg, eb, ir, ig, ib)
-	}
-	// Below the pill its shadow and glow fall, not above it beyond the glow.
+	// Below the pill a soft black shadow falls, above it almost none.
 	below, above := at(70, 38), at(70, 7)
-	if below>>24 == 0 || above>>24 >= below>>24 {
-		t.Errorf("the shadow is offset down: above %#08x, below %#08x", above, below)
+	if below>>24 == 0 || below&0x00FFFFFF != 0 || above>>24 >= below>>24 {
+		t.Errorf("the shadow is black and offset down: above %#08x, below %#08x", above, below)
 	}
-	if float64(below>>24) > (cursorPillShadowOpacity+cursorPillGlowOpacity)*255+1 {
-		t.Errorf("below the pill = %#08x, stronger than its shadow and glow", below)
+	if float64(below>>24) > cursorPillShadowOpacity*255+1 {
+		t.Errorf("below the pill = %#08x, stronger than its shadow", below)
 	}
-	// The rounded ends leave the corners transparent but for shadow.
-	if p := at(10, 10); p>>24 > 0x40 {
-		t.Errorf("the pill's corner = %#08x, want (nearly) transparent", p)
+	// The corners are barely rounded: the corner pixel is cut off, but
+	// three pixels down the edge is already the body (a fully rounded
+	// 26 px pill would still be curving away there).
+	if p := at(10, 10); p>>24 >= 0x40 {
+		t.Errorf("the pill's corner = %#08x, want rounded off", p)
+	}
+	if p := at(10, 13); p>>24 < 0xE0 {
+		t.Errorf("three pixels down the edge = %#08x, want the body: the radius is small", p)
+	}
+	if r := pillRadius(pill, 1); r != cursorPillRadius {
+		t.Errorf("the corner radius is %v, want %v", r, cursorPillRadius)
 	}
 	for i, p := range s.pix {
 		if !validPremultiplied(p) {
@@ -1442,7 +1463,7 @@ func (v *fakeCursorView) with(f func(s *fakeViewState)) {
 func (v *fakeCursorView) monitorAt(fpoint) (Rect, uint32) {
 	return Rect{Right: 1920, Bottom: 1040}, 96
 }
-func (v *fakeCursorView) measureLabel(s string, px, scale float64) int32 {
+func (v *fakeCursorView) measureLabel(s string, px, scale float64, regular bool) int32 {
 	return int32(7 * px / cursorPillFontPx * scale * float64(len([]rune(s))))
 }
 func (v *fakeCursorView) showCursor(tip fpoint, op, labelOp, labelPop, angle, press float64, look cursorLook) {

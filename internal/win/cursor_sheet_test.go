@@ -261,7 +261,7 @@ func TestAgentCursorContactSheet(t *testing.T) {
 	y += 438
 
 	// 6. Labels in each Agent's colour, at 100 % and 200 %, on light and dark.
-	heading(`Label pills: the default Agent (one line), then named Agents (name over action), short and long; 100 % and 200 %, on dark and light`)
+	heading(`Label tags: flat in the Agent's colour, white or near-black text; the default Agent one line, named Agents name over action; 100 % and 200 %`)
 	labels := []struct {
 		c           color.RGBA
 		name, label string
@@ -271,9 +271,11 @@ func TestAgentCursorContactSheet(t *testing.T) {
 		{CursorPalette[3], "release-notes-writer-for-the-quarterly-report-changelog-and-the-migration-guide",
 			`select "A very long option that is cut short at the pill's widest, on its own line"`},
 		{CursorPalette[4], "claude", `click "Delete"`},
+		{CursorPalette[2], "codex", `toggle "Remember me"`},
+		{CursorPalette[5], "writer", `type "Quarterly report"`},
 	}
 	for _, scale := range []float64{1, 2} {
-		perRow := 4
+		perRow := 3
 		if scale == 2 {
 			perRow = 2
 		}
@@ -293,6 +295,9 @@ func TestAgentCursorContactSheet(t *testing.T) {
 				}
 				y += h + 8
 			}
+		}
+		if scale == 1 {
+			y = referencesStrip(t, img, cw, filepath.Join(dir, "refs"), y)
 		}
 	}
 	y += 8
@@ -556,4 +561,55 @@ func BenchmarkCursorFrame(b *testing.B) {
 			s.popOutline(tgt, 1, from, from-0.0016, cursorAccent)
 		}
 	})
+}
+
+// referencesStrip pastes the presence-cursor references kept in refsDir
+// (.scratch/cursor-look/refs, Mobbin crops that stay in .scratch) under a
+// heading at y, each scaled to one height, wrapped to the sheet's width,
+// and returns the y below them. Nothing when the folder is missing.
+func referencesStrip(t *testing.T, img *image.RGBA, cw *cursorWin, refsDir string, y int) int {
+	paths, _ := filepath.Glob(filepath.Join(refsDir, "*.png"))
+	if len(paths) == 0 {
+		return y
+	}
+	sort.Strings(paths)
+	caption(img, cw, "References, for comparison (Figma and FigJam presence tags, via Mobbin: refs/README.md; kept in .scratch only)",
+		image.Rect(0, y, img.Rect.Dx(), y+30), 1.2)
+	y += 36
+	const h = 150
+	x := 16
+	for _, p := range paths {
+		f, err := os.Open(p)
+		if err != nil {
+			continue
+		}
+		src, err := png.Decode(f)
+		f.Close()
+		if err != nil {
+			t.Logf("reference %s: %v", p, err)
+			continue
+		}
+		b := src.Bounds()
+		w := b.Dx() * h / b.Dy()
+		if x+w > img.Rect.Dx()-16 {
+			x, y = 16, y+h+8
+		}
+		// Bilinear enough: average the source pixels under each target one.
+		for j := 0; j < h; j++ {
+			for i := 0; i < w; i++ {
+				sx0, sx1 := b.Min.X+i*b.Dx()/w, b.Min.X+(i+1)*b.Dx()/w
+				sy0, sy1 := b.Min.Y+j*b.Dy()/h, b.Min.Y+(j+1)*b.Dy()/h
+				var r, g, bl, n uint32
+				for sy := sy0; sy < max(sy1, sy0+1); sy++ {
+					for sx := sx0; sx < max(sx1, sx0+1); sx++ {
+						cr, cg, cb, _ := src.At(sx, sy).RGBA()
+						r, g, bl, n = r+cr>>8, g+cg>>8, bl+cb>>8, n+1
+					}
+				}
+				img.SetRGBA(x+i, y+j, color.RGBA{R: uint8(r / n), G: uint8(g / n), B: uint8(bl / n), A: 0xFF})
+			}
+		}
+		x += w + 8
+	}
+	return y + h + 12
 }

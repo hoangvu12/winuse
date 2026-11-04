@@ -319,8 +319,8 @@ type cursorView interface {
 	// monitorAt returns the work area and DPI of the monitor at p.
 	monitorAt(p fpoint) (work Rect, dpi uint32)
 	// measureLabel is text's width in pixels in the label face at px
-	// logical pixels, at scale.
-	measureLabel(text string, px, scale float64) int32
+	// logical pixels, semibold or regular, at scale.
+	measureLabel(text string, px, scale float64, regular bool) int32
 	// showCursor shows the arrow at tip, turned by angle and scaled by
 	// press about its tip, and the look's label pill at labelOp and scaled
 	// by labelPop (its reveal and pop), the whole at opacity (the idle
@@ -407,29 +407,31 @@ func (u *cursorUI) travel(anchor uint64, origin, target Rect, name, label string
 // tip. A name with no label is the pill's one line, as the label.
 func (u *cursorUI) lookFor(tip fpoint, name, label string, work Rect, scale float64) cursorLook {
 	look := cursorLook{Scale: scale}
-	name, text := sanitizeLabel(name), sanitizeLabel(label)
+	name, text := capName(sanitizeLabel(name)), sanitizeLabel(label)
 	if text == "" {
 		name, text = "", name
 	}
 	if text == "" {
 		return look
 	}
-	measure := func(px float64) func(string) int32 {
-		return func(s string) int32 { return u.view.measureLabel(s, px, scale) }
+	// Under a name the action is drawn regular; alone, semibold.
+	regular := name != ""
+	measure := func(px float64, regular bool) func(string) int32 {
+		return func(s string) int32 { return u.view.measureLabel(s, px, scale, regular) }
 	}
 	maxW := pillTextMax(scale)
 	if wa := work.Width() - 2*scaled(cursorPillPadX, scale); wa > 0 {
 		maxW = min(maxW, wa)
 	}
-	text = ellipsize(text, maxW, measure(cursorPillFontPx))
-	name = ellipsize(name, maxW, measure(cursorPillNameFontPx))
+	text = ellipsize(text, maxW, measure(cursorPillFontPx, regular))
+	name = ellipsize(name, maxW, measure(cursorPillNameFontPx, false))
 	if text == "" {
 		return look
 	}
-	textW := measure(cursorPillFontPx)(text) + 1
+	textW := measure(cursorPillFontPx, regular)(text) + 1
 	w, h := pillSize(textW, scale)
 	if name != "" {
-		w, h = pillSize2(measure(cursorPillNameFontPx)(name)+1, textW, scale)
+		w, h = pillSize2(measure(cursorPillNameFontPx, false)(name)+1, textW, scale)
 	}
 	pill := placePill(tip, w, h, work, scale)
 	tx, ty := roundPoint(tip)

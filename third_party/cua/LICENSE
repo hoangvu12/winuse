@@ -13,8 +13,7 @@ ADR 0018) port, modified for winuse:
   rim, glow and halo (assets/build_default_theme.py, theme.rs,
   cursor_pose.rs), the palette (theme.rs), the heading rotation and the
   float (cursor_pose.rs), the click's press keyframes
-  (build_default_theme.py action_click), the trail (effects.rs) and the
-  verbose badge's colours (session_badge.rs);
+  (build_default_theme.py action_click) and the trail (effects.rs);
 - libs/cua-driver/rust/crates/platform-windows/src/overlay.rs: the timer
   resolution raised only while frames run.
 
