@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>winuse demo backdrop</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    background: radial-gradient(1200px 700px at 20% 0%, #2b2f6b 0%, transparent 60%),
+                radial-gradient(900px 600px at 100% 100%, #3a1d4f 0%, transparent 60%),
+                #111326;
+    font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    color: #e8e9f5;
+  }
+  .caption {
+    position: fixed; left: 0; right: 0; bottom: 14px;
+    text-align: center; font-size: 22px; letter-spacing: .2px; color: #c9cbe6;
+  }
+  .caption b { color: #fff; font-weight: 650; }
+  .caption .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #8b8fd8; margin: 0 12px 3px; }
+</style>
+</head>
+<body>
+  <div class="caption"><b>winuse</b><span class="dot"></span>three agents, one desktop, each with its own cursor<span class="dot"></span>your mouse and keyboard stay yours</div>
+</body>
+</html>

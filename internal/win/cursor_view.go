@@ -229,8 +229,9 @@ func newLayeredWin(hMod uintptr, cls *uint16) (*layeredWin, error) {
 		return nil, fmt.Errorf("creating the Agent Cursor's memory DC: %w", err)
 	}
 	// Best-effort exclusion from other software's captures (Win10 2004+),
-	// as for the banner; winuse's own captures use HideWhile.
-	if cursorExcludeFromCapture {
+	// as for the banner; winuse's own captures use HideWhile. A helper
+	// started with WINUSE_CURSOR_CAPTURE=1 leaves it off, for a recording.
+	if cursorExcluded() {
 		procSetWindowDisplayAffinity.Call(hwnd, wdaExcludeFromCapture)
 	}
 	return &layeredWin{hwnd: hwnd, dc: dc}, nil

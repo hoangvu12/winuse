@@ -9,7 +9,7 @@ package win
 //	WINUSE_CURSOR_SHEET=<dir> go test ./internal/win/ -run TestAgentCursorContactSheet -v -count=1
 //
 // It writes <dir>/cursor-sheet.png and <dir>/labels.png. With
-// WINUSE_CURSOR_SHEET_CALC set to the README's original Calculator GIF
+// WINUSE_CURSOR_SHEET_CALC set to the Calculator GIF the README once had
 // (.scratch/cursor-look/winuse-calculator-before.gif) it also writes
 // <dir>/winuse-calculator.gif: that recording's Calculator, its old cursor
 // removed, clicked 7 + 2 = by the new cursor of an Agent named "claude",

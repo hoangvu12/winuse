@@ -2,7 +2,12 @@
 
 Let your coding agent use Windows apps and websites.
 
-![The agent's cursor clicks 7, +, 2 and = in Windows Calculator](docs/images/winuse-calculator.gif)
+https://github.com/user-attachments/assets/97990ed7-6c0e-4c10-87f4-814074c31d9f
+
+Three agents at once, each with its own cursor and name tag, while your
+own mouse and keyboard stay free: "artist" colours a rocket, "planner"
+ticks off a launch board and ships it, "writer" types and publishes
+release notes.
 
 winuse is a command-line tool for Windows. It reads any open window as
 text, clicks and fills in its controls, and types and scrolls when a task
@@ -74,7 +79,11 @@ messages. It does not move your mouse, press keys or bring the window to
 the front, so you can keep working in another window. A second cursor
 shows where each agent acts, with the agent's name beside it. It moves less when
 Windows' animation effects are off, and `WINUSE_CURSOR_TRAIL=1` in the
-helper's environment gives it a trail.
+helper's environment gives it a trail. Screen recorders do not see the
+cursor; to record a demo, start the helper with `WINUSE_CURSOR_CAPTURE=1`
+in its environment (stop the running helper, then run any winuse command
+with the variable set), and start it again without the variable when you
+are done.
 
 Hover, dragging, games and other apps that read raw input, and the
 other gaps listed in [ADR 0013](docs/adr/0013-headless-by-readback-posted-by-opt-in.md)

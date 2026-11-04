@@ -61,6 +61,28 @@ var cursorLiveGuard = LiveDesktopGuard
 // cursor it draws.
 var cursorExcludeFromCapture = true
 
+// CursorCaptureEnv is the helper's opt-in to screen recordings of the
+// Agent Cursors (ADR 0006 note): "1" in the environment of the command
+// that starts the helper leaves WDA_EXCLUDEFROMCAPTURE off their windows,
+// so OBS, ffmpeg and the Snipping Tool see them, for recording a demo.
+// winuse's own screenshots still hide them (HideWhile). It is read once,
+// when the helper process starts.
+const CursorCaptureEnv = "WINUSE_CURSOR_CAPTURE"
+
+// cursorRecordable is the opt-in as this process started with it.
+var cursorRecordable = cursorCaptureOn(os.Getenv(CursorCaptureEnv))
+
+// cursorCaptureOn reads a WINUSE_CURSOR_CAPTURE value: only "1" opts in.
+func cursorCaptureOn(v string) bool { return v == "1" }
+
+// CursorRecordable reports whether this process's Agent Cursors show in
+// other software's screen captures (WINUSE_CURSOR_CAPTURE=1 at start).
+func CursorRecordable() bool { return cursorRecordable }
+
+// cursorExcluded reports whether a new cursor window is kept out of other
+// software's captures: by default, unless the process opted in.
+func cursorExcluded() bool { return cursorExcludeFromCapture && !cursorRecordable }
+
 // cursorTrailOn reads WINUSE_CURSOR_TRAIL from the helper's environment:
 // "1" draws cua's comet trail behind a travelling cursor. Off by default,
 // as in cua ("the default style is plain").

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Release notes</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body { background: #f4f8f5; color: #1d1f2c; font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; }
+  .wrap { padding: 16px 20px; }
+  header { display: flex; align-items: baseline; gap: 10px; }
+  h1 { font-size: 27px; margin: 0; font-weight: 700; }
+  .sub { color: #7a7d93; font-size: 17px; }
+  form { display: grid; grid-template-columns: 1fr 140px; gap: 10px; margin-top: 14px; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 15px; font-weight: 600; color: #5b6a60; }
+  label.wide { grid-column: 1 / -1; }
+  input, select { font: inherit; font-size: 18px; padding: 8px 10px; border-radius: 9px; border: 1px solid #d3dfd6; background: #fff; color: #1d1f2c; }
+  input:focus { outline: 2px solid #1f853e55; border-color: #1f853e; }
+  .preview {
+    margin-top: 16px; background: #fff; border-radius: 14px; padding: 16px 18px; box-shadow: 0 6px 24px rgba(20,50,30,.10);
+    position: relative; min-height: 190px;
+  }
+  .preview .k { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: #8aa092; }
+  .preview h3 { margin: 6px 0 2px; font-size: 25px; min-height: 28px; }
+  .chan { display: inline-block; font-size: 14px; font-weight: 700; color: #1f853e; background: #e3f4e8; padding: 2px 8px; border-radius: 10px; }
+  .preview ul { margin: 10px 0 0; padding-left: 22px; font-size: 18px; line-height: 1.55; }
+  .preview li:empty { display: none; }
+  .stamp {
+    position: absolute; right: 14px; bottom: 14px; border: 3px solid #1f853e; color: #1f853e; border-radius: 10px;
+    padding: 4px 12px; font-weight: 800; font-size: 21px; letter-spacing: 1px; transform: rotate(-8deg) scale(2); opacity: 0;
+    transition: transform .35s cubic-bezier(.2,1.4,.4,1), opacity .2s;
+  }
+  body.published .stamp { opacity: 1; transform: rotate(-8deg) scale(1); }
+  .publish { margin-top: 16px; width: 100%; padding: 13px; border: 0; border-radius: 12px; font-weight: 700; font-size: 20px; font-family: inherit; background: #1f853e; color: #fff; box-shadow: 0 6px 18px rgba(31,133,62,.3); }
+  body.published .publish { background: #9cc7a8; box-shadow: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>Release notes</h1><span class="sub">draft</span></header>
+  <form onsubmit="return false">
+    <label>Title<input id="title" aria-label="Release title" autocomplete="off"></label>
+    <label>Channel<select id="channel" aria-label="Release channel"><option>Draft</option><option>Beta</option><option>Stable</option></select></label>
+    <label class="wide">Highlight 1<input id="h1" aria-label="First highlight" autocomplete="off"></label>
+    <label class="wide">Highlight 2<input id="h2" aria-label="Second highlight" autocomplete="off"></label>
+    <label class="wide">Highlight 3<input id="h3" aria-label="Third highlight" autocomplete="off"></label>
+  </form>
+  <div class="preview">
+    <div class="k">Preview</div>
+    <h3 id="ptitle"></h3>
+    <span class="chan" id="pchan">Draft</span>
+    <ul><li id="p1"></li><li id="p2"></li><li id="p3"></li></ul>
+    <div class="stamp">PUBLISHED</div>
+  </div>
+  <button class="publish" id="publish" aria-label="Publish notes">Publish</button>
+</div>
+<script>
+const bind = (src, dst, f = v => v) => {
+  const s = document.getElementById(src), d = document.getElementById(dst);
+  const up = () => { d.textContent = f(s.value); };
+  s.addEventListener("input", up); s.addEventListener("change", up);
+};
+bind("title", "ptitle"); bind("channel", "pchan");
+bind("h1", "p1"); bind("h2", "p2"); bind("h3", "p3");
+document.getElementById("publish").onclick = () => document.body.classList.add("published");
+// #done previews the published notes (record-demo.ps1 never uses it).
+if (location.hash === "#done") {
+  const set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event("input")); };
+  set("title", "winuse 2.0"); document.getElementById("channel").value = "Stable"; document.getElementById("channel").dispatchEvent(new Event("change"));
+  set("h1", "Many agents, one desktop"); set("h2", "Each with its own cursor"); set("h3", "Your mouse stays yours");
+  document.getElementById("publish").click();
+}
+</script>
+</body>
+</html>
