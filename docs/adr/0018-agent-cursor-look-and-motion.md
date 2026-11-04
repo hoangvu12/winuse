@@ -61,6 +61,13 @@ insertion caret and showing what each Action does.
    shape, a soft black shadow (16 %, 1 px down, 1.6 px blur) and a flat
    fill in the Agent's colour: no glow, no halo and no reshape. The master
    image and its kept sprites stay.
+   *Amended (cursor-turn, the user's "do it like cua"):* the dart rests as
+   cua's arrow rests. cua turns its arrow's art about the hotspot
+   (`UPRIGHT_DEGREES`) so the line from its body's centre to its tip points
+   up and a little left, −99.5°; the dart's outline is turned the same way
+   about its tip, 36.6° clockwise from Mural's up-left pose, so its body
+   points to its tip at −99.5° too. Its shape, notch, rim, shadow and
+   colours are Mural's; only the resting pose is cua's.
 4. **Frames.** About 120 per second while anything animates: `SetTimer`
    alone fires on the 15.6 ms tick on Windows 11 even with the resolution
    raised (64 measured), so a frame clock (a goroutine with an 8 ms ticker,
@@ -85,9 +92,10 @@ insertion caret and showing what each Action does.
    overlapped and the arrow never reached its heading (a 400 px down-right
    move peaked at 106° of 180°). The travel direction is the shown path's
    velocity over ±8 ms, the chord below 1 px/s. The axis is cua's rule,
-   the body's centre to the tip: about −136° for the dart (cua's arrow:
-   −99.5°), so the dart turns about 37° more than cua's arrow on every
-   move, a half turn counterclockwise on a down-right one. cua's float tilt
+   the body's centre to the tip, and since the dart rests as cua's arrow
+   (Decision 3) it is cua's −99.5°: the dart turns by the very angles cua
+   turns its arrow (a rightward move 99.5° clockwise, a down-right one
+   144.5° clockwise), frame for frame (`TestTipTurningIsCuas`). cua's float tilt
    (±2.5°, and its float while travelling) is not ported: Decision 7
    stands.
 6. **The click's press** (1 → 0.93 → 1.03 → 1 over 667 ms) replaces the
@@ -144,7 +152,9 @@ insertion caret and showing what each Action does.
    the per-Action reveal and its pop are gone. It stays upright while the
    arrow turns. The tag is 22 px tall, its corners rounded by 5.5 px,
    padded 8 px at each end, its top-left 12.5 px right of and 12 px below
-   the tip, over the arrow's back; a 1 px white rim and the arrow's soft
+   the tip, over the arrow's back (18 px below since cursor-turn: the
+   upright dart's right wing came within 0.2 px of the tag, and 18 keeps
+   Mural's 3.4 px between their rims); a 1 px white rim and the arrow's soft
    shadow; flat fill; the text white or near-black by contrast, as before.
    The name is capped at 24 characters with an ellipsis and set in
    **Figtree Bold** at 12.5 px, the closest free match to Mural's font,

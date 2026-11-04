@@ -198,11 +198,42 @@ down-right move the dart spins a half turn counterclockwise, through
 left, instead of cua's 144.5° clockwise through up and right.** For about
 the first 100 ms of the move (to 30 % of its turn) and the last 70 ms
 the tip points 135–170° from where it goes. That is the shape, not the
-rule: cua's arrow at rest points up (−99.5°), ours up-left (−136.2°). This
-branch does not invent a fix; options for the user (not done): keep it;
-turn the dart's art so its rest axis is cua's −99.5° (it would no longer
-be Mural's dart at rest); use `lean` (30° cap) instead of `heading`; or
-pick the turn's direction by something other than the shortest wrap.
+rule: cua's arrow at rest points up (−99.5°), ours up-left (−136.2°). The
+options went to the user: keep it; turn the dart's art so its rest axis is
+cua's −99.5°; use `lean` (30° cap) instead of `heading`; or pick the turn's
+direction otherwise. **The user picked the second** (below).
+
+## The user's pick: the dart rests as cua's arrow
+
+The user chose "do it like cua": the dart's art is turned about its tip,
+as cua turns its arrow's art by `UPRIGHT_DEGREES`, so that its body's
+centre points to the tip at cua's −99.54°. `cursorArrowUpright`
+(`cursor_layout.go`) is computed from the shape: cua's axis minus the
+body-to-tip angle of Mural's pose, **36.64° clockwise**. The outline is
+baked turned (`dartOutline` with Mural's wings turned by it: (11.37, 16.55)
+and (−5.53, 18.32)); shape, notch, rim, shadow and colours are unchanged.
+The painted pixels' centre gives −99.5° to within a degree
+(`TestTipAxisIsTheBodyCentreToTheTip`), and `TestTipTurningIsCuas` now also
+runs cua's formulas with cua's own axis, (2.0, 11.9), and matches them
+within 0.25° on all nine moves.
+
+| 400 px move | turn | within 30° of travel | mean miss |
+|---|---|---|---|
+| rightward, before this branch | 95.7° of 135.5° | 0 % | 89.2° |
+| rightward, the re-aimed dart | +99.5° clockwise (peak 97.1°) | 42 % | 47.3° |
+| rightward, cua's arrow | +99.5° clockwise (peak 97.1°) | 42 % | 47.3° |
+| down-right, before this branch | 106.4° of 179.5° | 0 % | 128.8° |
+| down-right, the re-aimed dart | +144.5° clockwise (peak 142.0°) | 29 % | 72.9° |
+| down-right, cua's arrow | +144.5° clockwise (peak 142.0°) | 29 % | 72.9° |
+
+The down-right turn is now clockwise, through up and right, as cua's,
+instead of a half turn counterclockwise through left.
+
+**The name tag.** With the tag's top-left at (12.5, 12) off the tip, in
+Mural's pose the tag and the arrow were 3.4 px apart, rim to rim; the
+upright dart's right wing came down to 0.2 px of the tag. The offset is now
+**(12.5, 18)**: 3.3 px clear again, no overlap, the tag below and right of
+the arrow's back.
 
 ## Not ported: the float's tilt and its float in travel
 

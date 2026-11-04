@@ -405,13 +405,18 @@ const (
 	cursorTurnMinSpeed = 1.0
 )
 
+// cursorCuaTipAxis is cua's arrow's tip axis (cursor_pose.rs tip_axis):
+// from its body's centre, BODY_OFFSET_PT (2.0, 11.9) points off the
+// hotspot, to the hotspot, about −99.5°.
+var cursorCuaTipAxis = math.Atan2(-11.9, -2.0)
+
 // cursorTipAxis is the upright arrow's own heading by cua's rule
 // (cursor_pose.rs tip_axis): the direction from the centre of the arrow's
 // body to its tip. cua measures BODY_OFFSET_PT as the centre of the
 // painted arrow's opaque pixels; here it is the dart's area centroid
 // (arrowCentroid), which the painted pixels match
-// (TestTipAxisIsTheBodyCentreToTheTip). About −136° for the dart; cua's
-// own arrow's is about −99.5°.
+// (TestTipAxisIsTheBodyCentreToTheTip). The dart rests turned so that it
+// is cua's own, cursorCuaTipAxis (cursorArrowUpright).
 var cursorTipAxis = func() float64 {
 	c := arrowCentroid()
 	return math.Atan2(-c.Y, -c.X)
@@ -419,8 +424,10 @@ var cursorTipAxis = func() float64 {
 
 // arrowCentroid is the area centroid of the upright arrow's outline, in
 // logical pixels off the tip.
-func arrowCentroid() fpoint {
-	pts := arrowPoints(1)
+func arrowCentroid() fpoint { return polygonCentroid(arrowPoints(1)) }
+
+// polygonCentroid is the area centroid of the closed polygon pts.
+func polygonCentroid(pts []fpoint) fpoint {
 	var a, cx, cy float64
 	for i := range pts {
 		p, q := pts[i], pts[(i+1)%len(pts)]

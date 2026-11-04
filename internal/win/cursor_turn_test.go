@@ -110,7 +110,8 @@ func cuaTravelRotation(tr cuaTrajectory, t, tipAxis float64) float64 {
 
 // TestTipTurningIsCuas (cursor-turn): frame by frame at 120 Hz, on long
 // and short moves every way, at 100 % and 150 %, tipAngle is cua's
-// heading rotation for our arrow's tip axis.
+// heading rotation for our arrow's tip axis, and, since the dart rests as
+// cua's arrow does, the very angles cua turns its own arrow by.
 func TestTipTurningIsCuas(t *testing.T) {
 	from := fpoint{X: 1200, Y: 700}
 	for _, mv := range []struct {
@@ -130,15 +131,22 @@ func TestTipTurningIsCuas(t *testing.T) {
 	} {
 		p := newCursorPath(from, fpoint{X: from.X + mv.d.X, Y: from.Y + mv.d.Y}, Rect{}, mv.scale, false)
 		tr := cuaSampled(p)
-		worst := 0.0
+		// cua's own arrow's tip_axis, from its BODY_OFFSET_PT.
+		cuaArrow := math.Atan2(-11.9, -2.0)
+		worst, worstArrow := 0.0, 0.0
 		for el := time.Duration(0); el <= p.dur+50*time.Millisecond; el += time.Second / 120 {
-			ours, theirs := p.tipAngle(el), cuaTravelRotation(tr, el.Seconds(), cursorTipAxis)
-			worst = math.Max(worst, math.Abs(ours-theirs))
+			ours := p.tipAngle(el)
+			worst = math.Max(worst, math.Abs(ours-cuaTravelRotation(tr, el.Seconds(), cursorTipAxis)))
+			worstArrow = math.Max(worstArrow, math.Abs(ours-cuaTravelRotation(tr, el.Seconds(), cuaArrow)))
 		}
 		// The two differ only in reading the path exactly or between its
-		// 120 Hz samples: well under a sprite's 3°.
+		// 120 Hz samples, and the dart's axis from cua's by the centroid's
+		// rounding: well under a sprite's 3°.
 		if worst > 0.25*math.Pi/180 {
-			t.Errorf("%s: tipAngle differs from cua's by up to %.2f°", mv.name, worst*180/math.Pi)
+			t.Errorf("%s: tipAngle differs from cua's rule by up to %.2f°", mv.name, worst*180/math.Pi)
+		}
+		if worstArrow > 0.25*math.Pi/180 {
+			t.Errorf("%s: tipAngle differs from cua's arrow's turn by up to %.2f°", mv.name, worstArrow*180/math.Pi)
 		}
 	}
 	// With Windows' animations off nothing turns, as in cua.
@@ -150,7 +158,8 @@ func TestTipTurningIsCuas(t *testing.T) {
 // TestTipAxisIsTheBodyCentreToTheTip (cursor-turn): the tip axis is cua's
 // rule applied to our dart — from the centre of the painted arrow's
 // opaque pixels (cursor_pose.rs the_body_offset_is_the_centre_of_the_
-// painted_arrow) to the tip — and cua's own arrow's is about −99.5°.
+// painted_arrow) to the tip — and, the dart resting as cua's arrow does,
+// within a degree of cua's own, about −99.5°.
 func TestTipAxisIsTheBodyCentreToTheTip(t *testing.T) {
 	const scale = 4
 	m := newArrowMaster(scale, cursorAccent)
@@ -170,8 +179,14 @@ func TestTipAxisIsTheBodyCentreToTheTip(t *testing.T) {
 	if math.Hypot(painted.X-c.X, painted.Y-c.Y) > 0.5 {
 		t.Errorf("the painted body's centre is %+v, the outline's centroid %+v", painted, c)
 	}
-	if want := math.Atan2(-painted.Y, -painted.X); math.Abs(cursorTipAxis-want) > math.Pi/180 {
+	want := math.Atan2(-painted.Y, -painted.X)
+	if math.Abs(cursorTipAxis-want) > math.Pi/180 {
 		t.Errorf("the tip axis is %.1f°, the painted body to the tip %.1f°", cursorTipAxis*180/math.Pi, want*180/math.Pi)
+	}
+	// The dart rests as cua's arrow: its painted body points to the tip at
+	// cua's −99.5°, within a degree.
+	if d := (want - math.Atan2(-11.9, -2.0)) * 180 / math.Pi; math.Abs(d) > 1 {
+		t.Errorf("the painted dart's axis is %.2f°, %.2f° from cua's arrow's", want*180/math.Pi, d)
 	}
 	if a := math.Atan2(-11.9, -2.0) * 180 / math.Pi; a < -100 || a > -99 {
 		t.Errorf("cua's arrow's axis is %.2f°", a)

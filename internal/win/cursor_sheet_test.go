@@ -170,9 +170,9 @@ func TestAgentCursorContactSheet(t *testing.T) {
 	y += 14
 
 	// 3. Turning: the sprites every 30°, and the turn of a rightward move.
-	heading("Turning (200 %): every 30°, then 135° — the full turn of a rightward move, tip leading")
+	heading("Turning (200 %): every 30°, then 99.5° — the full turn of a rightward move, tip leading, as cua's arrow")
 	x = 16
-	angles := []float64{0, 30, 60, 90, 120, 150, 180, -150, -120, -90, -60, -30, 135}
+	angles := []float64{0, 30, 60, 90, 120, 150, 180, -150, -120, -90, -60, -30, -cursorTipAxis * 180 / math.Pi}
 	for _, deg := range angles {
 		r := card(x, 116, 130, sheetDark)
 		s, at := def.frame(cursorLook{Scale: 2}, deg*math.Pi/180, 1)
@@ -360,7 +360,7 @@ func TestAgentCursorContactSheet(t *testing.T) {
 	big := image.NewRGBA(image.Rect(0, 0, 336, 336))
 	fillRect(big, big.Rect, sheetDark)
 	bs, bat := def.frame(cursorLook{Scale: 12}, 0, 1)
-	pasteCursor(big, bs, bat, fpoint{X: 48, Y: 48})
+	pasteCursor(big, bs, bat, fpoint{X: 120, Y: 48}) // the upright dart reaches 5.5 px left of its tip
 	writePNG(t, filepath.Join(dir, "cursor-arrow-large.png"), big)
 
 	if calc := os.Getenv("WINUSE_CURSOR_SHEET_CALC"); calc != "" {
