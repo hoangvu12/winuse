@@ -232,7 +232,7 @@ func (p *browserProbe) connect(t *testing.T) {
 	r.measured(t, "port owner check: listener found %v, owner pid %d (launched pid %d, same %v), image %q (err %v), identified as %q (want %q)",
 		yesNo(ok), owner, p.pid, yesNo(owner == p.pid), img, imgErr, p.sys.Env.IdentifyImage(img), p.name)
 
-	before := windowIDs(browserWindows(t, p.pid))
+	before := windowIDs(browserSurfaces(t, p.pid))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	ws, err := p.sys.VersionWS(ctx, p.port)
@@ -240,9 +240,9 @@ func (p *browserProbe) connect(t *testing.T) {
 		t.Fatalf("/json/version on port %d: %v", p.port, err)
 	}
 	time.Sleep(time.Second)
-	r.measured(t, "/json/version raised a new browser window (a prompt): %s", newWindowsText(t, before, browserWindows(t, p.pid)))
+	r.measured(t, "/json/version raised a new browser window (a prompt): %s", newWindowsText(t, before, browserSurfaces(t, p.pid)))
 
-	before = windowIDs(browserWindows(t, p.pid))
+	before = windowIDs(browserSurfaces(t, p.pid))
 	tr, err := cdp.DialWS(ctx, ws, 20*time.Second)
 	if err != nil {
 		t.Fatalf("dialing %s: %v", ws, err)
@@ -251,7 +251,7 @@ func (p *browserProbe) connect(t *testing.T) {
 	p.conn = &browser.Connection{Browser: p.name, Mode: browser.ModeLaunch, WSURL: ws, Port: p.port, PID: p.pid, Client: client}
 	t.Cleanup(func() { client.Close() })
 	time.Sleep(time.Second)
-	r.measured(t, "the WebSocket dial raised a new browser window (a prompt): %s", newWindowsText(t, before, browserWindows(t, p.pid)))
+	r.measured(t, "the WebSocket dial raised a new browser window (a prompt): %s", newWindowsText(t, before, browserSurfaces(t, p.pid)))
 
 	var v struct {
 		Product   string `json:"product"`
@@ -1307,9 +1307,28 @@ func dataPage(title string) string {
 
 // ---- desktop helpers ----
 
-// browserWindows lists the visible, titled Chrome_WidgetWin_1 Windows of a
-// browser process, topmost first.
+// browserWindows lists a browser process's Chrome_WidgetWin_1 Windows that
+// list-windows lists (win.KeepWindow), topmost first, so a test picks the
+// Window winuse itself would. A popup such as the "Restore pages?" bubble
+// is a titled Chrome_WidgetWin_1 window of the same process too, but
+// list-windows drops it; picked as the browser's Window, `tab list`
+// matches no Tab to it.
 func browserWindows(t *testing.T, pid uint32) []win.WindowInfo {
+	t.Helper()
+	return chromeWindows(t, pid, win.KeepWindow)
+}
+
+// browserSurfaces lists every Chrome_WidgetWin_1 window of a browser
+// process an Action could open (win.OpenedSurface: Windows, and popups,
+// bubbles and menus that list-windows drops), topmost first: what a
+// probe watches for a prompt the browser raises.
+func browserSurfaces(t *testing.T, pid uint32) []win.WindowInfo {
+	t.Helper()
+	return chromeWindows(t, pid, win.OpenedSurface)
+}
+
+// chromeWindows lists pid's Chrome_WidgetWin_1 windows that keep allows.
+func chromeWindows(t *testing.T, pid uint32, keep func(win.WindowInfo) bool) []win.WindowInfo {
 	t.Helper()
 	all, err := win.Collect()
 	if err != nil {
@@ -1317,7 +1336,7 @@ func browserWindows(t *testing.T, pid uint32) []win.WindowInfo {
 	}
 	var out []win.WindowInfo
 	for _, w := range all {
-		if w.PID == pid && w.Class == "Chrome_WidgetWin_1" && w.Visible && !w.Cloaked && w.Title != "" {
+		if w.PID == pid && w.Class == "Chrome_WidgetWin_1" && keep(w) {
 			out = append(out, w)
 		}
 	}
