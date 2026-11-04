@@ -23,7 +23,7 @@ A Window of the Windows shell itself rather than of an App a person works in: th
 _Avoid_: System surface, shell window, taskbar App
 
 **Tab**:
-One web page slot in a browser Window. A browser Window shows exactly one active Tab; the others are in the background.
+One web page slot in a browser Window. A browser Window shows exactly one active Tab; the others are in the background. Through the winuse extension, the Tabs an Agent opens join that Agent's tab group: its Agent Cursor's name ("winuse" for the default Agent) in the nearest tab group colour to its cursor's.
 _Avoid_: Target, page (for the slot)
 
 **Page**:

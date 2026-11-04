@@ -34,6 +34,50 @@ type Tab struct {
 	TabID    int    `json:"tabId"`
 	WindowID int    `json:"windowId"`
 	Active   bool   `json:"active"`
+	// Group is the tab group an agent tab joined (createTab): its title
+	// and colour; empty for a tab the agent did not open.
+	Group TabGroup `json:"-"`
+}
+
+// TabGroup is a chrome.tabGroups group: a title and one of its colours.
+type TabGroup struct {
+	Title string `json:"title"`
+	Color string `json:"color"`
+}
+
+// Group is the tab group the agent tab with this target id joined (zero
+// when there is no such tab).
+func (e *Extension) Group(targetID string) TabGroup {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, t := range e.Tabs {
+		if t.TargetID == targetID {
+			return t.Group
+		}
+	}
+	return TabGroup{}
+}
+
+// tabGroupColors are the colours chrome.tabGroups accepts.
+var tabGroupColors = map[string]bool{"grey": true, "blue": true, "red": true, "yellow": true, "green": true, "pink": true, "purple": true, "cyan": true, "orange": true}
+
+// tabGroupFor is background.js's tabGroupFor: winuse's group, else the
+// default blue "winuse".
+func tabGroupFor(g *TabGroup) TabGroup {
+	out := TabGroup{Title: "winuse", Color: "blue"}
+	if g == nil {
+		return out
+	}
+	if t := strings.TrimSpace(g.Title); t != "" {
+		if r := []rune(t); len(r) > 40 {
+			t = string(r[:40])
+		}
+		out.Title = t
+	}
+	if tabGroupColors[g.Color] {
+		out.Color = g.Color
+	}
+	return out
 }
 
 // Window is one browser window Winuse.windows reports, bounds in DIPs.
@@ -519,10 +563,11 @@ func (e *Extension) handle(c int, method, sessionID string, params json.RawMessa
 		return nil, &bridgeError{code, r}
 	}
 	var p struct {
-		TargetID  string `json:"targetId"`
-		SessionID string `json:"sessionId"`
-		URL       string `json:"url"`
-		WindowID  *int   `json:"windowId"`
+		TargetID  string    `json:"targetId"`
+		SessionID string    `json:"sessionId"`
+		URL       string    `json:"url"`
+		WindowID  *int      `json:"windowId"`
+		Group     *TabGroup `json:"winuseGroup"`
 	}
 	json.Unmarshal(params, &p)
 	if method == bridge.MethodWindows {
@@ -594,14 +639,15 @@ func (e *Extension) handle(c int, method, sessionID string, params json.RawMessa
 		return nil, nil
 	case "Target.createTarget":
 		// chrome.tabs.create({active:false, windowId}): a background tab in
-		// that window, or in window 1 (the last focused) without one.
+		// that window, or in window 1 (the last focused) without one, in
+		// its Agent's tab group (browser-ux 10).
 		e.mu.Lock()
 		id := fmt.Sprintf("NEWTAB%d", len(e.Tabs)+1)
 		window := 1
 		if p.WindowID != nil {
 			window = *p.WindowID
 		}
-		e.Tabs = append(e.Tabs, Tab{TargetID: id, URL: p.URL, TabID: 1000 + len(e.Tabs), WindowID: window})
+		e.Tabs = append(e.Tabs, Tab{TargetID: id, URL: p.URL, TabID: 1000 + len(e.Tabs), WindowID: window, Group: tabGroupFor(p.Group)})
 		e.mu.Unlock()
 		return map[string]any{"targetId": id}, nil
 	case "Target.closeTarget":

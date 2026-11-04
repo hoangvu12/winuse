@@ -97,7 +97,8 @@ a connection to the browser, winuse reads the page through the browser
 and numbers the page's elements together with the window's own. It
 clicks, types, scrolls, hovers, drags, navigates, uploads files and
 answers dialogs in the page without the real mouse or keyboard, and it
-opens new tabs in the background.
+opens new tabs in the background. Through the extension, each agent's
+tabs gather in a tab group named after it, in its cursor's colour.
 
 Run `winuse browser status` to see how winuse is connected. winuse works
 in the browser you already use first, with your logins and tabs:

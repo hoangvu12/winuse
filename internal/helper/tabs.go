@@ -218,7 +218,7 @@ func tabNew(s Services) Command {
 			return "", nothingSent(e)
 		}
 		return s.tabHeadless(ctx, tw, nil, "open tab", func(ctx context.Context) (string, *Error, bool) {
-			id, err := page.NewTab(ctx, tw.conn, tw.tabs.WindowID, a.URL)
+			id, err := page.NewTab(ctx, tw.conn, tw.tabs.WindowID, a.URL, s.agentTabGroup(ctx))
 			var other *page.OtherWindowError
 			switch {
 			case errors.As(err, &other):

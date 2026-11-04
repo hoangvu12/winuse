@@ -325,7 +325,7 @@ func extensionConn(t *testing.T, ext *bridgetest.Extension) *browser.Connection 
 func TestNewTabOnALaunchedBrowser(t *testing.T) {
 	b := twoWindows(t)
 	conn := b.Connection(t)
-	id, err := NewTab(context.Background(), conn, 1, "example.com")
+	id, err := NewTab(context.Background(), conn, 1, "example.com", TabGroup{Title: "reviewer", Color: "orange"})
 	if err != nil || len(b.Window(1).Tabs) != 4 {
 		t.Fatalf("new tab %s: %v", id, err)
 	}
@@ -336,12 +336,12 @@ func TestNewTabOnALaunchedBrowser(t *testing.T) {
 		}
 	}
 	// Background, in no new window; CDP has no window parameter.
-	if params["background"] != true || params["newWindow"] != false || params["url"] != "https://example.com" || params["windowId"] != nil {
+	if params["background"] != true || params["newWindow"] != false || params["url"] != "https://example.com" || params["windowId"] != nil || params["winuseGroup"] != nil {
 		t.Errorf("createTarget params = %v", params)
 	}
 
 	// Chrome puts it in the last active window, which is not window 2.
-	id, err = NewTab(context.Background(), conn, 2, "")
+	id, err = NewTab(context.Background(), conn, 2, "", TabGroup{})
 	var other *OtherWindowError
 	if !errors.As(err, &other) || other.WindowID != 1 || id == "" {
 		t.Fatalf("landing elsewhere: %s, %v", id, err)
@@ -354,9 +354,13 @@ func TestNewTabOnTheExtensionNamesTheWindow(t *testing.T) {
 			{TargetID: "E3", Title: "Shop", TabID: 21, WindowID: 2, Active: true}},
 	})
 	conn := extensionConn(t, ext)
-	id, err := NewTab(context.Background(), conn, 2, "")
+	id, err := NewTab(context.Background(), conn, 2, "", TabGroup{Title: "reviewer", Color: "orange"})
 	if err != nil || id == "" {
 		t.Fatalf("new tab: %s, %v", id, err)
+	}
+	// The Tab joined its Agent's group (browser-ux 10).
+	if g := ext.Group(id); g != (bridgetest.TabGroup{Title: "reviewer", Color: "orange"}) {
+		t.Errorf("group = %+v", g)
 	}
 	for _, cmd := range ext.Commands() {
 		if cmd.Method == "Target.createTarget" {

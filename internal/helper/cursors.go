@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/hoangvu12/winuse/internal/agent"
+	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/win"
 )
 
@@ -221,6 +222,45 @@ func (s *cursorSet) pickColor(asked string) color.RGBA {
 		}
 	}
 	return win.CursorPalette[len(s.agents)%len(win.CursorPalette)]
+}
+
+// colorOf is who's cursor colour: the default Agent's accent, a live
+// Agent's own, else what it asked for in WINUSE_CURSOR_COLOR (false when
+// it has none yet: its first Headless Action picks it).
+func (s *cursorSet) colorOf(who agent.Identity) (color.RGBA, bool) {
+	if who.ID == agent.DefaultID {
+		return win.DefaultCursorColor(), true
+	}
+	s.mu.Lock()
+	e := s.agents[who.ID]
+	s.mu.Unlock()
+	if e != nil {
+		return e.color, true
+	}
+	return win.ParseCursorColor(who.Color)
+}
+
+// agentTabGroup is the tab group the requesting Agent's new Tabs join
+// through the extension (browser-ux 10, ADR 0014): titled like its Agent
+// Cursor's name ("winuse" for the default Agent), in the chrome.tabGroups
+// colour closest to its cursor's. tab new glides the cursor before it
+// opens the Tab, so the Agent has its colour by then.
+func (s Services) agentTabGroup(ctx context.Context) page.TabGroup {
+	who := AgentOf(ctx)
+	g := page.TabGroup{Title: "winuse", Color: win.TabGroupColor(win.DefaultCursorColor())}
+	if who.ID != agent.DefaultID {
+		if name := cursorName(who); name != "" {
+			g.Title = name
+		}
+	}
+	if set, ok := s.Cursor.(*cursorSet); ok {
+		if c, ok := set.colorOf(who); ok {
+			g.Color = win.TabGroupColor(c)
+		}
+	} else if c, ok := win.ParseCursorColor(who.Color); ok {
+		g.Color = win.TabGroupColor(c)
+	}
+	return g
 }
 
 // cursorName is the name an Agent's cursor shows ahead of each action:

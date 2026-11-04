@@ -21,8 +21,8 @@
 //   - Events go out with the sessionId they belong to: the tab's target id,
 //     or the child's own session id.
 //
-// Never take the foreground: agent tabs open in the background, inside a
-// "winuse" tab group; Page.bringToFront and Target.activateTarget are
+// Never take the foreground: agent tabs open in the background, inside
+// their Agent's tab group ("winuse" for the default Agent); Page.bringToFront and Target.activateTarget are
 // refused; Winuse.activateTab switches a tab inside its window and never
 // focuses or raises the window; Winuse.navigateTab only changes a tab's
 // URL. chrome.windows is only read (getAll, for Winuse.windows), never
@@ -233,7 +233,7 @@ async function browserCall(c, m) {
       return {};
     }
     case "Target.createTarget":
-      return { targetId: await createTab(p.url || "about:blank", p.windowId) };
+      return { targetId: await createTab(p.url || "about:blank", p.windowId, p.winuseGroup) };
     case "Target.closeTarget": {
       const tab = await tabFor(p.targetId);
       await chrome.tabs.remove(tab.id);
@@ -306,21 +306,35 @@ async function navigateTab(p) {
   return {};
 }
 
-// createTab opens agent tabs in the background, grouped under "winuse",
-// so an agent never takes over the tab the user is looking at. A windowId
-// (winuse tab new) opens it in that window; without one the browser picks
-// its last focused window. Neither focuses the window.
-async function createTab(url, windowId) {
+// The colours chrome.tabGroups accepts.
+const GROUP_COLORS = ["grey", "blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange"];
+
+// tabGroupFor is the group an agent tab joins: the one winuse names in
+// winuseGroup (its Agent's name and the colour nearest its Agent Cursor's,
+// browser-ux 10), else the default blue "winuse" group.
+function tabGroupFor(g) {
+  const title = g && typeof g.title === "string" && g.title.trim() ? g.title.trim().slice(0, 40) : GROUP_TITLE;
+  const color = g && GROUP_COLORS.includes(g.color) ? g.color : "blue";
+  return { title, color };
+}
+
+// createTab opens agent tabs in the background, in their Agent's tab
+// group, so an agent never takes over the tab the user is looking at and
+// each Agent's tabs stay together. A windowId (winuse tab new) opens it in
+// that window; without one the browser picks its last focused window.
+// Neither focuses the window.
+async function createTab(url, windowId, winuseGroup) {
   const props = { url, active: false };
   if (Number.isInteger(windowId)) props.windowId = windowId;
   const tab = await chrome.tabs.create(props);
   try {
-    const [group] = await chrome.tabGroups.query({ title: GROUP_TITLE, windowId: tab.windowId });
+    const want = tabGroupFor(winuseGroup);
+    const [group] = await chrome.tabGroups.query({ title: want.title, color: want.color, windowId: tab.windowId });
     if (group) {
       await chrome.tabs.group({ tabIds: [tab.id], groupId: group.id });
     } else {
       const groupId = await chrome.tabs.group({ tabIds: [tab.id], createProperties: { windowId: tab.windowId } });
-      await chrome.tabGroups.update(groupId, { title: GROUP_TITLE, color: "blue" });
+      await chrome.tabGroups.update(groupId, want);
     }
   } catch (_) {
     // grouping is cosmetic; a browser without tab groups still gets the tab

@@ -223,17 +223,24 @@ func (e *OtherWindowError) Error() string {
 // returns its target id.
 //
 // Through the extension, chrome.tabs.create takes the windowId, with
-// active:false, and groups the tab under "winuse". CDP's
+// active:false, and groups the tab under its Agent's group. CDP's
 // Target.createTarget has no window parameter: with newWindow:false
 // Chrome puts the tab in the profile's last active browser window. So on
 // a launched, cloned or toggled browser the new Tab's window is read
 // back with Browser.getWindowForTarget, and a Tab that landed in another
 // window is an *OtherWindowError (the Tab is still open; the caller
 // decides what to do with it).
-func NewTab(ctx context.Context, conn *browser.Connection, windowID int, url string) (string, error) {
+//
+// Through the extension the Tab joins its Agent's tab group (browser-ux
+// 10): group names it and its colour; an empty one is the extension's
+// default "winuse" group.
+func NewTab(ctx context.Context, conn *browser.Connection, windowID int, url string, group TabGroup) (string, error) {
 	params := map[string]any{"url": tabURL(url), "background": true}
 	if conn.Mode == browser.ModeExtension {
 		params["windowId"] = windowID
+		if group.Title != "" {
+			params["winuseGroup"] = map[string]any{"title": group.Title, "color": group.Color}
+		}
 	} else {
 		params["newWindow"] = false
 	}
@@ -258,6 +265,13 @@ func NewTab(ctx context.Context, conn *browser.Connection, windowID int, url str
 		return r.TargetID, &OtherWindowError{TargetID: r.TargetID, WindowID: got}
 	}
 	return r.TargetID, nil
+}
+
+// TabGroup is the tab group an Agent's new Tabs join through the
+// extension: the Agent's name and a chrome.tabGroups colour.
+type TabGroup struct {
+	Title string
+	Color string
 }
 
 // ErrTabGone says a target is no longer open.

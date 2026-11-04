@@ -831,7 +831,9 @@ winuse tab close <window> <tab>
 ```
 
 Page commands act on the active Tab, and `tab new` opens a Tab in the
-background, so `tab switch` to it before you act in it. These are
+background, so `tab switch` to it before you act in it. Through the
+extension your new Tabs gather in a tab group named after you
+(`WINUSE_AGENT`, else your Harness's name) in your Agent Cursor's colour. These are
 Headless. On a browser winuse launched or cloned, `tab switch` selects the
 Tab in the tab strip by its title; when two Tabs share a title, or the
 strip does not show it, it sends nothing and prints the `--headed` retry.
