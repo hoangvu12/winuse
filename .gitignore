@@ -1,2 +1,9 @@
 .worktrees/
 .notes/
+
+# Mobbin crops and the sheets that paste them stay local (Mobbin's terms)
+.scratch/cursor-look/refs/*.png
+.scratch/cursor-look/labels.png
+.scratch/cursor-look/cursor-sheet.png
+# the orchestrator's local handoff note
+.scratch/handoff-orchestrator.md
