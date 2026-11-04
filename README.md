@@ -2,7 +2,7 @@
 
 Let your coding agent use Windows apps and websites.
 
-https://github.com/user-attachments/assets/97990ed7-6c0e-4c10-87f4-814074c31d9f
+https://github.com/user-attachments/assets/21c775c4-4351-4de3-954c-4c9cdda5558e
 
 Three agents at once, each with its own cursor and name tag, while your
 own mouse and keyboard stay free: "artist" colours a rocket, "planner"
