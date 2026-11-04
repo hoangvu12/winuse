@@ -100,6 +100,18 @@ answers dialogs in the page without the real mouse or keyboard, and it
 opens new tabs in the background. Through the extension, each agent's
 tabs gather in a tab group named after it, in its cursor's colour.
 
+Agents work in their own tabs while you keep using yours. An agent opens
+a tab with `winuse tab new <window> <url>`, which prints the tab's id, and
+then names that tab as `<window>:<tab>` in every page command:
+`winuse get-window-state 4242:1a2b3c4d`, `winuse click 4242:1a2b3c4d 7`.
+winuse reads and acts in the tab while it stays in the background, never
+switching the tab you are looking at or taking the foreground, and several
+agents can work in their own tabs of one window at the same time. While an
+agent works in a tab, winuse keeps it rendering and stops the browser from
+freezing or discarding it; a link the agent opens there lands beside your
+tab instead of replacing it. The agent's cursor does not show actions in a
+tab you are not looking at.
+
 Run `winuse browser status` to see how winuse is connected. winuse works
 in the browser you already use first, with your logins and tabs:
 
@@ -151,7 +163,7 @@ at all, and winuse says so.
 | `wait`, `eval` | Waits for an element, text, URL, load or download, or runs JavaScript in the page (`--file` reads it from a file, `--max` prints up to 100000 characters) |
 | `wait window`, `wait <window> <element> <state>`, `wait <ms>` | Waits for a Window to show or close, for text in any Window, for an Element to become enabled, disabled, gone, checked, expanded or reach a value, or pauses |
 | `dialog`, `upload` | Answers a JavaScript dialog, or gives files to a file input |
-| `tab list`, `tab new`, `tab switch`, `tab close` | Manages a browser window's tabs |
+| `tab list`, `tab new`, `tab switch`, `tab close` | Manages a browser window's tabs; every page command also takes `<window>:<tab>` to work in a tab in the background |
 | `clipboard-get`, `clipboard-set`, `clipboard-clear` | Reads, replaces or empties the clipboard: text, an image as a PNG file, or a list of files |
 | `list-displays`, `screenshot --display <n>` | Lists the displays with their position, size and scale, or takes a screenshot of one |
 | `list-notifications`, `notification-action`, `notification-dismiss`, `wait notification` | Lists the notifications the toast banners show, presses a notification's button or closes it without the foreground (refused when the notification changed since it was listed), or waits for one |

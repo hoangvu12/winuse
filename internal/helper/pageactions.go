@@ -120,6 +120,12 @@ func (s Services) onPage(ctx context.Context, ref string, t elementTarget, act f
 // but a Page Element, and refused is set for a Page Element whose origin is
 // missing from the latest Window State (refusePageElement).
 func (s Services) pageResolve(ctx context.Context, ref string, t elementTarget) (w win.WindowInfo, index int, o *page.Origin, refused *Error) {
+	if bt := tabTargetOf(ctx); bt != nil {
+		// A Tab target resolves in its own Window State, and anything that
+		// does not resolve there is refused: no route of the Window runs
+		// (ADR 0017).
+		return s.tabResolve(ctx, bt, t)
+	}
 	if t.point != nil || !s.pageCapable() {
 		return w, 0, nil, nil
 	}
@@ -152,6 +158,9 @@ func (s Services) pageResolve(ctx context.Context, ref string, t elementTarget) 
 // its first Page Element (its Tab, session and document Element), or nil
 // when that Window State holds no Page.
 func (s Services) pageDoc(ctx context.Context, w win.WindowInfo) *page.Origin {
+	if bt := tabTargetOf(ctx); bt != nil {
+		return bt.docOrigin()
+	}
 	splicer, ok := s.Actions.(PageSplicer)
 	if !ok {
 		return nil
@@ -170,6 +179,14 @@ func (s Services) pageDoc(ctx context.Context, w win.WindowInfo) *page.Origin {
 // pageTabCheck refuses a Page whose Tab is no longer the one the Window
 // shows. index is the Element Index for the stale message, -1 for none.
 func (s Services) pageTabCheck(ctx context.Context, w win.WindowInfo, index int, o *page.Origin) *Error {
+	if bt := tabTargetOf(ctx); bt != nil {
+		// A Tab target's Page is its Tab's, shown or not; the Tab was found
+		// open when the command began (resolveTabTarget).
+		if o.TargetID == bt.tab.TargetID {
+			return nil
+		}
+		return elementError(fmt.Errorf("%w: the Element is another Tab's", uia.ErrStale), w, index)
+	}
 	m, ok := s.Pages.(pageTabMatcher)
 	if !ok {
 		return nil
@@ -225,6 +242,16 @@ func (s Services) pageDocTopLeft(ctx context.Context, w win.WindowInfo, o *page.
 // UIA document Element; false when neither can be read (browser-ux 04).
 func (s Services) pageScreenRect(ctx context.Context, w win.WindowInfo, o *page.Origin, r page.Rect) (win.Rect, bool) {
 	var l, t int32
+	if bt := tabTargetOf(ctx); bt != nil {
+		// A Tab target is on the screen only while its window shows it, and
+		// then at the content area; its Window State has no UIA document.
+		c, ok := s.pageContent(w)
+		if !bt.active || !ok {
+			return win.Rect{}, false
+		}
+		left, top, right, bottom := page.ToScreen(c.Left, c.Top, r)
+		return win.Rect{Left: left, Top: top, Right: right, Bottom: bottom}, true
+	}
 	if c, ok := s.pageContent(w); ok {
 		l, t = c.Left, c.Top
 	} else {
@@ -250,6 +277,12 @@ func (s Services) pageContent(w win.WindowInfo) (win.Rect, bool) {
 // pageElementName is the Element's name in the latest Window State, for
 // the Agent Cursor's label; fallback when it has none there.
 func (s Services) pageElementName(ctx context.Context, w win.WindowInfo, index int, fallback string) string {
+	if bt := tabTargetOf(ctx); bt != nil {
+		if name := s.tabElementName(ctx, bt, index); name != "" {
+			return name
+		}
+		return fallback
+	}
 	if st, ok := s.Actions.(pageStoredElements); ok {
 		if els, ok := st.StoredElements(ctx, w.ID); ok && index >= 0 && index < len(els) && els[index].Name != "" {
 			return els[index].Name
@@ -345,6 +378,7 @@ func (s Services) runPage(ctx context.Context, run pageRun) (string, *Error) {
 	defer in.Close()
 	defer s.holdChoosers(ctx, w, o)() // file chooser interception for this Action (ticket 06)
 	s.watchNewTabs(ctx, o)
+	defer s.guardUsersTab(ctx)() // a Tab target's: a new Tab never keeps the user's place (ADR 0017)
 	rippled := s.rippleOnDelivery(ctx, w, rect, shown, in)
 	err = run.act(ctx, in, aim)
 	rippled()
@@ -496,6 +530,11 @@ func pageMouseButton(b win.MouseButton) page.MouseButton {
 func (s Services) pageClick(ctx context.Context, w win.WindowInfo, index int, o *page.Origin, target elementTarget, button win.MouseButton, count int, headed bool, mods win.Modifiers) (string, *Error) {
 	opts := page.AimOptions{Scroll: true, Enabled: true, Visible: true, HitTest: true}
 	run := pageRun{noun: "click", done: "clicked", verb: pageClickVerb(button, count), w: w, index: index, origin: o, target: target, aim: opts}
+	if bt := tabTargetOf(ctx); bt != nil && !bt.active {
+		if rerr := nativePickerRefusal(ctx, bt, index, o, target); rerr != nil {
+			return "", rerr
+		}
+	}
 	if !headed {
 		run.act = func(ctx context.Context, in *page.Input, aim page.Aim) error {
 			return in.ClickWith(ctx, aim.Point, pageMouseButton(button), count, mods.CDP())
@@ -519,6 +558,24 @@ func (s Services) pageClick(ctx context.Context, w win.WindowInfo, index int, o 
 		}
 		return okOutput, nil
 	})
+}
+
+// nativePickerRefusal refuses a click in a background Tab that would open a
+// popup the browser draws on the screen (ADR 0017): a <select> drop-down,
+// or a date, time or colour input's picker, over whatever the user looks
+// at. set-value sets them through the DOM instead. A node that cannot be
+// read is left to the click's own checks.
+func nativePickerRefusal(ctx context.Context, bt *bgTab, index int, o *page.Origin, target elementTarget) *Error {
+	kind, err := o.NativePicker(ctx)
+	if err != nil || kind == "" {
+		return nil
+	}
+	what, value := "a drop-down list", "<option label or value>"
+	if kind != "list" {
+		what, value = "a "+kind+" input", "<value>"
+	}
+	return nothingSent(Fail(fmt.Sprintf("element %d of tab %s is %s, and a click would open its popup on the user's screen while the Tab is in the background", index, bt.short(), what),
+		"set it instead: winuse set-value "+bt.ref()+" "+target.token()+" "+value))
 }
 
 // pageScreenPoint is the aim's point on the screen, from the document
@@ -754,6 +811,7 @@ func (s Services) runPageInput(ctx context.Context, w win.WindowInfo, o *page.Or
 	defer in.Close()
 	defer s.holdChoosers(ctx, w, o)() // Enter or Space on a file input opens a chooser too
 	s.watchNewTabs(ctx, o)
+	defer s.guardUsersTab(ctx)() // a Tab target's: Enter on a link opens a Tab too (ADR 0017)
 	rippled := s.rippleOnDelivery(ctx, w, rect, shown, in)
 	err = p.act(ctx, in)
 	rippled()
@@ -839,6 +897,23 @@ func (s Services) pageKeyTarget(ctx context.Context, w win.WindowInfo) (*page.Or
 // pageKeys runs type-text or press-key into the Page's focused element,
 // when the Page holds the focus; handled is false otherwise.
 func (s Services) pageKeys(ctx context.Context, ref, noun, label string, act func(ctx context.Context, in *page.Input) error) (out string, rerr *Error, handled bool) {
+	if bt := tabTargetOf(ctx); bt != nil {
+		// A Tab target takes keys and text in its Page whatever has the focus
+		// there (the body too: PageDown scrolls it): there is no address bar
+		// or Window route to fall back to (ADR 0017).
+		o := bt.docOrigin()
+		var target win.Rect
+		if bt.active && page.OpenDialog(o.Client, o.TopSession()) == nil {
+			// Shown: the Agent Cursor goes to the focused element.
+			pctx, cancel := context.WithTimeout(ctx, pageProbeBudget)
+			if f, err := page.ReadFocus(pctx, o.Client, o.TopSession()); err == nil {
+				target, _ = s.pageScreenRect(ctx, bt.w, o, f.Rect())
+			}
+			cancel()
+		}
+		out, rerr = s.runPageInput(ctx, bt.w, o, pageInput{noun: noun, label: label, target: target, act: act, tabChecked: true})
+		return out, rerr, true
+	}
 	if !s.pageCapable() {
 		return "", nil, false
 	}
@@ -882,6 +957,9 @@ func (s Services) pagePressKey(ctx context.Context, ref string, chord keys.Chord
 func (s Services) pageStep(ctx context.Context, kind string, args json.RawMessage, w win.WindowInfo) bool {
 	if pageOnlyStep(kind, args) { // ticket 06: the page-only Actions (pagecommands.go)
 		return true
+	}
+	if tabTargetOf(ctx) != nil {
+		return true // a Tab target's steps are all Page Actions (tabtarget.go refused the rest)
 	}
 	if !s.pageCapable() {
 		return false

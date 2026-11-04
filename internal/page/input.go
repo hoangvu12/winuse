@@ -136,7 +136,11 @@ const aimJS = `function(needEnabled, hitTest, px, py) {
     if (!hit) return Object.assign(out, {state: 'outside'});
     const within = n => { for (let c = n; c; c = c.parentNode || c.host) if (c === el) return true; return false; };
     const lab = hit.closest && hit.closest('label');
-    if (!within(hit) && !(lab && lab.control === el)) return Object.assign(out, {state: 'covered', by: describe(hit)});
+    // A part of an input's closed shadow tree (a date input's picker
+    // button) hit-tests as the input itself: that is no cover.
+    const root = el.getRootNode();
+    const ownHost = !!(root && root.host && hit === root.host);
+    if (!within(hit) && !ownHost && !(lab && lab.control === el)) return Object.assign(out, {state: 'covered', by: describe(hit)});
   }
   let w = window, cx = out.x, cy = out.y;
   while (w !== w.parent) {

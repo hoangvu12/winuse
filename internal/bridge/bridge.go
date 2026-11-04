@@ -84,12 +84,27 @@ const (
 //	                    it on a tab that shows a browser page
 //	                    (chrome://newtab/), which chrome.debugger cannot
 //	                    attach to.
+//	Winuse.holdTab      {targetId} -> {}: an agent works in the tab while
+//	                    the user may look at another one (ADR 0017):
+//	                    autoDiscardable:false, and a tab it opens never stays
+//	                    the selected one (the user's tab is selected again,
+//	                    the new tab joins its opener's group, a popup window
+//	                    is minimized)
+//	Winuse.releaseTab   {targetId} -> {}: the tab's own autoDiscardable
+//	                    back; the debugger detaching releases it too
+//	Winuse.adoptTab     {targetId, openerId} -> {}: a tab an Action on the
+//	                    held tab openerId opened, which the guard missed
+//	                    (winuse selected the user's tab again itself), joins
+//	                    the opener's group, or its popup window is minimized
 const (
 	MethodStatus      = "Winuse.status"
 	MethodReload      = "Winuse.reload"
 	MethodActivateTab = "Winuse.activateTab"
 	MethodWindows     = "Winuse.windows"
 	MethodNavigateTab = "Winuse.navigateTab"
+	MethodHoldTab     = "Winuse.holdTab"
+	MethodReleaseTab  = "Winuse.releaseTab"
+	MethodAdoptTab    = "Winuse.adoptTab"
 )
 
 // emulated are the browser-level Target methods the extension emulates on

@@ -227,6 +227,10 @@ func pageUpload(s Services) Command {
 			return "", rerr
 		}
 		w, index, o, ok := s.pageRoute(ctx, a.Window, target)
+		if !ok && tabTargetOf(ctx) != nil {
+			_, _, _, refused := s.pageResolve(ctx, a.Window, target) // a Tab target's own refusal
+			return "", refused
+		}
 		if !ok {
 			return "", s.notPageElement(ctx, a.Window, target, "upload", "upload gives files to a file input of a Page: read winuse get-window-state %s for one, or click the Page's upload button and run winuse upload %s <file>...")
 		}
@@ -344,6 +348,32 @@ func (s Services) pageSetChoice(ctx context.Context, w win.WindowInfo, index int
 				var verify *page.VerifyError
 				if err == nil || errors.As(err, &verify) {
 					in.Sent++ // the page's own change event went out
+				}
+				return err
+			},
+		})
+		return out, rerr, true
+	}
+	if ch.Kind == "picker" {
+		// A date, time or colour input: the value set from the page's JS, as
+		// its popup would (ADR 0017: the popup is drawn on the user's screen).
+		out, rerr := s.runPage(ctx, pageRun{
+			noun: "value", done: "set", verb: "set value", w: w, index: index, origin: o, target: target,
+			check: func(ctx context.Context) error {
+				if ch.Disabled {
+					return &page.NotActionableError{Why: page.WhyDisabled}
+				}
+				return nil
+			},
+			aim: page.AimOptions{Scroll: true},
+			act: func(ctx context.Context, in *page.Input, aim page.Aim) error {
+				if ch.Value == value {
+					return nil // already that value: nothing to send
+				}
+				err := o.SetPicker(ctx, ch, value)
+				var verify *page.VerifyError
+				if err == nil || errors.As(err, &verify) {
+					in.Sent++ // the page's own input and change events went out
 				}
 				return err
 			},

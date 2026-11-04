@@ -35,7 +35,15 @@ type HostConfig struct {
 	// Log receives one line per event (the host's stdout belongs to the
 	// browser); nil discards.
 	Log io.Writer
+	// Republish is how often the host checks that its bridge file is still
+	// there and writes it again if not (0: republishEvery). A winuse that
+	// took the host for gone deleted it, and without it no helper finds the
+	// extension while the host keeps its port.
+	Republish time.Duration
 }
+
+// republishEvery is HostConfig.Republish's default.
+const republishEvery = 5 * time.Second
 
 // How long the host waits on a helper connection.
 const (
@@ -120,9 +128,32 @@ func ServeHost(cfg HostConfig, in io.Reader, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("writing the bridge file: %w", err)
 	}
-	defer os.Remove(path)
+	stop := make(chan struct{})
+	defer func() {
+		close(stop)
+		os.Remove(path)
+	}()
 	h.logf("%s instance %s (extension %s, build %s) started by %s (pid %d), listening on %s",
 		info.Browser, info.Instance, info.Version, info.Build, info.BrowserExe, info.BrowserPID, info.Addr())
+	every := cfg.Republish
+	if every <= 0 {
+		every = republishEvery
+	}
+	go func() {
+		t := time.NewTicker(every)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+					h.logf("the bridge file was removed while this host runs; writing it again")
+					writeInfo(cfg.Dir, info)
+				}
+			}
+		}
+	}()
 
 	go func() {
 		for {

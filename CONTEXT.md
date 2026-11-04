@@ -26,8 +26,12 @@ _Avoid_: System surface, shell window, taskbar App
 One web page slot in a browser Window. A browser Window shows exactly one active Tab; the others are in the background. Through the winuse extension, the Tabs an Agent opens join that Agent's tab group: its Agent Cursor's name ("winuse" for the default Agent) in the nearest tab group colour to its cursor's.
 _Avoid_: Target, page (for the slot)
 
+**Tab target**:
+A Tab named as `<window>:<tab>` (the Window, a colon, a tab id from `tab list` or `tab new`) instead of a Window, so an Agent reads and acts on that Tab whether or not its Window shows it, while the user keeps looking at their own Tab (ADR 0017). The Tab may be in any window of that Window's browser. Its Window State is its Page alone, read through the Browser Connection; every Action on it is Headless and never activates the Tab or its Window. While an Agent works in it, the Tab is held: kept rendering, unfrozen and, through the extension, never discarded, and a Tab it opens never takes the user's place.
+_Avoid_: Background page, tab session, pageId
+
 **Page**:
-The web content of a browser Window's active Tab, read and acted on through the browser's debugging connection rather than UI Automation. The Page's Elements belong to the Window's State like any other Elements.
+The web content of a Tab, read and acted on through the browser's debugging connection rather than UI Automation. Named by its Window, it is the Window's active Tab's, and its Elements belong to the Window's State like any other Elements; named by a Tab target, it is that Tab's, shown or not, with a Window State of its own.
 _Avoid_: Document, DOM, site
 
 **Browser Connection**:
@@ -47,7 +51,7 @@ _Avoid_: Control, node, widget
 
 **Element Index**:
 The number that identifies an Element within one Window State. It is only valid for the Window State that produced it and goes stale after any change to the Window.
-Element Indexes are per Agent (ADR 0014), valid only for the Agent whose Window State produced them.
+Element Indexes are per Agent (ADR 0014), valid only for the Agent whose Window State produced them, and a Tab target's are per Agent per Tab, apart from its Window's (ADR 0017).
 _Avoid_: Element ID, ref
 
 ### Operation
@@ -97,7 +101,7 @@ A key combination press-key refuses, with nothing sent, unless the agent passes 
 _Avoid_: Dangerous key, forbidden shortcut
 
 **Agent Cursor**:
-The second, presentation-only cursor that shows the user each Headless Action: it travels to the Element, says what is happening in a label that is whole by the time it lands, and ripples when the Action is delivered (a Page's first press, key or text, a navigation the browser accepted), not when the Action and its read-back end. It never takes the user's pointer, keyboard or foreground and never appears in winuse's own screenshots. On a Page it is the same native cursor, placed through the browser's content area (ADR 0016), never drawn inside the Page.
+The second, presentation-only cursor that shows the user each Headless Action: it travels to the Element, says what is happening in a label that is whole by the time it lands, and ripples when the Action is delivered (a Page's first press, key or text, a navigation the browser accepted), not when the Action and its read-back end. It never takes the user's pointer, keyboard or foreground and never appears in winuse's own screenshots. On a Page it is the same native cursor, placed through the browser's content area (ADR 0016), never drawn inside the Page. A Tab target in the background has no cursor: nothing of it is on the screen (ADR 0017).
 Each Agent has its own Agent Cursor (ADR 0014), with its own colour and its name in the label, placed just above the Window it acts on rather than topmost; it closes when its Agent has gone idle. After a Headless set-value or typing into a named field it briefly shows an insertion caret where the field's caret now is.
 _Avoid_: Fake cursor, ghost cursor, pointer
 
@@ -120,7 +124,7 @@ One caller of winuse, with an identity: by default the Harness process the comma
 _Avoid_: Session, client, user
 
 **Lane**:
-The line an Action waits in before it runs (ADR 0014). A Window lane is shared by the Windows of one UI thread, a Page Action has a lane per Tab, and the one desktop lane is taken by every Headed Action. Actions in different lanes run at the same time. An Action that waits about 12 seconds for its lane is refused with nothing sent, naming the Agent that holds it.
+The line an Action waits in before it runs (ADR 0014). A Window lane is shared by the Windows of one UI thread, a Page Action named by its Window takes that browser Window's Page lane and one on a Tab target a lane of its Tab (ADR 0017), and the one desktop lane is taken by every Headed Action. Actions in different lanes run at the same time. An Action that waits about 12 seconds for its lane is refused with nothing sent, naming the Agent that holds it.
 _Avoid_: Lock, lease, queue
 
 ### Evaluation

@@ -772,7 +772,7 @@ Window, so the user sees it only while that Window is uncovered.
 ### Act on a Page
 
 ```
-winuse navigate <window> <url>                 # open a URL in the active Tab, wait for the load, print the URL
+winuse navigate <window> <url>                 # open a URL in the Window's Tab (or <window>:<tab>'s), wait for the load, print the URL
 winuse back <window>                           # also forward and reload
 winuse wait <window> selector <css>            # also text <text>, url <url or *pattern*>, load
 winuse eval <window> <expression>              # run JavaScript in the Page, print the value
@@ -799,8 +799,8 @@ winuse drag <window> <element> <element|@x,y>
   repeat it. Every Page Action then fails naming the dialog until you
   answer it with `dialog` (a prompt's text goes after `accept`).
 - A click or key that opens a new Tab adds
-  `Note: a new Tab opened: <tab> "<title>" <url>`; `tab switch` makes it
-  the Tab you read and act on.
+  `Note: a new Tab opened: <tab> "<title>" <url>`; read and act on it as
+  `<window>:<tab>` (see Tabs).
 - A click that opens a file chooser says winuse held it back, so no file
   dialog opens; answer it with `winuse upload <window> <file>...`. A
   browser winuse launched or cloned also holds back a chooser opened up to
@@ -830,9 +830,45 @@ winuse tab switch <window> <tab>
 winuse tab close <window> <tab>
 ```
 
-Page commands act on the active Tab, and `tab new` opens a Tab in the
-background, so `tab switch` to it before you act in it. Through the
-extension your new Tabs gather in a tab group named after you
+`<window>` alone means the Tab the Window shows. To work in another Tab,
+name it as `<window>:<tab>`: the Window, a colon and the Tab's id. The
+user keeps looking at their own Tab while you work in yours, and several
+agents can each work in their own Tab of one window at once. In the
+user's own browser, always open your own Tab and work there:
+
+```
+winuse tab new 4242 https://example.com      # ok 1a2b3c4d
+winuse get-window-state 4242:1a2b3c4d         # the Tab's own Window State and Element Indexes
+winuse click 4242:1a2b3c4d 7
+winuse set-value 4242:1a2b3c4d 9 "Blue"
+winuse wait 4242:1a2b3c4d text "Saved"
+```
+
+- Never `tab switch` in the user's window to do your work: it changes the
+  Tab they are looking at. Use it only to show the user something.
+- A Tab target takes `get-window-state` (`--screenshot` too), `click`,
+  `set-value`, `scroll` and `hover` on an Element, `drag` from an Element
+  to an Element, `select-text`, `type-text` (with or without `--into`),
+  `press-key`, `upload`, `navigate`, `back`, `forward`, `reload`,
+  `dialog`, the Page `wait`s, `eval` and `batch`. Everything is
+  Headless; `--headed`, `--post`, `@x,y` points, `find`, `zoom` and the
+  other commands are refused with nothing sent.
+- Its Element Indexes are yours for that Tab only; read it with
+  `get-window-state <window>:<tab>` before you act, and again after the
+  Page changes.
+- Keys and text go to the Tab's focused element, so click a field first.
+- A click on a drop-down list (`<select>`) or a date, time or colour field
+  in a background Tab is refused: its popup would open on the user's
+  screen. Use `set-value` (a date as `2026-11-04`, a time as `13:30`, a
+  colour as `#ff8800`).
+- A link or script that opens a new Tab opens it beside the user's Tab
+  without taking its place (through the extension), and the `Note:` line
+  names its id.
+- A screenshot of a background Tab may not come; the output then says so
+  and the tree is still current.
+- The Agent Cursor does not show Actions in a background Tab.
+
+Through the extension your new Tabs gather in a tab group named after you
 (`WINUSE_AGENT`, else your Harness's name) in your Agent Cursor's colour. These are
 Headless. On a browser winuse launched or cloned, `tab switch` selects the
 Tab in the tab strip by its title; when two Tabs share a title, or the
@@ -1097,5 +1133,6 @@ version
 ```
 
 `<window>` is a Window ID, or an App name when that App has exactly one
-Window. `<ref>` is an Element Index, `name:<text>`, `id:<AutomationId>` or
-`@x,y`. `<tab>` is a Tab id from `tab list`.
+Window; for the Page commands it can also be `<window>:<tab>`, a Tab of
+that browser shown or not. `<ref>` is an Element Index, `name:<text>`,
+`id:<AutomationId>` or `@x,y`. `<tab>` is a Tab id from `tab list`.

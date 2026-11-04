@@ -37,6 +37,7 @@ var parityTopics = []string{
 	"dpi and coordinates", "ui automation reads", "screenshots",
 	"tree format", "secondary actions", "key names",
 	"app identifiers", "one request at a time", "stale elements",
+	"background tabs", // ADR 0017: Tab targets
 	"extensions beyond Codex",
 }
 

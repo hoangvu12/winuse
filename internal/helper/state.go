@@ -350,6 +350,12 @@ type Services struct {
 	// notifications is what each Agent's notification numbers stand for
 	// (desktop parity ticket 18, notifications.go); nil: a fresh log.
 	notifications *notificationLog
+
+	// Tab targets (background-tabs, ADR 0017, tabtarget.go): the Tabs held
+	// alive for the Agents working in them, and each Agent's Window States
+	// of its Tab targets. Created by defaultServices.
+	tabHolds  *tabHolds
+	tabStates *tabStateStore
 }
 
 // CommandsWith builds the command registry over the given services.
@@ -463,7 +469,8 @@ func CommandsWith(s Services) map[string]Command {
 		if name != StatusCommand {
 			cmd = s.tracked(name, cmd)
 		}
-		cmd = s.tracedWindow(cmd) // a traced run names its Window (trace.go, desktop-parity ticket 19)
+		cmd = s.tracedWindow(cmd)      // a traced run names its Window (trace.go, desktop-parity ticket 19)
+		cmd = s.tabTargeted(name, cmd) // a <window>:<tab> target runs on its Tab (tabtarget.go, ADR 0017)
 		out[name] = cmd
 	}
 	return out
@@ -874,6 +881,12 @@ func defaultServices(s Services) Services {
 	}
 	if s.lanes == nil {
 		s.lanes = newLaneManager()
+	}
+	if s.tabHolds == nil {
+		s.tabHolds = newTabHolds()
+	}
+	if s.tabStates == nil {
+		s.tabStates = newTabStateStore()
 	}
 	if s.WindowThread == nil {
 		s.WindowThread = win.WindowThreadID

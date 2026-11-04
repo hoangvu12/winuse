@@ -255,6 +255,18 @@ func TestExtensionIdentity(t *testing.T) {
 		`name.indexOf("` + buildMark + `")`,
 		"build: loadedBuild() }",
 		"build: loadedBuild(), instance, paused }",
+		// Background tabs (ADR 0017): the hold and the user's tab guard,
+		// mirrored by bridgetest's HoldTab and OpenFromTab.
+		`if (m.method === "` + MethodHoldTab + `") return holdTab(m.params || {});`,
+		`if (m.method === "` + MethodReleaseTab + `") return releaseTab(m.params || {});`,
+		"await chrome.tabs.update(tab.id, { autoDiscardable: false });",
+		"chrome.tabs.update(tabId, { autoDiscardable: h.discardable })",
+		"if (tab.openerTabId !== undefined) return held.has(tab.openerTabId) ? tab.openerTabId : undefined;",
+		"acting.set(tab.windowId, { tabId: tab.id, until: Date.now() + ACTING_MS });",
+		"if (s[1] === openerId || (s[1] === tab.id && s[0] === openerId)) return;",
+		`if (m.method === "` + MethodAdoptTab + `") return adoptTab(m.params || {});`,
+		"chrome.tabs.update(back, { active: true })",
+		"unholdTarget(targetId);",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("background.js lacks %q", want)
@@ -263,11 +275,16 @@ func TestExtensionIdentity(t *testing.T) {
 	if strings.Contains(src, "build.json") {
 		t.Error("background.js reads build.json, which a rewritten folder changes under the loaded extension")
 	}
-	// The foreground rule: nothing focuses or raises a window.
-	for _, never := range []string{"chrome.windows.update", "focused: true", "focused:true"} {
+	// The foreground rule: nothing focuses or raises a window. The one
+	// window update minimizes a popup a held tab opened (ADR 0017).
+	for _, never := range []string{"focused: true", "focused:true", "state: \"normal\"", "state: \"maximized\""} {
 		if strings.Contains(src, never) {
 			t.Errorf("background.js has %q, which raises the browser window", never)
 		}
+	}
+	const minimize = `chrome.windows.update(tab.windowId, { state: "minimized" })`
+	if n := strings.Count(src, "chrome.windows.update"); n != 1 || !strings.Contains(src, minimize) {
+		t.Errorf("background.js updates windows %d times; only %s may", n, minimize)
 	}
 	for _, s := range []string{src, string(mb)} {
 		if strings.ContainsAny(s, "\u2013\u2014\r") {

@@ -198,6 +198,9 @@ func (b *builder) node(s *docState, n *AXNode, sc scope) []*vnode {
 	}
 
 	v := &vnode{el: b.element(s, n, role, name), origin: b.origin(s, n), focused: prop(n, "focused") == "true"}
+	if r.kind == leaf && !clickable {
+		return []*vnode{v}
+	}
 	inner := scope{named: name, interactive: sc.interactive || interactiveRoles[role] || clickable, inFrame: sc.inFrame}
 	if f := b.frames[n.BackendDOMNodeID]; f != nil && !sc.inFrame && s.owner == nil {
 		// A cross-origin (or left out) iframe: its own document goes under
