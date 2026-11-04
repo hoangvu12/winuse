@@ -261,6 +261,13 @@ type Services struct {
 	// which refuses inside an offline test binary (the diff is then
 	// skipped); tests fake it.
 	Surfaces func() ([]win.WindowInfo, error)
+	// WatchApp watches the target's App while an Action settles (speed
+	// ticket 01, ADR 0019): it hears the App's top-level windows show and
+	// samples whether the App went quiet, so the settle looks as a Window
+	// shows and stops once the App is quiet. Nil falls back to
+	// win.WatchApp, which refuses inside an offline test binary (the
+	// settle then polls its full 300 ms); tests fake it.
+	WatchApp func(target win.WindowInfo) (AppWatch, error)
 
 	// The in-control indicator (ticket 13): raised over the target Window
 	// for the duration of every Action, click-through, never focused, and
@@ -841,6 +848,15 @@ func defaultServices(s Services) Services {
 				return nil, err
 			}
 			return win.Collect()
+		}
+	}
+	if s.WatchApp == nil {
+		s.WatchApp = func(target win.WindowInfo) (AppWatch, error) {
+			w, err := win.WatchApp(target.ID)
+			if err != nil {
+				return nil, err
+			}
+			return w, nil
 		}
 	}
 	if s.Browser == nil {

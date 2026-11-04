@@ -117,9 +117,10 @@ func trimExt(base string) string {
 	return base
 }
 
-// sharedNames caches App display names for the whole process. Collect
-// carries its own instance per enumeration; this one serves callers
-// outside it, e.g. the App catalog's recently used Apps.
+// sharedNames caches App display names for the whole process: every
+// Collect (a click enumerates the windows about ten times, speed ticket
+// 02) and the callers outside it, e.g. the App catalog's recently used
+// Apps. A path's name is read from its version resource once per helper.
 var sharedNames = newAppNames()
 
 // AppName resolves the App display name for an executable path — the
