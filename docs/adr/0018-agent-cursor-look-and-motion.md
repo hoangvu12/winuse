@@ -78,6 +78,18 @@ insertion caret and showing what each Action does.
    in Decision 3. For Mural's dart (issue 11) that axis is nearly the
    diagonal, about −135°, so a rightward move turns the tip about 135°
    (cua's reshaped arrow turned about 108°).
+   *Amended (cursor-turn, the user's "do 1:1 to cua";
+   `.scratch/cursor-look/turning-1to1.md`):* the turn is cua's
+   `travel_rotation` exactly. Each ramp is at most half the time to the
+   arrival, which the port had missed: a big turn's stretched ramps
+   overlapped and the arrow never reached its heading (a 400 px down-right
+   move peaked at 106° of 180°). The travel direction is the shown path's
+   velocity over ±8 ms, the chord below 1 px/s. The axis is cua's rule,
+   the body's centre to the tip: about −136° for the dart (cua's arrow:
+   −99.5°), so the dart turns about 37° more than cua's arrow on every
+   move, a half turn counterclockwise on a down-right one. cua's float tilt
+   (±2.5°, and its float while travelling) is not ported: Decision 7
+   stands.
 6. **The click's press** (1 → 0.93 → 1.03 → 1 over 667 ms) replaces the
    disc ripple. The element outline and the insertion caret stay.
 7. **The float.** At rest the tip sways and bobs (position only, so the
