@@ -16,7 +16,7 @@ cosmetic.
 - `page.NewTab` takes a `page.TabGroup` and sends it as `winuseGroup` on `Target.createTarget`, through the extension only.
 - `background.js` `createTab` validates it (`tabGroupFor`: title cut at 40 characters, colour from the fixed list, else "winuse"/blue) and reuses the window's group with that title and colour; failures stay ignored. A newer winuse reloads the extension itself (build stamp), so no user step.
 - `bridgetest`: the fake groups tabs the same way and exposes `Extension.Group`.
-- Tests: `TestTabGroupColor`, `TestAgentTabGroup`, `TestNewTabOnTheExtensionNamesTheWindow`, `TestTabNewOnTheExtension`, `TestExtensionFilesAreWinuses` strings.
+- Tests: `TestTabGroupColor`, `TestAgentTabGroup`, `TestNewTabOnTheExtensionNamesTheWindow`, `TestTabNewOnTheExtension`, `TestExtensionIdentity` (background.js strings).
 - Docs: SKILL.md (Tabs), CONTEXT.md (Tab), README.
 
 **Not verified live:** the group in a real browser (title, colour, reuse).
