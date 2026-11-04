@@ -34,9 +34,9 @@ While it runs, nothing else may use winuse: a CLI of another build (the
 user's installed winuse, the Brave extension's native host) replaces the
 demo helper, and the script then fails, since the cursors may be missing.
 
-`readme-hero.patch` is the README change that goes in with the GIF
-(`git apply .scratch/readme-demo/readme-hero.patch`, then `git rm
-docs/images/winuse-calculator.gif`).
+`readme-hero.patch` is the README change that went in with the GIF, with
+`docs/images/winuse-calculator.gif` removed (the first recording, 2026-11-05:
+the Agents took 22.3 s, the GIF is 25 s, 960x520, 1.4 MB at 15 fps).
 
 `#done` on a page's URL previews its finished state; the script never uses
 it.

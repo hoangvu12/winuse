@@ -2,7 +2,10 @@
 
 Let your coding agent use Windows apps and websites.
 
-![The agent's cursor clicks 7, +, 2 and = in Windows Calculator](docs/images/winuse-calculator.gif)
+![Three agents work at once in three browser windows, each with its own named cursor: "artist" colours a rocket, "planner" ticks off a launch board and ships it, "writer" types and publishes release notes](docs/images/winuse-demo.gif)
+
+Three agents at once, each with its own cursor and name tag, while your
+own mouse and keyboard stay free.
 
 winuse is a command-line tool for Windows. It reads any open window as
 text, clicks and fills in its controls, and types and scrolls when a task
