@@ -71,6 +71,13 @@ func Live() *System {
 		}
 		return bridge.List(s.BridgesDir(), bridge.HostAlive)
 	}
+	s.NativeHosts = func() []bridge.HostProcess {
+		if win.LiveDesktopGuard() != nil {
+			return nil // a test must not list, or end, real hosts
+		}
+		return bridge.NativeHosts()
+	}
+	s.EndHost = bridge.EndHost
 	s.Extension = s.extensionEndpoint
 	return s
 }

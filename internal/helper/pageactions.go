@@ -378,6 +378,7 @@ func (s Services) runPage(ctx context.Context, run pageRun) (string, *Error) {
 	defer in.Close()
 	defer s.holdChoosers(ctx, w, o)() // file chooser interception for this Action (ticket 06)
 	s.watchNewTabs(ctx, o)
+	defer s.guardUsersTab(ctx)() // a Tab target's: a new Tab never keeps the user's place (ADR 0017)
 	rippled := s.rippleOnDelivery(ctx, w, rect, shown, in)
 	err = run.act(ctx, in, aim)
 	rippled()
@@ -810,6 +811,7 @@ func (s Services) runPageInput(ctx context.Context, w win.WindowInfo, o *page.Or
 	defer in.Close()
 	defer s.holdChoosers(ctx, w, o)() // Enter or Space on a file input opens a chooser too
 	s.watchNewTabs(ctx, o)
+	defer s.guardUsersTab(ctx)() // a Tab target's: Enter on a link opens a Tab too (ADR 0017)
 	rippled := s.rippleOnDelivery(ctx, w, rect, shown, in)
 	err = p.act(ctx, in)
 	rippled()

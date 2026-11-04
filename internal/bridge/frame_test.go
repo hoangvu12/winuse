@@ -261,8 +261,10 @@ func TestExtensionIdentity(t *testing.T) {
 		`if (m.method === "` + MethodReleaseTab + `") return releaseTab(m.params || {});`,
 		"await chrome.tabs.update(tab.id, { autoDiscardable: false });",
 		"chrome.tabs.update(tabId, { autoDiscardable: h.discardable })",
-		"tab.openerTabId === undefined || !held.has(tab.openerTabId)",
-		"if (s[1] === tab.openerTabId || (s[1] === tab.id && s[0] === tab.openerTabId)) return;",
+		"if (tab.openerTabId !== undefined) return held.has(tab.openerTabId) ? tab.openerTabId : undefined;",
+		"acting.set(tab.windowId, { tabId: tab.id, until: Date.now() + ACTING_MS });",
+		"if (s[1] === openerId || (s[1] === tab.id && s[0] === openerId)) return;",
+		`if (m.method === "` + MethodAdoptTab + `") return adoptTab(m.params || {});`,
 		"chrome.tabs.update(back, { active: true })",
 		"unholdTarget(targetId);",
 	} {

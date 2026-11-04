@@ -88,6 +88,15 @@ type System struct {
 	Registry Registry
 	// Executable is the winuse binary the host manifest names.
 	Executable func() (string, error)
+	// NativeHosts lists the winuse native host processes running now, and
+	// EndHost ends one (bridge.NativeHosts, bridge.EndHost). ext status ends
+	// a host no bridge file names: an older winuse's, which keeps the
+	// extension's port while no helper can reach it. Nil: none, never ends.
+	NativeHosts func() []bridge.HostProcess
+	EndHost     func(pid int) error
+	// HostReconnectWait bounds how long ext status waits for the extension
+	// to connect again after it ended a stray host (0: hostReconnectWait).
+	HostReconnectWait time.Duration
 
 	Now   func() time.Time
 	Sleep func(d time.Duration)

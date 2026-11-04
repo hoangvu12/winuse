@@ -40,6 +40,7 @@ const (
 	ExtBrowserClosed   // the extension is set up, but the browser is not running
 	ExtNotConnected    // loaded and on, the browser runs, but no bridge came up
 	ExtOutdated        // a different build is loaded and it did not reload itself
+	ExtStrayHost       // an older winuse's native host held the extension; ended, it did not come back in time
 	ExtPaused          // the user turned winuse off (Cancel, or the toolbar icon)
 	ExtUnreachable     // a bridge is up but the extension did not answer
 	ExtSeveralProfiles // the extension runs in several profiles of one browser
@@ -166,6 +167,8 @@ func (p *Problem) Sentence() string {
 		return s
 	case ExtOutdated:
 		return fmt.Sprintf("the winuse extension in %s is out of date and did not reload itself (%s)", p.name(), p.Detail)
+	case ExtStrayHost:
+		return fmt.Sprintf("the winuse extension in %s was held by a native host of an older winuse that no winuse could reach (%s); winuse ended it, and the extension has not connected again yet", p.name(), p.Detail)
 	case ExtPaused:
 		return fmt.Sprintf("the user turned winuse off in %s (Cancel on the debugging bar, or the winuse toolbar icon)", p.name())
 	case ExtUnreachable:
@@ -249,6 +252,8 @@ func (p *Problem) Next() string {
 		return "ask the user to open " + p.name() + " (the extension connects when it starts), then run winuse browser ext status" + b
 	case ExtNotConnected:
 		return "run winuse browser ext install" + b + " (it registers the native host under every registry key " + p.name() + " may read), then reload the extension: in " + p.name() + ", open " + Scheme(p.Browser) + `://extensions and click the reload icon on "winuse"; if its toolbar icon shows a red "!", hovering it shows why`
+	case ExtStrayHost:
+		return "the extension starts this winuse's host within 30 seconds: run winuse browser ext status" + b + " --wait 60; if it still does not connect, tell the user: in " + p.name() + ", open " + Scheme(p.Browser) + `://extensions and click the reload icon on "winuse"`
 	case ExtOutdated, ExtUnreachable:
 		return "tell the user: in " + p.name() + ", open " + Scheme(p.Browser) + `://extensions and click the reload icon on "winuse"; then run winuse browser ext status` + b
 	case ExtPaused:

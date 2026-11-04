@@ -44,6 +44,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hoangvu12/winuse/internal/bridge"
 	"github.com/hoangvu12/winuse/internal/browser"
 	"github.com/hoangvu12/winuse/internal/cdp"
 	"github.com/hoangvu12/winuse/internal/page"
@@ -346,6 +347,99 @@ func (bt *bgTab) retargetOut(out string) string {
 		}
 	}
 	return strings.Join(lines, "")
+}
+
+// ---- the user's Tab ----
+
+// How long, and how often, winuse watches the user's window after an
+// Action in a background Tab for a new Tab that took the user's place.
+// Tests shrink them.
+var (
+	usersTabWatch = 3 * time.Second
+	usersTabPoll  = 150 * time.Millisecond
+)
+
+// guardUsersTab is winuse's own check behind the extension's guard (ADR
+// 0017 Decision 4), which a link with no opener or an extension that lost
+// its holds can slip past (the live check: a target=_blank link's Tab
+// stayed selected). Before an Action's input it notes the Tab the user's
+// window shows and every open Tab; the returned func, run once the input
+// was sent, watches that window for usersTabWatch: a new Tab showing a
+// site that became the selected one while the user's Tab is still open is
+// the Action's, so the user's Tab is selected again (chrome.tabs inside
+// the window, never the window itself) and the new Tab joins the agent
+// Tab's group. A Tab the user switched to themselves (one that was open
+// before, or a browser page such as Ctrl+T's) ends the watch. Through the
+// extension only: nothing else can select a Tab without the foreground.
+func (s Services) guardUsersTab(ctx context.Context) func() {
+	bt := tabTargetOf(ctx)
+	if bt == nil || bt.active || bt.conn.Mode != browser.ModeExtension {
+		return func() {}
+	}
+	lctx, cancel := context.WithTimeout(ctx, pageProbeBudget)
+	tabs, err := page.ListTabs(lctx, bt.conn.Client)
+	cancel()
+	if err != nil {
+		return func() {}
+	}
+	window, users := -1, ""
+	known := map[string]bool{}
+	for _, t := range tabs {
+		known[t.TargetID] = true
+		if t.TargetID == bt.tab.TargetID {
+			window = t.WindowID
+		}
+	}
+	for _, t := range tabs {
+		if t.WindowID == window && t.Active != nil && *t.Active {
+			users = t.TargetID
+		}
+	}
+	if users == "" || users == bt.tab.TargetID {
+		return func() {}
+	}
+	c, agentTab := bt.conn.Client, bt.tab.TargetID
+	return func() {
+		go func() {
+			wctx, cancel := context.WithTimeout(context.Background(), usersTabWatch)
+			defer cancel()
+			for {
+				select {
+				case <-wctx.Done():
+					return
+				case <-time.After(usersTabPoll):
+				}
+				now, err := page.ListTabs(wctx, c)
+				if err != nil {
+					continue
+				}
+				var shown page.Tab
+				open := false
+				for _, t := range now {
+					open = open || t.TargetID == users
+					if t.WindowID == window && t.Active != nil && *t.Active {
+						shown = t
+					}
+				}
+				switch {
+				case !open:
+					return // the user closed their Tab
+				case shown.TargetID == "" || shown.TargetID == users:
+					continue
+				case known[shown.TargetID] || shown.Internal:
+					return // the user moved to another Tab themselves
+				}
+				if err := page.ActivateTabThroughExtension(wctx, c, users); err != nil {
+					log.Printf("selecting the user's tab %s again: %v", page.TabID(users), err)
+					return
+				}
+				c.Call(wctx, bridge.MethodAdoptTab, map[string]any{"targetId": shown.TargetID, "openerId": agentTab})
+				log.Printf("tab %s, opened by an Action in tab %s, took the user's place; selected the user's tab %s again",
+					page.TabID(shown.TargetID), page.TabID(agentTab), page.TabID(users))
+				return
+			}
+		}()
+	}
 }
 
 // ---- holds ----

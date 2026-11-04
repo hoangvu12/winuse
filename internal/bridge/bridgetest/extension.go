@@ -122,6 +122,13 @@ type Extension struct {
 
 	// Page answers a command on a tab or child session; nil answers {}.
 	Page func(sessionID, method string, params json.RawMessage) (any, error)
+	// NoOpener makes OpenFromTab's tabs carry no openerTabId, as a
+	// target=_blank link (noopener) may in the browser: the guard then
+	// takes them by the held tab acting in their window (ACTING_MS).
+	// GuardOff is an extension whose guard never fires (an older one, or a
+	// worker that lost its holds): only winuse's own check is left.
+	NoOpener bool
+	GuardOff bool
 	// OnReload runs after Winuse.reload is answered: the real extension
 	// reloads from its folder, which ends this host and starts a new one.
 	// Without it, an extension with a Dir does that itself (Reload), and
@@ -152,9 +159,26 @@ type Extension struct {
 	navigated []string
 	reloads   int
 	closed    bool
-	held      map[string]bool // Winuse.holdTab's tabs, by target id
-	holds     []string        // every hold and release, as "hold <id>" or "release <id>"
-	minimized map[int]bool    // popup windows the guard minimized
+	held      map[string]bool      // Winuse.holdTab's tabs, by target id
+	holds     []string             // every hold and release, as "hold <id>" or "release <id>"
+	minimized map[int]bool         // popup windows the guard minimized
+	acting    map[int]actingWindow // background.js's acting: the last hold per window
+}
+
+// actingWindow is a hold's window and tab, and when it was sent.
+type actingWindow struct {
+	target string
+	at     time.Time
+}
+
+// actingFor is the acting window's held tab within background.js's
+// ACTING_MS (10 s); "" for none. Call with mu held.
+func (e *Extension) actingFor(window int) string {
+	a, ok := e.acting[window]
+	if !ok || time.Since(a.at) > 10*time.Second || !e.held[a.target] {
+		return ""
+	}
+	return a.target
 }
 
 // Held reports whether a tab is held (Winuse.holdTab, ADR 0017).
@@ -181,6 +205,23 @@ func (e *Extension) ActiveTab(windowID int) string {
 		}
 	}
 	return ""
+}
+
+// Select is the user clicking a tab: it becomes its window's selected one.
+func (e *Extension) Select(targetID string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	window := -1
+	for _, t := range e.Tabs {
+		if t.TargetID == targetID {
+			window = t.WindowID
+		}
+	}
+	for i := range e.Tabs {
+		if e.Tabs[i].WindowID == window {
+			e.Tabs[i].Active = e.Tabs[i].TargetID == targetID
+		}
+	}
 }
 
 // Minimized reports whether the guard minimized a popup window.
@@ -223,7 +264,13 @@ func (e *Extension) OpenFromTab(opener, url string, popup bool) string {
 		}
 	}
 	e.Tabs = append(e.Tabs, Tab{TargetID: id, URL: url, Title: url, TabID: 2000 + len(e.Tabs), WindowID: window, Active: true})
-	if !e.held[opener] || shown {
+	// background.js's openerOf: the held opener, or with no opener the held
+	// tab acting in the new tab's window.
+	guarded := e.held[opener]
+	if e.NoOpener {
+		guarded = e.actingFor(window) == opener && opener != ""
+	}
+	if !guarded || shown || e.GuardOff {
 		return id // the guard only covers a held tab in the background
 	}
 	n := &e.Tabs[len(e.Tabs)-1]
@@ -675,6 +722,29 @@ func (e *Extension) handle(c int, method, sessionID string, params json.RawMessa
 	if method == bridge.MethodNavigateTab {
 		return nil, e.navigateTab(p.TargetID, p.URL)
 	}
+	if method == bridge.MethodAdoptTab {
+		// background.js's adoptTab: the tab joins its opener's group.
+		var a struct {
+			TargetID string `json:"targetId"`
+			OpenerID string `json:"openerId"`
+		}
+		json.Unmarshal(params, &a)
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		var group TabGroup
+		for _, tab := range e.Tabs {
+			if tab.TargetID == a.OpenerID {
+				group = tab.Group
+			}
+		}
+		for i := range e.Tabs {
+			if e.Tabs[i].TargetID == a.TargetID {
+				e.Tabs[i].Group = group
+				return nil, nil
+			}
+		}
+		return nil, fmt.Errorf("no tab with target id %s", a.TargetID)
+	}
 	if method == bridge.MethodHoldTab || method == bridge.MethodReleaseTab {
 		// background.js's holdTab and releaseTab: autoDiscardable off while
 		// held, the tab's own value back on release.
@@ -692,6 +762,16 @@ func (e *Extension) handle(c int, method, sessionID string, params json.RawMessa
 		}
 		hold := method == bridge.MethodHoldTab
 		e.held[p.TargetID] = hold
+		if hold {
+			if e.acting == nil {
+				e.acting = map[int]actingWindow{}
+			}
+			for _, tab := range e.Tabs {
+				if tab.TargetID == p.TargetID {
+					e.acting[tab.WindowID] = actingWindow{target: p.TargetID, at: time.Now()}
+				}
+			}
+		}
 		word := "release"
 		if hold {
 			word = "hold"

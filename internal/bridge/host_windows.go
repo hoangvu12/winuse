@@ -145,5 +145,50 @@ func HostAlive(info Info) bool {
 		return true
 	}
 	image, err := ProcessImage(uint32(info.PID))
-	return err == nil && strings.EqualFold(filepath.Clean(image), filepath.Clean(info.Exe))
+	return err == nil && SameHostImage(info.Exe, image)
+}
+
+// NativeHosts lists the winuse native hosts running now: every winuse
+// process other than this one whose parent, past the cmd.exe Chromium
+// starts hosts through, is not a winuse process (the helper's parent is
+// the CLI or a shell, never a browser). Each names that parent as its
+// browser.
+func NativeHosts() []HostProcess {
+	parents := processParents()
+	self := uint32(os.Getpid())
+	var out []HostProcess
+	for pid, parent := range parents {
+		if pid == self || pid == 0 {
+			continue
+		}
+		exe, err := ProcessImage(pid)
+		if err != nil || !isWinuseImage(exe) {
+			continue
+		}
+		bpid := parent
+		bexe, _ := ProcessImage(bpid)
+		for range 3 {
+			if bexe == "" || !shells[strings.ToLower(filepath.Base(bexe))] {
+				break
+			}
+			bpid = parents[bpid]
+			bexe, _ = ProcessImage(bpid)
+		}
+		if bexe == "" || isWinuseImage(bexe) || shells[strings.ToLower(filepath.Base(bexe))] {
+			continue
+		}
+		out = append(out, HostProcess{PID: int(pid), Exe: exe, BrowserPID: int(bpid), BrowserExe: bexe})
+	}
+	return out
+}
+
+// EndHost ends a native host process. Its browser closes the extension's
+// port, and the extension starts a new host from the registered binary.
+func EndHost(pid int) error {
+	h, err := windows.OpenProcess(windows.PROCESS_TERMINATE, false, uint32(pid))
+	if err != nil {
+		return err
+	}
+	defer windows.CloseHandle(h)
+	return windows.TerminateProcess(h, 1)
 }

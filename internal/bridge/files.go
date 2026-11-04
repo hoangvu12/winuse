@@ -34,6 +34,33 @@ type Info struct {
 	Path string `json:"-"` // the bridge file
 }
 
+// HostProcess is a running native host as the process list shows it.
+type HostProcess struct {
+	PID        int
+	Exe        string
+	BrowserPID int
+	BrowserExe string
+}
+
+// SameHostImage reports whether a live process with image now is the host
+// a bridge file recorded with image recorded. The same path is; so is a
+// winuse binary under another name: replacing winuse.exe while a host runs
+// means renaming the running file (winuse.old.exe), and Windows then names
+// the running process after the new name. A reused pid would have to land
+// on another winuse binary to pass.
+func SameHostImage(recorded, now string) bool {
+	if strings.EqualFold(filepath.Clean(recorded), filepath.Clean(now)) {
+		return true
+	}
+	return isWinuseImage(recorded) && isWinuseImage(now)
+}
+
+// isWinuseImage reports whether an executable is a winuse binary by name.
+func isWinuseImage(path string) bool {
+	base := strings.ToLower(filepath.Base(path))
+	return strings.HasPrefix(base, "winuse") && strings.HasSuffix(base, ".exe")
+}
+
 // Addr is the host's loopback address.
 func (i Info) Addr() string { return "127.0.0.1:" + strconv.Itoa(i.Port) }
 

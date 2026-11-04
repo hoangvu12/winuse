@@ -16,6 +16,7 @@ const (
 	keep                  // always a line
 	keepNamed             // a line when it has a name, else a wrapper
 	drop                  // never a line, and neither are its children
+	leaf                  // always a line, and its children never are
 )
 
 // roleRule is one row of the role table.
@@ -53,12 +54,19 @@ var roleTable = map[string]roleRule{
 	"menuitemcheckbox":      {"menu item", keep},
 	"menuitemradio":         {"menu item", keep},
 	"slider":                {"slider", keep},
-	"spinbutton":            {"spinner", keep},
-	"scrollbar":             {"scroll bar", keep},
-	"tab":                   {"tab", keep},
-	"tablist":               {"tab list", keep},
-	"tree":                  {"tree", keep},
-	"treeitem":              {"tree item", keep},
+	// A date, time or colour input: one field set-value writes in its own
+	// format (ADR 0017). Its month, day and year spinners and its picker
+	// button are the browser's own parts, in a shadow tree, and not lines.
+	"date":       {"edit", leaf},
+	"datetime":   {"edit", leaf},
+	"inputtime":  {"edit", leaf},
+	"colorwell":  {"edit", leaf},
+	"spinbutton": {"spinner", keep},
+	"scrollbar":  {"scroll bar", keep},
+	"tab":        {"tab", keep},
+	"tablist":    {"tab list", keep},
+	"tree":       {"tree", keep},
+	"treeitem":   {"tree item", keep},
 
 	// Structure.
 	"list":                 {"list", keep},

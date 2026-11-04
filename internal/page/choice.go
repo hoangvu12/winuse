@@ -58,7 +58,8 @@ type Choice struct {
 // take leaves it empty).
 const pickerJS = `function(v) {
   /* winuse:picker */
-  const el = this.nodeType === 1 ? this : this.parentElement;
+  let el = this.nodeType === 1 ? this : this.parentElement;
+  { const r = el && el.getRootNode(); if (r && r.host && r.host.tagName === 'INPUT') el = r.host; }
   el.value = v;
   el.dispatchEvent(new Event('input', {bubbles: true}));
   el.dispatchEvent(new Event('change', {bubbles: true}));
@@ -108,7 +109,8 @@ func pickerFormat(typ string) string {
 // options), the input type of a date, time or colour input, "" otherwise.
 const nativePickerJS = `function() {
   /* winuse:nativepicker */
-  const el = this.nodeType === 1 ? this : this.parentElement;
+  let el = this.nodeType === 1 ? this : this.parentElement;
+  { const r = el && el.getRootNode(); if (r && r.host && r.host.tagName === 'INPUT') el = r.host; }
   if (!el || !el.isConnected) return '';
   const s = el.closest('select');
   if (s && !s.multiple && (s.size || 0) <= 1) return 'list';
@@ -137,7 +139,10 @@ func (o Origin) NativePicker(ctx context.Context) (string, error) {
 
 const choiceJS = `function() {
   /* winuse:choice */
-  const el = this.nodeType === 1 ? this : this.parentElement;
+  let el = this.nodeType === 1 ? this : this.parentElement;
+  // A part of an input's own shadow tree (a date input's spinners and its
+  // picker button) stands for the input.
+  { const r = el && el.getRootNode(); if (r && r.host && r.host.tagName === 'INPUT') el = r.host; }
   if (!el || !el.isConnected) return {kind: 'gone'};
   const disabled = el.matches(':disabled') || el.getAttribute('aria-disabled') === 'true' || !!el.closest('[inert]');
   if (el.tagName === 'SELECT') {

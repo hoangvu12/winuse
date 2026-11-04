@@ -500,6 +500,77 @@ func (m *Manager) ExtStatus(ctx context.Context, name string) (string, error) {
 func (m *Manager) diagnoseExt(ctx context.Context, name string) (string, error) {
 	s := m.sys
 	hits := s.liveBridges(name)
+	note := ""
+	if len(hits) == 0 {
+		if ended := s.endStrayHosts(name); len(ended) > 0 {
+			// An older winuse's host held the extension's port with no bridge
+			// file any winuse reads; with it ended, the extension starts the
+			// registered host again.
+			wait := s.HostReconnectWait
+			if wait <= 0 {
+				wait = hostReconnectWait
+			}
+			s.poll(ctx, wait, pollEvery, func() bool {
+				hits = s.liveBridges(name)
+				return len(hits) > 0
+			})
+			if len(hits) == 0 {
+				return "", &Problem{Kind: ExtStrayHost, Browser: name, Detail: strings.Join(ended, ", ")}
+			}
+			note = fmt.Sprintf("note: ended a winuse native host no winuse could reach (%s), which held the extension in %s; it connected again\n", strings.Join(ended, ", "), DisplayName(name))
+		}
+	}
+	out, err := m.diagnoseHits(ctx, name, hits)
+	if err != nil {
+		return "", err
+	}
+	return out + note, nil
+}
+
+// hostReconnectWait is how long ext status waits for the extension to
+// connect again after it ended a stray host: the extension's reconnect
+// alarm fires every 30 s.
+const hostReconnectWait = 35 * time.Second
+
+// endStrayHosts ends the winuse native hosts that a browser started and no
+// bridge file names, and returns them as "pid N (exe)". Such a host is an
+// older winuse's whose bridge file is gone: it keeps the extension's port,
+// so the extension never starts the current host, and no helper reaches
+// it (the upgrade case: the running winuse.exe renamed, browser-ux).
+func (s *System) endStrayHosts(name string) []string {
+	if s.NativeHosts == nil || s.EndHost == nil {
+		return nil
+	}
+	var exe string
+	for _, b := range s.detect() {
+		if b.Name == name {
+			exe = filepath.Base(b.Path)
+		}
+	}
+	if exe == "" {
+		return nil
+	}
+	named := map[int]bool{}
+	if s.Bridges != nil {
+		for _, i := range s.Bridges() {
+			named[i.PID] = true
+		}
+	}
+	var ended []string
+	for _, h := range s.NativeHosts() {
+		if named[h.PID] || !strings.EqualFold(filepath.Base(h.BrowserExe), exe) {
+			continue
+		}
+		if err := s.EndHost(h.PID); err == nil {
+			ended = append(ended, fmt.Sprintf("pid %d, %s", h.PID, h.Exe))
+		}
+	}
+	return ended
+}
+
+// diagnoseHits is diagnoseExt once the browser's bridges are known.
+func (m *Manager) diagnoseHits(ctx context.Context, name string, hits []liveBridge) (string, error) {
+	s := m.sys
 	if len(hits) > 1 {
 		var instances []string
 		for _, h := range hits {

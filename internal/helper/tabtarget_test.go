@@ -268,7 +268,10 @@ func axForm(sid string) []map[string]any {
 		n("3", "textbox", "Email", 80),
 		n("4", "link", "Open report", 90),
 		n("5", "combobox", "Colour", 100),
-		n("6", "textbox", "When", 110),
+		// <input type=date>: its spinners and picker button are shadow parts.
+		n("6", "date", "When", 110, "7", "8"),
+		n("7", "spinButton", "Month", 111),
+		n("8", "button", "Show date picker", 112),
 	}
 }
 
@@ -326,11 +329,15 @@ func TestTabTargetReadsABackgroundTab(t *testing.T) {
 		"\t\t2 edit (settable, string) Email",
 		"\t\t3 link Open report",
 		"\t\t4 combo box Colour",
+		"\t\t5 edit (settable, string) When\n",
 		"Note: this is tab e2000000, in the background of window 301, read through its Browser Connection alone: act on it as 301:e2000000",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the Window State lacks %q:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "spinner") || strings.Contains(out, "Show date picker") {
+		t.Errorf("the date input's shadow parts are lines:\n%s", out)
 	}
 	if !r.ext.Held(bgDocs) || r.ext.Held(bgInbox) || r.ext.Held(bgShop) {
 		t.Errorf("holds = %v", r.ext.Holds())
@@ -428,6 +435,82 @@ func TestTabTargetLinkOpensANewTabBesideTheUsersTab(t *testing.T) {
 		t.Errorf("reading the new Tab: %+v", e)
 	}
 	r.noUserImpact(t)
+}
+
+// TestTabTargetLinkWithoutAnOpener (live check 3 of background-tabs): a
+// target=_blank link is noopener, and the browser may give its Tab no
+// openerTabId; the extension takes it by the held Tab acting in its
+// window, so the user's Tab stays selected and the new Tab joins the
+// agent's group.
+func TestTabTargetLinkWithoutAnOpener(t *testing.T) {
+	r := newBgRig(t)
+	r.ext.NoOpener = true
+	if _, e := r.as(t, "claude", "get-window-state", protocol.GetWindowArgs{Window: "301:e200"}); e != nil {
+		t.Fatal(e.Msg)
+	}
+	out, e := r.as(t, "claude", "click", protocol.ClickArgs{Window: "301:e200", ElementIndex: idx(elLink)})
+	if e != nil || !strings.Contains(out, "Note: a new Tab opened: opened4") {
+		t.Fatalf("click = %q, %+v", out, e)
+	}
+	if g := r.ext.Group("OPENED4"); g.Title != "claude" {
+		t.Errorf("group = %+v", g)
+	}
+	r.noUserImpact(t)
+}
+
+// TestUsersTabComesBackWhenTheGuardMisses: an extension whose guard did
+// not fire (an older build, a worker that lost its holds) leaves the new
+// Tab selected; winuse's own check selects the user's Tab again within a
+// moment, and the new Tab joins the agent's group.
+func TestUsersTabComesBackWhenTheGuardMisses(t *testing.T) {
+	oldPoll := usersTabPoll
+	usersTabPoll = 10 * time.Millisecond
+	t.Cleanup(func() { usersTabPoll = oldPoll })
+	r := newBgRig(t)
+	r.ext.GuardOff = true
+	if _, e := r.as(t, "claude", "get-window-state", protocol.GetWindowArgs{Window: "301:e200"}); e != nil {
+		t.Fatal(e.Msg)
+	}
+	if _, e := r.as(t, "claude", "click", protocol.ClickArgs{Window: "301:e200", ElementIndex: idx(elLink)}); e != nil {
+		t.Fatal(e.Msg)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for r.ext.ActiveTab(1) != bgInbox && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := r.ext.ActiveTab(1); got != bgInbox {
+		t.Fatalf("window 1 shows %s, not the user's Inbox", got)
+	}
+	if got := r.ext.Activated(); len(got) != 1 || got[0] != bgInbox {
+		t.Errorf("activated %v, want the user's Tab once", got)
+	}
+	if g := r.ext.Group("OPENED4"); g.Title != "claude" {
+		t.Errorf("group = %+v", g)
+	}
+}
+
+// TestTheUsersOwnSwitchIsLeftAlone: when the user moves to another Tab
+// themselves while winuse watches, winuse does not move them back.
+func TestTheUsersOwnSwitchIsLeftAlone(t *testing.T) {
+	oldPoll := usersTabPoll
+	usersTabPoll = 200 * time.Millisecond
+	t.Cleanup(func() { usersTabPoll = oldPoll })
+	r := newBgRig(t)
+	r.ext.GuardOff = true
+	if _, e := r.as(t, "claude", "get-window-state", protocol.GetWindowArgs{Window: "301:e200"}); e != nil {
+		t.Fatal(e.Msg)
+	}
+	if _, e := r.as(t, "claude", "click", protocol.ClickArgs{Window: "301:e200", ElementIndex: idx(elLink)}); e != nil {
+		t.Fatal(e.Msg)
+	}
+	r.ext.Select(bgShop) // the user clicks Shop
+	time.Sleep(700 * time.Millisecond)
+	if got := r.ext.ActiveTab(1); got != bgShop {
+		t.Errorf("window 1 shows %s, not the Tab the user chose", got)
+	}
+	if got := r.ext.Activated(); len(got) != 0 {
+		t.Errorf("winuse switched Tabs: %v", got)
+	}
 }
 
 // TestTheUsersOwnLinksAreNotGuarded: a Tab the user is looking at, held

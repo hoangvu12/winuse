@@ -41,6 +41,7 @@
 
 const HOST = "com.hoangvu12.winuse";
 const IDLE_DETACH_MS = 5 * 60 * 1000;
+const QUICK_RECONNECT_AFTER_MS = 5000;
 const GROUP_TITLE = "winuse";
 
 // Error codes the Go side recognizes (internal/bridge/bridge.go).
@@ -76,6 +77,12 @@ const selected = new Map(); // window id -> [the tab selected before, the tab se
 // selection, short enough that the user can click it afterwards.
 const SPAWN_GUARD_MS = 2000;
 
+// ACTING_MS is how long after winuse held a tab for a command a tab
+// created in its window with no opener (a target=_blank link is noopener,
+// and the browser may leave openerTabId out) is taken for that tab's.
+const ACTING_MS = 10000;
+const acting = new Map(); // window id -> {tabId, until}: a command on a held tab there is running
+
 class BridgeError extends Error {
   constructor(code, message) {
     super(message);
@@ -103,6 +110,7 @@ async function connect() {
     return;
   }
   port.onMessage.addListener(onHostMessage);
+  const since = Date.now();
   port.onDisconnect.addListener(() => {
     lastError = chrome.runtime.lastError ? chrome.runtime.lastError.message : "the winuse native host exited";
     port = null;
@@ -110,6 +118,10 @@ async function connect() {
     partial.clear();
     detachAll();
     updateBadge();
+    // A host that ran a while and went away (a newer winuse ended an old
+    // one) is started again at once; one that fails to start waits for the
+    // reconnect alarm.
+    if (Date.now() - since > QUICK_RECONNECT_AFTER_MS) setTimeout(connect, 1000);
   });
   port.postMessage({
     hello: { browser: browserName(), instance, version: chrome.runtime.getManifest().version, build: loadedBuild() },
@@ -201,6 +213,7 @@ async function handle(c, m) {
   if (m.method === "Winuse.navigateTab") return navigateTab(m.params || {});
   if (m.method === "Winuse.holdTab") return holdTab(m.params || {});
   if (m.method === "Winuse.releaseTab") return releaseTab(m.params || {});
+  if (m.method === "Winuse.adoptTab") return adoptTab(m.params || {});
   return m.sessionId ? sessionCall(m) : browserCall(c, m);
 }
 
@@ -330,6 +343,7 @@ async function holdTab(p) {
   const tab = await tabFor(p.targetId);
   if (!held.has(tab.id)) held.set(tab.id, { targetId: p.targetId, discardable: tab.autoDiscardable !== false });
   await chrome.tabs.update(tab.id, { autoDiscardable: false });
+  acting.set(tab.windowId, { tabId: tab.id, until: Date.now() + ACTING_MS });
   // The service worker may have started after the user's last switch:
   // note the tab selected now, the one a guarded new tab gives way to.
   const [now] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
@@ -363,26 +377,53 @@ function unholdTarget(targetId) {
 // A held tab opened a tab: guard the user's selection, group the new tab
 // with its opener, and minimize a popup window it opened in.
 chrome.tabs.onCreated.addListener(async (tab) => {
-  if (tab.openerTabId === undefined || !held.has(tab.openerTabId)) return;
+  const openerId = openerOf(tab);
+  if (openerId === undefined) return;
   // A tab opened from the tab the user is looking at is theirs to follow,
   // even when an agent held that tab once (the new tab may already be the
   // selected one here).
   const s = selected.get(tab.windowId) || [];
-  if (s[1] === tab.openerTabId || (s[1] === tab.id && s[0] === tab.openerTabId)) return;
+  if (s[1] === openerId || (s[1] === tab.id && s[0] === openerId)) return;
   spawned.set(tab.id, Date.now());
   if (tab.active) keepUsersTab(tab.windowId, tab.id);
+  await adopt(tab, openerId);
+});
+
+// openerOf is the held tab a new tab came from: its opener when that is
+// held, else, for a tab with no opener and a site's URL, the held tab a
+// command is running on in its window. A tab the user opens (Ctrl+T shows
+// a browser page) or one opened from a tab no agent holds is nobody's.
+function openerOf(tab) {
+  if (tab.openerTabId !== undefined) return held.has(tab.openerTabId) ? tab.openerTabId : undefined;
+  const a = acting.get(tab.windowId);
+  const url = tab.pendingUrl || tab.url || "";
+  if (!a || Date.now() > a.until || !held.has(a.tabId) || !/^(https?|file|data|blob):/i.test(url)) return undefined;
+  return a.tabId;
+}
+
+// adopt puts a tab a held tab opened in its opener's group, or minimizes
+// the popup window it opened in. Best effort: the Action's note names it.
+async function adopt(tab, openerId) {
   try {
-    const opener = await chrome.tabs.get(tab.openerTabId);
+    const opener = await chrome.tabs.get(openerId);
     if (opener.windowId === tab.windowId && opener.groupId >= 0) {
       await chrome.tabs.group({ tabIds: [tab.id], groupId: opener.groupId });
       return;
     }
     const w = await chrome.windows.get(tab.windowId);
     if (w.type === "popup") await chrome.windows.update(tab.windowId, { state: "minimized" });
-  } catch (_) {
-    // grouping and minimizing are best effort; the Action's note names the tab
-  }
-});
+  } catch (_) {}
+}
+
+// adoptTab is Winuse.adoptTab: winuse found a tab an Action on a held tab
+// opened that the guard missed, and selected the user's tab again; the
+// new tab joins its opener's group.
+async function adoptTab(p) {
+  const tab = await tabFor(p.targetId);
+  const opener = await tabFor(p.openerId);
+  await adopt(tab, opener.id);
+  return {};
+}
 
 chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
   const at = spawned.get(tabId);
