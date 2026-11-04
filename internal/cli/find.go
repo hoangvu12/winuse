@@ -2,15 +2,17 @@ package cli
 
 // find and get-window-state's partial reads, CLI side (desktop-parity
 // ticket 04): `winuse find <window> [--role <r>] [--name <text>] [--text
-// <text>] [--state <s>] [--first | --count]`, and get-window-state's
-// --root <element> [--depth N] [--interactive] and --skeleton. Parsing is
-// local; the helper validates the values (the state names, an Element
-// that exists).
+// <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N]`,
+// and get-window-state's --root <element> [--depth N] [--interactive],
+// --skeleton and the output budgets of a full read (--interactive, --depth,
+// --compact, --max-chars, --out). Parsing is local; the helper validates
+// the values (the state names, an Element that exists).
 
 import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -18,7 +20,7 @@ import (
 )
 
 // findUsage is find's usage line.
-const findUsage = "usage: winuse find <window> [--role <role>] [--name <text>] [--text <text>] [--state <state>] [--first | --count] [--timeout <seconds>]"
+const findUsage = "usage: winuse find <window> [--role <role>] [--name <text>] [--text <text>] [--state <state>] [--first | --limit N | --count] [--max-chars N] [--timeout <seconds>]"
 
 // findCmd runs `winuse find <window> ...`.
 func findCmd(args []string) int {
@@ -61,7 +63,7 @@ func parseFindArgs(args []string) (protocol.FindArgs, error) {
 				a.Count = true
 			}
 			continue
-		case "role", "name", "text", "state":
+		case "role", "name", "text", "state", "limit", "max-chars":
 		default:
 			return a, fmt.Errorf("unknown flag %s", tok)
 		}
@@ -76,6 +78,16 @@ func parseFindArgs(args []string) (protocol.FindArgs, error) {
 			return a, fmt.Errorf("--%s needs a value", name)
 		}
 		switch name {
+		case "limit", "max-chars":
+			n, err := positive(name, value)
+			if err != nil {
+				return a, err
+			}
+			if name == "limit" {
+				a.Limit = n
+			} else {
+				a.MaxChars = n
+			}
 		case "role":
 			a.Role = value
 		case "name":
@@ -89,23 +101,36 @@ func parseFindArgs(args []string) (protocol.FindArgs, error) {
 	if len(pos) != 1 {
 		return a, errors.New("find takes one window reference")
 	}
-	if a.First && a.Count {
-		return a, errors.New("pass --first or --count, not both")
+	if a.First && a.Count || a.Limit > 0 && (a.First || a.Count) {
+		return a, errors.New("pass one of --first, --limit and --count")
 	}
 	a.Window = pos[0]
 	return a, nil
 }
 
-// windowShape is get-window-state's partial-read flags.
+// positive parses a flag's value as a number of at least 1.
+func positive(name, value string) (int, error) {
+	n, err := strconv.Atoi(value)
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("--%s needs a positive number, got %q", name, value)
+	}
+	return n, nil
+}
+
+// windowShape is get-window-state's partial-read and output-budget flags.
 type windowShape struct {
 	Root        string
 	Depth       int
 	Interactive bool
 	Skeleton    bool
+	Compact     bool
+	MaxChars    int
+	Out         string // absolute
 }
 
-// takeShapeFlags takes --root <element>, --depth N, --interactive and
-// --skeleton out of get-window-state's arguments and returns the rest.
+// takeShapeFlags takes --root <element>, --depth N, --interactive,
+// --skeleton, --compact, --max-chars N and --out <file> out of
+// get-window-state's arguments and returns the rest.
 func takeShapeFlags(args []string) ([]string, windowShape, error) {
 	var sh windowShape
 	var rest []string
@@ -117,17 +142,20 @@ func takeShapeFlags(args []string) ([]string, windowShape, error) {
 		}
 		name, value, inline := strings.Cut(tok[2:], "=")
 		switch name {
-		case "interactive", "skeleton":
+		case "interactive", "skeleton", "compact":
 			if inline {
 				return nil, sh, fmt.Errorf("--%s is a flag (no value)", name)
 			}
-			if name == "interactive" {
+			switch name {
+			case "interactive":
 				sh.Interactive = true
-			} else {
+			case "skeleton":
 				sh.Skeleton = true
+			default:
+				sh.Compact = true
 			}
 			continue
-		case "root", "depth":
+		case "root", "depth", "max-chars", "out":
 		default:
 			rest = append(rest, tok)
 			continue
@@ -139,18 +167,35 @@ func takeShapeFlags(args []string) ([]string, windowShape, error) {
 			i++
 			value = args[i]
 		}
-		if name == "root" {
+		switch name {
+		case "root":
 			if strings.TrimSpace(value) == "" {
 				return nil, sh, errors.New("--root needs an element index, name: or id: reference")
 			}
 			sh.Root = value
-			continue
+		case "out":
+			if strings.TrimSpace(value) == "" {
+				return nil, sh, errors.New("--out needs a file")
+			}
+			abs, err := filepath.Abs(value)
+			if err != nil {
+				return nil, sh, fmt.Errorf("--out %q: %v", value, err)
+			}
+			sh.Out = abs
+		default:
+			n, err := positive(name, value)
+			if err != nil {
+				return nil, sh, err
+			}
+			if name == "depth" {
+				sh.Depth = n
+			} else {
+				sh.MaxChars = n
+			}
 		}
-		n, err := strconv.Atoi(value)
-		if err != nil || n < 1 {
-			return nil, sh, fmt.Errorf("--depth needs a positive number, got %q", value)
-		}
-		sh.Depth = n
+	}
+	if sh.Out != "" && sh.MaxChars > 0 {
+		return nil, sh, errors.New("pass --out or --max-chars, not both: --out writes the whole Window State to the file")
 	}
 	return rest, sh, nil
 }

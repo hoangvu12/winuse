@@ -248,9 +248,18 @@ instead:
 winuse find <window> --role button --name save     # search the whole live tree, past the caps
 winuse find <window> --text "invoice" --first      # also --state disabled|enabled|selected|expanded|collapsed|settable|on|off|interactive
 winuse find <window> --role "list item" --count    # just how many
+winuse find <window> --role "list item" --limit 20 # the first 20, and how many matched
 winuse get-window-state <window> --skeleton        # three levels, with "(+N children)" where it stops
 winuse get-window-state <window> --root 42 --depth 2 --interactive
+winuse get-window-state <window> --interactive --compact   # a full read, printing only what you act on
+winuse get-window-state <window> --max-chars 20000 # stop the tree before 20000 characters, with a note
+winuse get-window-state <window> --out state.txt   # write it to a file; prints the path and the notes
 ```
+
+On a full read, `--interactive`, `--depth N` and `--compact` (folds
+unnamed containers, drops IDs several Elements share) print less, but
+the Window State is kept whole: every index printed is its own, and the
+ones left out still work.
 
 `--role` takes the role as the tree prints it, and `--name` and `--text` a
 part of the name (or the value and description), ignoring case. A role
@@ -1084,8 +1093,8 @@ list-windows [--details] [--app <name>] [--shell]
 list-apps | get-window <window>
 launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <s>]
 close-app <app> [--force]           # --force ends what is still running: the only command that ends a process
-get-window-state <window> [--screenshot] [--skeleton | --root <element> [--depth N] [--interactive]] [--timeout <s>]
-find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --count] [--timeout <s>]
+get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--timeout <s>]
+find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right] [--post] [--modifiers ctrl,shift,alt]
 # --modifiers: Headless on a Page and for ctrl or shift on a multi-select list item; else --post or --headed

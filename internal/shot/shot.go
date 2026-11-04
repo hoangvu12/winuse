@@ -39,9 +39,37 @@ import (
 	"github.com/hoangvu12/winuse/internal/agent"
 )
 
-// MaxLongEdge is the model-friendly long-edge cap for screenshots
-// (orchestrator decision): the saved image's long edge is at most 1568 px.
-const MaxLongEdge = 1568
+// The image budget screenshots are sized to (speed 08): the limits
+// of Anthropic's standard resolution tier, which every Claude model takes
+// as sent. A model reads an image in 28×28 px patches, one visual token
+// each, ⌈w/28⌉×⌈h/28⌉ in all; an image past either limit is resized again
+// by the API, which moves every point the model reads off it from the
+// pixel the agent's @x,y names. A 1920×1080 Window used to be saved at
+// 1568×882, 1,792 tokens, which the API resized to 1456×819; it is saved
+// at 1456×819 now. The high-resolution tier (Claude 4.7 and later: 2,576
+// px, 4,784 tokens) takes these images unchanged too.
+const (
+	// MaxLongEdge is the long-edge cap: the saved image's sides are at
+	// most 1568 px.
+	MaxLongEdge = 1568
+	// MaxVisualTokens caps the saved image's 28 px patches.
+	MaxVisualTokens = 1568
+	// PatchSize is the side of one visual token's patch.
+	PatchSize = 28
+)
+
+// VisualTokens is what a w×h image costs a model: one token per 28×28 px
+// patch, ⌈w/28⌉×⌈h/28⌉.
+func VisualTokens(w, h int) int {
+	return ((w + PatchSize - 1) / PatchSize) * ((h + PatchSize - 1) / PatchSize)
+}
+
+// fits reports whether a w×h image is within the image budget, so the API
+// takes it as sent.
+func fits(w, h int) bool {
+	patch := func(v int) int { return (v + PatchSize - 1) / PatchSize * PatchSize }
+	return patch(w) <= MaxLongEdge && patch(h) <= MaxLongEdge && VisualTokens(w, h) <= MaxVisualTokens
+}
 
 // Mapping is the coordinate mapping of one screenshot: how its pixels
 // correspond to the Window's physical pixels. The helper records the
@@ -59,17 +87,33 @@ type Mapping struct {
 	Coverage image.Rectangle
 }
 
-// FitScale returns the scale that fits a w×h physical capture into
-// MaxLongEdge, never upscaling: a Window already within the cap stays 1:1.
+// FitScale returns the largest scale that fits a w×h physical capture
+// into the image budget (MaxLongEdge and MaxVisualTokens), never
+// upscaling: a Window already within it stays 1:1. The scale is
+// long/long-edge for a whole long edge, and both sides of the image it
+// makes (scaledSize, as ScaleImage and MappingFor round them) are within
+// the budget, so the API never resizes the saved image and @x,y maps
+// exactly. For a 16:9 capture that is Anthropic's own resize target,
+// 1456×819.
 func FitScale(w, h int) float64 {
-	long := w
-	if h > long {
-		long = h
-	}
-	if long <= MaxLongEdge {
+	if w <= 0 || h <= 0 || fits(w, h) {
 		return 1
 	}
-	return float64(MaxLongEdge) / float64(long)
+	long := max(w, h)
+	at := func(edge int) (int, int) {
+		s := float64(edge) / float64(long)
+		return scaledSize(w, s), scaledSize(h, s)
+	}
+	lo, hi := 1, min(long, MaxLongEdge+1) // lo fits (one patch); hi does not
+	for lo+1 < hi {
+		mid := (lo + hi) / 2
+		if fits(at(mid)) {
+			lo = mid
+		} else {
+			hi = mid
+		}
+	}
+	return float64(lo) / float64(long)
 }
 
 // MappingFor builds the Mapping of a frame captured at scale. Width and

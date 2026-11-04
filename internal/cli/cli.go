@@ -107,10 +107,11 @@ commands:
                                command that ends a process. Windows' own
                                processes (explorer, dwm, csrss, ...) and
                                administrator Apps are refused, nothing sent
-  get-window-state <window> [--screenshot] [--skeleton | --root <element> [--depth N] [--interactive]] [--timeout <seconds>]
+  get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--timeout <seconds>]
                                print a Window's State: its Element tree as text,
                                and with --screenshot a screenshot saved to a file
-                               whose path is printed; a Chromium or Electron
+                               whose path is printed (sized to the model's
+                               1,568-token image budget); a Chromium or Electron
                                Window without a Browser Connection whose web
                                content reads thin is read again for up to 5 s
                                while it builds (once per Window; later reads
@@ -122,14 +123,25 @@ commands:
                                part's child count; --root <element> reads one
                                Element's subtree (--depth N levels,
                                --interactive Elements only) and adds its
-                               Elements after the Window State's indexes
-  find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --count]
+                               Elements after the Window State's indexes.
+                               On a full read, --interactive prints only the
+                               Elements you act on, --depth N the first N
+                               levels, --compact folds unnamed containers and
+                               drops IDs that several Elements share; the
+                               Window State is still read and kept whole, so
+                               the indexes printed are its own and the rest
+                               still work. --max-chars N stops the tree before
+                               N characters with a note on what it left out;
+                               --out <file> writes the Window State to the
+                               file and prints its header, path and notes
+  find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N]
                                search the Window's whole live tree, past the
                                Window State's caps: print the matching
                                Elements, added after its Element Indexes
-                               (the earlier ones still work); --count prints
-                               how many; a role that matches nothing lists
-                               the roles present
+                               (the earlier ones still work); --limit N keeps
+                               the first N and says how many matched;
+                               --count prints how many; a role that matches
+                               nothing lists the roles present
   record-tree <window> <file> record a Window's real tree to a fixture file
   zoom <window> <x>,<y>,<w>,<h>
                                save a full-resolution crop of a region of the
@@ -690,6 +702,11 @@ type windowArgs struct {
 	Depth       int    `json:"depth,omitempty"`
 	Interactive bool   `json:"interactive,omitempty"`
 	Skeleton    bool   `json:"skeleton,omitempty"`
+
+	// The output budgets of a read (speed 05, find.go).
+	Compact  bool   `json:"compact,omitempty"`
+	MaxChars int    `json:"max_chars,omitempty"`
+	Out      string `json:"out,omitempty"` // absolute
 }
 
 // recordArgs is record-tree's CLI→helper argument shape.
@@ -699,7 +716,7 @@ type recordArgs struct {
 }
 
 // windowStateUsage is get-window-state's usage line.
-const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element> [--depth N] [--interactive]] [--timeout <seconds>]"
+const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--timeout <seconds>]"
 
 // getWindowStateCmd prints the Window State: Codex's depth-first,
 // indented, numbered Element tree — with --screenshot, the screenshot line

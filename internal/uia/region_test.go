@@ -54,15 +54,19 @@ func TestPickMatches(t *testing.T) {
 	els := []wstate.Element{{Role: "button", Name: "A"}, {Role: "text"}, {Role: "button", Name: "B"}}
 	isButton := wstate.Query{Role: "button"}.Match
 	count := 0
-	if keep := pickMatches(els, isButton, false, false, &count); !slices.Equal(keep, []bool{true, false, true}) || count != 2 {
+	if keep := pickMatches(els, isButton, 0, false, &count); !slices.Equal(keep, []bool{true, false, true}) || count != 2 {
 		t.Errorf("all: %v, %d", keep, count)
 	}
 	count = 0
-	if keep := pickMatches(els, isButton, true, false, &count); !slices.Equal(keep, []bool{true, false, false}) || count != 1 {
-		t.Errorf("first: %v, %d", keep, count)
+	if keep := pickMatches(els, isButton, 1, false, &count); !slices.Equal(keep, []bool{true, false, false}) || count != 2 {
+		t.Errorf("first: %v, %d", keep, count) // the count is every match, so find can say how many it left out
 	}
 	count = 0
-	if keep := pickMatches(els, isButton, false, true, &count); !slices.Equal(keep, []bool{false, false, false}) || count != 2 {
+	if keep := pickMatches(els, isButton, 2, false, &count); !slices.Equal(keep, []bool{true, false, true}) || count != 2 {
+		t.Errorf("limit 2: %v, %d", keep, count)
+	}
+	count = 0
+	if keep := pickMatches(els, isButton, 0, true, &count); !slices.Equal(keep, []bool{false, false, false}) || count != 2 {
 		t.Errorf("count: %v, %d", keep, count)
 	}
 }
