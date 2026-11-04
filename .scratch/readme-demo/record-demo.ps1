@@ -103,7 +103,7 @@ function Get-Size([string]$Path) {
 }
 
 # Encode-Demo turns the raw recording into the README GIF and an MP4,
-# skipping the first $Lead seconds (ffmpeg warming up). The GIF gets one
+# skipping the first $Lead seconds (ffmpeg warming up, the go). The GIF gets one
 # palette for the whole clip (stats_mode=diff favours what moves) and is
 # re-encoded smaller until it fits $GifMaxBytes.
 function Encode-Demo([string]$Source, [string]$GifPath, [string]$Mp4Path, [double]$Lead) {
@@ -211,6 +211,8 @@ function Get-FreePort {
     return $p
 }
 
+# Get-DemoChromes is always an array: call it as @(Get-DemoChromes), since
+# PowerShell returns an empty one as $null.
 function Get-DemoChromes {
     $needle = $DemoProfile.ToLowerInvariant()
     return @(Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" |
@@ -235,7 +237,7 @@ function Wait-DemoWindow([string]$Title) {
     $row = $details -split "`r?`n" | Where-Object { $_ -match "^$id`t" } | Select-Object -First 1
     if (-not $row -or $row -notmatch "pid (\d+)") { Fail "window $id ('$Title') is not listed: $details" }
     $winPid = [int]$Matches[1]
-    if (-not (Get-DemoChromes | Where-Object { $_.ProcessId -eq $winPid })) {
+    if (@(Get-DemoChromes | Where-Object { $_.ProcessId -eq $winPid }).Count -eq 0) {
         Fail "window $id ('$Title', pid $winPid) is not a Chrome on the demo profile: refusing to act on it"
     }
     return $id
@@ -250,8 +252,8 @@ function Close-DemoWindows([string[]]$Ids) {
     foreach ($id in $Ids) {
         if ($id) { & $script:Exe close-window $id 2>&1 | Out-Null }
     }
-    for ($i = 0; $i -lt 50 -and (Get-DemoChromes).Count -gt 0; $i++) { Start-Sleep -Milliseconds 100 }
-    foreach ($p in Get-DemoChromes) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+    for ($i = 0; $i -lt 50 -and @(Get-DemoChromes).Count -gt 0; $i++) { Start-Sleep -Milliseconds 100 }
+    foreach ($p in @(Get-DemoChromes)) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
 }
 
 # --- the Agents ------------------------------------------------------------
@@ -328,7 +330,7 @@ foreach ($tool in @("ffmpeg", "ffprobe")) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { Fail "$tool is not on PATH" }
 }
 if (-not (Test-Path $Chrome)) { Fail "Chrome is not at $Chrome" }
-if (Get-DemoChromes) { Fail "a Chrome is already running on $DemoProfile; close it first" }
+if (@(Get-DemoChromes).Count -gt 0) { Fail "a Chrome is already running on $DemoProfile; close it first" }
 New-Item -ItemType Directory -Force $Work | Out-Null
 Get-ChildItem $Work -Filter "*.flag" -ErrorAction SilentlyContinue | Remove-Item
 Get-ChildItem $Work -Filter "agent-*.log" -ErrorAction SilentlyContinue | Remove-Item
@@ -449,24 +451,38 @@ try {
 } catch {
     $failed = $_
 } finally {
-    if ($ffmpeg -and -not $ffmpeg.HasExited) {
-        try { $ffmpeg.StandardInput.Write("q"); $ffmpeg.StandardInput.Close() } catch {}
-        if (-not $ffmpeg.WaitForExit(10000)) { $ffmpeg.Kill() }
+    # Each cleanup step on its own: one that fails is reported and the
+    # rest still run, the helper's restore above all.
+    $cleanup = {
+        param([string]$What, [scriptblock]$Step)
+        try { & $Step } catch { Write-Warning "cleanup: $What failed: $_" }
     }
-    foreach ($j in $jobs) { Stop-Job $j -ErrorAction SilentlyContinue; Remove-Job $j -Force -ErrorAction SilentlyContinue }
-    Say "closing the demo windows"
-    Close-DemoWindows @($ids.Values)
-    if (-not $profileWasThere -and (Test-Path $DemoProfile)) {
-        Start-Sleep -Milliseconds 500
-        Remove-Item -Recurse -Force $DemoProfile -ErrorAction SilentlyContinue
+    & $cleanup "stopping ffmpeg" {
+        if ($ffmpeg -and -not $ffmpeg.HasExited) {
+            try { $ffmpeg.StandardInput.Write("q"); $ffmpeg.StandardInput.Close() } catch {}
+            if (-not $ffmpeg.WaitForExit(10000)) { $ffmpeg.Kill() }
+        }
     }
-    Restore-Helper
-    Get-ChildItem $Work -Filter "*.flag" -ErrorAction SilentlyContinue | Remove-Item
+    & $cleanup "stopping the Agent jobs" {
+        foreach ($j in $jobs) { Stop-Job $j -ErrorAction SilentlyContinue; Remove-Job $j -Force -ErrorAction SilentlyContinue }
+    }
+    & $cleanup "closing the demo windows" {
+        Say "closing the demo windows"
+        Close-DemoWindows @($ids.Values)
+    }
+    & $cleanup "removing the demo profile" {
+        if (-not $profileWasThere -and (Test-Path $DemoProfile)) {
+            Start-Sleep -Milliseconds 500
+            Remove-Item -Recurse -Force $DemoProfile -ErrorAction SilentlyContinue
+        }
+    }
+    & $cleanup "restoring the helper" { Restore-Helper }
+    & $cleanup "removing the flags" { Get-ChildItem $Work -Filter "*.flag" -ErrorAction SilentlyContinue | Remove-Item }
 }
 if ($failed) {
     Write-Host "Agent logs: $Work\agent-*.log"
     throw $failed
 }
 
-Encode-Demo $Raw $Gif $Mp4 1.0
+Encode-Demo $Raw $Gif $Mp4 1.5
 Say "done: $Gif and $Mp4 (raw: $Raw)"
