@@ -1017,10 +1017,8 @@ func launchedBrowserWindow(t *testing.T, pid uint32, timeout time.Duration) uint
 	var since time.Time
 	for time.Now().Before(deadline) {
 		var kept []uint64
-		for _, w := range browserWindows(t, pid) {
-			if win.KeepWindow(w) {
-				kept = append(kept, w.ID)
-			}
+		for _, w := range browserWindows(t, pid) { // the Windows winuse lists
+			kept = append(kept, w.ID)
 		}
 		switch {
 		case len(kept) != 1:
