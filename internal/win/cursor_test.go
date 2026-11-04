@@ -190,13 +190,14 @@ func TestCursorTravelDurationIsCuasFitts(t *testing.T) {
 	}
 }
 
-// TestTipTurnsAlongThePathAndLandsUpright (cursor-look 04): the arrow
-// turns toward where it is going, eases in and out, and is exactly upright
-// at the arrival and after it; short hops and reduced motion never turn.
+// TestTipTurnsAlongThePathAndLandsUpright (cursor-look 04, cursor-turn):
+// the arrow leans toward where it is going, at most 30°, eases in and out,
+// and is exactly upright at the arrival and after it; short hops and
+// reduced motion never turn.
 func TestTipTurnsAlongThePathAndLandsUpright(t *testing.T) {
 	right := newCursorPath(fpoint{0, 500}, fpoint{900, 500}, Rect{}, 1, false)
-	// Rightward, the dart's tip (whose own axis, between its wings, points
-	// up-left along the diagonal) turns some 135° clockwise.
+	// Rightward, the heading turn of the dart's tip (whose axis, body to
+	// tip, points up-left) is some 136° clockwise; lean caps it near 30°.
 	if want := -cursorTipAxis; math.Abs(right.turn-want) > 1e-9 || want < 130*math.Pi/180 || want > 140*math.Pi/180 {
 		t.Errorf("a rightward travel turns %.1f°, want %.1f°", right.turn*180/math.Pi, want*180/math.Pi)
 	}
@@ -213,10 +214,11 @@ func TestTipTurnsAlongThePathAndLandsUpright(t *testing.T) {
 		peak = math.Max(peak, a)
 		prev = a
 	}
-	if peak < 0.8*right.turn || peak > right.turn+0.3 {
-		t.Errorf("a long rightward travel turns at most %.1f°, want near %.1f°", peak*180/math.Pi, right.turn*180/math.Pi)
+	if peak < 28*math.Pi/180 || peak > cursorLeanMax+1e-9 {
+		t.Errorf("a long rightward travel leans at most %.1f°, want near lean's 30°", peak*180/math.Pi)
 	}
-	// Straight down, the turn is near half a turn: never wraps mid-travel.
+	// Straight down, the heading turn is near half a turn: the lean never
+	// wraps mid-travel.
 	down := newCursorPath(fpoint{500, 0}, fpoint{500, 900}, Rect{}, 1, false)
 	prev = 0
 	for el := time.Duration(0); el <= down.arrive; el += time.Millisecond {
@@ -369,8 +371,8 @@ func TestPlacePillBesideTheTipAndFlipsAtWorkAreaEdges(t *testing.T) {
 	work := Rect{Left: 0, Top: 0, Right: 1920, Bottom: 1040}
 	const w, h = 200, 24
 	ox, oy := scaled(cursorPillOffsetX, 1), scaled(cursorPillOffsetY, 1)
-	if ox != 13 || oy != 12 {
-		t.Fatalf("tag offsets = %d, %d; want 13 (12.5 rounded), 12: over the arrow's back", ox, oy)
+	if ox != 13 || oy != 16 {
+		t.Fatalf("tag offsets = %d, %d; want 13 (12.5 rounded), 16: clear of the arrow at any lean", ox, oy)
 	}
 
 	got := placePill(fpoint{500, 400}, w, h, work, 1)

@@ -170,9 +170,9 @@ func TestAgentCursorContactSheet(t *testing.T) {
 	y += 14
 
 	// 3. Turning: the sprites every 30°, and the turn of a rightward move.
-	heading("Turning (200 %): every 30°, then 135° — the full turn of a rightward move, tip leading")
+	heading("Turning (200 %): every 30°, then ±30° — lean's most, the whole of a move's turn (cua's cursor.rotate=lean)")
 	x = 16
-	angles := []float64{0, 30, 60, 90, 120, 150, 180, -150, -120, -90, -60, -30, 135}
+	angles := []float64{0, 30, 60, 90, 120, 150, 180, -150, -120, -90, -60, -30, 30}
 	for _, deg := range angles {
 		r := card(x, 116, 130, sheetDark)
 		s, at := def.frame(cursorLook{Scale: 2}, deg*math.Pi/180, 1)
@@ -180,6 +180,34 @@ func TestAgentCursorContactSheet(t *testing.T) {
 		x += 121
 	}
 	y += 148
+
+	// 3b. The turn as it plays (cursor-turn): a 400 px rightward and a
+	// 400 px down-right move, a frame every 33 ms from the start to the
+	// arrival, with a tick from the tip along where it is going.
+	for _, mv := range []struct {
+		name string
+		d    fpoint
+	}{{"rightward", fpoint{X: 400}}, {"down-right", fpoint{X: 400 / math.Sqrt2, Y: 400 / math.Sqrt2}}, {"straight-down", fpoint{Y: 400}}} {
+		p := newCursorPath(fpoint{X: 100, Y: 100}, fpoint{X: 100 + mv.d.X, Y: 100 + mv.d.Y}, Rect{}, 1, false)
+		heading(fmt.Sprintf("Turning as it plays (150 %%): a 400 px %s move, every 33 ms to the arrival at %d ms; the yellow tick is where the tip is going", mv.name, p.arrive.Milliseconds()))
+		x = 16
+		for el := time.Duration(0); el <= p.arrive; el += time.Second / 30 {
+			r := card(x, 88, 96, sheetDark)
+			c := fpoint{X: float64(r.Min.X) + 44, Y: float64(r.Min.Y) + 48}
+			a := p.at(p.progress(el - 4*time.Millisecond))
+			b := p.at(p.progress(el + 4*time.Millisecond))
+			dir := unit(fpoint{X: b.X - a.X, Y: b.Y - a.Y}, p.dir)
+			for k := 6.0; k <= 40; k += 2 {
+				px, py := int(c.X+dir.X*k), int(c.Y+dir.Y*k)
+				fillRect(img, image.Rect(px-1, py-1, px+1, py+1), color.RGBA{R: 0xFF, G: 0xD0, B: 0x40, A: 0xFF})
+			}
+			s, at := def.frame(cursorLook{Scale: 1.5}, p.tipAngle(el), 1)
+			pasteCursor(img, s, at, c)
+			caption(img, cw, fmt.Sprintf("%d ms", el.Milliseconds()), image.Rect(r.Min.X, r.Max.Y-18, r.Max.X, r.Max.Y), 0.8)
+			x += 92
+		}
+		y += 110
+	}
 
 	// 4. The click's press, every 1/12 of its 667 ms.
 	heading("Click press (200 %): 1 → 0.93 → 1.03 → 1 over 667 ms, a frame every 56 ms, with the element outline")

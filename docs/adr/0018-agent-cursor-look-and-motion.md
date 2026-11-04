@@ -61,6 +61,10 @@ insertion caret and showing what each Action does.
    shape, a soft black shadow (16 %, 1 px down, 1.6 px blur) and a flat
    fill in the Agent's colour: no glow, no halo and no reshape. The master
    image and its kept sprites stay.
+   *Kept (cursor-turn):* the dart rests in Mural's pose, pointing up-left.
+   Resting it as cua's arrow (its outline turned 36.6° about the tip so its
+   body points to its tip at cua's −99.5°, cursor-turn 27671c1) was tried
+   and dropped by the user in favour of `lean` (Decision 5).
 4. **Frames.** About 120 per second while anything animates: `SetTimer`
    alone fires on the 15.6 ms tick on Windows 11 even with the resolution
    raised (64 measured), so a frame clock (a goroutine with an 8 ms ticker,
@@ -78,6 +82,25 @@ insertion caret and showing what each Action does.
    in Decision 3. For Mural's dart (issue 11) that axis is nearly the
    diagonal, about −135°, so a rightward move turns the tip about 135°
    (cua's reshaped arrow turned about 108°).
+   *Amended (cursor-turn, the user's "do 1:1 to cua";
+   `.scratch/cursor-look/turning-1to1.md`):* the turn is cua's
+   `travel_rotation` exactly. Each ramp is at most half the time to the
+   arrival, which the port had missed: a big turn's stretched ramps
+   overlapped and the arrow never reached its heading (a 400 px down-right
+   move peaked at 106° of 180°). The travel direction is the shown path's
+   velocity over ±8 ms, the chord below 1 px/s. The axis is cua's rule,
+   the body's centre to the tip: about −136° for the dart in Mural's pose.
+   *Amended again (cursor-turn, the user's pick):* the mode is cua's
+   `lean`, not its default `heading`: the same pipeline with unstretched
+   ramps, shaped `30°·tanh(turn / 30°)` (15° with a button held, which
+   winuse's cursor never travels with), so the arrow leans at most 30°
+   toward where it goes and is upright at the arrival
+   (`TestTipTurningIsCuas` matches cua's formulas every 1/120 s). The turn
+   is unwrapped about the chord, so a move nearly opposite the tip (down-
+   right for the dart) leans one way the whole travel; two moves either
+   side of that direction lean opposite ways, as in cua (whose own edge is
+   80.5°, near straight down). cua's float tilt (±2.5°, and its float while
+   travelling) is not ported: Decision 7 stands.
 6. **The click's press** (1 → 0.93 → 1.03 → 1 over 667 ms) replaces the
    disc ripple. The element outline and the insertion caret stay.
 7. **The float.** At rest the tip sways and bobs (position only, so the
@@ -132,7 +155,10 @@ insertion caret and showing what each Action does.
    the per-Action reveal and its pop are gone. It stays upright while the
    arrow turns. The tag is 22 px tall, its corners rounded by 5.5 px,
    padded 8 px at each end, its top-left 12.5 px right of and 12 px below
-   the tip, over the arrow's back; a 1 px white rim and the arrow's soft
+   the tip, over the arrow's back (16 px below since cursor-turn, the
+   user's call: at Mural's 12 a wing leaning the full 30° touched the tag;
+   at 16 their rims are 1.6 px apart or more at every lean, 5.0 px at
+   rest); a 1 px white rim and the arrow's soft
    shadow; flat fill; the text white or near-black by contrast, as before.
    The name is capped at 24 characters with an ellipsis and set in
    **Figtree Bold** at 12.5 px, the closest free match to Mural's font,
