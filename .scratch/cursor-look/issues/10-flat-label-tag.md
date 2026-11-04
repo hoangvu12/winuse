@@ -52,4 +52,30 @@ catalogue; `poppin sections` and `poppin similar` failed server-side.
   `TestNamedAgentsPillHasTwoLines` (24-character cap),
   `TestPlacePillBesideTheTipAndFlipsAtWorkAreaEdges` (14, 30).
 
+**Second pass (references widened).** The first pass looked only at each
+app's newest Mobbin version, screen by screen. The second downloaded every
+web screen of every version (Figma, Miro, Mural, Pitch, Framer, Webflow,
+Spline, Canva, Notion: about 10 000) and ran a scratch detector for a small
+saturated arrow beside a same-hue tag with text in it, then checked the
+hits by eye. Collaborator tags turned up in Miro, Mural, Pitch, Canva,
+Framer and Figma's current UI; `refs/` now holds ten crops from seven apps
+(the Figma zoom, the "Figma basics" illustration and the tagless Figma iOS
+crop were dropped), and `refs/README.md` is rewritten. What changed:
+
+- All seven are flat in the cursor's colour, confirming the style. Miro,
+  Mural, Pitch and Canva pick the text by contrast (near-black on yellow,
+  bright green, light blue, cyan, orange; white otherwise), confirming
+  `pillTextColor`.
+- Corners: only classic Figma is nearly square. Mural, Canva, Framer and
+  Figma's current tags round about 20–30 % of their height; Miro and Pitch
+  fully. `cursorPillRadius` is now 6 px (about a quarter of a 26 px line);
+  a two-line tag keeps it rather than becoming a blob.
+- The 14, 30 offset holds: every app puts the tag's top-left at or just
+  past the arrow's tail.
+- Contact sheet: lime (the palette's yellow-green, near-black text) and a
+  dark green an Agent could choose with `WINUSE_CURSOR_COLOR` (white text)
+  added to the label section, four Agents to a row at 100 %; the test also
+  writes the label section alone to `.scratch/cursor-look/labels.png`.
+- A stale "and glow" in `pillShadowBounds`' comment removed.
+
 ## Comments

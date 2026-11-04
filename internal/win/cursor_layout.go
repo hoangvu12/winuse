@@ -156,12 +156,17 @@ func arrowBounds(scale float64) Rect {
 
 // The label pill, logical pixels: a flat tag in the Agent's colour with
 // white or near-black text, as multiplayer apps tag a collaborator's
-// cursor (cursor-look issue 10, .scratch/cursor-look/refs/: Figma's tags
-// are flat, nearly square, just past the arrow's tail; colours in
-// cursor_raster.go). The sizes started from agent-desktop's label_pill.rs.
+// cursor (cursor-look issue 10, .scratch/cursor-look/refs/: Figma, Miro,
+// Mural, Pitch, Canva and Framer tag a collaborator's cursor flat, just
+// past the arrow's tail; colours in cursor_raster.go). The sizes started
+// from agent-desktop's label_pill.rs.
 const (
-	cursorPillHeight    = 26.0
-	cursorPillRadius    = 4.0   // Figma's are 1–2 px on a 21 px tag; ours is taller and rounded like the arrow
+	cursorPillHeight = 26.0
+	// cursorPillRadius rounds the corners by about a quarter of a line's
+	// height, as Mural, Canva, Framer and Figma's current tags do (Miro's
+	// and Pitch's are fully rounded, classic Figma's nearly square); a
+	// two-line pill keeps it, so it stays a tag rather than a blob.
+	cursorPillRadius    = 6.0
 	cursorPillPadX      = 11.0  // each end
 	cursorPillMaxWidth  = 360.0 // LABEL_PILL_MAX_WIDTH; longer labels are ellipsized
 	cursorPillFontPx    = 12.5  // the action: semibold alone, regular under a name (cursorLabelFaces)
@@ -177,7 +182,7 @@ const (
 	// end in "…" within this many characters.
 	cursorNameMaxRunes = 24
 	// The pill's shadow: black at this opacity, offset down and blurred,
-	// soft as Figma's tags'.
+	// soft as Figma's, Pitch's and Canva's tags'.
 	cursorPillShadowOpacity = 0.22
 	cursorPillShadowOffset  = 2.0
 	cursorPillShadowBlur    = 3.0
@@ -335,7 +340,7 @@ func placePill(tip fpoint, w, h int32, work Rect, scale float64) Rect {
 	return Rect{Left: x, Top: y, Right: x + w, Bottom: y + h}
 }
 
-// pillShadowBounds is the box a pill's shadow and glow can touch
+// pillShadowBounds is the box a pill's shadow can touch
 // (geometry.rs label_shadow_rect): the pill moved down by the shadow's
 // offset and grown by twice its blur, plus a pixel.
 func pillShadowBounds(pill Rect, scale float64) Rect {

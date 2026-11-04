@@ -394,9 +394,9 @@ func (s *surface) drawArrowSprite(m *arrowMaster, tip fpoint, angle, press float
 }
 
 // drawPill draws the label pill into r as the multiplayer apps draw a
-// collaborator's tag (refs/README.md: Figma, FigJam): a soft black shadow
-// below, and the body flat and opaque in the Agent's colour, its corners
-// barely rounded. No gradient, glow or rim.
+// collaborator's tag (refs/README.md): a soft black shadow below, and the
+// body flat and opaque in the Agent's colour, its corners rounded by
+// cursorPillRadius. No gradient, glow or rim.
 func (s *surface) drawPill(r Rect, scale float64, accent color.RGBA) {
 	if r.Width() <= 0 || r.Height() <= 0 {
 		return

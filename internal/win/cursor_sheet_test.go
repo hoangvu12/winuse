@@ -123,7 +123,7 @@ func TestAgentCursorContactSheet(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	const W, H = 1600, 3200
+	const W, H = 1600, 4200
 	img := image.NewRGBA(image.Rect(0, 0, W, H))
 	fillRect(img, img.Rect, sheetBg)
 	cw := sheetWin(t, cursorAccent)
@@ -273,9 +273,14 @@ func TestAgentCursorContactSheet(t *testing.T) {
 		{CursorPalette[4], "claude", `click "Delete"`},
 		{CursorPalette[2], "codex", `toggle "Remember me"`},
 		{CursorPalette[5], "writer", `type "Quarterly report"`},
+		// Lime, the palette's yellow-green, where white would fail.
+		{CursorPalette[7], "tester", `press "Ctrl+S"`},
+		// A dark colour an Agent chose (WINUSE_CURSOR_COLOR): white text.
+		{color.RGBA{R: 0x2E, G: 0x7D, B: 0x32, A: 0xFF}, "ops", `click "Deploy"`},
 	}
+	labelsTop := y - 38
 	for _, scale := range []float64{1, 2} {
-		perRow := 3
+		perRow := 4
 		if scale == 2 {
 			perRow = 2
 		}
@@ -300,6 +305,7 @@ func TestAgentCursorContactSheet(t *testing.T) {
 			y = referencesStrip(t, img, cw, filepath.Join(dir, "refs"), y)
 		}
 	}
+	writePNG(t, filepath.Join(dir, "labels.png"), img.SubImage(image.Rect(0, labelsTop, W, y)))
 	y += 8
 
 	// 7. The opt-in trail, mid-travel.
@@ -573,7 +579,7 @@ func referencesStrip(t *testing.T, img *image.RGBA, cw *cursorWin, refsDir strin
 		return y
 	}
 	sort.Strings(paths)
-	caption(img, cw, "References, for comparison (Figma and FigJam presence tags, via Mobbin: refs/README.md; kept in .scratch only)",
+	caption(img, cw, "References, for comparison (Figma, FigJam, Miro, Framer, Mural, Pitch, Canva presence tags, via Mobbin: refs/README.md; .scratch only)",
 		image.Rect(0, y, img.Rect.Dx(), y+30), 1.2)
 	y += 36
 	const h = 150

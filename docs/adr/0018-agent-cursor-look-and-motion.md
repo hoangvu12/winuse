@@ -91,15 +91,20 @@ insertion caret and showing what each Action does.
    dark shadow, since its name sits on the pill's light end.
    *Amended again (cursor-look issue 10, the user disliked the gradient):*
    the label is styled like the collaborator tags of multiplayer apps
-   (Figma, FigJam: `.scratch/cursor-look/refs/`), not like cua's badge. It
-   is a flat, opaque tag in the Agent's colour, with no gradient, glow or
-   rim, only a soft drop shadow. Its corners have a 4 px radius: Figma's
-   are 1–2 px on a 21 px tag, and ours is taller and sits under a rounded
-   arrow. Its top-left sits 14 px right of and 30 px below the tip, just
-   past the arrow's tail, as Figma's does. The text is white or near-black
+   (Figma, FigJam, Miro, Mural, Pitch, Canva, Framer:
+   `.scratch/cursor-look/refs/`), not like cua's badge. All seven draw the
+   tag flat in the cursor's colour. So it is a flat, opaque tag in the
+   Agent's colour, with no gradient, glow or rim, only a soft drop shadow
+   (Figma, Pitch, Canva). Its corners have a 6 px radius, about a quarter
+   of a line's height, as Mural, Canva, Framer and Figma's current tags
+   round theirs (Miro and Pitch round fully, classic Figma barely). Its
+   top-left sits 14 px right of and 30 px below the tip, just past the
+   arrow's tail, as all of them place it. The text is white or near-black
    (#16181D), whichever has the higher WCAG contrast with the Agent's
-   colour; on cua's pastels that is the near-black everywhere, at 4.5:1 or
-   better. A named Agent's name is 12 px semibold, cut to 24 characters,
+   colour, as Miro, Mural, Pitch and Canva choose it (dark on yellow,
+   bright green, light blue, cyan); on cua's pastels that is the
+   near-black everywhere, at 4.5:1 or better, and a dark colour an Agent
+   picks gets white. A named Agent's name is 12 px semibold, cut to 24 characters,
    over the action in the regular face at 82 % opacity, the way FigJam
    ranks a person's name and what they are doing. The default Agent keeps
    one centred semibold line in the same flat style. With a flat fill and

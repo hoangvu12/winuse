@@ -756,13 +756,13 @@ func TestDrawPillBodyAndShadow(t *testing.T) {
 	if float64(below>>24) > cursorPillShadowOpacity*255+1 {
 		t.Errorf("below the pill = %#08x, stronger than its shadow", below)
 	}
-	// The corners are barely rounded: the corner pixel is cut off, but
-	// three pixels down the edge is already the body (a fully rounded
-	// 26 px pill would still be curving away there).
+	// The corners are rounded, not fully: the corner pixel is cut off, but
+	// six pixels down the edge is already the body (a fully rounded 26 px
+	// pill would still be curving away there).
 	if p := at(10, 10); p>>24 >= 0x40 {
 		t.Errorf("the pill's corner = %#08x, want rounded off", p)
 	}
-	if p := at(10, 13); p>>24 < 0xE0 {
+	if p := at(10, 16); p>>24 < 0xE0 {
 		t.Errorf("three pixels down the edge = %#08x, want the body: the radius is small", p)
 	}
 	if r := pillRadius(pill, 1); r != cursorPillRadius {
