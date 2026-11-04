@@ -1179,8 +1179,11 @@ did (an ID registered only under `HKCU\Software\Classes\AppUserModelId`
 cannot raise toasts: HRESULT 0x80070490), each in the group
 `winuse-e2e`. Cleanup removes that group alone from the Notification
 Center, so the user's own PowerShell notifications stay, and the levels of
-the PowerShell per-App settings key Windows adds, when they were not there
-before. They
+the PowerShell per-App settings key and push-notification backup key
+Windows adds at the first toast, when they were not there before. Before
+that first toast the per-App setting reads "not found" (HRESULT
+0x80070490), which the toaster takes as enabled: a toast shows then
+(measured 2026-11-04). They
 show toasts on the user's screen and skip unless `WINUSE_E2E_TOASTS=1`
 is set as well, and skip when the user's notifications are off (Settings
 > System > Notifications; writing ToastEnabled alone does not turn them

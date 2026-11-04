@@ -20,6 +20,17 @@ package fixture
 // are opt-in, and they need the user's notifications turned on
 // (Toaster.Setting), which only the Settings toggle does.
 //
+// Measured on 2026-11-04 with the user's notifications on and no per-App
+// key: ToastNotifier.Setting fails with HRESULT 0x80070490 (not found),
+// Show succeeds anyway, and that first toast makes Windows add the per-App
+// key under Notifications\Settings (LastNotificationAddedTime,
+// PeriodicNotificationCount) and a registration under
+// PushNotifications\Backup; Setting then reads ToastEnabled. With
+// notifications off Setting reads ToastDisabledForUser, key or no key. So
+// Setting's not-found is ToastEnabled for an App that has shown no toast
+// yet (settingOf), and Close removes the levels of both keys that the
+// first toast added.
+//
 // Interface IIDs and vtable slots are the Windows SDK 10.0.26100.0
 // windows.ui.notifications.h and windows.data.xml.dom.h ones. Slots 0-5 of
 // every WinRT interface are IInspectable's. The event handlers are
@@ -123,10 +134,18 @@ func winrtCall(obj uintptr, slot int, args ...uintptr) error {
 	fn := *(*uintptr)(cptr(vtbl + uintptr(slot)*unsafe.Sizeof(uintptr(0))))
 	r, _, _ := syscall.SyscallN(fn, append([]uintptr{obj}, args...)...)
 	if int32(r) < 0 {
-		return fmt.Errorf("HRESULT %#08x", uint32(r))
+		return hresultError(uint32(r))
 	}
 	return nil
 }
+
+// hresultError is a failed WinRT call's HRESULT.
+type hresultError uint32
+
+func (h hresultError) Error() string { return fmt.Sprintf("HRESULT %#08x", uint32(h)) }
+
+// hrNotFound is HRESULT_FROM_WIN32(ERROR_NOT_FOUND).
+const hrNotFound hresultError = 0x80070490
 
 // winrtRelease releases a COM reference (0 is a no-op).
 func winrtRelease(obj uintptr) {
@@ -223,26 +242,42 @@ func notifierFor(aumid string) (uintptr, error) {
 }
 
 // Setting reads the notifier's ToastNotifier.Setting: ToastEnabled, or
-// ToastDisabledForUser while the user's notifications are off. It needs
-// the registration NewToaster writes: with notifications on, an
-// unregistered ID's Setting fails (HRESULT 0x80070490).
+// ToastDisabledForUser while the user's notifications are off (settingOf).
 func (t *Toaster) Setting() (int, error) {
 	setting := -1
 	err := withWinRT(func() error {
 		var v int32
-		if err := winrtCall(t.notifier, slotNotifierSetting, uintptr(unsafe.Pointer(&v))); err != nil {
-			return fmt.Errorf("ToastNotifier.Setting: %w", err)
-		}
-		setting = int(v)
-		return nil
+		err := winrtCall(t.notifier, slotNotifierSetting, uintptr(unsafe.Pointer(&v)))
+		setting, err = settingOf(v, err)
+		return err
 	})
 	return setting, err
 }
 
+// settingOf turns ToastNotifier.Setting's answer into the setting:
+// HRESULT 0x80070490 (not found) is ToastEnabled, since Windows answers it
+// only while the user's notifications are on and the App has shown no
+// toast yet, and a toast then shows (see the file comment); any other
+// failure is an error.
+func settingOf(v int32, err error) (int, error) {
+	var hr hresultError
+	switch {
+	case err == nil:
+		return int(v), nil
+	case errors.As(err, &hr) && hr == hrNotFound:
+		return ToastEnabled, nil
+	}
+	return -1, fmt.Errorf("ToastNotifier.Setting: %w", err)
+}
+
 // toastSettingsRoot is where Windows keeps each App's notification
-// settings; the first toast of an App adds its key there, one level per
-// part of the ID.
-const toastSettingsRoot = `Software\Microsoft\Windows\CurrentVersion\Notifications\Settings`
+// settings, and toastBackupRoot where it registers the App with the push
+// notification service; the first toast of an App adds its key under
+// each, one level per part of the ID.
+const (
+	toastSettingsRoot = `Software\Microsoft\Windows\CurrentVersion\Notifications\Settings`
+	toastBackupRoot   = `Software\Microsoft\Windows\CurrentVersion\PushNotifications\Backup`
+)
 
 // Toaster raises toasts from ToastAUMID. Close it: it removes ToastGroup
 // from the Notification Center and the settings key levels Windows added.
@@ -250,7 +285,7 @@ type Toaster struct {
 	notifier uintptr
 	mu       sync.Mutex
 	toasts   []*Toast
-	absent   []string // the settings key levels that did not exist at NewToaster, deepest first
+	absent   []string // the settings and backup key levels that did not exist at NewToaster, each deepest first
 }
 
 // Toast is one raised toast. Activated receives the arguments of the
@@ -264,9 +299,9 @@ type Toast struct {
 }
 
 // NewToaster opens ToastAUMID's notifier, noting which levels of its
-// settings key are absent (Close removes them again).
+// settings and backup keys are absent (Close removes them again).
 func NewToaster() (*Toaster, error) {
-	t := &Toaster{absent: absentSettingLevels()}
+	t := &Toaster{absent: append(absentKeyLevels(toastSettingsRoot), absentKeyLevels(toastBackupRoot)...)}
 	err := withWinRT(func() error {
 		var err error
 		t.notifier, err = notifierFor(ToastAUMID)
@@ -278,18 +313,29 @@ func NewToaster() (*Toaster, error) {
 	return t, nil
 }
 
-// absentSettingLevels lists the levels of ToastAUMID's settings key that do
+// absentKeyLevels lists the levels of ToastAUMID's key under root that do
 // not exist, deepest first.
-func absentSettingLevels() []string {
+func absentKeyLevels(root string) []string {
+	return missingLevels(root, func(key string) bool {
+		k, err := registry.OpenKey(registry.CURRENT_USER, key, registry.QUERY_VALUE)
+		if err != nil {
+			return false
+		}
+		k.Close()
+		return true
+	})
+}
+
+// missingLevels lists the levels of ToastAUMID's key under root that
+// exists does not find, deepest first: the order they can be deleted in.
+func missingLevels(root string, exists func(key string) bool) []string {
 	var absent []string
-	key := toastSettingsRoot
+	key := root
 	for _, part := range strings.Split(ToastAUMID, `\`) {
 		key += `\` + part
-		if k, err := registry.OpenKey(registry.CURRENT_USER, key, registry.QUERY_VALUE); err == nil {
-			k.Close()
-			continue
+		if !exists(key) {
+			absent = append([]string{key}, absent...)
 		}
-		absent = append([]string{key}, absent...)
 	}
 	return absent
 }
@@ -418,7 +464,8 @@ func (t *Toaster) Hide(toast *Toast) error {
 }
 
 // Close removes ToastGroup's notifications from the Notification Center,
-// releases the toasts and removes the settings key levels Windows added.
+// releases the toasts and removes the settings and backup key levels
+// Windows added.
 func (t *Toaster) Close() error {
 	var errs []error
 	errs = append(errs, withWinRT(func() error {
