@@ -26,7 +26,8 @@ browser window, each with its own Agent Cursor and name tag.
 5. Closes the demo windows (only the Chrome processes on that profile),
    restarts the helper normally (capture exclusion back on), and encodes
    docs\images\winuse-demo.gif (palettegen/paletteuse, about 960 px wide,
-   under 8 MB) and out\winuse-demo.mp4.
+   under 8 MB) and out\winuse-demo.mp4, copied to docs\images\winuse-demo.mp4
+   (the README's GIF links to it).
 
 Every winuse command's exit code is checked; any failure stops the run,
 and the cleanup still closes the demo windows and restores the helper.
@@ -64,6 +65,7 @@ $Out = Join-Path $PSScriptRoot "out"
 $Work = Join-Path $env:TEMP "winuse-demo"
 $Gif = Join-Path $Repo "docs\images\winuse-demo.gif"
 $Mp4 = Join-Path $Out "winuse-demo.mp4"
+$DocsMp4 = Join-Path $Repo "docs\images\winuse-demo.mp4" # the README's GIF links to it
 $Raw = Join-Path $Work "raw.mkv"
 $Installed = Join-Path $env:LOCALAPPDATA "winuse\winuse.exe"
 $HelperLog = Join-Path $env:LOCALAPPDATA "winuse\helper.log"
@@ -485,4 +487,5 @@ if ($failed) {
 }
 
 Encode-Demo $Raw $Gif $Mp4 1.5
-Say "done: $Gif and $Mp4 (raw: $Raw)"
+Copy-Item $Mp4 $DocsMp4 -Force
+Say "done: $Gif and $DocsMp4 (also $Mp4; raw: $Raw)"

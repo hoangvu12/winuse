@@ -25,7 +25,8 @@ Run it (it builds this branch, since the installed winuse needs
 powershell -NoProfile -ExecutionPolicy Bypass -File .scratch\readme-demo\record-demo.ps1
 ```
 
-Outputs: `docs/images/winuse-demo.gif` and `.scratch/readme-demo/out/winuse-demo.mp4`
+Outputs: `docs/images/winuse-demo.gif`, and `.scratch/readme-demo/out/winuse-demo.mp4`
+copied to `docs/images/winuse-demo.mp4`, which the README's GIF links to
 (the raw recording stays in `%TEMP%\winuse-demo\raw.mkv`). `-SelfTest` runs
 only the encode on a synthetic clip; `-Grabber gdigrab` records with gdigrab
 instead of ddagrab; `-Exe <path>` uses a built winuse.
@@ -34,7 +35,8 @@ While it runs, nothing else may use winuse: a CLI of another build (the
 user's installed winuse, the Brave extension's native host) replaces the
 demo helper, and the script then fails, since the cursors may be missing.
 
-`readme-hero.patch` is the README change that went in with the GIF, with
+`readme-hero.patch` is the README change that went in with the GIF (the GIF
+inline, linked to the MP4, and a "full-quality video" link in the caption), with
 `docs/images/winuse-calculator.gif` removed (the first recording, 2026-11-05:
 the Agents took 22.3 s, the GIF is 25 s, 960x520, 1.4 MB at 15 fps).
 
