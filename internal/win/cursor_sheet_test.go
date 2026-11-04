@@ -65,8 +65,8 @@ func (w *cursorWin) frame(look cursorLook, labelOp, labelPop, angle, press float
 }
 
 // lookAt is the controller's look for a travel to tip (cursorUI.lookFor).
-func (w *cursorWin) lookAt(tip fpoint, label string, work Rect, scale float64) cursorLook {
-	return (&cursorUI{view: w}).lookFor(tip, label, work, scale)
+func (w *cursorWin) lookAt(tip fpoint, name, label string, work Rect, scale float64) cursorLook {
+	return (&cursorUI{view: w}).lookFor(tip, name, label, work, scale)
 }
 
 // paste composites the premultiplied s over img with s's (0, 0) at (x, y).
@@ -123,7 +123,7 @@ func TestAgentCursorContactSheet(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	const W, H = 1600, 2400
+	const W, H = 1600, 3200
 	img := image.NewRGBA(image.Rect(0, 0, W, H))
 	fillRect(img, img.Rect, sheetBg)
 	cw := sheetWin(t, cursorAccent)
@@ -234,7 +234,7 @@ func TestAgentCursorContactSheet(t *testing.T) {
 		if mv.label != "" {
 			m.revealLabel()
 		}
-		look := def.lookAt(rectCentre(box), mv.label, Rect{Right: W, Bottom: H}, 1)
+		look := def.lookAt(rectCentre(box), "", mv.label, Rect{Right: W, Bottom: H}, 1)
 		var dots []fpoint
 		for el := time.Duration(0); el <= m.path.dur; el += cursorFrameInterval {
 			f := m.advance(t0.Add(el))
@@ -261,34 +261,38 @@ func TestAgentCursorContactSheet(t *testing.T) {
 	y += 438
 
 	// 6. Labels in each Agent's colour, at 100 % and 200 %, on light and dark.
-	heading(`Label pills: the default Agent and three palette colours, 100 % and 200 %, on dark and light`)
+	heading(`Label pills: the default Agent (one line), then named Agents (name over action), short and long; 100 % and 200 %, on dark and light`)
 	labels := []struct {
-		c     color.RGBA
-		label string
+		c           color.RGBA
+		name, label string
 	}{
-		{cursorAccent, `click "Save"`},
-		{CursorPalette[0], `reviewer: set-value "File name"`},
-		{CursorPalette[3], `codex: toggle "Remember me"`},
-		{CursorPalette[4], `claude: click "Delete"`},
+		{cursorAccent, "", `click "Save"`},
+		{CursorPalette[0], "reviewer", `set-value "File name"`},
+		{CursorPalette[3], "release-notes-writer-for-the-quarterly-report-changelog-and-the-migration-guide",
+			`select "A very long option that is cut short at the pill's widest, on its own line"`},
+		{CursorPalette[4], "claude", `click "Delete"`},
 	}
 	for _, scale := range []float64{1, 2} {
+		perRow := 4
+		if scale == 2 {
+			perRow = 2
+		}
 		for _, bg := range []color.RGBA{sheetDark, sheetLight} {
-			x = 16
-			h := int(80 * scale)
-			for i, l := range labels {
-				if scale == 2 && i >= 2 {
-					break
+			h := int(84 * scale)
+			for row := 0; row < len(labels)/perRow; row++ {
+				x = 16
+				for _, l := range labels[row*perRow : (row+1)*perRow] {
+					w := int(386 * scale)
+					r := card(x, w, h, bg)
+					lw := sheetWin(t, l.c)
+					tip := fpoint{X: float64(r.Min.X) + 14*scale, Y: float64(r.Min.Y) + 10*scale}
+					look := lw.lookAt(tip, l.name, l.label, Rect{Left: int32(r.Min.X), Top: int32(r.Min.Y), Right: int32(r.Max.X), Bottom: H}, scale)
+					s, at := lw.frame(look, 1, 1, 0, 1)
+					pasteCursor(img, s, at, tip)
+					x += w + 8
 				}
-				w := int(380 * scale)
-				r := card(x, w, h, bg)
-				lw := sheetWin(t, l.c)
-				tip := fpoint{X: float64(r.Min.X) + 20*scale, Y: float64(r.Min.Y) + 12*scale}
-				look := lw.lookAt(tip, l.label, Rect{Right: W, Bottom: H}, scale)
-				s, at := lw.frame(look, 1, 1, 0, 1)
-				pasteCursor(img, s, at, tip)
-				x += w + 8
+				y += h + 8
 			}
-			y += h + 8
 		}
 	}
 	y += 8
@@ -430,7 +434,7 @@ func renderCalculatorGIF(t *testing.T, src, dst string) {
 	}
 	shoot(400 * time.Millisecond)
 	for i, k := range keys {
-		look = w.lookAt(rectCentre(k.box), k.label, window, 1)
+		look = w.lookAt(rectCentre(k.box), "", k.label, window, 1)
 		m.startTravel(now, window, k.box, 1, false)
 		m.revealLabel()
 		shoot(m.path.arrive)
@@ -510,7 +514,7 @@ func writeGIF(t *testing.T, path string, frames []*image.RGBA, step time.Duratio
 func BenchmarkCursorFrame(b *testing.B) {
 	t := &testing.T{}
 	w := sheetWin(t, cursorAccent)
-	look := w.lookAt(fpoint{X: 500, Y: 400}, `click "Save"`, Rect{Right: 1920, Bottom: 1080}, 1)
+	look := w.lookAt(fpoint{X: 500, Y: 400}, "", `click "Save"`, Rect{Right: 1920, Bottom: 1080}, 1)
 	w.frame(look, 1, 1, 0, 1)
 	for k := -60; k <= 60; k++ {
 		w.sprite(spriteKey{step: k})

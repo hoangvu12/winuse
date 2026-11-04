@@ -220,15 +220,22 @@ func (c *AgentCursor) Travel(origin, target Rect, label string) {
 	c.TravelAbove(0, origin, target, label)
 }
 
-// TravelAbove shows the cursor, at origin's centre when it is hidden or
-// fading, else where it is, and glides it to target's centre with label
-// in the pill beside it, its windows placed just above the Window anchor
-// in the z-order (cursor_zorder.go). It returns when the travel arrived
-// (the tip within a pixel of the target, its follow-through still
-// settling while the Action runs), or after a bound of about twice the
-// travel time: a stuck UI thread never holds the Action back longer than
-// that.
+// TravelAbove is TravelAs with no Agent name: the default Agent's pill,
+// one line.
 func (c *AgentCursor) TravelAbove(anchor uint64, origin, target Rect, label string) {
+	c.TravelAs(anchor, origin, target, "", label)
+}
+
+// TravelAs shows the cursor, at origin's centre when it is hidden or
+// fading, else where it is, and glides it to target's centre with label
+// in the pill beside it — under name, a smaller first line in the Agent's
+// colour, when the Agent has one — its windows placed just above the
+// Window anchor in the z-order (cursor_zorder.go). It returns when the
+// travel arrived (the tip within a pixel of the target, its
+// follow-through still settling while the Action runs), or after a bound
+// of about twice the travel time: a stuck UI thread never holds the
+// Action back longer than that.
+func (c *AgentCursor) TravelAs(anchor uint64, origin, target Rect, name, label string) {
 	if c == nil {
 		return
 	}
@@ -236,7 +243,7 @@ func (c *AgentCursor) TravelAbove(anchor uint64, origin, target Rect, label stri
 	done := make(chan struct{})
 	failed := make(chan struct{})
 	if !c.enqueue(func() {
-		if err := c.do(func() { c.ui.travel(anchor, origin, target, label, done) }); err != nil {
+		if err := c.do(func() { c.ui.travel(anchor, origin, target, name, label, done) }); err != nil {
 			close(failed)
 		}
 	}) {
@@ -311,8 +318,9 @@ func (c *AgentCursor) Close() {
 type cursorView interface {
 	// monitorAt returns the work area and DPI of the monitor at p.
 	monitorAt(p fpoint) (work Rect, dpi uint32)
-	// measureLabel is text's width in pixels in the label font at scale.
-	measureLabel(text string, scale float64) int32
+	// measureLabel is text's width in pixels in the label face at px
+	// logical pixels, at scale.
+	measureLabel(text string, px, scale float64) int32
 	// showCursor shows the arrow at tip, turned by angle and scaled by
 	// press about its tip, and the look's label pill at labelOp and scaled
 	// by labelPop (its reveal and pop), the whole at opacity (the idle
@@ -365,9 +373,9 @@ type cursorUI struct {
 	drawing   time.Duration
 }
 
-// travel starts a Travel (see AgentCursor.TravelAbove); done is closed
+// travel starts a Travel (see AgentCursor.TravelAs); done is closed
 // when it completes, is superseded, or cannot run.
-func (u *cursorUI) travel(anchor uint64, origin, target Rect, label string, done chan struct{}) {
+func (u *cursorUI) travel(anchor uint64, origin, target Rect, name, label string, done chan struct{}) {
 	if u.closed {
 		close(done)
 		return
@@ -376,11 +384,12 @@ func (u *cursorUI) travel(anchor uint64, origin, target Rect, label string, done
 	to := rectCentre(target)
 	work, dpi := u.view.monitorAt(to)
 	scale := cursorScale(dpi)
-	look := u.lookFor(to, label, work, scale)
+	look := u.lookFor(to, name, label, work, scale)
 	// A new label waits for the cursor to land, then fades in; the same
 	// label on a cursor already showing it travels with it (the rule of
 	// agent-desktop's reveal.rs, cursor_motion.go).
-	newLabel := look.Label != "" && (look.Label != u.look.Label || !u.model.visibleForTravel())
+	newLabel := look.Label != "" &&
+		(look.Label != u.look.Label || look.Name != u.look.Name || !u.model.visibleForTravel())
 	u.look = look
 	u.finishTravel() // a travel still in flight is superseded
 	u.done = done
@@ -393,27 +402,38 @@ func (u *cursorUI) travel(anchor uint64, origin, target Rect, label string, done
 }
 
 // lookFor computes the cursor window's look for a travel to tip: the
-// label sanitized, ellipsized to the pill's width (and the work area's),
-// and the pill placed beside the tip.
-func (u *cursorUI) lookFor(tip fpoint, label string, work Rect, scale float64) cursorLook {
+// Agent's name and the label sanitized, each line ellipsized on its own to
+// the pill's width (and the work area's), and the pill placed beside the
+// tip. A name with no label is the pill's one line, as the label.
+func (u *cursorUI) lookFor(tip fpoint, name, label string, work Rect, scale float64) cursorLook {
 	look := cursorLook{Scale: scale}
-	text := sanitizeLabel(label)
+	name, text := sanitizeLabel(name), sanitizeLabel(label)
+	if text == "" {
+		name, text = "", name
+	}
 	if text == "" {
 		return look
 	}
-	measure := func(s string) int32 { return u.view.measureLabel(s, scale) }
+	measure := func(px float64) func(string) int32 {
+		return func(s string) int32 { return u.view.measureLabel(s, px, scale) }
+	}
 	maxW := pillTextMax(scale)
 	if wa := work.Width() - 2*scaled(cursorPillPadX, scale); wa > 0 {
 		maxW = min(maxW, wa)
 	}
-	text = ellipsize(text, maxW, measure)
+	text = ellipsize(text, maxW, measure(cursorPillFontPx))
+	name = ellipsize(name, maxW, measure(cursorPillNameFontPx))
 	if text == "" {
 		return look
 	}
-	w, h := pillSize(measure(text)+1, scale)
+	textW := measure(cursorPillFontPx)(text) + 1
+	w, h := pillSize(textW, scale)
+	if name != "" {
+		w, h = pillSize2(measure(cursorPillNameFontPx)(name)+1, textW, scale)
+	}
 	pill := placePill(tip, w, h, work, scale)
 	tx, ty := roundPoint(tip)
-	look.Label = text
+	look.Name, look.Label = name, text
 	look.Pill = Rect{Left: pill.Left - tx, Top: pill.Top - ty, Right: pill.Right - tx, Bottom: pill.Bottom - ty}
 	return look
 }

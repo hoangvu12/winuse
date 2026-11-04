@@ -77,9 +77,18 @@ insertion caret and showing what each Action does.
    Hover would also need the pointer sampled every 80 ms while a cursor is
    shown. So the label keeps its text and timing and takes cua's verbose
    badge's look: a diagonal gradient of dark stops mixed toward the Agent's
-   colour, a light rim tinted with it, a soft glow in it. A named Agent's
-   name stays ahead of the action: the colour alone does not say which
-   Agent is which once the nine colours repeat or an Agent picks its own.
+   colour, a light rim tinted with it, a soft glow in it. The colour alone
+   does not say which Agent is which once the nine colours repeat or an
+   Agent picks its own, so a named Agent's name is always shown too.
+   *Amended (cursor-look issue 09, the user's request):* a named Agent's
+   pill has two lines — its name, smaller (10.5 px), semibold, in its
+   colour lightened to read on the pill, over the action at the usual size —
+   instead of `reviewer: click "Save"` on one line. The name line shows
+   whenever the Agent has a name; cua's "on hover or with two or more
+   cursors" rule is not adopted. The default Agent's pill stays the one
+   action line. The pill keeps its place, reveal, colours and maximum
+   width; each line is cut on its own; a two-line pill's text has a faint
+   dark shadow, since its name sits on the pill's light end.
 9. **Reduced motion.** When Windows' "Animation effects" are off
    (`SPI_GETCLIENTAREAANIMATION`, read on every travel and click), the move
    is a straight 120 ms minimum-jerk one with no turn, float, press or

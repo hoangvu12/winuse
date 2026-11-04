@@ -102,7 +102,7 @@ _Avoid_: Dangerous key, forbidden shortcut
 
 **Agent Cursor**:
 The second, presentation-only cursor that shows the user each Headless Action: it glides to the Element along a curve, says what is happening in a label that is whole by the time it lands, and presses (a brief squeeze of the arrow, with an outline around the Element) when the Action is delivered (a Page's first press, key or text, a navigation the browser accepted), not when the Action and its read-back end. The Action is delivered as the cursor arrives, while it settles (ADR 0018). It never takes the user's pointer, keyboard or foreground and never appears in winuse's own screenshots. On a Page it is the same native cursor, placed through the browser's content area (ADR 0016), never drawn inside the Page. A Tab target in the background has no cursor: nothing of it is on the screen (ADR 0017).
-Each Agent has its own Agent Cursor (ADR 0014), with its own colour and its name in the label (the label always says what the Action does), placed just above the Window it acts on rather than topmost; it closes when its Agent has gone idle. After a Headless set-value or typing into a named field it briefly shows an insertion caret where the field's caret now is.
+Each Agent has its own Agent Cursor (ADR 0014), with its own colour and, for a named Agent, its name as the label's first line over the action (the label always says what the Action does), placed just above the Window it acts on rather than topmost; it closes when its Agent has gone idle. After a Headless set-value or typing into a named field it briefly shows an insertion caret where the field's caret now is.
 _Avoid_: Fake cursor, ghost cursor, pointer
 
 **Esc stop**:

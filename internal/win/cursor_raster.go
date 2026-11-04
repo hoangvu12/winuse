@@ -75,6 +75,20 @@ const (
 	cursorEffectLift = 0.45
 )
 
+// cursorPillNameLift lifts the Agent's colour toward white for the name
+// line, so the name reads in its colour on the pill, whose light end is
+// mixed toward that colour too.
+const cursorPillNameLift = 0.72
+
+// cursorPillTextShadow is the two-line pill's text shadow: a copy of each
+// line in black at this opacity, a pixel lower.
+const cursorPillTextShadow = 0.45
+
+// nameColor is the name line's colour for an Agent drawn in accent.
+func nameColor(accent color.RGBA) color.RGBA {
+	return mixColor(accent, cursorRimColor, cursorPillNameLift)
+}
+
 // cursorPillMix is how far each gradient stop is mixed toward the Agent's
 // colour (session_badge.rs). The dark end stays dark so white text reads
 // whatever the colour.
@@ -394,7 +408,7 @@ func (s *surface) drawPill(r Rect, scale float64, accent color.RGBA) {
 		return
 	}
 	l, t, rt, b := float64(r.Left), float64(r.Top), float64(r.Right), float64(r.Bottom)
-	rad := float64(r.Height()) / 2
+	rad := pillRadius(r, scale)
 	off := cursorPillShadowOffset * scale
 	blur := math.Max(cursorPillShadowBlur*scale, 0.5)
 	s.fillSoft(pillShadowBounds(r, scale), cursorShadowColor, cursorPillShadowOpacity, func(x, y float64) float64 {
@@ -459,16 +473,33 @@ func textCoverage(p uint32) float64 {
 // putText composites c at the coverage GDI left in r over the pixels
 // takeText saved from there, so every pixel keeps the pill's alpha.
 func (s *surface) putText(r Rect, saved []uint32, c color.RGBA) {
+	s.putTextShadowed(r, saved, c, 0, 0)
+}
+
+// putTextShadowed is putText with a dark copy of the text under it, off
+// pixels down, at opacity shadow (none at 0): the two-line pill's text
+// keeps its edge on the pill's light end.
+func (s *surface) putTextShadowed(r Rect, saved []uint32, c color.RGBA, shadow float64, off int) {
 	x0, y0, x1, y1 := s.clipBox(r)
-	if x1 <= x0 || y1 <= y0 || len(saved) != (x1-x0)*(y1-y0) {
+	w := x1 - x0
+	if x1 <= x0 || y1 <= y0 || len(saved) != w*(y1-y0) {
 		return
 	}
-	k := 0
+	cov := make([]float64, len(saved))
+	for y := y0; y < y1; y++ {
+		for x, p := range s.pix[y*s.w+x0 : y*s.w+x1] {
+			cov[(y-y0)*w+x] = textCoverage(p)
+		}
+	}
 	for y := y0; y < y1; y++ {
 		row := s.pix[y*s.w+x0 : y*s.w+x1]
-		for x, p := range row {
-			row[x] = over(saved[k], premultiply(c, textCoverage(p)))
-			k++
+		for x := range row {
+			k := (y-y0)*w + x
+			p := saved[k]
+			if j := k - off*w; shadow > 0 && j >= 0 && cov[j] > 0 {
+				p = over(p, premultiply(cursorShadowColor, shadow*cov[j]))
+			}
+			row[x] = over(p, premultiply(c, cov[k]))
 		}
 	}
 }

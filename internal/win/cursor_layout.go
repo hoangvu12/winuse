@@ -164,6 +164,14 @@ const (
 	cursorPillMaxWidth  = 360.0 // LABEL_PILL_MAX_WIDTH; longer labels are ellipsized
 	cursorPillFontPx    = 12.5  // semibold (cursorLabelFaces)
 	cursorPillTextInset = 2.0   // render.rs TEXT_VERTICAL_INSET
+	// A named Agent's pill has two lines (ADR 0018 Decision 8): its name,
+	// smaller and in its colour, over the action. The lines' boxes stack
+	// between the vertical padding; the corners keep the one-line pill's
+	// radius, half cursorPillHeight.
+	cursorPillNameFontPx = 10.5
+	cursorPillNameLine   = 14.0
+	cursorPillLine       = 17.0
+	cursorPillPadY       = 4.5
 	// The pill's shadow: black at this opacity, offset down and blurred,
 	// under a glow in the Agent's colour (session_badge.rs).
 	cursorPillShadowOpacity = 0.22
@@ -274,6 +282,25 @@ func pillSize(textW int32, scale float64) (w, h int32) {
 	return textW + 2*scaled(cursorPillPadX, scale), scaled(cursorPillHeight, scale)
 }
 
+// pillSize2 is a named Agent's two-line pill's size for a name measuring
+// nameW and an action measuring textW at scale: the wider line plus
+// padding, capped like one line, and both lines' height.
+func pillSize2(nameW, textW int32, scale float64) (w, h int32) {
+	w, _ = pillSize(max(nameW, textW), scale)
+	return w, pillHeight2(scale)
+}
+
+// pillHeight2 is the two-line pill's height at scale.
+func pillHeight2(scale float64) int32 {
+	return 2*scaled(cursorPillPadY, scale) + scaled(cursorPillNameLine, scale) + scaled(cursorPillLine, scale)
+}
+
+// pillRadius is the pill's corner radius at scale: fully rounded for one
+// line, the same radius for two.
+func pillRadius(pill Rect, scale float64) float64 {
+	return math.Min(float64(pill.Height())/2, float64(scaled(cursorPillHeight, scale))/2)
+}
+
 // placePill places a w×h pill beside the tip, in screen pixels
 // (place_label): below and right of the arrow by default, flipped to the
 // tip's left when it would cross the work area's right edge and above the
@@ -309,18 +336,20 @@ func pillShadowBounds(pill Rect, scale float64) Rect {
 // cursor travels.
 type cursorLook struct {
 	Scale float64
+	Name  string // the Agent's name, the pill's first line; "" for one line
 	Label string // already sanitized and ellipsized; "" draws no pill
 	Pill  Rect   // relative to the (rounded) tip; empty without a label
 }
 
 // cursorWindowLayout is the cursor window's geometry for a look, in the
 // window's own pixels: its size, where the tip sits in it, the pill and
-// the rectangle the label text is drawn into.
+// the rectangles the name and the label text are drawn into.
 type cursorWindowLayout struct {
 	W, H int32
 	Tip  fpoint // the tip, window-relative
 	Pill Rect   // window-relative; empty without a label
 	Text Rect   // window-relative; inside the pill, padded
+	Name Rect   // window-relative, above Text; empty without a name
 	// Origin is the window's top-left relative to the rounded tip.
 	OriginX, OriginY int32
 }
@@ -347,6 +376,12 @@ func layoutCursorWindow(look cursorLook) cursorWindowLayout {
 		pad := scaled(cursorPillPadX, look.Scale)
 		inset := scaled(cursorPillTextInset, look.Scale)
 		l.Text = Rect{Left: l.Pill.Left + pad, Top: l.Pill.Top + inset, Right: l.Pill.Right - pad, Bottom: l.Pill.Bottom - inset}
+		if look.Name != "" {
+			top := l.Pill.Top + scaled(cursorPillPadY, look.Scale)
+			mid := top + scaled(cursorPillNameLine, look.Scale)
+			l.Name = Rect{Left: l.Text.Left, Top: top, Right: l.Text.Right, Bottom: mid}
+			l.Text.Top, l.Text.Bottom = mid, mid+scaled(cursorPillLine, look.Scale)
+		}
 	}
 	return l
 }

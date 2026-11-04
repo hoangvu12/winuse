@@ -82,3 +82,4 @@ The cursor is excluded from capture, so `TestAgentCursorContactSheet`
 - 06 float, label, reduced motion, trail — done
 - 07 docs, contact sheet, GIF — done
 - 08 live verification — ready-for-human
+- 09 two-line pill for a named Agent — done

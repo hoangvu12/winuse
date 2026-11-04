@@ -522,6 +522,55 @@ func TestSanitizeLabelMakesOneLine(t *testing.T) {
 	}
 }
 
+// TestNamedAgentsPillHasTwoLines (cursor-look 09, ADR 0018 Decision 8):
+// a named Agent's pill shows its name, smaller, over the action; each line
+// is cut to the pill's width on its own; the place beside the tip and the
+// width cap are the one-line pill's; the default Agent's pill is one line
+// as before, and so is a name with no action.
+func TestNamedAgentsPillHasTwoLines(t *testing.T) {
+	u := &cursorUI{view: &fakeCursorView{}}
+	work := Rect{Right: 1920, Bottom: 1040}
+	tip := fpoint{X: 500, Y: 400}
+	for _, scale := range []float64{1, 1.5, 2} {
+		one := u.lookFor(tip, "", `click "Save"`, work, scale)
+		two := u.lookFor(tip, "reviewer", `click "Save"`, work, scale)
+		if one.Name != "" || one.Pill.Height() != scaled(cursorPillHeight, scale) {
+			t.Errorf("scale %v: the default Agent's pill = %+v, want one line", scale, one)
+		}
+		if two.Name != "reviewer" || two.Label != `click "Save"` || two.Pill.Height() != pillHeight2(scale) {
+			t.Errorf("scale %v: a named Agent's look = %+v, want its name over the action", scale, two)
+		}
+		if two.Pill.Left != one.Pill.Left || two.Pill.Top != one.Pill.Top {
+			t.Errorf("scale %v: the two-line pill moved: %+v vs %+v", scale, two.Pill, one.Pill)
+		}
+		l := layoutCursorWindow(two)
+		if l.Name.Height() <= 0 || l.Name.Bottom != l.Text.Top || !rectWithin(l.Pill, l.Name) || !rectWithin(l.Pill, l.Text) {
+			t.Errorf("scale %v: name %+v over text %+v inside pill %+v", scale, l.Name, l.Text, l.Pill)
+		}
+		if pillRadius(two.Pill, scale) != pillRadius(one.Pill, scale) {
+			t.Errorf("scale %v: the two-line pill's corners differ from one line's", scale)
+		}
+	}
+	// Each line is cut on its own, to the same cap.
+	long := strings.Repeat("n", 300)
+	l := u.lookFor(tip, long, `click "Save"`, work, 1)
+	if w := l.Pill.Width(); !strings.HasSuffix(l.Name, "…") || l.Label != `click "Save"` || w > scaled(cursorPillMaxWidth, 1) || w < scaled(cursorPillMaxWidth, 1)-8 {
+		t.Errorf("a long name is cut, the action kept: %q / %q, width %d", l.Name, l.Label, l.Pill.Width())
+	}
+	l = u.lookFor(tip, "reviewer", long, work, 1)
+	if l.Name != "reviewer" || !strings.HasSuffix(l.Label, "…") {
+		t.Errorf("a long action is cut, the name kept: %q / %q", l.Name, l.Label)
+	}
+	// A name with no action is the one line.
+	if l := u.lookFor(tip, "painter", "", work, 1); l.Name != "" || l.Label != "painter" {
+		t.Errorf("a name alone = %+v, want it as the one line", l)
+	}
+	// The name reads in the Agent's colour, lighter.
+	if c := nameColor(CursorPalette[0]); c.R <= CursorPalette[0].R || c.B < CursorPalette[0].B {
+		t.Errorf("the name colour %v is the Agent's %v lightened", c, CursorPalette[0])
+	}
+}
+
 func TestLayoutCursorWindowHoldsDartAndPill(t *testing.T) {
 	for _, scale := range []float64{1, 1.5, 2} {
 		w, h := pillSize(150, scale)
@@ -1393,8 +1442,8 @@ func (v *fakeCursorView) with(f func(s *fakeViewState)) {
 func (v *fakeCursorView) monitorAt(fpoint) (Rect, uint32) {
 	return Rect{Right: 1920, Bottom: 1040}, 96
 }
-func (v *fakeCursorView) measureLabel(s string, scale float64) int32 {
-	return int32(7 * scale * float64(len([]rune(s))))
+func (v *fakeCursorView) measureLabel(s string, px, scale float64) int32 {
+	return int32(7 * px / cursorPillFontPx * scale * float64(len([]rune(s))))
 }
 func (v *fakeCursorView) showCursor(tip fpoint, op, labelOp, labelPop, angle, press float64, look cursorLook) {
 	v.with(func(s *fakeViewState) {
@@ -1516,11 +1565,11 @@ func TestTravelReturnsWhenTheTravelCompletes(t *testing.T) {
 	}
 	// The same label again travels with the cursor; a new one waits.
 	other := Rect{Left: 100, Top: 600, Right: 200, Bottom: 640}
-	c.postWait(func() { c.ui.travel(0, origin, other, `click "Save"`, make(chan struct{})) }, time.Second)
+	c.postWait(func() { c.ui.travel(0, origin, other, "", `click "Save"`, make(chan struct{})) }, time.Second)
 	if st := view.state(); st.labelOp != 1 {
 		t.Errorf("the same label travels shown: labelOp %v", st.labelOp)
 	}
-	c.postWait(func() { c.ui.travel(0, origin, target, `click "Open"`, make(chan struct{})) }, time.Second)
+	c.postWait(func() { c.ui.travel(0, origin, target, "", `click "Open"`, make(chan struct{})) }, time.Second)
 	if st := view.state(); st.labelOp != 0 || st.look.Label != `click "Open"` {
 		t.Errorf("a new label is held back: labelOp %v, label %q", st.labelOp, st.look.Label)
 	}
@@ -1539,7 +1588,7 @@ func TestTravelReturnsAtTheArrival(t *testing.T) {
 		origin := Rect{Right: 1920, Bottom: 1040}
 		target := Rect{Left: 1700, Top: 50, Right: 1800, Bottom: 90}
 		done := make(chan struct{})
-		c.postWait(func() { c.ui.travel(0, origin, target, "click", done) }, time.Second)
+		c.postWait(func() { c.ui.travel(0, origin, target, "", "click", done) }, time.Second)
 		var p cursorPath
 		c.postWait(func() { p = c.ui.model.path }, time.Second)
 		if reduced != (p.dur == cursorReducedTravel) {
@@ -1568,7 +1617,7 @@ func TestTravelReturnsAtTheArrival(t *testing.T) {
 		}
 		// Mid-travel a long move turns its tip (unless animations are off).
 		c.postWait(func() {
-			c.ui.travel(0, origin, Rect{Left: 10, Top: 500, Right: 30, Bottom: 520}, "click", make(chan struct{}))
+			c.ui.travel(0, origin, Rect{Left: 10, Top: 500, Right: 30, Bottom: 520}, "", "click", make(chan struct{}))
 		}, time.Second)
 		clock.set(t0.Add(p.arrive + 250*time.Millisecond))
 		c.postWait(func() { c.ui.tick() }, time.Second)
@@ -1623,11 +1672,11 @@ func TestTravelSupersededReleasesTheEarlierWait(t *testing.T) {
 	defer c.Close()
 	first := make(chan struct{})
 	c.post(func() {
-		c.ui.travel(0, Rect{Right: 1000, Bottom: 800}, Rect{Left: 10, Top: 10, Right: 20, Bottom: 20}, "a", first)
+		c.ui.travel(0, Rect{Right: 1000, Bottom: 800}, Rect{Left: 10, Top: 10, Right: 20, Bottom: 20}, "", "a", first)
 	})
 	second := make(chan struct{})
 	c.post(func() {
-		c.ui.travel(0, Rect{Right: 1000, Bottom: 800}, Rect{Left: 900, Top: 700, Right: 920, Bottom: 720}, "b", second)
+		c.ui.travel(0, Rect{Right: 1000, Bottom: 800}, Rect{Left: 900, Top: 700, Right: 920, Bottom: 720}, "", "b", second)
 	})
 	select {
 	case <-first:

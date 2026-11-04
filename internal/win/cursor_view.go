@@ -102,6 +102,7 @@ const (
 	cleartypeNaturalQuality = 6
 	cursorLabelQuality      = cleartypeNaturalQuality // folded to grayscale by putText
 	dtNoPrefix              = 0x0800
+	dtLeft                  = 0x0000
 
 	cursorTimerID = 1
 	// wmCursorFrame is the frame clock's message to the arrow window
@@ -475,9 +476,10 @@ func (w *cursorWin) labelFace() string {
 	return w.face
 }
 
-// font returns the label font at scale (cached per pixel height).
-func (w *cursorWin) font(scale float64) uintptr {
-	h := scaled(cursorPillFontPx, scale)
+// font returns the label face at px logical pixels at scale (cached per
+// pixel height).
+func (w *cursorWin) font(px, scale float64) uintptr {
+	h := scaled(px, scale)
 	if f, ok := w.fonts[h]; ok {
 		return f
 	}
@@ -488,12 +490,12 @@ func (w *cursorWin) font(scale float64) uintptr {
 	return f
 }
 
-func (w *cursorWin) measureLabel(text string, scale float64) int32 {
+func (w *cursorWin) measureLabel(text string, px, scale float64) int32 {
 	u, err := windows.UTF16FromString(text)
 	if err != nil || len(u) <= 1 {
 		return 0
 	}
-	f := w.font(scale)
+	f := w.font(px, scale)
 	if f == 0 {
 		return 0
 	}
@@ -539,7 +541,14 @@ func (w *cursorWin) renderArrow(look cursorLook) bool {
 	s.clear()
 	if w.layout.Pill.Width() > 0 {
 		s.drawPill(w.layout.Pill, look.Scale, w.accent)
-		w.drawLabel(look.Label, w.layout.Text, look.Scale)
+		if look.Name != "" {
+			// Two lines, left-aligned: the name, smaller and in the
+			// Agent's colour, over the action.
+			w.drawLine(look.Name, w.layout.Name, cursorPillNameFontPx, look.Scale, nameColor(w.accent), dtLeft, cursorPillTextShadow)
+			w.drawLine(look.Label, w.layout.Text, cursorPillFontPx, look.Scale, cursorTextColor, dtLeft, cursorPillTextShadow)
+		} else {
+			w.drawLabel(look.Label, w.layout.Text, look.Scale)
+		}
 	}
 	w.card = append(w.card[:0], s.pix...)
 	w.base = append(w.base[:0], s.pix...)
@@ -668,11 +677,18 @@ func (w *cursorWin) composeArrow(k spriteKey) {
 // in the text colour at the coverage GDI left. The text is centred, as
 // their text.rs sets it.
 func (w *cursorWin) drawLabel(text string, r Rect, scale float64) {
+	w.drawLine(text, r, cursorPillFontPx, scale, cursorTextColor, dtCenter, 0)
+}
+
+// drawLine draws one line of text into r as drawLabel does, at px logical
+// pixels in c, aligned by align (dtCenter or dtLeft), over a dark copy of
+// itself at opacity shadow a pixel lower (none at 0).
+func (w *cursorWin) drawLine(text string, r Rect, px, scale float64, c color.RGBA, align uint32, shadow float64) {
 	u, err := windows.UTF16PtrFromString(text)
 	if err != nil {
 		return
 	}
-	f := w.font(scale)
+	f := w.font(px, scale)
 	if f == 0 {
 		return
 	}
@@ -686,9 +702,9 @@ func (w *cursorWin) drawLabel(text string, r Rect, scale float64) {
 	defer procSelectObject.Call(dc, old)
 	procSetBkMode.Call(dc, bkModeTransparent)
 	procSetTextColor.Call(dc, uintptr(overlayTextColor)) // white, onto takeText's black
-	drawText(dc, u, &r, dtCenter|dtVCenter|dtSingleLine|dtEndEllipsis|dtNoPrefix)
+	drawText(dc, u, &r, align|dtVCenter|dtSingleLine|dtEndEllipsis|dtNoPrefix)
 	procGdiFlush.Call()
-	s.putText(r, saved, cursorTextColor)
+	s.putTextShadowed(r, saved, c, shadow, int(scaled(1, scale)))
 }
 
 func (w *cursorWin) hideCursor() {
