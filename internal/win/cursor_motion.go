@@ -19,14 +19,9 @@ package win
 // (cursor_pose.rs heading rotation). Reduced motion is their straight
 // 120 ms minimum-jerk move (plan.rs). The minimum-jerk polynomial is
 // vercel-labs/agent-desktop's (Apache-2.0,
-// crates/core/src/cursor_overlay/hand_path.rs). The label's reveal —
-// held back while the cursor travels, then eased in once it lands
-// (windows/src/system/cursor_overlay/reveal.rs and schedule.rs
-// reveal_progress, core/src/cursor_overlay/timing.rs
-// CURSOR_LABEL_REVEAL_MS) — are ported too, and so are the macOS
-// bridge's two pops and the highlight's opacity
+// crates/core/src/cursor_overlay/hand_path.rs). The macOS bridge's
+// highlight pop and opacity are ported too
 // (crates/macos/src/system/cursor_overlay/cursor_overlay_chrome_bridge.m:
-// ADShowBubble's 0.94 → 1 ease-out scale over the reveal;
 // ADHighlightShow's scale and opacity keyframes over the highlight hold,
 // core/src/cursor_overlay/timing.rs CURSOR_HIGHLIGHT_HOLD_MS); all from
 // HEAD 9eb9b29, modified. See third_party/agent-desktop/LICENSE.
@@ -58,9 +53,6 @@ const (
 	// springs to 103 % and settles (cua's action_click theme frames, 20 at
 	// 30 fps).
 	cursorPressDuration = 667 * time.Millisecond
-	// cursorLabelReveal is how long a new label's pill takes to fade in
-	// once the cursor has landed (CURSOR_LABEL_REVEAL_MS).
-	cursorLabelReveal = 180 * time.Millisecond
 	// cursorOutlineDuration is the highlight's whole life: agent-desktop's
 	// CURSOR_HIGHLIGHT_HOLD_MS, over which macOS plays its opacity and
 	// scale keyframes with an ease-in-ease-out curve (ADHighlightShow). It
@@ -402,14 +394,13 @@ const (
 )
 
 // cursorTipAxis is the upright arrow's own heading: the bisector of its
-// two wings (arrowWings), pointing back toward the tip — about −105°.
-// cua takes the line from its halo's centre to the tip (cursor_pose.rs);
-// on our contact sheet that left a rightward arrow, turned some 90°,
-// reading as pointing down past its wider right wing.
+// two wings, pointing back toward the tip — about −135° for the dart,
+// nearly along its diagonal. cua takes the line from its halo's centre
+// to the tip (cursor_pose.rs); a turned arrow then reads as pointing past
+// its wider wing.
 var cursorTipAxis = func() float64 {
 	var sx, sy float64
-	for _, w := range arrowWings {
-		v := arrowCanvas(w)
+	for _, v := range []fpoint{cursorArrowWingTop, cursorArrowWingBottom} {
 		l := math.Hypot(v.X, v.Y)
 		sx, sy = sx+v.X/l, sy+v.Y/l
 	}
@@ -577,9 +568,7 @@ func cubicBezier(x1, y1, x2, y2, x float64) float64 {
 	return at(y1, y2, (lo+hi)/2)
 }
 
-// caEaseOut and caEaseInOut are CoreAnimation's
-// kCAMediaTimingFunctionEaseOut and …EaseInEaseOut.
-func caEaseOut(x float64) float64   { return cubicBezier(0, 0, 0.58, 1, x) }
+// caEaseInOut is CoreAnimation's kCAMediaTimingFunctionEaseInEaseOut.
 func caEaseInOut(x float64) float64 { return cubicBezier(0.42, 0, 0.58, 1, x) }
 
 // keyframe interpolates linearly through values at times (a
@@ -619,40 +608,17 @@ func outlinePop(elapsed time.Duration) float64 {
 	return keyframe(highlightPopTimes, highlightPopValues, outlineClock(elapsed))
 }
 
-// Label pop (ADShowBubble): the pill grows from 94 % to full size over
-// the reveal, eased out.
-const cursorLabelPopFrom = 0.94
-
-// labelPop is the label pill's scale at elapsed into its reveal.
-func labelPop(elapsed time.Duration) float64 {
-	t := clamp01(float64(elapsed) / float64(cursorLabelReveal))
-	return cursorLabelPopFrom + (1-cursorLabelPopFrom)*caEaseOut(t)
-}
-
 // fadeOpacity is the idle fade-out's opacity at elapsed into it.
 func fadeOpacity(elapsed time.Duration) float64 {
 	return 1 - clamp01(float64(elapsed)/float64(cursorFadeDuration))
 }
 
-// revealOpacity is a revealing label pill's opacity at elapsed into the
-// reveal: an ease-out cubic, 1 − (1 − t)³ (reveal_progress), whole from
-// cursorLabelReveal on.
-func revealOpacity(elapsed time.Duration) float64 {
-	if elapsed >= cursorLabelReveal {
-		return 1
-	}
-	rest := 1 - clamp01(float64(elapsed)/float64(cursorLabelReveal))
-	return 1 - rest*rest*rest
-}
-
 // cursorFrame is what one frame shows. The controller hands it to the
 // view; every opacity is in [0, 1].
 type cursorFrame struct {
-	Cursor      bool // the arrow (and its label pill) is on screen
+	Cursor      bool // the arrow (and its name tag) is on screen
 	Tip         fpoint
 	Opacity     float64
-	LabelOp     float64  // the label pill's own opacity (under Opacity)
-	LabelPop    float64  // the label pill's scale, about its corner nearest the tip
 	Angle       float64  // the arrow's rotation about its tip, radians clockwise
 	Press       float64  // the arrow's scale about its tip (the click's press); 1 at rest
 	Travelling  bool     // a travel has not yet arrived
@@ -706,53 +672,7 @@ type cursorModel struct {
 	fading    bool
 	fadeStart time.Time
 
-	// The label pill's reveal (reveal.rs, re-timed): pending while a travel
-	// with a new label is in flight (the pill is not drawn), then revealing
-	// over the travel's last cursorLabelReveal, so it is whole when the
-	// cursor lands and the Action runs (browser-ux 03); settled (drawn in
-	// full) otherwise.
-	labelPending   bool
-	labelRevealing bool
-	labelStart     time.Time
-
 	lastActive time.Time // the last Travel or Click
-}
-
-// revealLabel holds the label pill back while the travel just started
-// covers most of its way, then eases it in so the reveal ends as the
-// cursor lands. agent-desktop reveals after the arrival, but winuse acts
-// at the arrival: the user read `click "Search"` after the click. The
-// controller calls it after startTravel when the label is new.
-func (m *cursorModel) revealLabel() {
-	m.labelPending, m.labelRevealing = true, false
-}
-
-// labelRevealStart is when a pending label starts revealing: the reveal's
-// length before the arrival, or the travel's start for a shorter travel.
-func (m *cursorModel) labelRevealStart() time.Time {
-	return m.start.Add(max(m.path.arrive-cursorLabelReveal, 0))
-}
-
-// labelReveal advances the label's reveal to now and returns the pill's
-// opacity and scale (its pop).
-func (m *cursorModel) labelReveal(now time.Time) (op, pop float64) {
-	if m.labelPending {
-		if from := m.labelRevealStart(); !m.travel || m.arrived || !now.Before(from) {
-			m.labelPending, m.labelRevealing = false, true
-			m.labelStart = from
-		}
-	}
-	switch {
-	case m.labelPending:
-		return 0, cursorLabelPopFrom
-	case m.labelRevealing:
-		el := max(now.Sub(m.labelStart), 0)
-		if el >= cursorLabelReveal {
-			m.labelRevealing = false
-		}
-		return revealOpacity(el), labelPop(el)
-	}
-	return 1, 1
 }
 
 // startTravel begins a glide to target's centre. A hidden or fading
@@ -789,7 +709,6 @@ func (m *cursorModel) startClick(now time.Time, target Rect, scale float64, redu
 		m.tip = rectCentre(target)
 		m.travel, m.arrived = false, true
 		m.scale = scale
-		m.labelPending, m.labelRevealing = false, false
 		m.floatFrom = now
 	}
 	m.quiet(now)
@@ -912,9 +831,8 @@ func (m *cursorModel) advance(now time.Time) cursorFrame {
 		}
 		op = fadeOpacity(el)
 	}
-	labelOp, labelPop := m.labelReveal(now)
 	if m.shown {
-		f.Cursor, f.Tip, f.Opacity, f.LabelOp, f.LabelPop = true, m.tipAt(now), op, labelOp, labelPop
+		f.Cursor, f.Tip, f.Opacity = true, m.tipAt(now), op
 	}
 	f.Travelling = m.travel && !m.arrived
 	return f
@@ -929,7 +847,7 @@ func (m *cursorModel) idleDue(now time.Time) bool {
 
 // animating reports whether frames must keep coming at the frame rate.
 func (m *cursorModel) animating() bool {
-	return m.travel || m.press || m.outline || m.caret || m.fading || m.labelPending || m.labelRevealing
+	return m.travel || m.press || m.outline || m.caret || m.fading
 }
 
 // floats reports whether a resting cursor floats: shown and not with

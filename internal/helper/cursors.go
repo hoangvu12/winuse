@@ -3,10 +3,9 @@ package helper
 // One Agent Cursor per Agent (multi-agent ticket 04, ADR 0014 Decision 4,
 // like cua's agent cursor). Each Agent gets its own cursor windows, in its
 // own colour (WINUSE_CURSOR_COLOR, or the next free one of the palette),
-// with its name as the label pill's first line, over the action, such as
-// "reviewer" over `click "Save"` (ADR 0018 Decision 8). The default Agent
-// keeps the one cursor of before, in the colour of before, with the action
-// alone. Every cursor sits just above the Window its Action targets rather
+// with its name in a tag beside the arrow, such as "reviewer" (ADR 0018
+// Decision 8, cursor-look issue 11). The default Agent keeps the one
+// cursor of before, in the default colour, with no tag. Every cursor sits just above the Window its Action targets rather
 // than topmost (win.TravelAs), fades after its idle delay like before, and closes
 // when its Agent has been idle as long as the helper's idle period (the
 // Agent is gone). winuse's own captures hide them all.

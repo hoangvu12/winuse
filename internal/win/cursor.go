@@ -2,11 +2,11 @@ package win
 
 // The Agent Cursor (headless spec, ADR 0010, ticket 03): a
 // presentation-only second cursor that glides to the Element a Headless
-// Action targets, says what is happening in a label pill, and presses on
-// the click — so headless work is never invisible, without taking the
-// user's pointer, keyboard or foreground.
+// Action targets, its Agent's name in a tag beside it, and presses on the
+// click — so headless work is never invisible, without taking the user's
+// pointer, keyboard or foreground.
 //
-// The API takes screen rectangles (physical pixels) and label text only,
+// The API takes screen rectangles (physical pixels) and text only,
 // never UI Automation types, so any driver (the CDP browser tool winuse
 // will merge with) can show the same cursor. Everything is best effort:
 // no method returns an error, none panics, and none blocks its caller
@@ -38,7 +38,7 @@ import (
 )
 
 // AgentCursorClassName is the class of the Agent Cursor's layered windows
-// (the arrow with its label pill, the trail, the outline, the caret). The
+// (the arrow with its name tag, the trail, the outline, the caret). The
 // e2e tests find the cursor on the desktop by it.
 const AgentCursorClassName = "winuse.cursor"
 
@@ -220,17 +220,19 @@ func (c *AgentCursor) Travel(origin, target Rect, label string) {
 	c.TravelAbove(0, origin, target, label)
 }
 
-// TravelAbove is TravelAs with no Agent name: the default Agent's pill,
-// one line.
+// TravelAbove is TravelAs with no Agent name: the default Agent's arrow,
+// with no tag.
 func (c *AgentCursor) TravelAbove(anchor uint64, origin, target Rect, label string) {
 	c.TravelAs(anchor, origin, target, "", label)
 }
 
 // TravelAs shows the cursor, at origin's centre when it is hidden or
-// fading, else where it is, and glides it to target's centre with label
-// in the pill beside it — under name, a smaller first line in the Agent's
-// colour, when the Agent has one — its windows placed just above the
-// Window anchor in the z-order (cursor_zorder.go). It returns when the
+// fading, else where it is, and glides it to target's centre with the
+// Agent's name in the tag beside it (none when name is ""), its windows
+// placed just above the Window anchor in the z-order (cursor_zorder.go).
+// label says what the Action does; since cursor-look issue 11 the tag
+// shows only the name, as Mural's and Figma's do, so it is not drawn.
+// It returns when the
 // travel arrived (the tip within a pixel of the target, its
 // follow-through still settling while the Action runs), or after a bound
 // of about twice the travel time: a stuck UI thread never holds the
@@ -243,7 +245,7 @@ func (c *AgentCursor) TravelAs(anchor uint64, origin, target Rect, name, label s
 	done := make(chan struct{})
 	failed := make(chan struct{})
 	if !c.enqueue(func() {
-		if err := c.do(func() { c.ui.travel(anchor, origin, target, name, label, done) }); err != nil {
+		if err := c.do(func() { c.ui.travel(anchor, origin, target, name, done) }); err != nil {
 			close(failed)
 		}
 	}) {
@@ -318,14 +320,13 @@ func (c *AgentCursor) Close() {
 type cursorView interface {
 	// monitorAt returns the work area and DPI of the monitor at p.
 	monitorAt(p fpoint) (work Rect, dpi uint32)
-	// measureLabel is text's width in pixels in the label face at px
-	// logical pixels, semibold or regular, at scale.
-	measureLabel(text string, px, scale float64, regular bool) int32
+	// measureLabel is text's width in pixels in the tag's face at px
+	// logical pixels at scale.
+	measureLabel(text string, px, scale float64) int32
 	// showCursor shows the arrow at tip, turned by angle and scaled by
-	// press about its tip, and the look's label pill at labelOp and scaled
-	// by labelPop (its reveal and pop), the whole at opacity (the idle
-	// fade).
-	showCursor(tip fpoint, opacity, labelOp, labelPop, angle, press float64, look cursorLook)
+	// press about its tip, with the look's name tag, the whole at opacity
+	// (the idle fade).
+	showCursor(tip fpoint, opacity, angle, press float64, look cursorLook)
 	hideCursor()
 	// showTrail shows the comet trail pts (screen pixels) at opacity.
 	showTrail(pts []fpoint, opacity, scale float64)
@@ -375,7 +376,7 @@ type cursorUI struct {
 
 // travel starts a Travel (see AgentCursor.TravelAs); done is closed
 // when it completes, is superseded, or cannot run.
-func (u *cursorUI) travel(anchor uint64, origin, target Rect, name, label string, done chan struct{}) {
+func (u *cursorUI) travel(anchor uint64, origin, target Rect, name string, done chan struct{}) {
 	if u.closed {
 		close(done)
 		return
@@ -384,58 +385,34 @@ func (u *cursorUI) travel(anchor uint64, origin, target Rect, name, label string
 	to := rectCentre(target)
 	work, dpi := u.view.monitorAt(to)
 	scale := cursorScale(dpi)
-	look := u.lookFor(to, name, label, work, scale)
-	// A new label waits for the cursor to land, then fades in; the same
-	// label on a cursor already showing it travels with it (the rule of
-	// agent-desktop's reveal.rs, cursor_motion.go).
-	newLabel := look.Label != "" &&
-		(look.Label != u.look.Label || look.Name != u.look.Name || !u.model.visibleForTravel())
-	u.look = look
+	// The tag shows whenever the cursor does, fading with it (Mural,
+	// Figma): the name does not change from one Action to the next.
+	u.look = u.lookFor(to, name, work, scale)
 	u.finishTravel() // a travel still in flight is superseded
 	u.done = done
 	u.model.startTravel(now, origin, target, scale, u.view.reducedMotion())
-	if newLabel {
-		u.model.revealLabel()
-	}
 	u.view.raise(anchor)
 	u.render(now)
 }
 
 // lookFor computes the cursor window's look for a travel to tip: the
-// Agent's name and the label sanitized, each line ellipsized on its own to
-// the pill's width (and the work area's), and the pill placed beside the
-// tip. A name with no label is the pill's one line, as the label.
-func (u *cursorUI) lookFor(tip fpoint, name, label string, work Rect, scale float64) cursorLook {
+// Agent's name sanitized, capped and ellipsized to the tag's width (and
+// the work area's), and the tag placed beside the tip. No name, no tag.
+func (u *cursorUI) lookFor(tip fpoint, name string, work Rect, scale float64) cursorLook {
 	look := cursorLook{Scale: scale}
-	name, text := capName(sanitizeLabel(name)), sanitizeLabel(label)
-	if text == "" {
-		name, text = "", name
-	}
-	if text == "" {
-		return look
-	}
-	// Under a name the action is drawn regular; alone, semibold.
-	regular := name != ""
-	measure := func(px float64, regular bool) func(string) int32 {
-		return func(s string) int32 { return u.view.measureLabel(s, px, scale, regular) }
-	}
+	measure := func(s string) int32 { return u.view.measureLabel(s, cursorPillFontPx, scale) }
 	maxW := pillTextMax(scale)
 	if wa := work.Width() - 2*scaled(cursorPillPadX, scale); wa > 0 {
 		maxW = min(maxW, wa)
 	}
-	text = ellipsize(text, maxW, measure(cursorPillFontPx, regular))
-	name = ellipsize(name, maxW, measure(cursorPillNameFontPx, false))
-	if text == "" {
+	name = ellipsize(capName(sanitizeLabel(name)), maxW, measure)
+	if name == "" {
 		return look
 	}
-	textW := measure(cursorPillFontPx, regular)(text) + 1
-	w, h := pillSize(textW, scale)
-	if name != "" {
-		w, h = pillSize2(measure(cursorPillNameFontPx, false)(name)+1, textW, scale)
-	}
+	w, h := pillSize(measure(name)+1, scale)
 	pill := placePill(tip, w, h, work, scale)
 	tx, ty := roundPoint(tip)
-	look.Name, look.Label = name, text
+	look.Name = name
 	look.Pill = Rect{Left: pill.Left - tx, Top: pill.Top - ty, Right: pill.Right - tx, Bottom: pill.Bottom - ty}
 	return look
 }
@@ -449,7 +426,7 @@ func (u *cursorUI) click(anchor uint64, target Rect) {
 	_, dpi := u.view.monitorAt(rectCentre(target))
 	u.fx = cursorScale(dpi)
 	if !u.model.visibleForTravel() {
-		u.look = cursorLook{Scale: u.fx} // appearing without a travel: no label
+		u.look = cursorLook{Scale: u.fx} // appearing without a travel: no tag
 	}
 	u.model.startClick(now, target, u.fx, u.view.reducedMotion())
 	u.view.raise(anchor)
@@ -511,7 +488,7 @@ func (u *cursorUI) traceFrame(now, began time.Time, animating bool) {
 // show hands one frame to the view.
 func (u *cursorUI) show(f cursorFrame) {
 	if f.Cursor {
-		u.view.showCursor(f.Tip, f.Opacity, f.LabelOp, f.LabelPop, f.Angle, f.Press, u.look)
+		u.view.showCursor(f.Tip, f.Opacity, f.Angle, f.Press, u.look)
 	} else {
 		u.view.hideCursor()
 	}

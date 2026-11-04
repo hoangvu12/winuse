@@ -195,9 +195,9 @@ func TestCursorTravelDurationIsCuasFitts(t *testing.T) {
 // at the arrival and after it; short hops and reduced motion never turn.
 func TestTipTurnsAlongThePathAndLandsUpright(t *testing.T) {
 	right := newCursorPath(fpoint{0, 500}, fpoint{900, 500}, Rect{}, 1, false)
-	// Rightward, the tip (whose own axis, between its wings, points up and
-	// a little left) turns some 105–110° clockwise.
-	if want := -cursorTipAxis; math.Abs(right.turn-want) > 1e-9 || want < 100*math.Pi/180 || want > 112*math.Pi/180 {
+	// Rightward, the dart's tip (whose own axis, between its wings, points
+	// up-left along the diagonal) turns some 135° clockwise.
+	if want := -cursorTipAxis; math.Abs(right.turn-want) > 1e-9 || want < 130*math.Pi/180 || want > 140*math.Pi/180 {
 		t.Errorf("a rightward travel turns %.1f°, want %.1f°", right.turn*180/math.Pi, want*180/math.Pi)
 	}
 	if right.tipAngle(0) != 0 || right.tipAngle(right.arrive) != 0 || right.tipAngle(right.dur) != 0 {
@@ -369,8 +369,8 @@ func TestPlacePillBesideTheTipAndFlipsAtWorkAreaEdges(t *testing.T) {
 	work := Rect{Left: 0, Top: 0, Right: 1920, Bottom: 1040}
 	const w, h = 200, 24
 	ox, oy := scaled(cursorPillOffsetX, 1), scaled(cursorPillOffsetY, 1)
-	if ox != 14 || oy != 30 {
-		t.Fatalf("pill offsets = %d, %d; want 14, 30, just past the arrow's tail", ox, oy)
+	if ox != 13 || oy != 12 {
+		t.Fatalf("tag offsets = %d, %d; want 13 (12.5 rounded), 12: over the arrow's back", ox, oy)
 	}
 
 	got := placePill(fpoint{500, 400}, w, h, work, 1)
@@ -413,7 +413,8 @@ func TestPlacePillScalesWithDPI(t *testing.T) {
 	work := Rect{Right: 3840, Bottom: 2100}
 	one := placePill(fpoint{1000, 800}, 100, 24, work, 1)
 	two := placePill(fpoint{1000, 800}, 100, 24, work, 2)
-	if two.Left-1000 != 2*(one.Left-1000) || two.Top-800 != 2*(one.Top-800) {
+	// Each offset is rounded on its own (12.5 → 13 at 96 DPI, 25 at 192).
+	if d := two.Left - 1000 - 2*(one.Left-1000); d < -1 || d > 1 || two.Top-800 != 2*(one.Top-800) {
 		t.Errorf("at 192 DPI the offsets must double: %+v vs %+v", two, one)
 	}
 	if cursorScale(96) != 1 || cursorScale(144) != 1.5 || cursorScale(0) != 1 {
@@ -424,14 +425,14 @@ func TestPlacePillScalesWithDPI(t *testing.T) {
 func TestPillSizeCapsAndScales(t *testing.T) {
 	w1, h1 := pillSize(100, 1)
 	w2, h2 := pillSize(200, 2)
-	if w1 != 100+2*11 || h1 != 26 {
-		t.Errorf("pill at scale 1 = %dx%d, want text plus 11 each end × 26", w1, h1)
+	if w1 != 100+2*8 || h1 != 22 {
+		t.Errorf("tag at scale 1 = %dx%d, want text plus 8 each end × 22", w1, h1)
 	}
 	if w2 != 2*w1 || h2 != 2*h1 {
 		t.Errorf("pill at scale 2 = %dx%d, want double %dx%d", w2, h2, w1, h1)
 	}
 	if w, _ := pillSize(100000, 1); w != 360 {
-		t.Errorf("a huge label's pill is %d wide, want the 360 cap", w)
+		t.Errorf("a huge name's tag is %d wide, want the 360 cap", w)
 	}
 	b1, b2 := arrowBounds(1), arrowBounds(2)
 	if b2.Height() < 2*b1.Height()-6 || b2.Height() > 2*b1.Height()+2 {
@@ -439,38 +440,35 @@ func TestPillSizeCapsAndScales(t *testing.T) {
 	}
 }
 
-// TestArrowShapeAndBounds (cursor-look 02): cua's upright arrow, 42 px
-// for its 128-unit canvas: the tip first, the body about 20×25 px below
-// and right of it, the left edge vertical; the bounds hold it turned any
-// way, pressed, with its glow and halo.
+// TestArrowShapeAndBounds (cursor-look 11): Mural's dart, tip at the
+// hotspot, wings at (19, 6.5) and (6.5, 18), the back curving in toward
+// the tip by about cursorArrowNotch, its corners rounded; the bounds hold
+// it turned any way, pressed, with its rim and shadow.
 func TestArrowShapeAndBounds(t *testing.T) {
+	if cursorArrowNotch != 3.5 {
+		t.Errorf("the back's notch is %v px, want the user's 3.5", cursorArrowNotch)
+	}
 	for _, scale := range []float64{1, 1.5, 2} {
 		pts := arrowPoints(scale)
-		if pts[0] != (fpoint{}) {
-			t.Errorf("scale %v: the arrow's first point is its tip, got %+v", scale, pts[0])
-		}
-		if len(pts) != 8*cursorArrowFlat {
-			t.Errorf("scale %v: %d points, want 8 beziers of %d", scale, len(pts), cursorArrowFlat)
-		}
 		minX, minY, maxX, maxY := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
 		for _, p := range pts {
 			minX, minY = math.Min(minX, p.X), math.Min(minY, p.Y)
 			maxX, maxY = math.Max(maxX, p.X), math.Max(maxY, p.Y)
 		}
-		// cua's 19.9×25.3, narrowed and made taller about the tip.
-		if w, h := (maxX-minX)/scale, (maxY-minY)/scale; math.Abs(w-19.9*cursorArrowNarrow) > 0.2 || math.Abs(h-25.3*cursorArrowTall) > 0.2 {
-			t.Errorf("scale %v: the body spans %.1f×%.1f logical px, want about 16.3×29.9", scale, w, h)
+		// The rounded tip sits just inside the hotspot; the rounded wings
+		// just inside 19 and 18.
+		if minX < 0 || minY < 0 || minX > 0.5*scale || minY > 0.5*scale {
+			t.Errorf("scale %v: the outline starts at (%.2f, %.2f), want just inside the tip", scale, minX, minY)
 		}
-		// The tip is the sharpest corner: about 43° between its wings
-		// (cua's is about 56°), like the system arrow's 45°.
-		wl, wr := arrowCanvas(arrowWings[0]), arrowCanvas(arrowWings[1])
-		if a := math.Abs(math.Atan2(wl.Y, wl.X)-math.Atan2(wr.Y, wr.X)) * 180 / math.Pi; a < 41 || a > 45 {
-			t.Errorf("the tip's angle is %.1f°, want about 43°", a)
+		if w, h := maxX/scale, maxY/scale; w < 17.5 || w > 19 || h < 16.5 || h > 18 {
+			t.Errorf("scale %v: the dart spans %.1f×%.1f logical px, want about 18×17", scale, w, h)
 		}
-		// Upright: the left edge (the second bezier) is vertical.
-		a, b := pts[cursorArrowFlat], pts[2*cursorArrowFlat-1]
-		if math.Abs(a.X-b.X) > 0.2*scale || b.Y-a.Y < 15*scale {
-			t.Errorf("scale %v: the left edge runs %+v→%+v, want vertical", scale, a, b)
+		// The back curves in: its middle lies about the notch closer to the
+		// tip than the line between the wings (a little more, as the
+		// rounded wings pull its ends in too).
+		mid := fpoint{X: (19 + 6.5) / 2 * scale, Y: (6.5 + 18) / 2 * scale}
+		if d := polygonSD(pts, mid.X, mid.Y) / scale; d < cursorArrowNotch || d > cursorArrowNotch+1 {
+			t.Errorf("scale %v: the back's middle is %.2f px in, want about %v", scale, d, cursorArrowNotch)
 		}
 		r := float64(arrowReach(scale))
 		bd := arrowBounds(scale)
@@ -478,13 +476,16 @@ func TestArrowShapeAndBounds(t *testing.T) {
 			t.Errorf("scale %v: bounds %+v, want a square of reach %v about the tip", scale, bd, r)
 		}
 		for _, p := range pts {
-			if math.Hypot(p.X, p.Y)*cursorPressMax+arrowGlowReach(scale) > r {
-				t.Fatalf("scale %v: %+v with its glow leaves the reach %v", scale, p, r)
+			if (math.Hypot(p.X, p.Y)+arrowOutset(scale))*cursorPressMax > r {
+				t.Fatalf("scale %v: %+v with its rim and shadow leaves the reach %v", scale, p, r)
 			}
 		}
-		if halo := (math.Hypot(cursorArrowHaloX, cursorArrowHaloY) + cursorArrowHaloR) * scale * cursorPressMax; halo > r {
-			t.Errorf("scale %v: the halo reaches %v, past %v", scale, halo, r)
+		if r > 28*scale {
+			t.Errorf("scale %v: the reach %v is far more than the dart needs", scale, r)
 		}
+	}
+	if a := cursorTipAxis * 180 / math.Pi; a < -137 || a > -134 {
+		t.Errorf("the arrow's axis is %.1f°, want about −135° (the diagonal back to the tip)", a)
 	}
 }
 
@@ -522,65 +523,44 @@ func TestSanitizeLabelMakesOneLine(t *testing.T) {
 	}
 }
 
-// TestNamedAgentsPillHasTwoLines (cursor-look 09, ADR 0018 Decision 8):
-// a named Agent's pill shows its name, smaller, over the action; each line
-// is cut to the pill's width on its own; the place beside the tip and the
-// width cap are the one-line pill's; the default Agent's pill is one line
-// as before, and so is a name with no action.
-func TestNamedAgentsPillHasTwoLines(t *testing.T) {
+// TestTagShowsTheNameOnly (cursor-look 11): a named Agent's tag shows its
+// name alone, one line, cut to 24 characters; an Agent with no name has
+// no tag, only the arrow.
+func TestTagShowsTheNameOnly(t *testing.T) {
 	u := &cursorUI{view: &fakeCursorView{}}
 	work := Rect{Right: 1920, Bottom: 1040}
 	tip := fpoint{X: 500, Y: 400}
 	for _, scale := range []float64{1, 1.5, 2} {
-		one := u.lookFor(tip, "", `click "Save"`, work, scale)
-		two := u.lookFor(tip, "reviewer", `click "Save"`, work, scale)
-		if one.Name != "" || one.Pill.Height() != scaled(cursorPillHeight, scale) {
-			t.Errorf("scale %v: the default Agent's pill = %+v, want one line", scale, one)
+		if l := u.lookFor(tip, "", work, scale); l.Name != "" || l.Pill != (Rect{}) {
+			t.Errorf("scale %v: an Agent with no name = %+v, want no tag", scale, l)
 		}
-		if two.Name != "reviewer" || two.Label != `click "Save"` || two.Pill.Height() != pillHeight2(scale) {
-			t.Errorf("scale %v: a named Agent's look = %+v, want its name over the action", scale, two)
+		l := u.lookFor(tip, "reviewer", work, scale)
+		w, h := pillSize(u.view.measureLabel("reviewer", cursorPillFontPx, scale)+1, scale)
+		if l.Name != "reviewer" || l.Pill.Width() != w || l.Pill.Height() != h {
+			t.Errorf("scale %v: a named Agent's look = %+v, want its name in a %dx%d tag", scale, l, w, h)
 		}
-		if two.Pill.Left != one.Pill.Left || two.Pill.Top != one.Pill.Top {
-			t.Errorf("scale %v: the two-line pill moved: %+v vs %+v", scale, two.Pill, one.Pill)
+		if l.Pill.Left != scaled(cursorPillOffsetX, scale) || l.Pill.Top != scaled(cursorPillOffsetY, scale) {
+			t.Errorf("scale %v: the tag sits at %+v off the tip", scale, l.Pill)
 		}
-		l := layoutCursorWindow(two)
-		if l.Name.Height() <= 0 || l.Name.Bottom != l.Text.Top || !rectWithin(l.Pill, l.Name) || !rectWithin(l.Pill, l.Text) {
-			t.Errorf("scale %v: name %+v over text %+v inside pill %+v", scale, l.Name, l.Text, l.Pill)
-		}
-		if pillRadius(two.Pill, scale) != pillRadius(one.Pill, scale) {
-			t.Errorf("scale %v: the two-line pill's corners differ from one line's", scale)
-		}
-	}
-	// Each line is cut on its own: a long name to 24 characters, a long
-	// action to the pill's width.
-	long := strings.Repeat("n", 300)
-	l := u.lookFor(tip, long, `click "Save"`, work, 1)
-	if !strings.HasSuffix(l.Name, "…") || l.Label != `click "Save"` || l.Pill.Width() > scaled(cursorPillMaxWidth, 1) {
-		t.Errorf("a long name is cut, the action kept: %q / %q, width %d", l.Name, l.Label, l.Pill.Width())
-	}
-	l = u.lookFor(tip, "reviewer", long, work, 1)
-	if l.Name != "reviewer" || !strings.HasSuffix(l.Label, "…") {
-		t.Errorf("a long action is cut, the name kept: %q / %q", l.Name, l.Label)
-	}
-	// A name with no action is the one line.
-	if l := u.lookFor(tip, "painter", "", work, 1); l.Name != "" || l.Label != "painter" {
-		t.Errorf("a name alone = %+v, want it as the one line", l)
 	}
 	// Names are capped at 24 characters, the last an ellipsis, before they
-	// are measured.
-	l = u.lookFor(tip, "release-notes-writer-for-the-quarterly-report", `click "Save"`, work, 1)
+	// are measured, and made one line.
+	l := u.lookFor(tip, "release-notes-writer-for-the-quarterly-report", work, 1)
 	if r := []rune(l.Name); len(r) != cursorNameMaxRunes || r[len(r)-1] != '…' {
 		t.Errorf("a long name = %q, want 24 characters ending in …", l.Name)
+	}
+	if l := u.lookFor(tip, " two\nlines ", work, 1); l.Name != "two lines" {
+		t.Errorf("a name is one line: %q", l.Name)
 	}
 	if capName("reviewer") != "reviewer" || capName(strings.Repeat("a", 24)) != strings.Repeat("a", 24) {
 		t.Error("a name of 24 characters or fewer is kept whole")
 	}
 }
 
-// TestPillTextColorHasTheBetterContrast (cursor-look 10): the text on the
-// flat pill is white or near-black, whichever contrasts more with the
+// TestPillTextColorHasTheBetterContrast (cursor-look 10, 11): the text on
+// the flat tag is white or near-black, whichever contrasts more with the
 // Agent's colour, at least 4.5:1 (WCAG AA) on the default and every
-// palette colour but the saturated reds, where white still leads.
+// palette colour; white on all but the yellow.
 func TestPillTextColorHasTheBetterContrast(t *testing.T) {
 	for _, c := range append([]color.RGBA{cursorAccent}, CursorPalette...) {
 		ink := pillTextColor(c)
@@ -592,11 +572,12 @@ func TestPillTextColorHasTheBetterContrast(t *testing.T) {
 			t.Errorf("%v: text %v has the lower contrast", c, ink)
 		}
 		if contrast(ink, c) < 4.5 {
-			t.Logf("%v: text %v at %.1f:1", c, ink, contrast(ink, c))
+			t.Errorf("%v: text %v at %.1f:1, under 4.5:1", c, ink, contrast(ink, c))
 		}
-	}
-	if pillTextColor(cursorAccent) != cursorInkColor {
-		t.Error("the default pastel blue takes near-black text")
+		yellow := c == CursorPalette[len(CursorPalette)-1]
+		if yellow != (ink == cursorInkColor) {
+			t.Errorf("%v takes %v: white on all but the yellow", c, ink)
+		}
 	}
 	if pillTextColor(color.RGBA{R: 0x1A, G: 0x40, B: 0x9A, A: 0xFF}) != cursorTextColor {
 		t.Error("a dark blue takes white text")
@@ -610,7 +591,7 @@ func TestLayoutCursorWindowHoldsDartAndPill(t *testing.T) {
 	for _, scale := range []float64{1, 1.5, 2} {
 		w, h := pillSize(150, scale)
 		pill := placePill(fpoint{800, 500}, w, h, Rect{Right: 1920, Bottom: 1080}, scale)
-		look := cursorLook{Scale: scale, Label: "click", Pill: Rect{
+		look := cursorLook{Scale: scale, Name: "claude", Pill: Rect{
 			Left: pill.Left - 800, Top: pill.Top - 500, Right: pill.Right - 800, Bottom: pill.Bottom - 500,
 		}}
 		l := layoutCursorWindow(look)
@@ -631,17 +612,16 @@ func TestLayoutCursorWindowHoldsDartAndPill(t *testing.T) {
 		if float64(-l.OriginX) != l.Tip.X || float64(-l.OriginY) != l.Tip.Y {
 			t.Errorf("scale %v: origin (%d,%d) and tip %+v disagree", scale, l.OriginX, l.OriginY, l.Tip)
 		}
-		// The text is padded inside the pill: its ends by the padding, top
-		// and bottom by the inset.
-		pad, inset := scaled(cursorPillPadX, scale), scaled(cursorPillTextInset, scale)
-		if want := (Rect{Left: l.Pill.Left + pad, Top: l.Pill.Top + inset, Right: l.Pill.Right - pad, Bottom: l.Pill.Bottom - inset}); l.Text != want {
+		// The name is padded inside the tag at its ends, centred upright.
+		pad := scaled(cursorPillPadX, scale)
+		if want := (Rect{Left: l.Pill.Left + pad, Top: l.Pill.Top, Right: l.Pill.Right - pad, Bottom: l.Pill.Bottom}); l.Text != want {
 			t.Errorf("scale %v: text %+v, want %+v inside pill %+v", scale, l.Text, want, l.Pill)
 		}
 	}
-	// No label: the window is just the arrow.
+	// No name: the window is just the arrow.
 	bare := layoutCursorWindow(cursorLook{Scale: 1})
 	if ab := arrowBounds(1); bare.W != ab.Width() || bare.H != ab.Height() || bare.Pill != (Rect{}) {
-		t.Errorf("a cursor without a label = %+v, want only the arrow %+v", bare, ab)
+		t.Errorf("a cursor without a name = %+v, want only the arrow %+v", bare, ab)
 	}
 }
 
@@ -738,39 +718,49 @@ func TestDimPixelAndShadowStrength(t *testing.T) {
 func TestDrawPillBodyAndShadow(t *testing.T) {
 	const w, h = 140, 50
 	s := &surface{w: w, h: h, pix: make([]uint32, w*h)}
-	pill := Rect{Left: 10, Top: 10, Right: 130, Bottom: 36} // 26 tall, like scale 1
+	pill := Rect{Left: 10, Top: 10, Right: 130, Bottom: 32} // 22 tall, like scale 1
 	s.drawPill(pill, 1, cursorAccent)
 	at := func(x, y int) uint32 { return s.pix[y*w+x] }
-	// The body is flat and opaque in the Agent's colour, edge to edge: no
-	// gradient, no rim (cursor-look 10).
-	for _, xy := range [][2]int{{10, 23}, {70, 10}, {70, 23}, {70, 35}, {129, 23}} {
+	// The body is flat and opaque in the Agent's colour, edge to edge.
+	for _, xy := range [][2]int{{10, 21}, {70, 10}, {70, 21}, {70, 31}, {129, 21}} {
 		if p := at(xy[0], xy[1]); p != premultiply(cursorAccent, 1) {
-			t.Errorf("the pill at %v = %#08x, want the flat accent", xy, p)
+			t.Errorf("the tag at %v = %#08x, want the flat accent", xy, p)
 		}
 	}
-	// Below the pill a soft black shadow falls, above it almost none.
-	below, above := at(70, 38), at(70, 7)
+	// A white rim a pixel wide wraps it (cursor-look 11).
+	for _, xy := range [][2]int{{9, 21}, {70, 9}, {130, 21}} {
+		if p := at(xy[0], xy[1]); p != 0xFFFFFFFF {
+			t.Errorf("the rim at %v = %#08x, want white", xy, p)
+		}
+	}
+	// Below the rim a soft black shadow falls, above it almost none.
+	below, above := at(70, 34), at(70, 7)
 	if below>>24 == 0 || below&0x00FFFFFF != 0 || above>>24 >= below>>24 {
 		t.Errorf("the shadow is black and offset down: above %#08x, below %#08x", above, below)
 	}
 	if float64(below>>24) > cursorPillShadowOpacity*255+1 {
-		t.Errorf("below the pill = %#08x, stronger than its shadow", below)
+		t.Errorf("below the tag = %#08x, stronger than its shadow", below)
 	}
-	// The corners are rounded, not fully: the corner pixel is cut off, but
-	// six pixels down the edge is already the body (a fully rounded 26 px
-	// pill would still be curving away there).
-	if p := at(10, 10); p>>24 >= 0x40 {
-		t.Errorf("the pill's corner = %#08x, want rounded off", p)
+	// The corners are rounded by 5.5 px: the corner pixel is cut off, but
+	// four pixels down the edge is already the body.
+	if p := at(10, 10); p == premultiply(cursorAccent, 1) {
+		t.Errorf("the tag's corner = %#08x, want rounded off", p)
 	}
-	if p := at(10, 16); p>>24 < 0xE0 {
-		t.Errorf("three pixels down the edge = %#08x, want the body: the radius is small", p)
+	if p := at(10, 16); p != premultiply(cursorAccent, 1) {
+		t.Errorf("six pixels down the edge = %#08x, want the body: the radius is small", p)
 	}
 	if r := pillRadius(pill, 1); r != cursorPillRadius {
 		t.Errorf("the corner radius is %v, want %v", r, cursorPillRadius)
 	}
+	if !rectWithin(Rect{Right: w, Bottom: h}, pillShadowBounds(pill, 1)) {
+		t.Fatal("test surface too small")
+	}
 	for i, p := range s.pix {
 		if !validPremultiplied(p) {
 			t.Fatalf("pixel %d = %#08x is not premultiplied", i, p)
+		}
+		if x, y := i%w, i/w; p != 0 && !inRect(pillShadowBounds(pill, 1), x, y) {
+			t.Fatalf("pixel (%d,%d) = %#08x lies outside the tag's bounds", x, y, p)
 		}
 	}
 }
@@ -829,10 +819,10 @@ func validPremultiplied(p uint32) bool {
 	return p>>16&0xFF <= a && p>>8&0xFF <= a && p&0xFF <= a
 }
 
-// TestArrowPixels (cursor-look 02): the arrow is filled with the
-// accent inside a white rim, wrapped in a faint glow of its own colour —
-// never a dark shadow — and every sprite drawn from the master, turned or
-// pressed, keeps its tip where it was.
+// TestArrowPixels (cursor-look 11): the dart is filled flat with the
+// accent inside a white rim a pixel wide outside its outline, over a soft
+// black shadow below — no glow or halo — and every sprite drawn from the
+// master, turned or pressed, keeps its tip where it was.
 func TestArrowPixels(t *testing.T) {
 	for _, scale := range []float64{1, 1.5, 2} {
 		m := newArrowMaster(scale, cursorAccent)
@@ -851,44 +841,74 @@ func TestArrowPixels(t *testing.T) {
 			pts[i].Y += c
 		}
 		rim := cursorArrowRim * scale
-		var fills, rims, glows int
+		var fills, rims, shadows int
 		for y := 0; y < n; y++ {
 			for x := 0; x < n; x++ {
 				p := s.pix[y*n+x]
 				if !validPremultiplied(p) {
 					t.Fatalf("scale %v: pixel (%d,%d) = %#08x is not premultiplied", scale, x, y, p)
 				}
-				sd := polygonSD(pts, float64(x)+0.5, float64(y)+0.5)
+				cx, cy := float64(x)+0.5, float64(y)+0.5
+				sd := polygonSD(pts, cx, cy)
 				switch {
-				case sd < -rim-1: // the fill
+				case sd < -1: // the fill
 					fills++
 					if d := colourDist(p, cursorAccent); p>>24 != 0xFF || d > 3 {
 						t.Fatalf("scale %v: fill pixel (%d,%d) = %#08x, want the accent", scale, x, y, p)
 					}
-				case math.Abs(sd) < rim-0.6: // the rim, white
+				case sd > 0.75 && sd < rim-0.75: // the rim, white (only wide enough above 1×)
 					rims++
-					if p>>24 != 0xFF || p&0xFF < 0xF0 || p>>8&0xFF < 0xF0 || p>>16&0xFF < 0xF0 {
+					if p>>24 != 0xFF || p&0xFF < 0xE8 || p>>8&0xFF < 0xE8 || p>>16&0xFF < 0xE8 {
 						t.Fatalf("scale %v: rim pixel (%d,%d) = %#08x, want white", scale, x, y, p)
 					}
-				case sd > rim+1.5 && p != 0: // the glow and halo: the accent, faint
-					glows++
-					// Eight strokes of 2–9.5 % stack to about 34 % at the rim;
-					// at a few levels of alpha the colour is all rounding.
-					if p>>24 > 0x5A || (p>>24 >= 40 && colourDist(p, cursorAccent) > 16) {
-						t.Fatalf("scale %v: glow pixel (%d,%d) = %#08x, want a faint accent", scale, x, y, p)
+				case sd > rim+1 && p != 0: // the shadow: black, faint, below
+					shadows++
+					if p&0x00FFFFFF != 0 || float64(p>>24) > cursorArrowShadowOp*255+1 {
+						t.Fatalf("scale %v: shadow pixel (%d,%d) = %#08x, want faint black", scale, x, y, p)
 					}
 				}
 			}
 		}
-		if fills == 0 || rims == 0 || glows == 0 {
-			t.Errorf("scale %v: %d fill, %d rim, %d glow pixels; want some of each", scale, fills, rims, glows)
+		if fills == 0 || shadows == 0 || (scale >= 2 && rims == 0) {
+			t.Errorf("scale %v: %d fill, %d rim, %d shadow pixels; want some of each", scale, fills, rims, shadows)
+		}
+		// The rim is white just outside the outline, along the back too.
+		// Walk in from the wings' midpoint toward the tip to the back's
+		// edge, then half the rim out again.
+		mid, l := fpoint{X: c + 12.75*scale, Y: c + 12.25*scale}, math.Hypot(12.75, 12.25)
+		ux, uy := -12.75/l, -12.25/l
+		k := 0.0
+		for polygonSD(pts, mid.X+ux*k, mid.Y+uy*k) > 0 {
+			k += 0.01
+		}
+		back := fpoint{X: mid.X + ux*(k-rim/2), Y: mid.Y + uy*(k-rim/2)}
+		if p := s.pix[int(back.Y)*n+int(back.X)]; p>>24 < 0xC0 || p&0xFF < 0xB0 {
+			t.Errorf("scale %v: just outside the back = %#08x, want the white rim", scale, p)
 		}
 		if p := s.pix[0]; p != 0 {
 			t.Errorf("scale %v: the box's corner = %#08x, want transparent", scale, p)
 		}
+		// The shadow falls below: under the dart more of it than above.
+		var up, down float64
+		for x := 0; x < n; x++ {
+			for y := 0; y < n; y++ {
+				p := s.pix[y*n+x]
+				if p == 0 || p&0x00FFFFFF != 0 {
+					continue
+				}
+				if y > int(r)+int(10*scale) {
+					down += float64(p >> 24)
+				} else if y < int(r) {
+					up += float64(p >> 24)
+				}
+			}
+		}
+		if down <= up {
+			t.Errorf("scale %v: the shadow weighs %v above the tip, %v below the body", scale, up, down)
+		}
 		// Turned a quarter clockwise about the tip, each pixel is the
 		// upright one at (x, y) moved to (−y, x): only the edges' sampling
-		// differs.
+		// differs (and the shadow, which turns with it).
 		turned := draw(math.Pi/2, 1)
 		body := func(s *surface, x, y int) uint32 { return s.pix[(int(r)+y)*n+int(r)+x] >> 24 }
 		var off, all float64
@@ -902,11 +922,12 @@ func TestArrowPixels(t *testing.T) {
 		if off > 0.03*all {
 			t.Errorf("scale %v: turned a quarter, %.1f %% of the arrow's weight moved elsewhere", scale, 100*off/all)
 		}
-		dy := int(15 * scale)
-		if body(s, 0, dy) != 0xFF || body(draw(math.Pi/2, 1), -dy, 0) != 0xFF {
-			t.Errorf("scale %v: turned 90° clockwise the body below the tip swings to its left", scale)
+		d := int(7 * scale)
+		if body(s, d, d) != 0xFF || body(draw(math.Pi/2, 1), -d-1, d) != 0xFF {
+			t.Errorf("scale %v: turned 90° clockwise the body below-right of the tip swings below-left", scale)
 		}
-		if body(draw(0, 0.93), 0, int(27*scale)) >= body(s, 0, int(27*scale)) && body(s, 0, int(27*scale)) > 0 {
+		far := int(13 * scale)
+		if body(draw(0, 0.93), far, far) >= body(s, far, far) && body(s, far, far) > 0 {
 			t.Errorf("scale %v: pressed to 93 %% the arrow shrinks toward its tip", scale)
 		}
 	}
@@ -1016,45 +1037,6 @@ func TestOutlinePopRedrawsOnlyWhatMoves(t *testing.T) {
 	}
 }
 
-func TestScalePixelsAboutAnAnchor(t *testing.T) {
-	const w, h = 40, 20
-	src := make([]uint32, w*h)
-	for y := 5; y < 15; y++ {
-		for x := 10; x < 30; x++ {
-			src[y*w+x] = premultiply(cursorTextColor, 1)
-		}
-	}
-	all := Rect{Right: w, Bottom: h}
-	dst := make([]uint32, w*h)
-	scalePixels(dst, src, w, h, fpoint{X: 10, Y: 5}, 1, all)
-	for i := range src {
-		if dst[i] != src[i] {
-			t.Fatalf("scaling by 1 changed pixel %d: %#08x vs %#08x", i, dst[i], src[i])
-		}
-	}
-	// Scaled by 0.5 about the block's top-left corner, it shrinks toward
-	// that corner: the corner stays, the far half empties.
-	clear(dst)
-	scalePixels(dst, src, w, h, fpoint{X: 10, Y: 5}, 0.5, all)
-	if dst[6*w+11] != src[6*w+11] {
-		t.Errorf("near the anchor = %#08x, want the block", dst[6*w+11])
-	}
-	if dst[12*w+25] != 0 {
-		t.Errorf("the far part = %#08x, want emptied by the shrink", dst[12*w+25])
-	}
-	if dst[9*w+19]>>24 != 0xFF || dst[9*w+21]>>24 > 0x20 {
-		t.Errorf("the shrunk block ends at x = 20: %#08x, %#08x", dst[9*w+19], dst[9*w+21])
-	}
-	for i, p := range dst {
-		if !validPremultiplied(p) {
-			t.Fatalf("pixel %d = %#08x is not premultiplied", i, p)
-		}
-	}
-}
-
-// TestDrawTrailWidensAndFadesToItsTail (cursor-look 06): thin and faint
-// at its tail, wide and stronger at its head, in the lifted accent, with
-// no beads where its pieces meet.
 func TestDrawTrailWidensAndFadesToItsTail(t *testing.T) {
 	var pts []fpoint
 	for i := 0; i <= cursorTrailSegments; i++ {
@@ -1152,11 +1134,7 @@ func TestClickTimelinePressAndOutline(t *testing.T) {
 }
 
 func TestPopCurvesMatchAgentDesktop(t *testing.T) {
-	// CoreAnimation's curves: ease-out starts fast, ease-in-out is
-	// symmetric about its middle.
-	if caEaseOut(0) != 0 || caEaseOut(1) != 1 || caEaseOut(0.25) < 0.35 {
-		t.Errorf("caEaseOut = %v at 0.25, want a fast start", caEaseOut(0.25))
-	}
+	// CoreAnimation's ease-in-out is symmetric about its middle.
 	if math.Abs(caEaseInOut(0.5)-0.5) > 1e-9 || math.Abs(caEaseInOut(0.3)+caEaseInOut(0.7)-1) > 1e-9 {
 		t.Errorf("caEaseInOut is not symmetric: %v, %v, %v", caEaseInOut(0.3), caEaseInOut(0.5), caEaseInOut(0.7))
 	}
@@ -1200,127 +1178,25 @@ func TestPopCurvesMatchAgentDesktop(t *testing.T) {
 			t.Errorf("highlight opacity at %v = %v, want within [%v, %v]", tc.at, op, tc.lo, tc.hi)
 		}
 	}
-	// The label grows from 0.94 to 1 over the reveal, eased out.
-	if labelPop(0) != 0.94 || labelPop(cursorLabelReveal) != 1 || labelPop(time.Second) != 1 {
-		t.Errorf("labelPop = %v, %v; want 0.94 → 1", labelPop(0), labelPop(cursorLabelReveal))
-	}
-	if half := labelPop(cursorLabelReveal / 2); half <= 0.97 || half >= 1 {
-		t.Errorf("half-way the label is %v, past half its growth (eased out)", half)
-	}
-}
-
-func TestPopAnchorIsTheBubbleWindowsBottomLeft(t *testing.T) {
-	// The macOS bubble window is the pill grown by its 8 pt margin; its
-	// content layer scales about the window's bottom-left corner.
-	pill := Rect{Left: 20, Top: 30, Right: 220, Bottom: 54}
-	if got := popAnchor(pill, 1); got != (fpoint{X: 12, Y: 62}) {
-		t.Errorf("anchor = %+v, want 8 left of and below the pill's bottom-left (12, 62)", got)
-	}
-	if got := popAnchor(pill, 2); got != (fpoint{X: 4, Y: 70}) {
-		t.Errorf("anchor at scale 2 = %+v, want the margin doubled (4, 70)", got)
-	}
-	// Scaling about the anchor keeps it and pulls the rest toward it.
-	if scaleAbout(12, 12, 0.94) != 12 || math.Abs(scaleAbout(220, 12, 0.94)-(12+208*0.94)) > 1e-9 {
-		t.Error("scaleAbout must keep the anchor and scale distances from it")
-	}
 }
 
 func TestChooseLabelFaceTakesTheFirstInstalled(t *testing.T) {
-	installed := map[string]bool{"Segoe UI Semibold": true}
+	installed := map[string]bool{"Segoe UI": true}
 	resolve := func(face string) string {
 		if installed[face] {
 			return face
 		}
 		return "Arial" // GDI substitutes silently
 	}
-	if got := chooseLabelFace(cursorLabelFaces, resolve); got != "Segoe UI Semibold" {
-		t.Errorf("on Windows 10 the face is %q, want Segoe UI Semibold", got)
+	if got := chooseLabelFace(cursorLabelFaces, resolve); got != "Segoe UI" {
+		t.Errorf("when Figtree failed to load the face is %q, want Segoe UI", got)
 	}
-	installed["Segoe UI Variable Text Semibold"] = true
-	if got := chooseLabelFace(cursorLabelFaces, resolve); got != "Segoe UI Variable Text Semibold" {
-		t.Errorf("on Windows 11 the face is %q, want Segoe UI Variable Text Semibold", got)
+	installed["Figtree"] = true
+	if got := chooseLabelFace(cursorLabelFaces, resolve); got != "Figtree" {
+		t.Errorf("with the embedded font loaded the face is %q, want Figtree", got)
 	}
-	if got := chooseLabelFace(cursorLabelFaces, func(string) string { return "" }); got != "Segoe UI Semibold" {
+	if got := chooseLabelFace(cursorLabelFaces, func(string) string { return "" }); got != "Segoe UI" {
 		t.Errorf("when nothing resolves the face is %q, want the last fallback", got)
-	}
-}
-
-// TestLabelRevealIsWholeOnArrival (browser-ux 03): the Action runs when
-// the cursor lands, so a new label reveals over the travel's last
-// cursorLabelReveal and is whole at the arrival, never after the click.
-func TestLabelRevealIsWholeOnArrival(t *testing.T) {
-	var m cursorModel
-	window := Rect{Right: 1000, Bottom: 800}
-	target := Rect{Left: 100, Top: 100, Right: 120, Bottom: 120}
-	m.startTravel(t0, window, target, 1, false)
-	m.revealLabel()
-	arrival := t0.Add(m.path.arrive)
-	from := arrival.Add(-cursorLabelReveal)
-	if m.path.arrive <= cursorLabelReveal || m.path.arrive >= m.path.dur {
-		t.Fatalf("the test travel arrives at %v of %v: must be longer than the reveal", m.path.arrive, m.path.dur)
-	}
-	if f := m.advance(from.Add(-time.Millisecond)); !f.Cursor || f.LabelOp != 0 {
-		t.Errorf("early in the travel a new label is held back: %+v", f)
-	}
-	// Frames may come late: the reveal runs from its start, not the frame.
-	half := m.advance(from.Add(cursorLabelReveal / 2)).LabelOp
-	if want := revealOpacity(cursorLabelReveal / 2); half != want || half <= 0.5 || half >= 1 {
-		t.Errorf("half-way through the reveal LabelOp = %v, want %v (eased out)", half, want)
-	}
-	if f := m.advance(arrival); f.LabelOp != 1 || f.LabelPop != 1 || f.Travelling {
-		t.Errorf("at the arrival the label is whole and Travel's waiter released: %+v", f)
-	}
-	if !m.animating() {
-		t.Error("the follow-through still settles after the arrival")
-	}
-	m.advance(t0.Add(m.path.dur))
-	if m.animating() {
-		t.Error("a finished travel and reveal need no frames")
-	}
-	// The same label on the next travel is not held back.
-	m.startTravel(arrival.Add(time.Second), window, Rect{Left: 600, Top: 500, Right: 620, Bottom: 520}, 1, false)
-	if f := m.advance(arrival.Add(time.Second + time.Millisecond)); !f.Travelling || f.LabelOp != 1 || f.LabelPop != 1 {
-		t.Errorf("a label already shown travels with the cursor, whole: %+v", f)
-	}
-	// The pop runs with the reveal: small at its start, whole at the arrival.
-	var p cursorModel
-	p.startTravel(t0, window, target, 1, false)
-	p.revealLabel()
-	at := p.labelRevealStart()
-	if f := p.advance(at.Add(40 * time.Millisecond)); f.LabelPop != labelPop(40*time.Millisecond) || f.LabelPop <= 0.94 || f.LabelPop >= 1 {
-		t.Errorf("40 ms into the reveal the label is mid-pop: %+v", f)
-	}
-	if f := p.advance(at.Add(cursorLabelReveal)); f.LabelPop != 1 || f.LabelOp != 1 {
-		t.Errorf("after the reveal the label is whole: %+v", f)
-	}
-	// A travel arriving sooner than the reveal (reduced motion) reveals
-	// from its start.
-	var s cursorModel
-	s.startTravel(t0, Rect{Left: 100, Top: 100, Right: 104, Bottom: 104}, Rect{Left: 103, Top: 103, Right: 107, Bottom: 107}, 1, true)
-	s.revealLabel()
-	if s.path.dur <= 0 || s.path.arrive >= cursorLabelReveal {
-		t.Fatalf("short travel %v", s.path.dur)
-	}
-	if !s.labelRevealStart().Equal(t0) {
-		t.Errorf("a short travel's reveal starts at %v, want its start", s.labelRevealStart())
-	}
-	// A travel with nowhere to go reveals at once.
-	var n cursorModel
-	n.startTravel(t0, target, target, 1, false)
-	n.revealLabel()
-	if f := n.advance(t0.Add(cursorLabelReveal)); f.LabelOp != 1 {
-		t.Errorf("a zero-length travel's label is revealed from its start: %+v", f)
-	}
-	prev := -1.0
-	for el := time.Duration(0); el <= cursorLabelReveal+10*time.Millisecond; el += 5 * time.Millisecond {
-		v := revealOpacity(el)
-		if v < prev || v < 0 || v > 1 {
-			t.Fatalf("revealOpacity(%v) = %v: must rise monotonically within [0, 1]", el, v)
-		}
-		prev = v
-	}
-	if revealOpacity(0) != 0 {
-		t.Error("the reveal starts transparent")
 	}
 }
 
@@ -1435,8 +1311,6 @@ type fakeViewState struct {
 	cursor     bool
 	tip        fpoint
 	opacity    float64
-	labelOp    float64
-	labelPop   float64
 	look       cursorLook
 	angle      float64
 	press      float64
@@ -1463,12 +1337,12 @@ func (v *fakeCursorView) with(f func(s *fakeViewState)) {
 func (v *fakeCursorView) monitorAt(fpoint) (Rect, uint32) {
 	return Rect{Right: 1920, Bottom: 1040}, 96
 }
-func (v *fakeCursorView) measureLabel(s string, px, scale float64, regular bool) int32 {
+func (v *fakeCursorView) measureLabel(s string, px, scale float64) int32 {
 	return int32(7 * px / cursorPillFontPx * scale * float64(len([]rune(s))))
 }
-func (v *fakeCursorView) showCursor(tip fpoint, op, labelOp, labelPop, angle, press float64, look cursorLook) {
+func (v *fakeCursorView) showCursor(tip fpoint, op, angle, press float64, look cursorLook) {
 	v.with(func(s *fakeViewState) {
-		s.cursor, s.tip, s.opacity, s.labelOp, s.labelPop, s.look = true, tip, op, labelOp, labelPop, look
+		s.cursor, s.tip, s.opacity, s.look = true, tip, op, look
 		s.angle, s.press = angle, press
 	})
 }
@@ -1555,11 +1429,8 @@ func TestTravelReturnsWhenTheTravelCompletes(t *testing.T) {
 	default:
 	}
 	st := view.state()
-	if st.tip != rectCentre(origin) || st.look.Label != `click "Save"` || st.look.Pill.Width() == 0 {
-		t.Errorf("the travel starts at the Window's centre with the label pill: %+v", st)
-	}
-	if st.labelOp != 0 || st.opacity != 1 {
-		t.Errorf("a new label is held back while the cursor travels: %+v", st)
+	if st.tip != rectCentre(origin) || st.look.Name != "" || st.look.Pill != (Rect{}) || st.opacity != 1 {
+		t.Errorf("the default Agent's travel starts at the Window's centre, no tag: %+v", st)
 	}
 	if !st.armed || st.period != cursorFrameInterval {
 		t.Errorf("a travel animates at the frame rate: armed %v period %v", st.armed, st.period)
@@ -1578,21 +1449,12 @@ func TestTravelReturnsWhenTheTravelCompletes(t *testing.T) {
 	if st := view.state(); st.tip != rectCentre(target) {
 		t.Errorf("the cursor rests at the target's centre, got %+v", st.tip)
 	}
-	// The label has faded in by the arrival.
-	clock.set(t0.Add(cursorTravelMax + cursorLabelReveal))
-	c.postWait(func() { c.ui.tick() }, time.Second)
-	if st := view.state(); st.labelOp != 1 {
-		t.Errorf("after the reveal the label is whole: labelOp %v", st.labelOp)
-	}
-	// The same label again travels with the cursor; a new one waits.
+	// A named Agent's tag shows from the travel's first frame, with the
+	// cursor, whatever the Action (cursor-look 11).
 	other := Rect{Left: 100, Top: 600, Right: 200, Bottom: 640}
-	c.postWait(func() { c.ui.travel(0, origin, other, "", `click "Save"`, make(chan struct{})) }, time.Second)
-	if st := view.state(); st.labelOp != 1 {
-		t.Errorf("the same label travels shown: labelOp %v", st.labelOp)
-	}
-	c.postWait(func() { c.ui.travel(0, origin, target, "", `click "Open"`, make(chan struct{})) }, time.Second)
-	if st := view.state(); st.labelOp != 0 || st.look.Label != `click "Open"` {
-		t.Errorf("a new label is held back: labelOp %v, label %q", st.labelOp, st.look.Label)
+	c.postWait(func() { c.ui.travel(0, origin, other, "claude", make(chan struct{})) }, time.Second)
+	if st := view.state(); !st.cursor || st.look.Name != "claude" || st.look.Pill.Width() == 0 {
+		t.Errorf("a named Agent's travel shows its tag at once: %+v", st.look)
 	}
 }
 
@@ -1609,7 +1471,7 @@ func TestTravelReturnsAtTheArrival(t *testing.T) {
 		origin := Rect{Right: 1920, Bottom: 1040}
 		target := Rect{Left: 1700, Top: 50, Right: 1800, Bottom: 90}
 		done := make(chan struct{})
-		c.postWait(func() { c.ui.travel(0, origin, target, "", "click", done) }, time.Second)
+		c.postWait(func() { c.ui.travel(0, origin, target, "", done) }, time.Second)
 		var p cursorPath
 		c.postWait(func() { p = c.ui.model.path }, time.Second)
 		if reduced != (p.dur == cursorReducedTravel) {
@@ -1638,7 +1500,7 @@ func TestTravelReturnsAtTheArrival(t *testing.T) {
 		}
 		// Mid-travel a long move turns its tip (unless animations are off).
 		c.postWait(func() {
-			c.ui.travel(0, origin, Rect{Left: 10, Top: 500, Right: 30, Bottom: 520}, "", "click", make(chan struct{}))
+			c.ui.travel(0, origin, Rect{Left: 10, Top: 500, Right: 30, Bottom: 520}, "", make(chan struct{}))
 		}, time.Second)
 		clock.set(t0.Add(p.arrive + 250*time.Millisecond))
 		c.postWait(func() { c.ui.tick() }, time.Second)
@@ -1693,11 +1555,11 @@ func TestTravelSupersededReleasesTheEarlierWait(t *testing.T) {
 	defer c.Close()
 	first := make(chan struct{})
 	c.post(func() {
-		c.ui.travel(0, Rect{Right: 1000, Bottom: 800}, Rect{Left: 10, Top: 10, Right: 20, Bottom: 20}, "", "a", first)
+		c.ui.travel(0, Rect{Right: 1000, Bottom: 800}, Rect{Left: 10, Top: 10, Right: 20, Bottom: 20}, "", first)
 	})
 	second := make(chan struct{})
 	c.post(func() {
-		c.ui.travel(0, Rect{Right: 1000, Bottom: 800}, Rect{Left: 900, Top: 700, Right: 920, Bottom: 720}, "", "b", second)
+		c.ui.travel(0, Rect{Right: 1000, Bottom: 800}, Rect{Left: 900, Top: 700, Right: 920, Bottom: 720}, "", second)
 	})
 	select {
 	case <-first:

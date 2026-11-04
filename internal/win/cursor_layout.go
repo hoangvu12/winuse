@@ -1,29 +1,24 @@
 package win
 
 // The Agent Cursor's layout (headless ticket 03, cursor-look): the
-// arrow's shape, the label pill's size and placement beside it, label
+// arrow's shape, the name tag's size and placement beside it, name
 // ellipsizing, and the rectangles of the layered windows. Pure functions
 // of physical pixels and a DPI scale (dpi/96), tested offline.
 //
-// The arrow is trycua/cua's default arrow at ecaf10b (MIT; see
-// third_party/cua/LICENSE): its outline, rim, glow and halo
-// (libs/cua-driver/rust/crates/cursor-overlay assets/build_default_theme.py,
-// theme.rs, cursor_pose.rs), and the trail's widths (effects.rs).
+// The arrow and the tag are drawn after Mural's presence cursor
+// (cursor-look issue 11). The trail's widths are trycua/cua's at ecaf10b
+// (MIT; see third_party/cua/LICENSE; effects.rs).
 //
 // The rest is ported from vercel-labs/agent-desktop at HEAD 9eb9b29
 // (Apache-2.0; see third_party/agent-desktop/LICENSE), modified:
 //   - crates/windows/src/system/cursor_overlay/geometry.rs: the
 //     highlight's border, corner radius and padding, the label shadow's
 //     extent (label_shadow_rect);
-//   - crates/windows/src/system/cursor_overlay/render.rs: the text's
-//     vertical inset (TEXT_VERTICAL_INSET);
-//   - crates/core/src/cursor_overlay/label_pill.rs: the pill's font size,
-//     height, padding, maximum width and shadow;
+//   - crates/core/src/cursor_overlay/label_pill.rs: the pill's maximum
+//     width;
 //   - crates/core/src/cursor_overlay/layout.rs (place_label): the pill
 //     beside the tip, below and to the right, flipping left and up when it
 //     would leave the monitor's work area, then clamped into it;
-//   - crates/macos/src/system/cursor_overlay/cursor_overlay_bridge.m: the
-//     label bubble's margin (ADBubbleMargin), which its pop grows from;
 //   - crates/macos/src/system/cursor_overlay/cursor_overlay_chrome_bridge.m:
 //     the highlight's tint and glow, and the extent of its pop
 //     (ADHighlightShow, 1.08 at most).
@@ -36,115 +31,78 @@ import (
 	"unicode"
 )
 
-// cursorArrowOutline is cua's default arrow (build_default_theme.py
-// DART_OUTLINE, already turned upright by UPRIGHT_DEGREES about the
-// hotspot): eight cubic beziers on its 128-unit canvas, each the three
-// points after the one before, starting and ending at the hotspot. A
-// classic pointer with rounded corners, its left edge vertical.
-var cursorArrowOutline = [...]fpoint{
-	{55.0, 30.0},
-	{49.11, 25.73}, {41.76, 28.37}, {39.96, 36.23},
-	{39.96, 36.23}, {40.20, 96.98}, {40.20, 96.98},
-	{40.28, 105.52}, {45.92, 107.57}, {52.07, 102.36},
-	{52.07, 102.36}, {67.37, 86.65}, {67.37, 86.65},
-	{70.62, 83.58}, {74.47, 81.78}, {78.91, 81.27},
-	{78.91, 81.27}, {93.52, 79.14}, {93.52, 79.14},
-	{101.47, 77.78}, {102.57, 71.79}, {97.02, 66.58},
-	{97.02, 66.58}, {55.00, 30.00}, {55.00, 30.00},
-}
-
-// The arrow's look (theme.rs, cursor_pose.rs, build_default_theme.py).
-// The canvas is painted as a 42-logical-pixel footprint; everything else
-// is in logical pixels.
-const (
-	cursorArrowUnit   = 42.0 / 128 // logical pixels per canvas unit (DISPLAY_SIZE / CANVAS_SIZE)
-	cursorArrowFlat   = 12         // line pieces per bezier when flattened
-	cursorArrowRim    = 2.5 * cursorArrowUnit
-	cursorArrowHaloX  = 2.0  // the halo's centre from the tip …
-	cursorArrowHaloY  = 11.9 // … on the body (HALO_CENTER)
-	cursorArrowHaloR  = 14.0 // HALO_RADIUS_PT: 28 across
-	cursorArrowHaloOp = 0.11 // its peak opacity, at the centre
-	// cursorPressMax is the largest the click's press grows the arrow.
-	cursorPressMax = 1.03
-	// cursorArrowNarrow and cursorArrowTall reshape cua's outline about
-	// its tip: narrower and taller, so its tip (about 43° instead of 56°;
-	// the system arrow's is 45°) is its sharpest corner. cua's upright
-	// dart is nearly equilateral: at rest it read as a "▶" pointing right,
-	// past its own tip, and turned a little another corner read as the
-	// point (ADR 0018). The left edge stays vertical; the area stays about
-	// the same.
-	cursorArrowNarrow = 0.82
-	cursorArrowTall   = 1.18
+// The arrow is Mural's presence cursor, measured off its board (screen
+// pixels ÷ 1.33; cursor-look issue 11, .scratch/cursor-look/refs/): a dart
+// with its tip up-left at the hotspot, two wings, and a back curving in
+// toward the tip, every corner rounded. Logical pixels off the tip.
+var (
+	cursorArrowWingTop    = fpoint{X: 19, Y: 6.5}
+	cursorArrowWingBottom = fpoint{X: 6.5, Y: 18}
 )
 
-// arrowCanvas maps a canvas point to logical pixels off the tip, reshaped.
-func arrowCanvas(p fpoint) fpoint {
-	return fpoint{
-		X: (p.X - cursorArrowHotspot.X) * cursorArrowUnit * cursorArrowNarrow,
-		Y: (p.Y - cursorArrowHotspot.Y) * cursorArrowUnit * cursorArrowTall,
-	}
-}
+// The arrow's look, logical pixels: a white rim outside the shape, a soft
+// black shadow below it, the body flat in the Agent's colour.
+const (
+	// cursorArrowNotch is how far the back curves in toward the tip at its
+	// middle (0 is a plain rounded triangle).
+	cursorArrowNotch       = 3.5
+	cursorArrowTipRadius   = 1.3
+	cursorArrowWingRadius  = 2.4
+	cursorArrowRim         = 1.0
+	cursorArrowShadowOp    = 0.16
+	cursorArrowShadowOff   = 1.0 // down
+	cursorArrowShadowBlur  = 1.6
+	cursorArrowCornerSteps = 6 // line pieces per rounded corner; the back takes twice
+	// cursorPressMax is the largest the click's press grows the arrow.
+	cursorPressMax = 1.03
+)
 
-// arrowWings are the rounded corners of the arrow's two wings on the
-// canvas: the bottom-left and the right one.
-var arrowWings = [2]fpoint{{43.5, 103.5}, {99.5, 72}}
-
-// arrowHalo is the halo's centre off the tip, logical pixels: cua's body
-// centre (cursor_pose.rs), reshaped with the outline.
-var arrowHalo = fpoint{X: cursorArrowHaloX * cursorArrowNarrow, Y: cursorArrowHaloY * cursorArrowTall}
-
-// cursorArrowHotspot is the tip on the canvas: the point the arrow names.
-var cursorArrowHotspot = fpoint{55, 30}
-
-// cursorArrowGlow is the arrow's coloured glow: the outline stroked in the
-// fill colour at these widths (canvas units) and opacities, widest and
-// faintest first, under the body (build_default_theme.py). There is no
-// dark drop shadow: the white rim and the glow read on light and dark.
-var cursorArrowGlow = []struct{ width, opacity float64 }{
-	{44, 0.020}, {36, 0.024}, {29, 0.030}, {23, 0.038},
-	{18, 0.048}, {14, 0.060}, {10, 0.075}, {7, 0.095},
-}
-
-// arrowPoints returns the arrow's outline at scale, relative to the tip:
-// each bezier flattened into cursorArrowFlat pieces, a closed polygon.
+// arrowPoints returns the arrow's outline at scale, relative to the tip,
+// a closed polygon starting beside the tip: each corner a quadratic curve
+// through it (its control point), the back one whose middle lies
+// cursorArrowNotch in from the line between the wings.
 func arrowPoints(scale float64) []fpoint {
-	o := cursorArrowOutline
-	at := func(p fpoint) fpoint {
-		q := arrowCanvas(p)
-		return fpoint{q.X * scale, q.Y * scale}
+	toward := func(v, p fpoint, r float64) fpoint {
+		l := math.Hypot(p.X-v.X, p.Y-v.Y)
+		return fpoint{X: v.X + (p.X-v.X)/l*r, Y: v.Y + (p.Y-v.Y)/l*r}
 	}
-	pts := make([]fpoint, 0, (len(o)-1)/3*cursorArrowFlat)
-	for i := 0; i+3 < len(o); i += 3 {
-		a, b, c, d := at(o[i]), at(o[i+1]), at(o[i+2]), at(o[i+3])
-		for j := range cursorArrowFlat {
-			s := float64(j) / cursorArrowFlat
-			v := 1 - s
-			w0, w1, w2, w3 := v*v*v, 3*v*v*s, 3*v*s*s, s*s*s
+	var pts []fpoint
+	quad := func(p0, c, p2 fpoint, n int) {
+		for j := 0; j <= n; j++ {
+			s := float64(j) / float64(n)
+			u := 1 - s
 			pts = append(pts, fpoint{
-				X: w0*a.X + w1*b.X + w2*c.X + w3*d.X,
-				Y: w0*a.Y + w1*b.Y + w2*c.Y + w3*d.Y,
+				X: (u*u*p0.X + 2*u*s*c.X + s*s*p2.X) * scale,
+				Y: (u*u*p0.Y + 2*u*s*c.Y + s*s*p2.Y) * scale,
 			})
 		}
 	}
+	t, a, b := fpoint{}, cursorArrowWingTop, cursorArrowWingBottom
+	mid := fpoint{X: (a.X + b.X) / 2, Y: (a.Y + b.Y) / 2}
+	c := toward(mid, t, 2*cursorArrowNotch) // a quadratic's middle is halfway to its control
+	const rt, rw, n = cursorArrowTipRadius, cursorArrowWingRadius, cursorArrowCornerSteps
+	quad(toward(t, b, rt), t, toward(t, a, rt), n)
+	quad(toward(a, t, rw), a, toward(a, c, rw), n)
+	quad(toward(a, c, rw), c, toward(b, c, rw), 2*n)
+	quad(toward(b, c, rw), b, toward(b, t, rw), n)
 	return pts
 }
 
-// arrowGlowReach is how far the glow reaches outside the outline at scale.
-func arrowGlowReach(scale float64) float64 {
-	return cursorArrowGlow[0].width / 2 * cursorArrowUnit * scale
+// arrowOutset is how far the arrow's pixels reach outside its outline at
+// scale: the rim, and the shadow below it, offset and blurred.
+func arrowOutset(scale float64) float64 {
+	return (cursorArrowRim + cursorArrowShadowOff + cursorArrowShadowBlur) * scale
 }
 
 // arrowReach is the radius about the tip that the arrow's pixels can
 // touch at scale, turned any way and pressed to its largest: the farthest
-// of the outline with its glow and of the halo, plus a pixel.
+// point of the outline with its rim and shadow, plus a pixel.
 func arrowReach(scale float64) int32 {
 	far := 0.0
 	for _, p := range arrowPoints(scale) {
 		far = math.Max(far, math.Hypot(p.X, p.Y))
 	}
-	far += arrowGlowReach(scale)
-	halo := (math.Hypot(arrowHalo.X, arrowHalo.Y) + cursorArrowHaloR) * scale
-	return int32(math.Ceil(math.Max(far, halo)*cursorPressMax)) + 1
+	return int32(math.Ceil((far+arrowOutset(scale))*cursorPressMax)) + 1
 }
 
 // arrowBounds is the box (relative to the tip) the arrow's pixels can
@@ -154,48 +112,33 @@ func arrowBounds(scale float64) Rect {
 	return Rect{Left: -r, Top: -r, Right: r + 1, Bottom: r + 1}
 }
 
-// The label pill, logical pixels: a flat tag in the Agent's colour with
-// white or near-black text, as multiplayer apps tag a collaborator's
-// cursor (cursor-look issue 10, .scratch/cursor-look/refs/: Figma, Miro,
-// Mural, Pitch, Canva and Framer tag a collaborator's cursor flat, just
-// past the arrow's tail; colours in cursor_raster.go). The sizes started
-// from agent-desktop's label_pill.rs.
+// The name tag (the label pill), logical pixels: Mural's presence tag
+// (cursor-look issue 11): the Agent's name alone, flat in its colour with
+// white or near-black text (cursor_raster.go), a white rim and the
+// arrow's soft shadow, its top-left nestled at the arrow's back. The
+// layout's placement started from agent-desktop's label_pill.rs.
 const (
-	cursorPillHeight = 26.0
-	// cursorPillRadius rounds the corners by about a quarter of a line's
-	// height, as Mural, Canva, Framer and Figma's current tags do (Miro's
-	// and Pitch's are fully rounded, classic Figma's nearly square); a
-	// two-line pill keeps it, so it stays a tag rather than a blob.
-	cursorPillRadius    = 6.0
-	cursorPillPadX      = 11.0  // each end
-	cursorPillMaxWidth  = 360.0 // LABEL_PILL_MAX_WIDTH; longer labels are ellipsized
-	cursorPillFontPx    = 12.5  // the action: semibold alone, regular under a name (cursorLabelFaces)
-	cursorPillTextInset = 2.0   // render.rs TEXT_VERTICAL_INSET
-	// A named Agent's pill has two lines (ADR 0018 Decision 8): its name,
-	// semibold, over the action, regular and a little lighter. The lines'
-	// boxes stack between the vertical padding.
-	cursorPillNameFontPx = 12.0
-	cursorPillNameLine   = 15.0
-	cursorPillLine       = 17.0
-	cursorPillPadY       = 4.5
+	cursorPillHeight = 22.0
+	cursorPillRadius = 5.5
+	cursorPillPadX   = 8.0   // each end
+	cursorPillFontPx = 12.5  // Figtree Bold (cursorLabelFaces)
+	cursorPillRim    = 1.0   // white, outside the tag
+	cursorPillMaxW   = 360.0 // the widest a tag gets; a capped name is far narrower
 	// cursorNameMaxRunes caps a name before it is measured: longer ones
 	// end in "…" within this many characters.
 	cursorNameMaxRunes = 24
-	// The pill's shadow: black at this opacity, offset down and blurred,
-	// soft as Figma's, Pitch's and Canva's tags'.
-	cursorPillShadowOpacity = 0.22
-	cursorPillShadowOffset  = 2.0
-	cursorPillShadowBlur    = 3.0
-	// The pill's top-left sits this far right of and below the tip, just
-	// past the arrow's tail as Figma's tag does, and the pill as far left
-	// of and above the tip when flipped (layout.rs LABEL_OFFSET_X/Y).
-	cursorPillOffsetX = 14.0
-	cursorPillOffsetY = 30.0
-	// cursorPillMargin is the macOS bubble window's margin around the pill
-	// (ADBubbleMargin): its pop grows from that window's corner.
-	cursorPillMargin = 8.0
+	// The tag's shadow is the arrow's: black at this opacity, offset down
+	// and blurred, measured from the rim.
+	cursorPillShadowOpacity = cursorArrowShadowOp
+	cursorPillShadowOffset  = cursorArrowShadowOff
+	cursorPillShadowBlur    = cursorArrowShadowBlur
+	// The tag's top-left sits this far right of and below the tip, over
+	// the arrow's back as Mural's does, and the tag as far left of and
+	// above the tip when flipped (layout.rs LABEL_OFFSET_X/Y).
+	cursorPillOffsetX = 12.5
+	cursorPillOffsetY = 12.0
 
-	cursorLabelMaxRunes = 200 // labels are cut before measuring
+	cursorLabelMaxRunes = 200 // names are cut before measuring
 )
 
 // The target's highlight, logical pixels (geometry.rs; the tint and the
@@ -279,32 +222,19 @@ func ellipsize(text string, maxW int32, measure func(string) int32) string {
 	return strings.TrimRight(string(runes[:lo]), " ") + dots
 }
 
-// pillTextMax is the widest the label's text may measure at scale.
+// pillTextMax is the widest the name may measure at scale.
 func pillTextMax(scale float64) int32 {
-	return scaled(cursorPillMaxWidth, scale) - 2*scaled(cursorPillPadX, scale)
+	return scaled(cursorPillMaxW, scale) - 2*scaled(cursorPillPadX, scale)
 }
 
-// pillSize is the pill's size for text measuring textW at scale: the text
-// plus padding, capped at the maximum width (LabelPill::for_label).
+// pillSize is the tag's size for a name measuring textW at scale: the
+// text plus padding, capped at the maximum width (LabelPill::for_label).
 func pillSize(textW int32, scale float64) (w, h int32) {
 	textW = min(max(textW, 0), pillTextMax(scale))
 	return textW + 2*scaled(cursorPillPadX, scale), scaled(cursorPillHeight, scale)
 }
 
-// pillSize2 is a named Agent's two-line pill's size for a name measuring
-// nameW and an action measuring textW at scale: the wider line plus
-// padding, capped like one line, and both lines' height.
-func pillSize2(nameW, textW int32, scale float64) (w, h int32) {
-	w, _ = pillSize(max(nameW, textW), scale)
-	return w, pillHeight2(scale)
-}
-
-// pillHeight2 is the two-line pill's height at scale.
-func pillHeight2(scale float64) int32 {
-	return 2*scaled(cursorPillPadY, scale) + scaled(cursorPillNameLine, scale) + scaled(cursorPillLine, scale)
-}
-
-// pillRadius is the pill's corner radius at scale, one line or two.
+// pillRadius is the tag's corner radius at scale.
 func pillRadius(pill Rect, scale float64) float64 {
 	return math.Min(float64(pill.Height())/2, cursorPillRadius*scale)
 }
@@ -340,13 +270,13 @@ func placePill(tip fpoint, w, h int32, work Rect, scale float64) Rect {
 	return Rect{Left: x, Top: y, Right: x + w, Bottom: y + h}
 }
 
-// pillShadowBounds is the box a pill's shadow can touch
-// (geometry.rs label_shadow_rect): the pill moved down by the shadow's
-// offset and grown by twice its blur, plus a pixel.
+// pillShadowBounds is the box a tag's rim and shadow can touch
+// (geometry.rs label_shadow_rect): the tag grown by its rim, moved down by
+// the shadow's offset and grown by its blur, plus a pixel.
 func pillShadowBounds(pill Rect, scale float64) Rect {
-	g := int32(math.Ceil(2*cursorPillShadowBlur*scale)) + 1
+	g := int32(math.Ceil((cursorPillRim+cursorPillShadowBlur)*scale)) + 1
 	off := int32(math.Ceil(cursorPillShadowOffset * scale))
-	return Rect{Left: pill.Left - g, Top: pill.Top - g + off, Right: pill.Right + g, Bottom: pill.Bottom + g + off}
+	return Rect{Left: pill.Left - g, Top: pill.Top - g, Right: pill.Right + g, Bottom: pill.Bottom + g + off}
 }
 
 // cursorLook is everything the cursor window's pixels depend on; the
@@ -354,30 +284,28 @@ func pillShadowBounds(pill Rect, scale float64) Rect {
 // cursor travels.
 type cursorLook struct {
 	Scale float64
-	Name  string // the Agent's name, the pill's first line; "" for one line
-	Label string // already sanitized and ellipsized; "" draws no pill
-	Pill  Rect   // relative to the (rounded) tip; empty without a label
+	Name  string // the Agent's name, sanitized and ellipsized; "" draws no tag
+	Pill  Rect   // the tag, relative to the (rounded) tip; empty without a name
 }
 
 // cursorWindowLayout is the cursor window's geometry for a look, in the
-// window's own pixels: its size, where the tip sits in it, the pill and
-// the rectangles the name and the label text are drawn into.
+// window's own pixels: its size, where the tip sits in it, the tag and
+// the rectangle its name is drawn into.
 type cursorWindowLayout struct {
 	W, H int32
 	Tip  fpoint // the tip, window-relative
-	Pill Rect   // window-relative; empty without a label
-	Text Rect   // window-relative; inside the pill, padded
-	Name Rect   // window-relative, above Text; empty without a name
+	Pill Rect   // window-relative; empty without a name
+	Text Rect   // window-relative; inside the tag, padded at its ends
 	// Origin is the window's top-left relative to the rounded tip.
 	OriginX, OriginY int32
 }
 
 // layoutCursorWindow computes the window geometry for look: the union of
-// the arrow's box and the pill with its shadow, so the window is only as
+// the arrow's box and the tag with its shadow, so the window is only as
 // large as what it shows.
 func layoutCursorWindow(look cursorLook) cursorWindowLayout {
 	b := arrowBounds(look.Scale)
-	hasPill := look.Label != "" && look.Pill.Width() > 0 && look.Pill.Height() > 0
+	hasPill := look.Name != "" && look.Pill.Width() > 0 && look.Pill.Height() > 0
 	if hasPill {
 		b = unionRect(b, pillShadowBounds(look.Pill, look.Scale))
 	}
@@ -392,14 +320,7 @@ func layoutCursorWindow(look cursorLook) cursorWindowLayout {
 			Right: look.Pill.Right - b.Left, Bottom: look.Pill.Bottom - b.Top,
 		}
 		pad := scaled(cursorPillPadX, look.Scale)
-		inset := scaled(cursorPillTextInset, look.Scale)
-		l.Text = Rect{Left: l.Pill.Left + pad, Top: l.Pill.Top + inset, Right: l.Pill.Right - pad, Bottom: l.Pill.Bottom - inset}
-		if look.Name != "" {
-			top := l.Pill.Top + scaled(cursorPillPadY, look.Scale)
-			mid := top + scaled(cursorPillNameLine, look.Scale)
-			l.Name = Rect{Left: l.Text.Left, Top: top, Right: l.Text.Right, Bottom: mid}
-			l.Text.Top, l.Text.Bottom = mid, mid+scaled(cursorPillLine, look.Scale)
-		}
+		l.Text = Rect{Left: l.Pill.Left + pad, Top: l.Pill.Top, Right: l.Pill.Right - pad, Bottom: l.Pill.Bottom}
 	}
 	return l
 }
@@ -423,17 +344,11 @@ func trailWindowRect(pts []fpoint, scale float64) Rect {
 	}
 }
 
-// cursorLabelFaces are the label's fonts, best first, all semibold as
-// their Windows port sets the label (text.rs FW_SEMIBOLD): the Windows 11
-// system font, closest to agent-desktop's macOS SF, then Segoe UI's for
-// Windows 10. GDI names each weight of these families as a family of its
-// own, so a true semibold is asked for by name: their "Segoe UI" at
-// FW_SEMIBOLD gets its Bold.
-var cursorLabelFaces = []string{"Segoe UI Variable Text Semibold", "Segoe UI Semibold"}
-
-// cursorLabelRegularFaces are the regular faces of the same families, for
-// a named Agent's action line under its semibold name.
-var cursorLabelRegularFaces = []string{"Segoe UI Variable Text", "Segoe UI"}
+// cursorLabelFaces are the tag's fonts, best first, all bold: Figtree,
+// the closest free match to Mural's, embedded in winuse.exe and loaded
+// into the process only (cursor_font.go; third_party/figtree), then
+// Windows' own Segoe UI should that fail.
+var cursorLabelFaces = []string{"Figtree", "Segoe UI"}
 
 // chooseLabelFace returns the first face resolve (which creates the font
 // and reports the face GDI actually selected, "" when it could not)
@@ -446,16 +361,6 @@ func chooseLabelFace(faces []string, resolve func(face string) string) string {
 		}
 	}
 	return faces[len(faces)-1]
-}
-
-// popAnchor is the point the label pill's pop grows from at scale: the
-// bottom-left corner of the macOS bubble window, which sits
-// cursorPillMargin outside the pill. ADShowBubble scales that window's
-// content layer, a view's backing layer, whose anchor point AppKit keeps
-// at (0, 0) — the bottom left in AppKit's upward y.
-func popAnchor(pill Rect, scale float64) fpoint {
-	m := cursorPillMargin * scale
-	return fpoint{X: float64(pill.Left) - m, Y: float64(pill.Bottom) + m}
 }
 
 // scaleAbout scales the coordinate v by s about a.

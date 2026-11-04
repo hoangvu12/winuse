@@ -1,17 +1,17 @@
 Source: https://github.com/trycua/cua
 Commit: ecaf10b (2026-11-04)
 
-The Agent Cursor's look and motion (internal/win/cursor_motion.go,
+The Agent Cursor's motion (internal/win/cursor_motion.go,
 cursor_layout.go, cursor_raster.go, cursor_view.go; cursor-look spec,
-ADR 0018) port, modified for winuse:
+ADR 0018) port, modified for winuse. Since cursor-look issue 11 the arrow
+is no longer cua's (it is drawn after Mural's presence cursor) and its
+palette is our own; the trail keeps cua's widths and lifted colour.
 
 - libs/cua-driver/rust/crates/cua-cursor-motion: the signature_arc path
   (path.rs, spec.rs, params.rs), the steady timing's in-out sine and
   600 ms floor (plan.rs, style.rs), bump_profile (ease.rs), the Fitts
   duration and the arrival (plan.rs arrival_t), the reduced-motion move;
-- libs/cua-driver/rust/crates/cursor-overlay: the default arrow's outline,
-  rim, glow and halo (assets/build_default_theme.py, theme.rs,
-  cursor_pose.rs), the palette (theme.rs), the heading rotation and the
+- libs/cua-driver/rust/crates/cursor-overlay: the heading rotation and the
   float (cursor_pose.rs), the click's press keyframes
   (build_default_theme.py action_click) and the trail (effects.rs);
 - libs/cua-driver/rust/crates/platform-windows/src/overlay.rs: the timer

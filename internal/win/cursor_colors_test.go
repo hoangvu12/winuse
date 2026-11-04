@@ -5,15 +5,15 @@ import (
 	"testing"
 )
 
-// TestTabGroupColor (browser-ux 10, cursor-look 02): each Agent Cursor
-// colour maps to the Chrome tab group colour nearest in hue. cua's nine
-// pastels and the default take only seven of Chrome's colours, so the
-// palette's order keeps the first six Agents apart from each other and
-// from the default Agent there.
+// TestTabGroupColor (browser-ux 10, cursor-look 02, 11): each Agent Cursor
+// colour maps to the Chrome tab group colour nearest in hue. The palette's
+// order keeps the first six Agents apart from each other and from the
+// default Agent's blue; the indigo and the yellow, which share a colour
+// with an earlier one, come last.
 func TestTabGroupColor(t *testing.T) {
-	want := []string{"purple", "pink", "green", "yellow", "red", "blue", "purple", "yellow", "cyan"}
+	want := []string{"purple", "orange", "green", "pink", "cyan", "red", "blue", "yellow"}
 	if len(CursorPalette) != len(want) {
-		t.Fatalf("the palette has %d colours, want cua's 9", len(CursorPalette))
+		t.Fatalf("the palette has %d colours, want %d", len(CursorPalette), len(want))
 	}
 	first := map[string]bool{}
 	for i, c := range CursorPalette {
@@ -28,11 +28,11 @@ func TestTabGroupColor(t *testing.T) {
 			first[got] = true
 		}
 	}
-	if got := TabGroupColor(DefaultCursorColor()); got != "cyan" || first["cyan"] {
-		t.Errorf("the default Agent is %s, want cyan, which none of the first six takes", got)
+	if got := TabGroupColor(DefaultCursorColor()); got != "blue" || first["blue"] {
+		t.Errorf("the default Agent is %s, want blue, which none of the first six takes", got)
 	}
-	if DefaultCursorColor() != (color.RGBA{R: 0x5E, G: 0xC0, B: 0xE8, A: 0xFF}) {
-		t.Errorf("the default Agent's colour is %v, want cua's #5EC0E8", DefaultCursorColor())
+	if DefaultCursorColor() != (color.RGBA{R: 0x2F, G: 0x6F, B: 0xD6, A: 0xFF}) {
+		t.Errorf("the default Agent's colour is %v, want #2F6FD6", DefaultCursorColor())
 	}
 	for c, want := range map[color.RGBA]string{
 		{R: 0x80, G: 0x80, B: 0x80, A: 0xFF}: "grey",

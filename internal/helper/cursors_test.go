@@ -98,12 +98,12 @@ func named(name string) agent.Identity {
 
 // TestAgentTabGroup (browser-ux 10): each Agent's new Tabs join a group
 // named like its Agent Cursor, in the tab group colour nearest its
-// cursor's; the default Agent keeps the "winuse" group, cyan like its cursor.
+// cursor's; the default Agent keeps the "winuse" group, blue like its cursor.
 func TestAgentTabGroup(t *testing.T) {
 	f := newFakeCursorSet(time.Minute)
 	s := Services{Cursor: f.cursorSet}
 	ctx := context.Background()
-	if g := s.agentTabGroup(ctx); g != (page.TabGroup{Title: "winuse", Color: "cyan"}) {
+	if g := s.agentTabGroup(ctx); g != (page.TabGroup{Title: "winuse", Color: "blue"}) {
 		t.Errorf("default Agent: %+v", g)
 	}
 	f.cursorFor(named("reviewer"), 1) // its first Action: purple, the palette's first
@@ -111,8 +111,8 @@ func TestAgentTabGroup(t *testing.T) {
 		t.Errorf("reviewer: %+v", g)
 	}
 	claude := agent.Identity{ID: "proc:17048", Label: "claude 17048"}
-	f.cursorFor(claude, 1) // pink, the palette's second
-	if g := s.agentTabGroup(withAgent(ctx, claude)); g != (page.TabGroup{Title: "claude", Color: "pink"}) {
+	f.cursorFor(claude, 1) // orange, the palette's second
+	if g := s.agentTabGroup(withAgent(ctx, claude)); g != (page.TabGroup{Title: "claude", Color: "orange"}) {
 		t.Errorf("a Harness Agent: %+v", g)
 	}
 	// No cursor yet: the colour it asked for, else the default's.
@@ -120,7 +120,7 @@ func TestAgentTabGroup(t *testing.T) {
 	if g := s.agentTabGroup(withAgent(ctx, painter)); g != (page.TabGroup{Title: "painter", Color: "red"}) {
 		t.Errorf("painter: %+v", g)
 	}
-	if g := s.agentTabGroup(withAgent(ctx, named("new"))); g != (page.TabGroup{Title: "new", Color: "cyan"}) {
+	if g := s.agentTabGroup(withAgent(ctx, named("new"))); g != (page.TabGroup{Title: "new", Color: "blue"}) {
 		t.Errorf("no colour yet: %+v", g)
 	}
 }

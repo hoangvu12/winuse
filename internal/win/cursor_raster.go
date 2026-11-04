@@ -7,36 +7,32 @@ package win
 // compositing, the text blend and the shapes are tested offline; the
 // window side points a surface at its DIB section's bits.
 //
-// The arrow, its colours and the trail are trycua/cua's at ecaf10b (MIT;
-// see third_party/cua/LICENSE): cursor-overlay's build_default_theme.py
-// (the white rim, the eight glow strokes), theme.rs (#5EC0E8),
-// cursor_pose.rs (the halo) and effects.rs (the trail, the lifted
-// colour). The label is a flat tag like a multiplayer app's (cursor-look
-// issue 10).
-// cua paints with tiny-skia; we draw the upright arrow exactly once per
-// look, finer than the screen, and sample every turned or pressed sprite
-// from it.
+// The arrow and the name tag are drawn after Mural's presence cursor
+// (cursor-look issue 11): flat in the Agent's colour, a white rim outside
+// and a soft black shadow below. The trail is trycua/cua's at ecaf10b
+// (MIT; see third_party/cua/LICENSE): effects.rs (the trail, the lifted
+// colour). We draw the upright arrow exactly once per look, finer than
+// the screen, and sample every turned or pressed sprite from it.
 //
 // Ported from vercel-labs/agent-desktop at HEAD 9eb9b29 (Apache-2.0; see
 // third_party/agent-desktop/LICENSE), modified:
 //   - crates/windows/src/system/cursor_overlay/rounded.rs: the highlight
-//     and the label pill with its soft shadow (shadow_strength);
+//     and the soft shadows (shadow_strength);
 //   - crates/windows/src/system/cursor_overlay/fade.rs: dimming a
 //     premultiplied pixel;
 //   - crates/windows/src/system/cursor_overlay/text.rs: GDI draws only
-//     the text, onto the pill;
+//     the text, onto the tag;
 //   - crates/macos/src/system/cursor_overlay/cursor_overlay_chrome_bridge.m:
-//     the highlight's tint and glow, and the two pops (ADShowBubble: the
-//     label's bitmap scaled; ADHighlightShow: the highlight's layer
-//     scaled about its centre).
+//     the highlight's tint and glow, and its pop (ADHighlightShow: the
+//     highlight's layer scaled about its centre).
 // Our shapes are signed-distance functions antialiased by a one-pixel
 // ramp at the edge (coverage = ½ − distance, clamped) rather than their
 // supersampling.
 //
-// GDI leaves alpha zero wherever it draws, so the label's text is drawn
+// GDI leaves alpha zero wherever it draws, so the tag's text is drawn
 // white on black into the cleared text rectangle and turned into coverage
-// afterwards, then composited over the pill pixels that were there: the
-// pill's alpha survives everywhere, its rounded ends included.
+// afterwards, then composited over the tag pixels that were there: the
+// tag's alpha survives everywhere, its rounded ends included.
 
 import (
 	"image/color"
@@ -44,17 +40,18 @@ import (
 )
 
 // cursorAccent is the Agent Cursor's accent — the arrow's fill, the
-// outline and the caret: cua's default pastel blue (theme.rs).
-var cursorAccent = color.RGBA{R: 0x5E, G: 0xC0, B: 0xE8, A: 0xFF}
+// outline and the caret: the default Agent's mid-tone blue, ahead of the
+// palette's colours (cursor_colors.go).
+var cursorAccent = color.RGBA{R: 0x2F, G: 0x6F, B: 0xD6, A: 0xFF}
 
 // AgentCursorAccent is the cursor's accent colour as drawn, for the e2e
 // test that checks winuse's own screenshots never contain the cursor.
 func AgentCursorAccent() color.RGBA { return cursorAccent }
 
 var (
-	// cursorRimColor is the arrow's white rim.
+	// cursorRimColor is the arrow's and the tag's white rim.
 	cursorRimColor = color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
-	// cursorShadowColor is the pill's shadow.
+	// cursorShadowColor is the arrow's and the tag's shadow.
 	cursorShadowColor = color.RGBA{A: 0xFF}
 	// cursorTextColor is light text: white.
 	cursorTextColor = color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
@@ -62,19 +59,14 @@ var (
 	cursorInkColor = color.RGBA{R: 0x16, G: 0x18, B: 0x1D, A: 0xFF}
 )
 
-const (
-	// cursorEffectLift lifts the accent toward white for the effects (the
-	// trail), as cua's effects.rs does.
-	cursorEffectLift = 0.45
-	// cursorPillActionOpacity is a named Agent's action line's opacity
-	// under its name: the name leads, the action reads a little lighter
-	// (refs/README.md).
-	cursorPillActionOpacity = 0.82
-)
+// cursorEffectLift lifts the accent toward white for the effects (the
+// trail), as cua's effects.rs does.
+const cursorEffectLift = 0.45
 
-// pillTextColor is the text on a pill filled with accent: white or
-// near-black, whichever contrasts more with it (WCAG relative luminance).
-// cua's pastels mostly take the near-black, saturated colours white.
+// pillTextColor is the text on a tag filled with accent: white or
+// near-black, whichever contrasts more with it (WCAG relative luminance),
+// as Miro, Mural, Pitch and Canva choose it. The palette's mid-tones take
+// white, its yellow the near-black.
 func pillTextColor(accent color.RGBA) color.RGBA {
 	if contrast(cursorTextColor, accent) >= contrast(cursorInkColor, accent) {
 		return cursorTextColor
@@ -272,21 +264,8 @@ type arrowMaster struct {
 	pix []uint32
 }
 
-// haloStop is the halo's radial gradient at t ∈ [0, 1] of its radius:
-// 1 at the centre, 0.55 at 0.45, 0 at the edge (cursor_pose.rs).
-func haloStop(t float64) float64 {
-	switch {
-	case t >= 1:
-		return 0
-	case t <= 0.45:
-		return 1 - (1-0.55)*t/0.45
-	}
-	return 0.55 * (1 - (t-0.45)/0.55)
-}
-
 // newArrowMaster draws the upright arrow at scale·arrowSuper in fill:
-// the halo, the coloured glow strokes, the white rim and the fill, the
-// rim a 1.6-logical-pixel stroke centred on the outline (theme stroke 5).
+// the soft shadow, the white rim outside the outline, then the body.
 func newArrowMaster(scale float64, fill color.RGBA) arrowMaster {
 	hs := scale * arrowSuper
 	r := arrowReach(hs)
@@ -297,31 +276,28 @@ func newArrowMaster(scale float64, fill color.RGBA) arrowMaster {
 		pts[i].X += m.c
 		pts[i].Y += m.c
 	}
-	rim := cursorArrowRim * hs
-	unitPx := cursorArrowUnit * hs
-	hx, hy, hr := m.c+arrowHalo.X*hs, m.c+arrowHalo.Y*hs, cursorArrowHaloR*hs
-	glowReach := arrowGlowReach(hs) + 1
+	rim, off, blur := cursorArrowRim*hs, cursorArrowShadowOff*hs, cursorArrowShadowBlur*hs
+	far := rim + blur + 1
 	for y := 0; y < m.n; y++ {
 		cy := float64(y) + 0.5
 		for x := 0; x < m.n; x++ {
 			cx := float64(x) + 0.5
+			// The shadow is the rimmed shape moved down and blurred: nothing
+			// shows farther off it, so most of the square costs one distance.
+			sdo := polygonSD(pts, cx, cy-off)
+			if sdo > far {
+				continue
+			}
 			var p uint32
-			if t := math.Hypot(cx-hx, cy-hy) / hr; t < 1 {
-				p = premultiply(fill, cursorArrowHaloOp*haloStop(t))
+			if v := shadowStrength(sdo-rim, blur); v > 0 {
+				p = premultiply(cursorShadowColor, cursorArrowShadowOp*v)
 			}
 			sd := polygonSD(pts, cx, cy)
-			if sd < glowReach {
-				for _, g := range cursorArrowGlow {
-					if cov := clamp01(g.width/2*unitPx - math.Abs(sd) + 0.5); cov > 0 {
-						p = over(p, premultiply(fill, g.opacity*cov))
-					}
-				}
-				if cov := clamp01(0.5 - (sd - rim)); cov > 0 {
-					p = over(p, premultiply(cursorRimColor, cov))
-				}
-				if cov := clamp01(0.5 - (sd + rim)); cov > 0 {
-					p = over(p, premultiply(fill, cov))
-				}
+			if cov := clamp01(0.5 - (sd - rim)); cov > 0 {
+				p = over(p, premultiply(cursorRimColor, cov))
+			}
+			if cov := clamp01(0.5 - sd); cov > 0 {
+				p = over(p, premultiply(fill, cov))
 			}
 			m.pix[y*m.n+x] = p
 		}
@@ -393,21 +369,24 @@ func (s *surface) drawArrowSprite(m *arrowMaster, tip fpoint, angle, press float
 	}
 }
 
-// drawPill draws the label pill into r as the multiplayer apps draw a
-// collaborator's tag (refs/README.md): a soft black shadow below, and the
-// body flat and opaque in the Agent's colour, its corners rounded by
-// cursorPillRadius. No gradient, glow or rim.
+// drawPill draws the name tag into r as Mural draws a collaborator's tag
+// (refs/README.md): a soft black shadow below, a white rim of
+// cursorPillRim outside, and the body flat and opaque in the Agent's
+// colour, its corners rounded by cursorPillRadius.
 func (s *surface) drawPill(r Rect, scale float64, accent color.RGBA) {
 	if r.Width() <= 0 || r.Height() <= 0 {
 		return
 	}
 	l, t, rt, b := float64(r.Left), float64(r.Top), float64(r.Right), float64(r.Bottom)
 	rad := pillRadius(r, scale)
+	rim := cursorPillRim * scale
 	off := cursorPillShadowOffset * scale
 	blur := math.Max(cursorPillShadowBlur*scale, 0.5)
-	s.fillSoft(pillShadowBounds(r, scale), cursorShadowColor, cursorPillShadowOpacity, func(x, y float64) float64 {
-		return shadowStrength(roundRectSD(l, t+off, rt, b+off, rad, x, y), blur)
+	box := pillShadowBounds(r, scale)
+	s.fillSoft(box, cursorShadowColor, cursorPillShadowOpacity, func(x, y float64) float64 {
+		return shadowStrength(roundRectSD(l, t+off, rt, b+off, rad, x, y)-rim, blur)
 	})
+	s.fillSDF(box, cursorRimColor, 1, func(x, y float64) float64 { return roundRectSD(l, t, rt, b, rad, x, y) - rim })
 	s.fillSDF(r, accent, 1, func(x, y float64) float64 { return roundRectSD(l, t, rt, b, rad, x, y) })
 }
 
@@ -417,7 +396,7 @@ func (s *surface) clipBox(r Rect) (x0, y0, x1, y1 int) {
 }
 
 // takeText readies r for GDI's text: it returns the pixels there (the
-// pill) and clears them to black, for GDI to draw white text onto.
+// tag) and clears them to black, for GDI to draw white text onto.
 func (s *surface) takeText(r Rect) []uint32 {
 	x0, y0, x1, y1 := s.clipBox(r)
 	if x1 <= x0 || y1 <= y0 {
@@ -441,14 +420,8 @@ func textCoverage(p uint32) float64 {
 }
 
 // putText composites c at the coverage GDI left in r over the pixels
-// takeText saved from there, so every pixel keeps the pill's alpha.
+// takeText saved from there, so every pixel keeps the tag's alpha.
 func (s *surface) putText(r Rect, saved []uint32, c color.RGBA) {
-	s.putTextAt(r, saved, c, 1)
-}
-
-// putTextAt is putText with the text at opacity op: a named Agent's
-// action line, a little lighter than its name.
-func (s *surface) putTextAt(r Rect, saved []uint32, c color.RGBA, op float64) {
 	x0, y0, x1, y1 := s.clipBox(r)
 	if x1 <= x0 || y1 <= y0 || len(saved) != (x1-x0)*(y1-y0) {
 		return
@@ -457,7 +430,7 @@ func (s *surface) putTextAt(r Rect, saved []uint32, c color.RGBA, op float64) {
 	for y := y0; y < y1; y++ {
 		row := s.pix[y*s.w+x0 : y*s.w+x1]
 		for x, p := range row {
-			row[x] = over(saved[k], premultiply(c, op*textCoverage(p)))
+			row[x] = over(saved[k], premultiply(c, textCoverage(p)))
 			k++
 		}
 	}
@@ -628,39 +601,3 @@ func outlineShape(target Rect, scale, pop float64, accent color.RGBA) (box, skip
 
 // gaussCDF is the standard normal distribution function Φ.
 func gaussCDF(x float64) float64 { return 0.5 * (1 + math.Erf(x/math.Sqrt2)) }
-
-// scalePixels writes into dst the w×h premultiplied image src scaled by
-// s about a, bilinearly (premultiplied channels interpolate correctly),
-// within box only; pixels mapping outside src are transparent. It is the
-// label pill's pop: CoreAnimation scales the layer's bitmap the same way.
-func scalePixels(dst, src []uint32, w, h int, a fpoint, s float64, box Rect) {
-	x0, y0 := max(int(box.Left), 0), max(int(box.Top), 0)
-	x1, y1 := min(int(box.Right), w), min(int(box.Bottom), h)
-	at := func(x, y int) uint32 {
-		if x < 0 || y < 0 || x >= w || y >= h {
-			return 0
-		}
-		return src[y*w+x]
-	}
-	for y := y0; y < y1; y++ {
-		sy := a.Y + (float64(y)+0.5-a.Y)/s - 0.5
-		fy := math.Floor(sy)
-		ty := sy - fy
-		iy := int(fy)
-		for x := x0; x < x1; x++ {
-			sx := a.X + (float64(x)+0.5-a.X)/s - 0.5
-			fx := math.Floor(sx)
-			tx := sx - fx
-			ix := int(fx)
-			p00, p10, p01, p11 := at(ix, iy), at(ix+1, iy), at(ix, iy+1), at(ix+1, iy+1)
-			var out uint32
-			for shift := uint32(0); shift <= 24; shift += 8 {
-				c := func(p uint32) float64 { return float64((p >> shift) & 0xFF) }
-				top := c(p00) + (c(p10)-c(p00))*tx
-				bot := c(p01) + (c(p11)-c(p01))*tx
-				out |= uint32(math.Round(top+(bot-top)*ty)) << shift
-			}
-			dst[y*w+x] = out
-		}
-	}
-}

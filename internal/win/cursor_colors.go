@@ -12,23 +12,22 @@ import (
 )
 
 // CursorPalette are the colours handed to Agents that name none, in
-// order: cua's nine pastels for named sessions (theme.rs, trycua/cua at
-// ecaf10b, MIT; see third_party/cua/LICENSE), readable on light and dark
-// Windows behind the arrow's white rim. cua picks one by the session's
-// name; winuse hands them out in this order (ADR 0014), so the first six
-// take six different tab group colours, none the default Agent's cyan,
-// and the three that share a tab group colour with an earlier one — the
-// cyan nearest the default's own blue among them — come last.
+// order, after the default Agent's blue (cursorAccent): mid-tones like
+// Mural's collaborator colours (cursor-look issue 11), so the name tag's
+// white text reads at 4.5:1 or better on all but the yellow, which takes
+// the near-black (pillTextColor). winuse hands them out in this order
+// (ADR 0014), so the first six take six different tab group colours, none
+// the default Agent's blue, and the two that share one with an earlier
+// colour — the indigo the default's own blue — come last.
 var CursorPalette = []color.RGBA{
-	{R: 0xB2, G: 0x84, B: 0xFF, A: 0xFF}, // violet
-	{R: 0xF7, G: 0x84, B: 0xAA, A: 0xFF}, // pink
-	{R: 0x60, G: 0xDA, B: 0xAE, A: 0xFF}, // mint
-	{R: 0xF4, G: 0xB2, B: 0x42, A: 0xFF}, // amber
-	{R: 0xE8, G: 0x52, B: 0x62, A: 0xFF}, // red
-	{R: 0x50, G: 0x7E, B: 0xEC, A: 0xFF}, // blue
-	{R: 0xDD, G: 0x71, B: 0xEC, A: 0xFF}, // orchid
-	{R: 0xB8, G: 0xDC, B: 0x36, A: 0xFF}, // lime
-	{R: 0x4C, G: 0xCC, B: 0xE0, A: 0xFF}, // cyan
+	{R: 0x6B, G: 0x58, B: 0xCE, A: 0xFF}, // violet
+	{R: 0xC4, G: 0x52, B: 0x24, A: 0xFF}, // orange
+	{R: 0x1F, G: 0x85, B: 0x3E, A: 0xFF}, // green
+	{R: 0xC7, G: 0x37, B: 0x82, A: 0xFF}, // pink
+	{R: 0x0E, G: 0x7C, B: 0x86, A: 0xFF}, // teal
+	{R: 0xD0, G: 0x32, B: 0x45, A: 0xFF}, // red
+	{R: 0x45, G: 0x50, B: 0xC8, A: 0xFF}, // indigo
+	{R: 0xF5, G: 0xC2, B: 0x3C, A: 0xFF}, // yellow
 }
 
 // tabGroupHues are Chrome's tab group colours (chrome.tabGroups.Color) by
@@ -74,8 +73,7 @@ func TabGroupColor(c color.RGBA) string {
 	return best
 }
 
-// DefaultCursorColor is the default Agent's accent, the cursor's colour
-// before there were several Agents.
+// DefaultCursorColor is the default Agent's accent.
 func DefaultCursorColor() color.RGBA { return cursorAccent }
 
 // ParseCursorColor reads a WINUSE_CURSOR_COLOR value: "#RRGGBB" or

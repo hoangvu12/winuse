@@ -2,7 +2,7 @@ package win
 
 // The Agent Cursor's windows (headless ticket 03, cursor-look): four
 // per-pixel-alpha layered windows on the UI thread — the arrow with its
-// label pill, the optional trail, the target's highlight and the
+// name tag, the optional trail, the target's highlight and the
 // insertion caret — each the size of what it
 // shows and updated with UpdateLayeredWindow from a 32bpp top-down
 // premultiplied DIB section. They are WS_EX_LAYERED|TRANSPARENT|
@@ -13,13 +13,13 @@ package win
 // software's captures where supported, best effort like the banner;
 // winuse's own captures hide them through HideWhile.
 //
-// The arrow window's pill is rendered only when its look (label, scale,
-// pill side) changes. The arrow itself is drawn exactly once per Agent and
+// The arrow window's tag is rendered only when its look (name, scale,
+// tag side) changes. The arrow itself is drawn exactly once per Agent and
 // DPI, finer than the screen (newArrowMaster); every turned (each 3°) or
 // pressed (each 0.005) arrow is a sprite sampled from it once and kept, so
-// a frame is the pill as shown copied in with a kept sprite over it — or,
-// when neither the reveal, the turn nor the press changed, the window is
-// merely moved (the travel, the float). The idle fade and the outline's
+// a frame is the tag copied in with a kept sprite over it — or, when
+// neither the turn nor the press changed, the window is merely moved (the
+// travel, the float). The idle fade and the outline's
 // fade use UpdateLayeredWindow's constant alpha, so the outline (possibly
 // large) is rendered once per click, plus a band per step of its pop. A
 // window whose place, opacity and pixels are unchanged is not presented
@@ -28,17 +28,15 @@ package win
 // raised; otherwise from a SetTimer timer; both are dispatched to
 // cursorWndProc by the UI thread's message loop.
 //
-// The label's text follows vercel-labs/agent-desktop at HEAD 9eb9b29
+// The tag's text follows vercel-labs/agent-desktop at HEAD 9eb9b29
 // (Apache-2.0; see third_party/agent-desktop/LICENSE),
-// crates/windows/src/system/cursor_overlay/text.rs, modified: semibold,
-// measured and drawn in the same font, centred in the pill, GDI drawing
-// only the text — in Segoe UI Variable Text Semibold where installed,
-// else Segoe UI Semibold, asked for by face name for a true semibold. We
-// draw it with ClearType white onto black and fold the subpixels into
-// grayscale coverage (cursor_raster.go putText), which reads smoother
-// than GDI's grayscale antialiasing; the pill/arrow split for the reveal
-// and the pops follows their fade.rs and reveal.rs and the macOS
-// bridge's ADShowBubble and ADHighlightShow
+// crates/windows/src/system/cursor_overlay/text.rs, modified: bold,
+// measured and drawn in the same font, GDI drawing only the text — in the
+// embedded Figtree Bold (cursor_font.go), else Segoe UI Bold. We draw it
+// with ClearType white onto black and fold the subpixels into grayscale
+// coverage (cursor_raster.go putText), which reads smoother than GDI's
+// grayscale antialiasing; the outline's pop follows the macOS bridge's
+// ADHighlightShow
 // (crates/macos/src/system/cursor_overlay/cursor_overlay_chrome_bridge.m).
 //
 // Every function here runs on the UI thread. The paint code is exercised
@@ -333,11 +331,7 @@ type cursorWin struct {
 	look    cursorLook
 	lookOK  bool
 	layout  cursorWindowLayout
-	card    []uint32  // the look's pill, shadow and text alone
-	popped  []uint32  // the pill scaled for its pop
-	base    []uint32  // the pill as shown (dimmed, popped): the window less the arrow
-	cardOp  float64   // the pill's opacity in base; <0: none yet
-	cardPop float64   // and its scale
+	base    []uint32  // the look's tag, shadow and text alone: the window less the arrow
 	shown   spriteKey // the arrow in the window's pixels
 	shownOK bool      // shown is valid
 
@@ -361,11 +355,9 @@ type cursorWin struct {
 	outPop    float64 // the scale the outline's pixels are drawn at
 	outPos    Rect    // the outline window's screen rectangle; empty: none
 	fonts     map[int32]uintptr
-	face      string // the label's font face; "" until chosen
-	// faceRegular is the regular face, for a named Agent's action line.
-	faceRegular string
-	interval    time.Duration // the armed timer's period; 0: none
-	hidden      bool          // something was hidden since the last composed
+	face      string        // the tag's font face; "" until chosen
+	interval  time.Duration // the armed timer's period; 0: none
+	hidden    bool          // something was hidden since the last composed
 }
 
 // newCursorWin registers the class and creates the three hidden windows,
@@ -432,24 +424,18 @@ func (w *cursorWin) monitorAt(p fpoint) (Rect, uint32) {
 	return work, dpi
 }
 
-// createLabelFont creates the label font face at pixel height h, at
-// FW_SEMIBOLD (which the semibold faces are) or, regular, FW_NORMAL.
-func createLabelFont(face string, h int32, regular bool) uintptr {
+// createLabelFont creates the tag's font face at pixel height h, bold.
+func createLabelFont(face string, h int32) uintptr {
 	const (
 		defaultCharset = 1
-		fwNormal       = 400
-		fwSemibold     = 600
+		fwBold         = 700
 	)
 	name, err := windows.UTF16PtrFromString(face)
 	if err != nil {
 		return 0
 	}
-	weight := uintptr(fwSemibold)
-	if regular {
-		weight = fwNormal
-	}
 	f, _, _ := procCreateFontW.Call(
-		uintptr(int32ToU32(-h)), 0, 0, 0, weight, 0, 0, 0,
+		uintptr(int32ToU32(-h)), 0, 0, 0, fwBold, 0, 0, 0,
 		defaultCharset, 0, 0, cursorLabelQuality, 0, uintptr(unsafe.Pointer(name)))
 	return f
 }
@@ -467,17 +453,13 @@ func (w *cursorWin) selectedFace(f uintptr) string {
 	return windows.UTF16ToString(buf)
 }
 
-// labelFace chooses the label's semibold face (or, regular, its regular
-// one) once: the first of cursorLabelFaces (cursorLabelRegularFaces) GDI
-// really provides.
-func (w *cursorWin) labelFace(regular bool) string {
-	faces, chosen := cursorLabelFaces, &w.face
-	if regular {
-		faces, chosen = cursorLabelRegularFaces, &w.faceRegular
-	}
-	if *chosen == "" {
-		*chosen = chooseLabelFace(faces, func(face string) string {
-			f := createLabelFont(face, 13, regular)
+// labelFace chooses the tag's face once, loading the embedded Figtree
+// first: the first of cursorLabelFaces GDI really provides.
+func (w *cursorWin) labelFace() string {
+	if w.face == "" {
+		loadCursorFont()
+		w.face = chooseLabelFace(cursorLabelFaces, func(face string) string {
+			f := createLabelFont(face, 13)
 			if f == 0 {
 				return ""
 			}
@@ -485,33 +467,29 @@ func (w *cursorWin) labelFace(regular bool) string {
 			return w.selectedFace(f)
 		})
 	}
-	return *chosen
+	return w.face
 }
 
-// font returns the label face at px logical pixels at scale, semibold or
-// regular (cached per pixel height and weight).
-func (w *cursorWin) font(px, scale float64, regular bool) uintptr {
+// font returns the tag's face at px logical pixels at scale (cached per
+// pixel height).
+func (w *cursorWin) font(px, scale float64) uintptr {
 	h := scaled(px, scale)
-	key := h
-	if regular {
-		key = -h
-	}
-	if f, ok := w.fonts[key]; ok {
+	if f, ok := w.fonts[h]; ok {
 		return f
 	}
-	f := createLabelFont(w.labelFace(regular), h, regular)
+	f := createLabelFont(w.labelFace(), h)
 	if f != 0 {
-		w.fonts[key] = f
+		w.fonts[h] = f
 	}
 	return f
 }
 
-func (w *cursorWin) measureLabel(text string, px, scale float64, regular bool) int32 {
+func (w *cursorWin) measureLabel(text string, px, scale float64) int32 {
 	u, err := windows.UTF16FromString(text)
 	if err != nil || len(u) <= 1 {
 		return 0
 	}
-	f := w.font(px, scale, regular)
+	f := w.font(px, scale)
 	if f == 0 {
 		return 0
 	}
@@ -523,21 +501,16 @@ func (w *cursorWin) measureLabel(text string, px, scale float64, regular bool) i
 	return sz.CX
 }
 
-func (w *cursorWin) showCursor(tip fpoint, opacity, labelOp, labelPop, angle, press float64, look cursorLook) {
+func (w *cursorWin) showCursor(tip fpoint, opacity, angle, press float64, look cursorLook) {
 	if !w.lookOK || look != w.look {
 		w.lookOK = w.renderArrow(look)
 		w.look = look
-		w.cardOp, w.shownOK = -1, false
+		w.shownOK = false
 	}
 	if !w.lookOK {
 		return
 	}
 	k := spriteFor(angle, press)
-	if labelOp != w.cardOp || labelPop != w.cardPop {
-		w.composeCard(labelOp, labelPop)
-		w.cardOp, w.cardPop = labelOp, labelPop
-		w.shownOK = false
-	}
 	if !w.shownOK || k != w.shown {
 		w.composeArrow(k)
 		w.shown, w.shownOK = k, true
@@ -546,8 +519,8 @@ func (w *cursorWin) showCursor(tip fpoint, opacity, labelOp, labelPop, angle, pr
 	w.arrow.present(tx+w.layout.OriginX, ty+w.layout.OriginY, opacity)
 }
 
-// renderArrow renders look's pill (with its shadow and text) into the
-// kept card, and readies the arrow's master image for its scale.
+// renderArrow renders look's tag (with its rim, shadow and name) into
+// the kept base, and readies the arrow's master image for its scale.
 func (w *cursorWin) renderArrow(look cursorLook) bool {
 	w.layout = layoutCursorWindow(look)
 	if !w.arrow.resize(w.layout.W, w.layout.H) {
@@ -557,17 +530,8 @@ func (w *cursorWin) renderArrow(look cursorLook) bool {
 	s.clear()
 	if w.layout.Pill.Width() > 0 {
 		s.drawPill(w.layout.Pill, look.Scale, w.accent)
-		ink := pillTextColor(w.accent)
-		if look.Name != "" {
-			// Two lines, left-aligned: the name, semibold, over the
-			// action, regular and a little lighter (refs/README.md).
-			w.drawLine(look.Name, w.layout.Name, cursorPillNameFontPx, look.Scale, ink, 1, dtLeft, false)
-			w.drawLine(look.Label, w.layout.Text, cursorPillFontPx, look.Scale, ink, cursorPillActionOpacity, dtLeft, true)
-		} else {
-			w.drawLine(look.Label, w.layout.Text, cursorPillFontPx, look.Scale, ink, 1, dtCenter, false)
-		}
+		w.drawLine(look.Name, w.layout.Text, cursorPillFontPx, look.Scale, pillTextColor(w.accent), dtLeft)
 	}
-	w.card = append(w.card[:0], s.pix...)
 	w.base = append(w.base[:0], s.pix...)
 	w.readyMaster(look.Scale)
 	return true
@@ -609,48 +573,6 @@ func (w *cursorWin) sprite(k spriteKey) []uint32 {
 	return s.pix
 }
 
-// composeCard makes base: the pill at labelOp, scaled by labelPop about
-// popAnchor (only the pill's box is resampled, and only while the pop
-// runs).
-func (w *cursorWin) composeCard(labelOp, labelPop float64) {
-	s := &w.arrow.pix
-	if len(w.card) != len(s.pix) {
-		return
-	}
-	card := w.card
-	if labelPop < 1 && labelOp > 0 && w.layout.Pill.Width() > 0 {
-		if len(w.popped) != len(s.pix) {
-			w.popped = make([]uint32, len(s.pix))
-		}
-		clear(w.popped)
-		a := popAnchor(w.layout.Pill, w.look.Scale)
-		// The pill shrinks toward the anchor, so it stays between its own
-		// box (with the shadow) and the anchor.
-		box := unionRect(pillShadowBounds(w.layout.Pill, w.look.Scale), Rect{
-			Left: int32(math.Floor(a.X)), Top: int32(math.Floor(a.Y)),
-			Right: int32(math.Ceil(a.X)) + 1, Bottom: int32(math.Ceil(a.Y)) + 1,
-		})
-		scalePixels(w.popped, w.card, s.w, s.h, a, labelPop, box)
-		card = w.popped
-	}
-	if len(w.base) != len(s.pix) {
-		w.base = make([]uint32, len(s.pix))
-	}
-	if labelOp >= 1 {
-		copy(w.base, card)
-		return
-	}
-	// dimPixel in integers: this runs every frame of the label's reveal.
-	f := uint32(math.Round(clamp01(labelOp) * 256))
-	for i, p := range card {
-		if p == 0 {
-			w.base[i] = 0
-			continue
-		}
-		w.base[i] = (p>>24*f>>8)<<24 | (p>>16&0xFF*f>>8)<<16 | (p>>8&0xFF*f>>8)<<8 | (p & 0xFF * f >> 8)
-	}
-}
-
 // spriteFor is the sprite key of an arrow turned by angle and pressed by
 // press.
 func spriteFor(angle, press float64) spriteKey {
@@ -660,8 +582,8 @@ func spriteFor(angle, press float64) spriteKey {
 	}
 }
 
-// composeArrow puts the window's pixels together: base (the pill as
-// shown) with k's kept sprite copied over it.
+// composeArrow puts the window's pixels together: base (the tag) with
+// k's kept sprite copied over it.
 func (w *cursorWin) composeArrow(k spriteKey) {
 	s := &w.arrow.pix
 	if len(w.base) != len(s.pix) {
@@ -688,24 +610,17 @@ func (w *cursorWin) composeArrow(k spriteKey) {
 	}
 }
 
-// drawLabel draws text into r of the arrow window's DIB, over the pill
-// drawn there: GDI draws it white onto black (flushed so the bits are
-// final before they are read), and putText composites it over the pill
-// in the text colour at the coverage GDI left. The text is centred, as
-// their text.rs sets it.
-func (w *cursorWin) drawLabel(text string, r Rect, scale float64) {
-	w.drawLine(text, r, cursorPillFontPx, scale, cursorTextColor, 1, dtCenter, false)
-}
-
-// drawLine draws one line of text into r as drawLabel does, at px logical
-// pixels, semibold or regular, in c at opacity op, aligned by align
-// (dtCenter or dtLeft).
-func (w *cursorWin) drawLine(text string, r Rect, px, scale float64, c color.RGBA, op float64, align uint32, regular bool) {
+// drawLine draws one line of text into r of the arrow window's DIB, over
+// the tag drawn there, at px logical pixels in c, aligned by align
+// (dtCenter or dtLeft): GDI draws it white onto black (flushed so the
+// bits are final before they are read), and putText composites it over
+// the tag in c at the coverage GDI left.
+func (w *cursorWin) drawLine(text string, r Rect, px, scale float64, c color.RGBA, align uint32) {
 	u, err := windows.UTF16PtrFromString(text)
 	if err != nil {
 		return
 	}
-	f := w.font(px, scale, regular)
+	f := w.font(px, scale)
 	if f == 0 {
 		return
 	}
@@ -721,7 +636,7 @@ func (w *cursorWin) drawLine(text string, r Rect, px, scale float64, c color.RGB
 	procSetTextColor.Call(dc, uintptr(overlayTextColor)) // white, onto takeText's black
 	drawText(dc, u, &r, align|dtVCenter|dtSingleLine|dtEndEllipsis|dtNoPrefix)
 	procGdiFlush.Call()
-	s.putTextAt(r, saved, c, op)
+	s.putText(r, saved, c)
 }
 
 func (w *cursorWin) hideCursor() {

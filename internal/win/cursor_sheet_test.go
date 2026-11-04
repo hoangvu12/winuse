@@ -2,19 +2,21 @@ package win
 
 // The Agent Cursor's contact sheet (cursor-look): the cursor is excluded
 // from screen capture, so its look is checked by rendering frames with
-// the view's own code — the arrow master and its sprites, the pill and
-// GDI's label, the press, the model's path — into PNG files, with no
+// the view's own code — the arrow master and its sprites, the name tag
+// and GDI's text, the press, the model's path — into PNG files, with no
 // window created. Opt-in, never part of the default run:
 //
 //	WINUSE_CURSOR_SHEET=<dir> go test ./internal/win/ -run TestAgentCursorContactSheet -v -count=1
 //
-// It writes <dir>/cursor-sheet.png. With WINUSE_CURSOR_SHEET_CALC set to
-// the README's original Calculator GIF (.scratch/cursor-look/
-// winuse-calculator-before.gif) it also writes <dir>/winuse-calculator.gif:
-// that recording's Calculator, its old cursor removed, clicked 7 + 2 = by
-// the new cursor driven by the real model.
+// It writes <dir>/cursor-sheet.png and <dir>/labels.png. With
+// WINUSE_CURSOR_SHEET_CALC set to the README's original Calculator GIF
+// (.scratch/cursor-look/winuse-calculator-before.gif) it also writes
+// <dir>/winuse-calculator.gif: that recording's Calculator, its old cursor
+// removed, clicked 7 + 2 = by the new cursor of an Agent named "claude",
+// driven by the real model.
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -28,7 +30,7 @@ import (
 	"time"
 )
 
-// sheetWin is a cursorWin on a memory DC alone: renderArrow, the label's
+// sheetWin is a cursorWin on a memory DC alone: renderArrow, the tag's
 // GDI text and the composition run as on screen, minus the window.
 func sheetWin(t *testing.T, accent color.RGBA) *cursorWin {
 	t.Helper()
@@ -50,23 +52,22 @@ func sheetWin(t *testing.T, accent color.RGBA) *cursorWin {
 	return w
 }
 
-// frame renders one frame of the cursor window: look with its pill at
-// labelOp and labelPop, the arrow turned by angle and pressed by press.
-// It returns the window's pixels and where the tip sits in them.
-func (w *cursorWin) frame(look cursorLook, labelOp, labelPop, angle, press float64) (*surface, fpoint) {
+// frame renders one frame of the cursor window: look with its tag, the
+// arrow turned by angle and pressed by press. It returns the window's
+// pixels and where the tip sits in them.
+func (w *cursorWin) frame(look cursorLook, angle, press float64) (*surface, fpoint) {
 	if !w.lookOK || look != w.look {
 		w.lookOK = w.renderArrow(look)
 		w.look = look
 	}
-	w.composeCard(labelOp, labelPop)
 	w.composeArrow(spriteFor(angle, press))
 	s := &surface{w: w.arrow.pix.w, h: w.arrow.pix.h, pix: append([]uint32(nil), w.arrow.pix.pix...)}
 	return s, w.layout.Tip
 }
 
 // lookAt is the controller's look for a travel to tip (cursorUI.lookFor).
-func (w *cursorWin) lookAt(tip fpoint, name, label string, work Rect, scale float64) cursorLook {
-	return (&cursorUI{view: w}).lookFor(tip, name, label, work, scale)
+func (w *cursorWin) lookAt(tip fpoint, name string, work Rect, scale float64) cursorLook {
+	return (&cursorUI{view: w}).lookFor(tip, name, work, scale)
 }
 
 // paste composites the premultiplied s over img with s's (0, 0) at (x, y).
@@ -98,13 +99,13 @@ func fillRect(img *image.RGBA, r image.Rectangle, c color.RGBA) {
 	draw.Draw(img, r, &image.Uniform{C: c}, image.Point{}, draw.Src)
 }
 
-// caption writes text (white, the label's font) centred in r.
+// caption writes text (white, the tag's font) centred in r.
 func caption(img *image.RGBA, cw *cursorWin, text string, r image.Rectangle, scale float64) {
 	if !cw.arrow.resize(int32(r.Dx()), int32(r.Dy())) {
 		return
 	}
 	cw.arrow.pix.clear()
-	cw.drawLabel(text, Rect{Right: int32(r.Dx()), Bottom: int32(r.Dy())}, scale)
+	cw.drawLine(text, Rect{Right: int32(r.Dx()), Bottom: int32(r.Dy())}, cursorPillFontPx, scale, cursorTextColor, dtCenter)
 	paste(img, &surface{w: cw.arrow.pix.w, h: cw.arrow.pix.h, pix: cw.arrow.pix.pix}, r.Min.X, r.Min.Y)
 }
 
@@ -139,14 +140,13 @@ func TestAgentCursorContactSheet(t *testing.T) {
 		return r
 	}
 
-	// 1. The arrow at 100 % and 200 % on light, dark and the accent, as
-	// cua's cards show it.
-	heading("Arrow: 100 % and 200 %, on light, dark and its own colour (no label)")
+	// 1. The arrow at 100 % and 200 % on light, dark and the accent.
+	heading(fmt.Sprintf("Arrow: 100 %% and 200 %%, on light, dark and its own colour (no name, no tag); the back's notch %.1f px", cursorArrowNotch))
 	x := 16
 	for _, bg := range []color.RGBA{sheetLight, sheetDark, cursorAccent} {
 		for _, scale := range []float64{1, 2} {
 			r := card(x, 150, 150, bg)
-			s, at := def.frame(cursorLook{Scale: scale}, 1, 1, 0, 1)
+			s, at := def.frame(cursorLook{Scale: scale}, 0, 1)
 			pasteCursor(img, s, at, fpoint{X: float64(r.Min.X) + 60, Y: float64(r.Min.Y) + 40})
 			x += 160
 		}
@@ -160,7 +160,7 @@ func TestAgentCursorContactSheet(t *testing.T) {
 		x = 16
 		for _, c := range colours {
 			r := card(x, 150, 120, bg)
-			s, at := sheetWin(t, c).frame(cursorLook{Scale: 2}, 1, 1, 0, 1)
+			s, at := sheetWin(t, c).frame(cursorLook{Scale: 2}, 0, 1)
 			pasteCursor(img, s, at, fpoint{X: float64(r.Min.X) + 55, Y: float64(r.Min.Y) + 22})
 			x += 155
 		}
@@ -170,12 +170,12 @@ func TestAgentCursorContactSheet(t *testing.T) {
 	y += 14
 
 	// 3. Turning: the sprites every 30°, and the turn of a rightward move.
-	heading("Turning (200 %): every 30°, then 105° — the full turn of a rightward move, tip leading")
+	heading("Turning (200 %): every 30°, then 135° — the full turn of a rightward move, tip leading")
 	x = 16
-	angles := []float64{0, 30, 60, 90, 120, 150, 180, -150, -120, -90, -60, -30, 105}
+	angles := []float64{0, 30, 60, 90, 120, 150, 180, -150, -120, -90, -60, -30, 135}
 	for _, deg := range angles {
 		r := card(x, 116, 130, sheetDark)
-		s, at := def.frame(cursorLook{Scale: 2}, 1, 1, deg*math.Pi/180, 1)
+		s, at := def.frame(cursorLook{Scale: 2}, deg*math.Pi/180, 1)
 		pasteCursor(img, s, at, fpoint{X: float64(r.Min.X) + 58, Y: float64(r.Min.Y) + 65})
 		x += 121
 	}
@@ -198,23 +198,23 @@ func TestAgentCursorContactSheet(t *testing.T) {
 			}
 			paste(img, ol, int(o.Left), int(o.Top))
 		}
-		s, at := def.frame(cursorLook{Scale: 2}, 1, 1, 0, pressScale(el))
+		s, at := def.frame(cursorLook{Scale: 2}, 0, pressScale(el))
 		pasteCursor(img, s, at, rectCentre(tgt))
 		x += 121
 	}
 	y += 168
 
 	// 5. The path: a 1000 px move to a button, sampled at 120 frames per
-	// second (dots), the arrow every 60 ms, the label revealing for the
+	// second (dots), the arrow every 60 ms, a named Agent's tag at the
 	// arrival; then a down-left move and a short hop.
-	heading("Path (100 %): dots every frame at 120 fps, the arrow every 60 ms; label whole at the arrival")
+	heading("Path (100 %): dots every frame at 120 fps, the arrow every 60 ms; the tag (which travels with it) drawn at the end only")
 	panel := card(16, W-32, 420, sheetApp)
 	moves := []struct {
 		from, to fpoint
 		box      Rect
-		label    string
+		name     string
 	}{
-		{fpoint{80, 330}, fpoint{1080, 330}, Rect{Left: 1040, Top: 312, Right: 1120, Bottom: 348}, `click "Save"`},
+		{fpoint{80, 330}, fpoint{1080, 330}, Rect{Left: 1040, Top: 312, Right: 1120, Bottom: 348}, "claude"},
 		{fpoint{1400, 60}, fpoint{1180, 360}, Rect{Left: 1150, Top: 345, Right: 1210, Bottom: 375}, ""},
 		{fpoint{300, 120}, fpoint{420, 90}, Rect{Left: 400, Top: 78, Right: 440, Bottom: 102}, ""},
 	}
@@ -231,10 +231,7 @@ func TestAgentCursorContactSheet(t *testing.T) {
 		var m cursorModel
 		from := off(mv.from)
 		m.startTravel(t0, Rect{Left: int32(from.X), Top: int32(from.Y), Right: int32(from.X), Bottom: int32(from.Y)}, box, 1, false)
-		if mv.label != "" {
-			m.revealLabel()
-		}
-		look := def.lookAt(rectCentre(box), "", mv.label, Rect{Right: W, Bottom: H}, 1)
+		look := def.lookAt(rectCentre(box), mv.name, Rect{Right: W, Bottom: H}, 1)
 		var dots []fpoint
 		for el := time.Duration(0); el <= m.path.dur; el += cursorFrameInterval {
 			f := m.advance(t0.Add(el))
@@ -242,9 +239,9 @@ func TestAgentCursorContactSheet(t *testing.T) {
 			if last := el+cursorFrameInterval > m.path.dur; last || el%(60*time.Millisecond) < cursorFrameInterval {
 				l := look
 				if !last {
-					l = cursorLook{Scale: 1} // the label only once, as it stands at the end
+					l = cursorLook{Scale: 1} // the tag only once, as it stands at the end
 				}
-				s, at := def.frame(l, f.LabelOp, f.LabelPop, f.Angle, f.Press)
+				s, at := def.frame(l, f.Angle, f.Press)
 				pasteCursor(img, s, at, f.Tip)
 			}
 		}
@@ -260,23 +257,23 @@ func TestAgentCursorContactSheet(t *testing.T) {
 	writePNG(t, filepath.Join(dir, "cursor-path.png"), img.SubImage(panel))
 	y += 438
 
-	// 6. Labels in each Agent's colour, at 100 % and 200 %, on light and dark.
-	heading(`Label tags: flat in the Agent's colour, white or near-black text; the default Agent one line, named Agents name over action; 100 % and 200 %`)
+	// 6. Name tags in each Agent's colour, at 100 % and 200 %, on light
+	// and dark.
+	heading(`Name tags (Figtree Bold 12.5 px): flat in the Agent's colour, white rim, white or near-black text; no name, no tag; 100 % and 200 %`)
 	labels := []struct {
-		c           color.RGBA
-		name, label string
+		c    color.RGBA
+		name string
 	}{
-		{cursorAccent, "", `click "Save"`},
-		{CursorPalette[0], "reviewer", `set-value "File name"`},
-		{CursorPalette[3], "release-notes-writer-for-the-quarterly-report-changelog-and-the-migration-guide",
-			`select "A very long option that is cut short at the pill's widest, on its own line"`},
-		{CursorPalette[4], "claude", `click "Delete"`},
-		{CursorPalette[2], "codex", `toggle "Remember me"`},
-		{CursorPalette[5], "writer", `type "Quarterly report"`},
-		// Lime, the palette's yellow-green, where white would fail.
-		{CursorPalette[7], "tester", `press "Ctrl+S"`},
-		// A dark colour an Agent chose (WINUSE_CURSOR_COLOR): white text.
-		{color.RGBA{R: 0x2E, G: 0x7D, B: 0x32, A: 0xFF}, "ops", `click "Deploy"`},
+		{cursorAccent, ""},
+		{CursorPalette[0], "reviewer"},
+		{CursorPalette[2], "release-notes-writer-for-the-quarterly-report"},
+		{CursorPalette[1], "claude"},
+		{CursorPalette[4], "codex"},
+		{CursorPalette[3], "Jane Doe"},
+		// Yellow, where white would fail: near-black text.
+		{CursorPalette[7], "tester"},
+		// A colour an Agent chose (WINUSE_CURSOR_COLOR), light: dark text.
+		{color.RGBA{R: 0x7F, G: 0xE0, B: 0xC8, A: 0xFF}, "ops"},
 	}
 	labelsTop := y - 38
 	for _, scale := range []float64{1, 2} {
@@ -285,7 +282,7 @@ func TestAgentCursorContactSheet(t *testing.T) {
 			perRow = 2
 		}
 		for _, bg := range []color.RGBA{sheetDark, sheetLight} {
-			h := int(84 * scale)
+			h := int(56 * scale)
 			for row := 0; row < len(labels)/perRow; row++ {
 				x = 16
 				for _, l := range labels[row*perRow : (row+1)*perRow] {
@@ -293,8 +290,8 @@ func TestAgentCursorContactSheet(t *testing.T) {
 					r := card(x, w, h, bg)
 					lw := sheetWin(t, l.c)
 					tip := fpoint{X: float64(r.Min.X) + 14*scale, Y: float64(r.Min.Y) + 10*scale}
-					look := lw.lookAt(tip, l.name, l.label, Rect{Left: int32(r.Min.X), Top: int32(r.Min.Y), Right: int32(r.Max.X), Bottom: H}, scale)
-					s, at := lw.frame(look, 1, 1, 0, 1)
+					look := lw.lookAt(tip, l.name, Rect{Left: int32(r.Min.X), Top: int32(r.Min.Y), Right: int32(r.Max.X), Bottom: H}, scale)
+					s, at := lw.frame(look, 0, 1)
 					pasteCursor(img, s, at, tip)
 					x += w + 8
 				}
@@ -325,17 +322,17 @@ func TestAgentCursorContactSheet(t *testing.T) {
 	}
 	ts.drawTrail(local, 1, cursorAccent, nil)
 	paste(img, ts, int(tr.Left), int(tr.Top))
-	s, at := def.frame(cursorLook{Scale: 1}, 1, 1, f.Angle, 1)
+	s, at := def.frame(cursorLook{Scale: 1}, f.Angle, 1)
 	pasteCursor(img, s, at, f.Tip)
 	y += 196
 
 	out := img.SubImage(image.Rect(0, 0, W, min(y, H))).(*image.RGBA)
 	writePNG(t, filepath.Join(dir, "cursor-sheet.png"), out)
-	// The arrow alone, large, beside cua's rebuilt SVG.
+	// The arrow alone, large.
 	big := image.NewRGBA(image.Rect(0, 0, 336, 336))
 	fillRect(big, big.Rect, sheetDark)
-	bs, bat := def.frame(cursorLook{Scale: 8}, 1, 1, 0, 1)
-	pasteCursor(big, bs, bat, fpoint{X: 55 * 336.0 / 128, Y: 30 * 336.0 / 128})
+	bs, bat := def.frame(cursorLook{Scale: 12}, 0, 1)
+	pasteCursor(big, bs, bat, fpoint{X: 48, Y: 48})
 	writePNG(t, filepath.Join(dir, "cursor-arrow-large.png"), big)
 
 	if calc := os.Getenv("WINUSE_CURSOR_SHEET_CALC"); calc != "" {
@@ -399,14 +396,11 @@ func renderCalculatorGIF(t *testing.T, src, dst string) {
 	}
 	states := []*image.RGBA{backdrop(4), backdrop(12), backdrop(20), backdrop(24), backdrop(32)}
 
-	keys := []struct {
-		label string
-		box   Rect
-	}{
-		{`click "Seven"`, Rect{Left: 5, Top: 321, Right: 81, Bottom: 371}},
-		{`click "Plus"`, Rect{Left: 242, Top: 426, Right: 318, Bottom: 476}},
-		{`click "Two"`, Rect{Left: 84, Top: 426, Right: 160, Bottom: 476}},
-		{`click "Equals"`, Rect{Left: 241, Top: 479, Right: 318, Bottom: 530}},
+	keys := []Rect{
+		{Left: 5, Top: 321, Right: 81, Bottom: 371},    // Seven
+		{Left: 242, Top: 426, Right: 318, Bottom: 476}, // Plus
+		{Left: 84, Top: 426, Right: 160, Bottom: 476},  // Two
+		{Left: 241, Top: 479, Right: 318, Bottom: 530}, // Equals
 	}
 	w := sheetWin(t, cursorAccent)
 	window := Rect{Right: int32(W), Bottom: int32(H)}
@@ -434,7 +428,7 @@ func renderCalculatorGIF(t *testing.T, src, dst string) {
 				paste(img, ol, int(o.Left), int(o.Top))
 			}
 			if fr.Cursor {
-				s, at := w.frame(look, fr.LabelOp, fr.LabelPop, fr.Angle, fr.Press)
+				s, at := w.frame(look, fr.Angle, fr.Press)
 				for i := range s.pix {
 					s.pix[i] = dimPixel(s.pix[i], fr.Opacity)
 				}
@@ -445,11 +439,10 @@ func renderCalculatorGIF(t *testing.T, src, dst string) {
 	}
 	shoot(400 * time.Millisecond)
 	for i, k := range keys {
-		look = w.lookAt(rectCentre(k.box), "", k.label, window, 1)
-		m.startTravel(now, window, k.box, 1, false)
-		m.revealLabel()
+		look = w.lookAt(rectCentre(k), "claude", window, 1)
+		m.startTravel(now, window, k, 1, false)
 		shoot(m.path.arrive)
-		m.startClick(now, k.box, 1, false)
+		m.startClick(now, k, 1, false)
 		state = i + 1
 		shoot(450 * time.Millisecond)
 	}
@@ -520,13 +513,14 @@ func writeGIF(t *testing.T, path string, frames []*image.RGBA, step time.Duratio
 }
 
 // BenchmarkCursorFrame measures the UI thread's drawing per frame (no
-// UpdateLayeredWindow): a turning arrow with its label (sprites cached),
-// a pressed one, and the first frames of a new look (the master image).
+// UpdateLayeredWindow): a turning arrow with its name tag (sprites
+// cached), a pressed one, a new tag, and the first frames of a new look
+// (the master image).
 func BenchmarkCursorFrame(b *testing.B) {
 	t := &testing.T{}
 	w := sheetWin(t, cursorAccent)
-	look := w.lookAt(fpoint{X: 500, Y: 400}, "", `click "Save"`, Rect{Right: 1920, Bottom: 1080}, 1)
-	w.frame(look, 1, 1, 0, 1)
+	look := w.lookAt(fpoint{X: 500, Y: 400}, "claude", Rect{Right: 1920, Bottom: 1080}, 1)
+	w.frame(look, 0, 1)
 	for k := -60; k <= 60; k++ {
 		w.sprite(spriteKey{step: k})
 	}
@@ -540,9 +534,9 @@ func BenchmarkCursorFrame(b *testing.B) {
 			w.composeArrow(spriteFor(0, 0.93+0.1*float64(i%100)/100))
 		}
 	})
-	b.Run("label reveal", func(b *testing.B) {
-		for i := range b.N {
-			w.composeCard(float64(i%100)/100, 0.94+0.06*float64(i%100)/100)
+	b.Run("new tag", func(b *testing.B) {
+		for range b.N {
+			w.renderArrow(look)
 			w.composeArrow(spriteKey{})
 		}
 	})
@@ -579,7 +573,7 @@ func referencesStrip(t *testing.T, img *image.RGBA, cw *cursorWin, refsDir strin
 		return y
 	}
 	sort.Strings(paths)
-	caption(img, cw, "References, for comparison (Figma, FigJam, Miro, Framer, Mural, Pitch, Canva presence tags, via Mobbin: refs/README.md; .scratch only)",
+	caption(img, cw, "References, for comparison (Mural, the chosen look, with Figma, FigJam, Miro, Framer, Pitch and Canva presence tags, via Mobbin: refs/README.md; .scratch only)",
 		image.Rect(0, y, img.Rect.Dx(), y+30), 1.2)
 	y += 36
 	const h = 150
