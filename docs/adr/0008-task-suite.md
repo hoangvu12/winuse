@@ -48,8 +48,9 @@ must be offline-testable per the repo's testing decisions.
    minutes). The prompt is a fixed preamble (rules of engagement —
    including "the apps must do it; never touch the checked files from
    the shell") plus the task body; the preamble is byte-identical for
-   every task and both Harnesses, and a test pins that. The SKILL.md
-   the agent loads is copied from the source tree into the scratch
+   every task and both Harnesses, and a test pins that. The skill the
+   agent loads (SKILL.md and its topics in `references/`) is copied
+   from the source tree into the scratch
    folder (both `.claude/skills/` and `.agents/skills/`), and the
    `winuse.exe` the run measures is built from the tree at run start —
    a run always measures the tree it started from, independent of

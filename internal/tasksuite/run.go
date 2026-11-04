@@ -495,22 +495,34 @@ func buildWinuse(repoRoot, binDir string) error {
 	return nil
 }
 
-// copySkill writes skills/winuse/SKILL.md into both harnesses'
-// project-skill locations inside the scratch folder.
+// copySkill writes the skill folder, skills/winuse/SKILL.md and its topics
+// in references/, into both harnesses' project-skill locations inside the
+// scratch folder.
 func copySkill(repoRoot, scratch string) error {
-	raw, err := os.ReadFile(filepath.Join(repoRoot, "skills", "winuse", "SKILL.md"))
+	src := filepath.Join(repoRoot, "skills", "winuse")
+	topics, err := filepath.Glob(filepath.Join(src, "references", "*.md"))
 	if err != nil {
 		return err
 	}
-	for _, dest := range []string{
-		filepath.Join(scratch, ".claude", "skills", "winuse", "SKILL.md"),
-		filepath.Join(scratch, ".agents", "skills", "winuse", "SKILL.md"),
-	} {
-		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+	files := append([]string{"SKILL.md"}, topics...)
+	for i, f := range files[1:] {
+		files[i+1] = filepath.Join("references", filepath.Base(f))
+	}
+	for _, rel := range files {
+		raw, err := os.ReadFile(filepath.Join(src, rel))
+		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(dest, raw, 0o644); err != nil {
-			return err
+		for _, dest := range []string{
+			filepath.Join(scratch, ".claude", "skills", "winuse", rel),
+			filepath.Join(scratch, ".agents", "skills", "winuse", rel),
+		} {
+			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(dest, raw, 0o644); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

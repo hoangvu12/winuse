@@ -145,7 +145,8 @@ func TestMainJSONPrintsOneLine(t *testing.T) {
 		t.Fatalf("output %q is not one JSON line: %v", out, err)
 	}
 	if line.OK || line.Command != "clickx" || line.Error == nil || line.Error.Code != protocol.CodeUsage ||
-		line.Error.Message != `winuse: unknown command "clickx"` || line.Error.Delivery != protocol.DeliveryNotDelivered {
+		line.Error.Message != `winuse: unknown command "clickx"; did you mean click?` ||
+		!strings.HasPrefix(line.Error.Hint, "usage: winuse click <window>") || line.Error.Delivery != protocol.DeliveryNotDelivered {
 		t.Errorf("line %s", out)
 	}
 }
