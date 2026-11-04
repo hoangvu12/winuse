@@ -3,11 +3,10 @@ package helper
 // One Agent Cursor per Agent (multi-agent ticket 04, ADR 0014 Decision 4,
 // like cua's agent cursor). Each Agent gets its own cursor windows, in its
 // own colour (WINUSE_CURSOR_COLOR, or the next free one of the palette),
-// with its name ahead of the action in the label pill, such as
-// `reviewer: click "Save"`. The default Agent keeps the one cursor of
-// before, in the colour of before and with no name. Every cursor sits
-// just above the Window its Action targets rather than topmost
-// (win.TravelAbove), fades after its idle delay like before, and closes
+// with its name in a tag beside the arrow, such as "reviewer" (ADR 0018
+// Decision 8, cursor-look issue 11). The default Agent keeps the one
+// cursor of before, in the default colour, with no tag. Every cursor sits just above the Window its Action targets rather
+// than topmost (win.TravelAs), fades after its idle delay like before, and closes
 // when its Agent has been idle as long as the helper's idle period (the
 // Agent is gone). winuse's own captures hide them all.
 //
@@ -31,7 +30,7 @@ import (
 // agentCursor is one Agent's cursor windows: *win.AgentCursor, faked in
 // the offline tests.
 type agentCursor interface {
-	TravelAbove(anchor uint64, origin, target win.Rect, label string)
+	TravelAs(anchor uint64, origin, target win.Rect, name, label string)
 	ClickAbove(anchor uint64, target win.Rect)
 	CaretAbove(anchor uint64, x, top, bottom int32) // the insertion caret (multi-agent ticket 11)
 	HideWhile(f func())
@@ -277,7 +276,7 @@ func cursorName(who agent.Identity) string {
 }
 
 // anchoredCursor is one Agent's cursor for one Action: placed just above
-// the Action's Window, with the Agent's name ahead of the label.
+// the Action's Window, with the Agent's name over the label.
 type anchoredCursor struct {
 	c      agentCursor
 	anchor uint64
@@ -285,12 +284,7 @@ type anchoredCursor struct {
 }
 
 func (a anchoredCursor) Travel(origin, target win.Rect, label string) {
-	if a.name != "" && label != "" {
-		label = a.name + ": " + label
-	} else if a.name != "" {
-		label = a.name
-	}
-	a.c.TravelAbove(a.anchor, origin, target, label)
+	a.c.TravelAs(a.anchor, origin, target, a.name, label)
 }
 
 func (a anchoredCursor) Click(target win.Rect) { a.c.ClickAbove(a.anchor, target) }

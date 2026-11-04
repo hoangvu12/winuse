@@ -28,16 +28,18 @@ type fakeAgentCursor struct {
 	log     []string
 	anchors []uint64
 	labels  []string
+	names   []string // the Agent name passed with each label
 	carets  [][3]int32
 	closed  bool
 }
 
 func (c *fakeAgentCursor) record(s string) { c.mu.Lock(); c.log = append(c.log, s); c.mu.Unlock() }
 
-func (c *fakeAgentCursor) TravelAbove(anchor uint64, origin, target win.Rect, label string) {
+func (c *fakeAgentCursor) TravelAs(anchor uint64, origin, target win.Rect, name, label string) {
 	c.mu.Lock()
 	c.anchors = append(c.anchors, anchor)
 	c.labels = append(c.labels, label)
+	c.names = append(c.names, name)
 	c.mu.Unlock()
 	c.record("travel")
 }
@@ -63,7 +65,7 @@ func (c *fakeAgentCursor) Close() { c.mu.Lock(); c.closed = true; c.mu.Unlock() 
 
 // Travel and Click make the fake usable as the default Cursor too.
 func (c *fakeAgentCursor) Travel(origin, target win.Rect, label string) {
-	c.TravelAbove(0, origin, target, label)
+	c.TravelAs(0, origin, target, "", label)
 }
 func (c *fakeAgentCursor) Click(target win.Rect) { c.ClickAbove(0, target) }
 
@@ -96,7 +98,7 @@ func named(name string) agent.Identity {
 
 // TestAgentTabGroup (browser-ux 10): each Agent's new Tabs join a group
 // named like its Agent Cursor, in the tab group colour nearest its
-// cursor's; the default Agent keeps the blue "winuse" group.
+// cursor's; the default Agent keeps the "winuse" group, blue like its cursor.
 func TestAgentTabGroup(t *testing.T) {
 	f := newFakeCursorSet(time.Minute)
 	s := Services{Cursor: f.cursorSet}
@@ -104,13 +106,13 @@ func TestAgentTabGroup(t *testing.T) {
 	if g := s.agentTabGroup(ctx); g != (page.TabGroup{Title: "winuse", Color: "blue"}) {
 		t.Errorf("default Agent: %+v", g)
 	}
-	f.cursorFor(named("reviewer"), 1) // its first Action: orange, the palette's first
-	if g := s.agentTabGroup(withAgent(ctx, named("reviewer"))); g != (page.TabGroup{Title: "reviewer", Color: "orange"}) {
+	f.cursorFor(named("reviewer"), 1) // its first Action: purple, the palette's first
+	if g := s.agentTabGroup(withAgent(ctx, named("reviewer"))); g != (page.TabGroup{Title: "reviewer", Color: "purple"}) {
 		t.Errorf("reviewer: %+v", g)
 	}
 	claude := agent.Identity{ID: "proc:17048", Label: "claude 17048"}
-	f.cursorFor(claude, 1) // green, the palette's second
-	if g := s.agentTabGroup(withAgent(ctx, claude)); g != (page.TabGroup{Title: "claude", Color: "green"}) {
+	f.cursorFor(claude, 1) // orange, the palette's second
+	if g := s.agentTabGroup(withAgent(ctx, claude)); g != (page.TabGroup{Title: "claude", Color: "orange"}) {
 		t.Errorf("a Harness Agent: %+v", g)
 	}
 	// No cursor yet: the colour it asked for, else the default's.
@@ -163,17 +165,17 @@ func TestEachAgentGetsItsOwnCursorColourAndName(t *testing.T) {
 	if want := (color.RGBA{R: 0x11, G: 0x22, B: 0x33, A: 0xFF}); painter.accent != want {
 		t.Errorf("WINUSE_CURSOR_COLOR #112233 gave %v", painter.accent)
 	}
-	if got := reviewer.labels; len(got) != 1 || got[0] != `reviewer: click "Save"` {
-		t.Errorf("reviewer's labels = %q", got)
+	if got := reviewer.labels; len(got) != 1 || got[0] != `click "Save"` || reviewer.names[0] != "reviewer" {
+		t.Errorf("reviewer's labels = %q under %q, want its name over the action", got, reviewer.names)
 	}
 	if got := reviewer.anchors; len(got) != 2 || got[0] != 101 || got[1] != 202 {
 		t.Errorf("reviewer's anchors = %v, want each Action's Window", got)
 	}
-	if got := claude.labels; len(got) != 1 || got[0] != "claude: scroll down" {
-		t.Errorf("an automatic Agent's labels = %q, want its program name ahead", got)
+	if got := claude.labels; len(got) != 1 || got[0] != "scroll down" || claude.names[0] != "claude" {
+		t.Errorf("an automatic Agent's labels = %q under %q, want its program name over the action", got, claude.names)
 	}
-	if got := painter.labels; len(got) != 1 || got[0] != "painter" {
-		t.Errorf("an Action with no label shows %q, want the Agent's name", got)
+	if got := painter.labels; len(got) != 1 || got[0] != "" || painter.names[0] != "painter" {
+		t.Errorf("an Action with no label shows %q under %q, want the Agent's name alone (the cursor draws it as the one line)", got, painter.names)
 	}
 	if f.base.log != nil {
 		t.Errorf("the default cursor moved for another Agent: %v", f.base.log)
@@ -282,7 +284,7 @@ func TestAHeadlessClickShowsItsAgentsCursor(t *testing.T) {
 	if strings.Join(c.log, " ") != "travel click" {
 		t.Errorf("reviewer's cursor did %v, want travel then click", c.log)
 	}
-	if len(c.labels) != 1 || c.labels[0] != `reviewer: click "Save"` || c.anchors[0] != 101 {
+	if len(c.labels) != 1 || c.labels[0] != `click "Save"` || c.names[0] != "reviewer" || c.anchors[0] != 101 {
 		t.Errorf("labels %q anchors %v, want reviewer's click above window 101", c.labels, c.anchors)
 	}
 	if f.base.log != nil {

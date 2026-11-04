@@ -78,7 +78,7 @@ var _ HeadlessActor = (*uia.Client)(nil)
 
 // Cursor is the Agent Cursor (headless spec, ADR 0010): a
 // presentation-only second cursor that travels to the Element a Headless
-// Action targets, says what is happening in a label pill, and ripples on
+// Action targets, its Agent's name in a tag beside it, and presses on
 // the click — so headless work is never invisible, without taking the
 // user's pointer, keyboard or foreground. It is driven by screen
 // rectangles and label text only (never UIA Elements), so other drivers

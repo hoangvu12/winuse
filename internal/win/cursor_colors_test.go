@@ -5,21 +5,34 @@ import (
 	"testing"
 )
 
-// TestTabGroupColor (browser-ux 10): each Agent Cursor colour maps to the
-// Chrome tab group colour that reads as the same, and the palette's
-// colours stay apart there too.
+// TestTabGroupColor (browser-ux 10, cursor-look 02, 11): each Agent Cursor
+// colour maps to the Chrome tab group colour nearest in hue. The palette's
+// order keeps the first six Agents apart from each other and from the
+// default Agent's blue; the indigo and the yellow, which share a colour
+// with an earlier one, come last.
 func TestTabGroupColor(t *testing.T) {
-	want := []string{"orange", "green", "purple", "pink", "cyan", "yellow", "red"}
-	seen := map[string]bool{}
+	want := []string{"purple", "orange", "green", "pink", "cyan", "red", "blue", "yellow"}
+	if len(CursorPalette) != len(want) {
+		t.Fatalf("the palette has %d colours, want %d", len(CursorPalette), len(want))
+	}
+	first := map[string]bool{}
 	for i, c := range CursorPalette {
 		got := TabGroupColor(c)
 		if got != want[i] {
 			t.Errorf("palette %d %v = %s, want %s", i, c, got, want[i])
 		}
-		seen[got] = true
+		if i < 6 {
+			if first[got] {
+				t.Errorf("palette %d shares %s with an earlier one of the first six", i, got)
+			}
+			first[got] = true
+		}
 	}
-	if got := TabGroupColor(DefaultCursorColor()); got != "blue" || seen["blue"] {
-		t.Errorf("the default Agent is %s, want blue, which no palette colour takes", got)
+	if got := TabGroupColor(DefaultCursorColor()); got != "blue" || first["blue"] {
+		t.Errorf("the default Agent is %s, want blue, which none of the first six takes", got)
+	}
+	if DefaultCursorColor() != (color.RGBA{R: 0x2F, G: 0x6F, B: 0xD6, A: 0xFF}) {
+		t.Errorf("the default Agent's colour is %v, want #2F6FD6", DefaultCursorColor())
 	}
 	for c, want := range map[color.RGBA]string{
 		{R: 0x80, G: 0x80, B: 0x80, A: 0xFF}: "grey",

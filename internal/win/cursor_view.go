@@ -1,8 +1,9 @@
 package win
 
-// The Agent Cursor's windows (headless ticket 03): three per-pixel-alpha
-// layered windows on the UI thread — the dart with its label pill, the
-// click ripple, and the target's highlight — each the size of what it
+// The Agent Cursor's windows (headless ticket 03, cursor-look): four
+// per-pixel-alpha layered windows on the UI thread — the arrow with its
+// name tag, the optional trail, the target's highlight and the
+// insertion caret — each the size of what it
 // shows and updated with UpdateLayeredWindow from a 32bpp top-down
 // premultiplied DIB section. They are WS_EX_LAYERED|TRANSPARENT|
 // NOACTIVATE|TOOLWINDOW popups, not topmost but placed just above the
@@ -12,28 +13,30 @@ package win
 // software's captures where supported, best effort like the banner;
 // winuse's own captures hide them through HideWhile.
 //
-// The arrow window is rendered only when its look (label, scale, pill
-// side) changes and merely moved while the cursor travels: the pill and
-// the dart are rendered into two kept buffers, and the window's pixels
-// are the pill dimmed by its reveal (and scaled by its pop) with the dart
-// over it, recomposed only while the reveal plays. The idle fade and the
-// outline's fade use UpdateLayeredWindow's constant alpha, so the outline
-// (possibly large) is rendered once per click, plus a band per frame
-// while its pop runs. The ripple window is small and re-rendered per
-// frame. Frames come from a SetTimer timer on the arrow window,
-// dispatched to cursorWndProc by the UI thread's message loop.
+// The arrow window's tag is rendered only when its look (name, scale,
+// tag side) changes. The arrow itself is drawn exactly once per Agent and
+// DPI, finer than the screen (newArrowMaster); every turned (each 3°) or
+// pressed (each 0.005) arrow is a sprite sampled from it once and kept, so
+// a frame is the tag copied in with a kept sprite over it — or, when
+// neither the turn nor the press changed, the window is merely moved (the
+// travel, the float). The idle fade and the outline's
+// fade use UpdateLayeredWindow's constant alpha, so the outline (possibly
+// large) is rendered once per click, plus a band per step of its pop. A
+// window whose place, opacity and pixels are unchanged is not presented
+// again. While anything animates, frames come at about 120 per second from
+// a frame clock posting to the arrow window, with the timer resolution
+// raised; otherwise from a SetTimer timer; both are dispatched to
+// cursorWndProc by the UI thread's message loop.
 //
-// The label's text follows vercel-labs/agent-desktop at HEAD 9eb9b29
+// The tag's text follows vercel-labs/agent-desktop at HEAD 9eb9b29
 // (Apache-2.0; see third_party/agent-desktop/LICENSE),
-// crates/windows/src/system/cursor_overlay/text.rs, modified: semibold,
-// measured and drawn in the same font, centred in the pill, GDI drawing
-// only the text — in Segoe UI Variable Text Semibold where installed,
-// else Segoe UI Semibold, asked for by face name for a true semibold. We
-// draw it with ClearType white onto black and fold the subpixels into
-// grayscale coverage (cursor_raster.go putText), which reads smoother
-// than GDI's grayscale antialiasing; the pill/dart split for the reveal
-// and the pops follows their fade.rs and reveal.rs and the macOS
-// bridge's ADShowBubble and ADHighlightShow
+// crates/windows/src/system/cursor_overlay/text.rs, modified: bold,
+// measured and drawn in the same font, GDI drawing only the text — in the
+// embedded Figtree Bold (cursor_font.go), else Segoe UI Bold. We draw it
+// with ClearType white onto black and fold the subpixels into grayscale
+// coverage (cursor_raster.go putText), which reads smoother than GDI's
+// grayscale antialiasing; the outline's pop follows the macOS bridge's
+// ADHighlightShow
 // (crates/macos/src/system/cursor_overlay/cursor_overlay_chrome_bridge.m).
 //
 // Every function here runs on the UI thread. The paint code is exercised
@@ -47,6 +50,7 @@ import (
 	"image/color"
 	"math"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -57,7 +61,11 @@ import (
 var (
 	shcore = windows.NewLazySystemDLL("shcore.dll")
 	dwmapi = windows.NewLazySystemDLL("dwmapi.dll")
+	winmm  = windows.NewLazySystemDLL("winmm.dll")
 
+	procTimeBeginPeriod       = winmm.NewProc("timeBeginPeriod")
+	procTimeEndPeriod         = winmm.NewProc("timeEndPeriod")
+	procSystemParametersInfoW = user32.NewProc("SystemParametersInfoW")
 	procUpdateLayeredWindow   = user32.NewProc("UpdateLayeredWindow")
 	procDestroyWindow         = user32.NewProc("DestroyWindow")
 	procSetTimer              = user32.NewProc("SetTimer")
@@ -92,12 +100,54 @@ const (
 	cleartypeNaturalQuality = 6
 	cursorLabelQuality      = cleartypeNaturalQuality // folded to grayscale by putText
 	dtNoPrefix              = 0x0800
+	dtLeft                  = 0x0000
 
 	cursorTimerID = 1
+	// wmCursorFrame is the frame clock's message to the arrow window
+	// (WM_APP + 1; the UI thread's own wake is WM_APP, a thread message).
+	wmCursorFrame = wmApp + 1
 	// cursorMaxOutlinePixels skips an outline that would need an absurd
 	// window (a multi-monitor wall of 8K screens and more).
 	cursorMaxOutlinePixels = 64 << 20
+
+	spiGetClientAreaAnimation = 0x1042
+	// cursorSpriteStep is the arrow sprites' angle step: a turned arrow is
+	// drawn at the nearest multiple of 3°, each made once and kept.
+	cursorSpriteStep = 3 * math.Pi / 180
 )
+
+// reducedMotion reports whether Windows' "Animation effects" are off
+// (Settings > Accessibility > Visual effects; SPI_GETCLIENTAREAANIMATION).
+// Read per travel and click, so a change applies at once. Unknown is on.
+func reducedMotion() bool {
+	var on int32 = 1
+	if r, _, _ := procSystemParametersInfoW.Call(spiGetClientAreaAnimation, 0, uintptr(unsafe.Pointer(&on)), 0); r == 0 {
+		return false
+	}
+	return on == 0
+}
+
+// fastFrames counts the cursors animating at the frame rate. The first
+// raises the timer resolution to 1 ms (SetTimer then fires at about the
+// 8 ms asked for) and the last gives it back, as cua's overlay does, so a
+// resting or hidden cursor costs nothing. Touched only on the UI thread.
+var fastFrames int
+
+func holdFastFrames(on bool, held *bool) {
+	if on == *held {
+		return
+	}
+	*held = on
+	if on {
+		if fastFrames++; fastFrames == 1 && procTimeBeginPeriod.Find() == nil {
+			procTimeBeginPeriod.Call(1)
+		}
+		return
+	}
+	if fastFrames--; fastFrames == 0 && procTimeEndPeriod.Find() == nil {
+		procTimeEndPeriod.Call(1)
+	}
+}
 
 // cursorTicks maps the arrow window to its controller's tick: WM_TIMER
 // reaches the shared window procedure, which looks the callback up here.
@@ -111,7 +161,7 @@ var cursorWndProc = syscall.NewCallback(func(hwnd, message, wp, lp uintptr) uint
 		return htTransparent
 	case wmMouseActivate:
 		return maNoActivate
-	case wmTimer:
+	case wmTimer, wmCursorFrame:
 		if f, ok := cursorTicks.Load(hwnd); ok {
 			f.(func())()
 		}
@@ -154,7 +204,15 @@ type layeredWin struct {
 	origBmp uintptr // the DC's original bitmap, restored before deletion
 	pix     surface // the DIB section's bits
 	shown   bool
+	// What the screen shows: present skips UpdateLayeredWindow when
+	// neither the place, the opacity nor the pixels (dirty) changed.
+	atX, atY int32
+	atOp     float64
+	dirty    bool
 }
+
+// touch records that the pixels changed since the last present.
+func (l *layeredWin) touch() { l.dirty = true }
 
 // newLayeredWin creates one hidden cursor window of class cls.
 func newLayeredWin(hMod uintptr, cls *uint16) (*layeredWin, error) {
@@ -209,6 +267,7 @@ func (l *layeredWin) resize(w, h int32) bool {
 	}
 	l.bmp = bmp
 	l.pix = surface{w: int(w), h: int(h), pix: unsafe.Slice((*uint32)(bits), int(w)*int(h))}
+	l.dirty = true
 	return true
 }
 
@@ -218,6 +277,10 @@ func (l *layeredWin) present(x, y int32, opacity float64) {
 	if l.bmp == 0 {
 		return
 	}
+	if l.shown && !l.dirty && x == l.atX && y == l.atY && opacity == l.atOp {
+		return // nothing new to show
+	}
+	l.atX, l.atY, l.atOp, l.dirty = x, y, opacity, false
 	procGdiFlush.Call()
 	dst := point{X: x, Y: y}
 	size := sizeL{CX: int32(l.pix.w), CY: int32(l.pix.h)}
@@ -260,25 +323,39 @@ func (l *layeredWin) destroy() {
 
 // cursorWin is the Win32 cursorView.
 type cursorWin struct {
-	arrow, ripple, outline *layeredWin
-	caret                  *layeredWin // the insertion caret (cursor_caret.go)
+	arrow, trail, outline *layeredWin
+	caret                 *layeredWin // the insertion caret (cursor_caret.go)
 
-	accent color.RGBA // the dart's fill, the ripple and the outline: this Agent's colour
+	accent color.RGBA // the arrow's fill, the outline and the caret: this Agent's colour
 
-	look      cursorLook
-	lookOK    bool
-	layout    cursorWindowLayout
-	card      []uint32 // the look's pill, shadow and text alone
-	popped    []uint32 // the pill scaled for its pop
-	glyph     []uint32 // the look's dart alone
-	cardOp    float64  // the pill's opacity in the window's pixels; <0: none yet
-	cardPop   float64  // and its scale
+	look    cursorLook
+	lookOK  bool
+	layout  cursorWindowLayout
+	base    []uint32  // the look's tag, shadow and text alone: the window less the arrow
+	shown   spriteKey // the arrow in the window's pixels
+	shownOK bool      // shown is valid
+
+	// The arrow's master image and its turned and pressed sprites
+	// (arrowReach-sized squares, the tip at their centre), kept per scale.
+	master      arrowMaster
+	masterScale float64
+	sprites     map[spriteKey][]uint32
+	spriteR     int32 // the sprites' reach: side 2·spriteR+1
+
+	trailAlpha []float64 // drawTrail's scratch
+	fast       bool      // this cursor holds the raised timer resolution
+	// The frame clock: while the cursor animates, a goroutine posts
+	// wmCursorFrame every cursorFrameInterval; posted coalesces them, so a
+	// busy UI thread is never handed a backlog of frames.
+	clockStop chan struct{}
+	posted    atomic.Bool
+
 	outTarget Rect
 	outScale  float64
 	outPop    float64 // the scale the outline's pixels are drawn at
 	outPos    Rect    // the outline window's screen rectangle; empty: none
 	fonts     map[int32]uintptr
-	face      string        // the label's font face; "" until chosen
+	face      string        // the tag's font face; "" until chosen
 	interval  time.Duration // the armed timer's period; 0: none
 	hidden    bool          // something was hidden since the last composed
 }
@@ -300,7 +377,7 @@ func newCursorWin(accent color.RGBA) (*cursorWin, error) {
 	}
 	w := &cursorWin{accent: accent, fonts: map[int32]uintptr{}}
 	var made []*layeredWin
-	for _, slot := range []**layeredWin{&w.outline, &w.ripple, &w.caret, &w.arrow} {
+	for _, slot := range []**layeredWin{&w.outline, &w.trail, &w.caret, &w.arrow} {
 		l, err := newLayeredWin(hMod, cls)
 		if err != nil {
 			for _, m := range made {
@@ -316,7 +393,10 @@ func newCursorWin(accent color.RGBA) (*cursorWin, error) {
 
 // setTick installs the controller's timer callback.
 func (w *cursorWin) setTick(f func()) {
-	cursorTicks.Store(w.arrow.hwnd, f)
+	cursorTicks.Store(w.arrow.hwnd, func() {
+		w.posted.Store(false)
+		f()
+	})
 }
 
 func (w *cursorWin) monitorAt(p fpoint) (Rect, uint32) {
@@ -344,19 +424,18 @@ func (w *cursorWin) monitorAt(p fpoint) (Rect, uint32) {
 	return work, dpi
 }
 
-// createLabelFont creates the label font face at pixel height h, at
-// FW_SEMIBOLD (which these semibold faces are).
+// createLabelFont creates the tag's font face at pixel height h, bold.
 func createLabelFont(face string, h int32) uintptr {
 	const (
 		defaultCharset = 1
-		fwSemibold     = 600
+		fwBold         = 700
 	)
 	name, err := windows.UTF16PtrFromString(face)
 	if err != nil {
 		return 0
 	}
 	f, _, _ := procCreateFontW.Call(
-		uintptr(int32ToU32(-h)), 0, 0, 0, fwSemibold, 0, 0, 0,
+		uintptr(int32ToU32(-h)), 0, 0, 0, fwBold, 0, 0, 0,
 		defaultCharset, 0, 0, cursorLabelQuality, 0, uintptr(unsafe.Pointer(name)))
 	return f
 }
@@ -374,10 +453,11 @@ func (w *cursorWin) selectedFace(f uintptr) string {
 	return windows.UTF16ToString(buf)
 }
 
-// labelFace chooses the label's face once: the first of cursorLabelFaces
-// GDI really provides.
+// labelFace chooses the tag's face once, loading the embedded Figtree
+// first: the first of cursorLabelFaces GDI really provides.
 func (w *cursorWin) labelFace() string {
 	if w.face == "" {
+		loadCursorFont()
 		w.face = chooseLabelFace(cursorLabelFaces, func(face string) string {
 			f := createLabelFont(face, 13)
 			if f == 0 {
@@ -390,9 +470,10 @@ func (w *cursorWin) labelFace() string {
 	return w.face
 }
 
-// font returns the label font at scale (cached per pixel height).
-func (w *cursorWin) font(scale float64) uintptr {
-	h := scaled(cursorPillFontPx, scale)
+// font returns the tag's face at px logical pixels at scale (cached per
+// pixel height).
+func (w *cursorWin) font(px, scale float64) uintptr {
+	h := scaled(px, scale)
 	if f, ok := w.fonts[h]; ok {
 		return f
 	}
@@ -403,12 +484,12 @@ func (w *cursorWin) font(scale float64) uintptr {
 	return f
 }
 
-func (w *cursorWin) measureLabel(text string, scale float64) int32 {
+func (w *cursorWin) measureLabel(text string, px, scale float64) int32 {
 	u, err := windows.UTF16FromString(text)
 	if err != nil || len(u) <= 1 {
 		return 0
 	}
-	f := w.font(scale)
+	f := w.font(px, scale)
 	if f == 0 {
 		return 0
 	}
@@ -420,25 +501,26 @@ func (w *cursorWin) measureLabel(text string, scale float64) int32 {
 	return sz.CX
 }
 
-func (w *cursorWin) showCursor(tip fpoint, opacity, labelOp, labelPop float64, look cursorLook) {
+func (w *cursorWin) showCursor(tip fpoint, opacity, angle, press float64, look cursorLook) {
 	if !w.lookOK || look != w.look {
 		w.lookOK = w.renderArrow(look)
 		w.look = look
-		w.cardOp = -1
+		w.shownOK = false
 	}
 	if !w.lookOK {
 		return
 	}
-	if labelOp != w.cardOp || labelPop != w.cardPop {
-		w.composeArrow(labelOp, labelPop)
-		w.cardOp, w.cardPop = labelOp, labelPop
+	k := spriteFor(angle, press)
+	if !w.shownOK || k != w.shown {
+		w.composeArrow(k)
+		w.shown, w.shownOK = k, true
 	}
 	tx, ty := roundPoint(tip)
 	w.arrow.present(tx+w.layout.OriginX, ty+w.layout.OriginY, opacity)
 }
 
-// renderArrow renders look's pill (with its shadow and text) and its
-// dart into the two kept buffers.
+// renderArrow renders look's tag (with its rim, shadow and name) into
+// the kept base, and readies the arrow's master image for its scale.
 func (w *cursorWin) renderArrow(look cursorLook) bool {
 	w.layout = layoutCursorWindow(look)
 	if !w.arrow.resize(w.layout.W, w.layout.H) {
@@ -447,56 +529,98 @@ func (w *cursorWin) renderArrow(look cursorLook) bool {
 	s := &w.arrow.pix
 	s.clear()
 	if w.layout.Pill.Width() > 0 {
-		s.drawPill(w.layout.Pill, look.Scale)
-		w.drawLabel(look.Label, w.layout.Text, look.Scale)
+		s.drawPill(w.layout.Pill, look.Scale, w.accent)
+		w.drawLine(look.Name, w.layout.Text, cursorPillFontPx, look.Scale, pillTextColor(w.accent), dtLeft)
 	}
-	w.card = append(w.card[:0], s.pix...)
-	s.clear()
-	s.drawDart(w.layout.Tip, look.Scale, w.accent, cursorRimColor)
-	w.glyph = append(w.glyph[:0], s.pix...)
+	w.base = append(w.base[:0], s.pix...)
+	w.readyMaster(look.Scale)
 	return true
 }
 
-// composeArrow puts the window's pixels together: the pill at labelOp,
-// scaled by labelPop about popAnchor (only the pill's box is resampled,
-// and only while the pop runs), the dart over it.
-func (w *cursorWin) composeArrow(labelOp, labelPop float64) {
-	s := &w.arrow.pix
-	if len(w.card) != len(s.pix) || len(w.glyph) != len(s.pix) {
+// readyMaster draws the arrow's master image for scale, dropping the
+// sprites of another scale. It is the only exact rasterizing of the
+// arrow: once per Agent and monitor DPI.
+func (w *cursorWin) readyMaster(scale float64) {
+	if w.master.pix != nil && w.masterScale == scale {
 		return
 	}
-	card := w.card
-	if labelPop < 1 && labelOp > 0 && w.layout.Pill.Width() > 0 {
-		if len(w.popped) != len(s.pix) {
-			w.popped = make([]uint32, len(s.pix))
-		}
-		clear(w.popped)
-		a := popAnchor(w.layout.Pill, w.look.Scale)
-		// The pill shrinks toward the anchor, so it stays between its own
-		// box (with the shadow) and the anchor.
-		box := unionRect(pillShadowBounds(w.layout.Pill, w.look.Scale), Rect{
-			Left: int32(math.Floor(a.X)), Top: int32(math.Floor(a.Y)),
-			Right: int32(math.Ceil(a.X)) + 1, Bottom: int32(math.Ceil(a.Y)) + 1,
-		})
-		scalePixels(w.popped, w.card, s.w, s.h, a, labelPop, box)
-		card = w.popped
+	w.master = newArrowMaster(scale, w.accent)
+	w.masterScale = scale
+	w.spriteR = arrowReach(scale)
+	w.sprites = map[spriteKey][]uint32{}
+}
+
+// spriteKey names one kept sprite: the arrow turned to step (multiples of
+// cursorSpriteStep) and pressed to 1 + press·cursorPressStep.
+type spriteKey struct{ step, press int }
+
+// cursorPressStep is the press sprites' scale step: the click's 0.93–1.03
+// squeeze is about twenty kept sprites, each made once.
+const cursorPressStep = 0.005
+
+// sprite is the arrow for k, made on first use and kept: every frame of a
+// turning or pressed arrow copies one.
+func (w *cursorWin) sprite(k spriteKey) []uint32 {
+	if sp, ok := w.sprites[k]; ok {
+		return sp
 	}
-	for i := range s.pix {
-		s.pix[i] = over(dimPixel(card[i], labelOp), w.glyph[i])
+	n := int(2*w.spriteR) + 1
+	s := surface{w: n, h: n, pix: make([]uint32, n*n)}
+	c := float64(w.spriteR)
+	s.drawArrowSprite(&w.master, fpoint{X: c, Y: c}, float64(k.step)*cursorSpriteStep,
+		1+float64(k.press)*cursorPressStep, Rect{Right: int32(n), Bottom: int32(n)})
+	w.sprites[k] = s.pix
+	return s.pix
+}
+
+// spriteFor is the sprite key of an arrow turned by angle and pressed by
+// press.
+func spriteFor(angle, press float64) spriteKey {
+	return spriteKey{
+		step:  int(math.Round(angle / cursorSpriteStep)),
+		press: int(math.Round((press - 1) / cursorPressStep)),
 	}
 }
 
-// drawLabel draws text into r of the arrow window's DIB, over the pill
-// drawn there: GDI draws it white onto black (flushed so the bits are
-// final before they are read), and putText composites it over the pill
-// in the text colour at the coverage GDI left. The text is centred, as
-// their text.rs sets it.
-func (w *cursorWin) drawLabel(text string, r Rect, scale float64) {
+// composeArrow puts the window's pixels together: base (the tag) with
+// k's kept sprite copied over it.
+func (w *cursorWin) composeArrow(k spriteKey) {
+	s := &w.arrow.pix
+	if len(w.base) != len(s.pix) {
+		return
+	}
+	copy(s.pix, w.base)
+	w.arrow.touch()
+	r := w.spriteR
+	tip := w.layout.Tip
+	ox, oy := int(tip.X)-int(r), int(tip.Y)-int(r)
+	n := int(2*r) + 1
+	sp := w.sprite(k)
+	for y := range n {
+		wy := oy + y
+		if wy < 0 || wy >= s.h {
+			continue
+		}
+		for x := range n {
+			wx := ox + x
+			if p := sp[y*n+x]; p != 0 && wx >= 0 && wx < s.w {
+				s.pix[wy*s.w+wx] = over(s.pix[wy*s.w+wx], p)
+			}
+		}
+	}
+}
+
+// drawLine draws one line of text into r of the arrow window's DIB, over
+// the tag drawn there, at px logical pixels in c, aligned by align
+// (dtCenter or dtLeft): GDI draws it white onto black (flushed so the
+// bits are final before they are read), and putText composites it over
+// the tag in c at the coverage GDI left.
+func (w *cursorWin) drawLine(text string, r Rect, px, scale float64, c color.RGBA, align uint32) {
 	u, err := windows.UTF16PtrFromString(text)
 	if err != nil {
 		return
 	}
-	f := w.font(scale)
+	f := w.font(px, scale)
 	if f == 0 {
 		return
 	}
@@ -510,9 +634,9 @@ func (w *cursorWin) drawLabel(text string, r Rect, scale float64) {
 	defer procSelectObject.Call(dc, old)
 	procSetBkMode.Call(dc, bkModeTransparent)
 	procSetTextColor.Call(dc, uintptr(overlayTextColor)) // white, onto takeText's black
-	drawText(dc, u, &r, dtCenter|dtVCenter|dtSingleLine|dtEndEllipsis|dtNoPrefix)
+	drawText(dc, u, &r, align|dtVCenter|dtSingleLine|dtEndEllipsis|dtNoPrefix)
 	procGdiFlush.Call()
-	s.putText(r, saved, cursorTextColor)
+	s.putText(r, saved, c)
 }
 
 func (w *cursorWin) hideCursor() {
@@ -521,30 +645,43 @@ func (w *cursorWin) hideCursor() {
 	}
 }
 
-func (w *cursorWin) showRipple(at fpoint, phase, scale float64) {
-	n := rippleWindowSize(scale)
-	if !w.ripple.resize(n, n) {
+// showTrail draws the comet trail pts (screen pixels) into a window just
+// around them, at opacity.
+func (w *cursorWin) showTrail(pts []fpoint, opacity, scale float64) {
+	r := trailWindowRect(pts, scale)
+	if r.Width() <= 0 || r.Height() <= 0 || !w.trail.resize(r.Width(), r.Height()) {
+		w.hideTrail()
 		return
 	}
-	cx, cy := roundPoint(at)
-	x, y := cx-n/2, cy-n/2
-	s := &w.ripple.pix
+	local := make([]fpoint, len(pts))
+	for i, p := range pts {
+		local[i] = fpoint{X: p.X - float64(r.Left), Y: p.Y - float64(r.Top)}
+	}
+	s := &w.trail.pix
 	s.clear()
-	s.drawRipple(fpoint{X: at.X - float64(x), Y: at.Y - float64(y)}, phase, scale, w.accent)
-	w.ripple.present(x, y, 1)
+	w.trailAlpha = s.drawTrail(local, scale, w.accent, w.trailAlpha)
+	w.trail.touch()
+	w.trail.present(r.Left, r.Top, opacity)
 }
 
-func (w *cursorWin) hideRipple() {
-	if w.ripple.hide() {
+func (w *cursorWin) hideTrail() {
+	if w.trail.hide() {
 		w.hidden = true
 	}
 }
+
+// reducedMotion is the package's reducedMotion (cursorView).
+func (w *cursorWin) reducedMotion() bool { return reducedMotion() }
 
 // showOutline shows the highlight around target at opacity, scaled by pop.
 // The window is sized for the largest pop once per click; while the pop
 // runs, each frame redraws only the band the outline moved through
 // (popOutline), and once it settles the pixels stay.
 func (w *cursorWin) showOutline(target Rect, opacity, pop, scale float64) {
+	// The pop is redrawn in steps of 1/250 (a fraction of a pixel on any
+	// element), not every frame: at 120 frames per second a band redrawn
+	// each frame cost more than all the rest of the cursor.
+	pop = math.Round(pop*250) / 250
 	local := func() Rect {
 		return Rect{
 			Left: target.Left - w.outPos.Left, Top: target.Top - w.outPos.Top,
@@ -561,10 +698,12 @@ func (w *cursorWin) showOutline(target Rect, opacity, pop, scale float64) {
 			s := &w.outline.pix
 			s.clear()
 			s.drawOutline(local(), scale, pop, w.accent)
+			w.outline.touch()
 			w.outPop = pop
 		}
 	} else if w.outPos.Width() > 0 && pop != w.outPop {
 		w.outline.pix.popOutline(local(), scale, w.outPop, pop, w.accent)
+		w.outline.touch()
 		w.outPop = pop
 	}
 	if w.outPos.Width() <= 0 {
@@ -595,9 +734,9 @@ func (w *cursorWin) composed() {
 }
 
 // raise puts the windows just above anchor (cursor_zorder.go), the arrow
-// on top of its own ripple and outline.
+// on top of its own trail, caret and outline.
 func (w *cursorWin) raise(anchor uint64) {
-	placeAbove(uintptr(anchor), w.outline, w.ripple, w.caret, w.arrow)
+	placeAbove(uintptr(anchor), w.outline, w.trail, w.caret, w.arrow)
 }
 
 // showCaret draws the caret's bar, a fully rounded rectangle in the
@@ -613,6 +752,7 @@ func (w *cursorWin) showCaret(bar Rect, opacity float64) {
 	s.fillSDF(Rect{Right: bar.Width(), Bottom: bar.Height()}, w.accent, 1, func(x, y float64) float64 {
 		return roundRectSD(0, 0, bw, bh, bw/2, x, y)
 	})
+	w.caret.touch() // a few pixels, redrawn each frame
 	w.caret.present(bar.Left, bar.Top, opacity)
 }
 
@@ -622,8 +762,22 @@ func (w *cursorWin) hideCaret() {
 	}
 }
 
+// schedule arms the next wake after d. At the frame interval (something
+// animates) the frame clock runs and the timer resolution is raised; for
+// the slower float and idle wakes the clock stops, the resolution is
+// given back and a SetTimer timer waits. SetTimer alone cannot keep
+// 120 frames per second: on Windows 11 it fires on the 15.6 ms tick even
+// with the resolution raised (64 frames per second measured).
 func (w *cursorWin) schedule(d time.Duration) {
 	d = max(d, cursorFrameInterval)
+	fast := d <= cursorFrameInterval
+	holdFastFrames(fast, &w.fast)
+	if fast {
+		w.killTimer()
+		w.startClock()
+		return
+	}
+	w.stopClock()
 	if d == w.interval {
 		return // already armed with this period
 	}
@@ -634,16 +788,56 @@ func (w *cursorWin) schedule(d time.Duration) {
 }
 
 func (w *cursorWin) cancel() {
+	holdFastFrames(false, &w.fast)
+	w.stopClock()
+	w.killTimer()
+}
+
+func (w *cursorWin) killTimer() {
 	if w.interval != 0 {
 		procKillTimer.Call(w.arrow.hwnd, cursorTimerID)
 		w.interval = 0
 	}
 }
 
+// startClock starts the frame clock, if it is not running: Go's timers
+// are high-resolution waitable timers on Windows, so it keeps the 8 ms.
+func (w *cursorWin) startClock() {
+	if w.clockStop != nil {
+		return
+	}
+	stop := make(chan struct{})
+	w.clockStop = stop
+	hwnd := w.arrow.hwnd
+	go func() {
+		t := time.NewTicker(cursorFrameInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				if w.posted.CompareAndSwap(false, true) {
+					if r, _, _ := procPostMessageW.Call(hwnd, wmCursorFrame, 0, 0); r == 0 {
+						w.posted.Store(false)
+					}
+				}
+			}
+		}
+	}()
+}
+
+func (w *cursorWin) stopClock() {
+	if w.clockStop != nil {
+		close(w.clockStop)
+		w.clockStop = nil
+	}
+}
+
 func (w *cursorWin) destroy() {
 	w.cancel()
 	cursorTicks.Delete(w.arrow.hwnd)
-	for _, l := range []*layeredWin{w.arrow, w.ripple, w.outline, w.caret} {
+	for _, l := range []*layeredWin{w.arrow, w.trail, w.outline, w.caret} {
 		l.destroy()
 	}
 	for h, f := range w.fonts {

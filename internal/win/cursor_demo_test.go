@@ -179,7 +179,7 @@ func TestAgentCursorVisualDemo(t *testing.T) {
 			at(arrived, 40*time.Millisecond, step+"-label-pop-40ms", s.target)
 			at(arrived, 100*time.Millisecond, step+"-label-pop-100ms", s.target)
 		}
-		at(arrived, cursorLabelReveal+60*time.Millisecond, step+"-arrived", s.target)
+		at(arrived, 240*time.Millisecond, step+"-arrived", s.target)
 		clicked := time.Now()
 		c.Click(s.target)
 		if pops {

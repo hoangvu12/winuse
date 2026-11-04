@@ -72,7 +72,9 @@ resizes and closes windows. In Chrome, Edge and
 Electron apps it also types, presses keys and clicks through window
 messages. It does not move your mouse, press keys or bring the window to
 the front, so you can keep working in another window. A second cursor
-shows where each agent acts.
+shows where each agent acts, with the agent's name beside it. It moves less when
+Windows' animation effects are off, and `WINUSE_CURSOR_TRAIL=1` in the
+helper's environment gives it a trail.
 
 Hover, dragging, games and other apps that read raw input, and the
 other gaps listed in [ADR 0013](docs/adr/0013-headless-by-readback-posted-by-opt-in.md)
@@ -134,7 +136,7 @@ When you want a separate browser instead:
   starts the copy.
 
 The agent's cursor shows page actions too, gliding to the element on the
-page and rippling when the click reaches it.
+page and pressing when the click reaches it.
 
 Without a connection, winuse reads the page through UI Automation like
 any other window. Chromium builds that tree slowly the first time, so

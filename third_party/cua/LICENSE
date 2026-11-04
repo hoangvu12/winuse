@@ -1,0 +1,40 @@
+Source: https://github.com/trycua/cua
+Commit: ecaf10b (2026-11-04)
+
+The Agent Cursor's motion (internal/win/cursor_motion.go,
+cursor_layout.go, cursor_raster.go, cursor_view.go; cursor-look spec,
+ADR 0018) port, modified for winuse. Since cursor-look issue 11 the arrow
+is no longer cua's (it is drawn after Mural's presence cursor) and its
+palette is our own; the trail keeps cua's widths and lifted colour.
+
+- libs/cua-driver/rust/crates/cua-cursor-motion: the signature_arc path
+  (path.rs, spec.rs, params.rs), the steady timing's in-out sine and
+  600 ms floor (plan.rs, style.rs), bump_profile (ease.rs), the Fitts
+  duration and the arrival (plan.rs arrival_t), the reduced-motion move;
+- libs/cua-driver/rust/crates/cursor-overlay: the heading rotation and the
+  float (cursor_pose.rs), the click's press keyframes
+  (build_default_theme.py action_click) and the trail (effects.rs);
+- libs/cua-driver/rust/crates/platform-windows/src/overlay.rs: the timer
+  resolution raised only while frames run.
+
+MIT License
+
+Copyright (c) 2025 Cua AI, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
