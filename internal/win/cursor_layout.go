@@ -33,36 +33,12 @@ import (
 
 // The arrow is Mural's presence cursor, measured off its board (screen
 // pixels ÷ 1.33; cursor-look issue 11, .scratch/cursor-look/refs/): a dart
-// with its tip at the hotspot, two wings, and a back curving in toward the
-// tip, every corner rounded. Logical pixels off the tip. Mural draws it
-// pointing up-left, its wings at muralWingTop and muralWingBottom.
+// with its tip up-left at the hotspot, two wings, and a back curving in
+// toward the tip, every corner rounded. Logical pixels off the tip.
 var (
-	muralWingTop    = fpoint{X: 19, Y: 6.5}
-	muralWingBottom = fpoint{X: 6.5, Y: 18}
+	cursorArrowWingTop    = fpoint{X: 19, Y: 6.5}
+	cursorArrowWingBottom = fpoint{X: 6.5, Y: 18}
 )
-
-// cursorArrowUpright is how far, clockwise about the tip, the dart is
-// turned from Mural's pose to rest as cua's arrow rests (cursor-turn, the
-// user's pick): cua turns its arrow's art about the hotspot by
-// UPRIGHT_DEGREES (build_default_theme.py) so that the line from its body
-// to its tip points up and a little left, cursorCuaTipAxis. The dart's
-// body-centre-to-tip line is turned onto that line: about 36.6°.
-var cursorArrowUpright = func() float64 {
-	c := polygonCentroid(dartOutline(1, muralWingTop, muralWingBottom))
-	return cursorCuaTipAxis - math.Atan2(-c.Y, -c.X)
-}()
-
-// The dart's wings at rest: Mural's, turned by cursorArrowUpright.
-var (
-	cursorArrowWingTop    = turnAbout(muralWingTop, cursorArrowUpright)
-	cursorArrowWingBottom = turnAbout(muralWingBottom, cursorArrowUpright)
-)
-
-// turnAbout turns p clockwise (on the screen, y down) by a about the tip.
-func turnAbout(p fpoint, a float64) fpoint {
-	sin, cos := math.Sincos(a)
-	return fpoint{X: p.X*cos - p.Y*sin, Y: p.X*sin + p.Y*cos}
-}
 
 // The arrow's look, logical pixels: a white rim outside the shape, a soft
 // black shadow below it, the body flat in the Agent's colour.
@@ -81,16 +57,11 @@ const (
 	cursorPressMax = 1.03
 )
 
-// arrowPoints returns the arrow's outline at scale, relative to the tip.
-func arrowPoints(scale float64) []fpoint {
-	return dartOutline(scale, cursorArrowWingTop, cursorArrowWingBottom)
-}
-
-// dartOutline is the dart with wings a and b at scale, relative to the tip,
+// arrowPoints returns the arrow's outline at scale, relative to the tip,
 // a closed polygon starting beside the tip: each corner a quadratic curve
 // through it (its control point), the back one whose middle lies
 // cursorArrowNotch in from the line between the wings.
-func dartOutline(scale float64, a, b fpoint) []fpoint {
+func arrowPoints(scale float64) []fpoint {
 	toward := func(v, p fpoint, r float64) fpoint {
 		l := math.Hypot(p.X-v.X, p.Y-v.Y)
 		return fpoint{X: v.X + (p.X-v.X)/l*r, Y: v.Y + (p.Y-v.Y)/l*r}
@@ -106,7 +77,7 @@ func dartOutline(scale float64, a, b fpoint) []fpoint {
 			})
 		}
 	}
-	t := fpoint{}
+	t, a, b := fpoint{}, cursorArrowWingTop, cursorArrowWingBottom
 	mid := fpoint{X: (a.X + b.X) / 2, Y: (a.Y + b.Y) / 2}
 	c := toward(mid, t, 2*cursorArrowNotch) // a quadratic's middle is halfway to its control
 	const rt, rw, n = cursorArrowTipRadius, cursorArrowWingRadius, cursorArrowCornerSteps
@@ -161,14 +132,11 @@ const (
 	cursorPillShadowOpacity = cursorArrowShadowOp
 	cursorPillShadowOffset  = cursorArrowShadowOff
 	cursorPillShadowBlur    = cursorArrowShadowBlur
-	// The tag's top-left sits this far right of and below the tip, by the
-	// arrow's back, and the tag as far left of and above the tip when
-	// flipped (layout.rs LABEL_OFFSET_X/Y). In Mural's pose (12.5, 12) left
-	// 3.4 px between the rims of the tag and the arrow; with the dart
-	// resting as cua's arrow (cursor-turn) its right wing came down to
-	// 0.2 px of it, so the tag sits 6 px lower, 3.3 px clear again.
+	// The tag's top-left sits this far right of and below the tip, over
+	// the arrow's back as Mural's does, and the tag as far left of and
+	// above the tip when flipped (layout.rs LABEL_OFFSET_X/Y).
 	cursorPillOffsetX = 12.5
-	cursorPillOffsetY = 18.0
+	cursorPillOffsetY = 12.0
 
 	cursorLabelMaxRunes = 200 // names are cut before measuring
 )

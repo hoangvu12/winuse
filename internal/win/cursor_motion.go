@@ -15,8 +15,8 @@ package win
 // small follow-through past the target (ease.rs bump_profile); a Fitts
 // duration with a 600 ms floor (spec.rs, style.rs); arrival, when the
 // Action is delivered, as the first moment the tip is within a pixel of
-// the target (plan.rs arrival_t); and the tip turning along the path
-// (cursor_pose.rs heading rotation). Reduced motion is their straight
+// the target (plan.rs arrival_t); and the tip leaning along the path
+// (cursor_pose.rs travel_rotation, cursor.rotate=lean). Reduced motion is their straight
 // 120 ms minimum-jerk move (plan.rs). The minimum-jerk polynomial is
 // vercel-labs/agent-desktop's (Apache-2.0,
 // crates/core/src/cursor_overlay/hand_path.rs). The macOS bridge's
@@ -384,13 +384,14 @@ func (p cursorPath) at(t float64) fpoint {
 	return p.bezier(p.param(u))
 }
 
-// The tip's rotation along the path: cua's default cursor.rotate=heading,
-// ported 1:1 from cursor-overlay's cursor_pose.rs travel_rotation (trycua/
-// cua at ecaf10b, MIT; cursor-turn, .scratch/cursor-look/turning-1to1.md).
-// The arrow turns to point where it is going, easing in over cursorTurnIn
-// and out over cursorTurnOut before the arrival (both stretched by
-// 1 + |turn|/π for a big turn, and each at most half the time to the
-// arrival), and is upright at the arrival and after it.
+// The tip's rotation along the path: cua's cursor.rotate=lean, ported 1:1
+// from cursor-overlay's cursor_pose.rs travel_rotation (trycua/cua at
+// ecaf10b, MIT; cursor-turn, the user's pick, .scratch/cursor-look/
+// turning-1to1.md). The arrow leans toward where it is going, at most
+// cursorLeanMax (cap·tanh of the heading turn), easing in over
+// cursorTurnIn and out over cursorTurnOut before the arrival (each at most
+// half the time to the arrival), and is upright at the arrival and after
+// it. cua's default, heading, turns the tip all the way along the path.
 const (
 	cursorTurnIn  = 150 * time.Millisecond // ROTATE_RAMP_IN_SECS
 	cursorTurnOut = 250 * time.Millisecond // ROTATE_RAMP_OUT_SECS
@@ -403,20 +404,23 @@ const (
 	// cursorTurnMinSpeed: below this speed, logical pixels per second, the
 	// chord stands in for the travel direction (velocity_at's 1 pt/s).
 	cursorTurnMinSpeed = 1.0
+	// cursorLeanMax is the most the arrow leans (LEAN_MAX_RADIANS) ...
+	cursorLeanMax = 30 * math.Pi / 180
+	// ... and cursorLeanMaxPressed the most while a button is held, in a
+	// drag (LEAN_MAX_DRAG_RADIANS). winuse's cursor never travels with a
+	// button held: a Page drag's cursor goes to the drag's start and
+	// presses there, and a Headed drag moves the real pointer. Kept for
+	// the port's sake (leanShape).
+	cursorLeanMaxPressed = 15 * math.Pi / 180
 )
-
-// cursorCuaTipAxis is cua's arrow's tip axis (cursor_pose.rs tip_axis):
-// from its body's centre, BODY_OFFSET_PT (2.0, 11.9) points off the
-// hotspot, to the hotspot, about −99.5°.
-var cursorCuaTipAxis = math.Atan2(-11.9, -2.0)
 
 // cursorTipAxis is the upright arrow's own heading by cua's rule
 // (cursor_pose.rs tip_axis): the direction from the centre of the arrow's
 // body to its tip. cua measures BODY_OFFSET_PT as the centre of the
 // painted arrow's opaque pixels; here it is the dart's area centroid
 // (arrowCentroid), which the painted pixels match
-// (TestTipAxisIsTheBodyCentreToTheTip). The dart rests turned so that it
-// is cua's own, cursorCuaTipAxis (cursorArrowUpright).
+// (TestTipAxisIsTheBodyCentreToTheTip). About −136° for the dart; cua's
+// own arrow's is about −99.5°.
 var cursorTipAxis = func() float64 {
 	c := arrowCentroid()
 	return math.Atan2(-c.Y, -c.X)
@@ -424,10 +428,8 @@ var cursorTipAxis = func() float64 {
 
 // arrowCentroid is the area centroid of the upright arrow's outline, in
 // logical pixels off the tip.
-func arrowCentroid() fpoint { return polygonCentroid(arrowPoints(1)) }
-
-// polygonCentroid is the area centroid of the closed polygon pts.
-func polygonCentroid(pts []fpoint) fpoint {
+func arrowCentroid() fpoint {
+	pts := arrowPoints(1)
 	var a, cx, cy float64
 	for i := range pts {
 		p, q := pts[i], pts[(i+1)%len(pts)]
@@ -456,8 +458,8 @@ func (p cursorPath) tipAngle(elapsed time.Duration) float64 {
 		return 0
 	}
 	t, arrive := elapsed.Seconds(), p.arrive.Seconds()
-	stretch := 1 + math.Abs(p.turn)/math.Pi
-	in, out := turnRamps(t, arrive, cursorTurnIn.Seconds()*stretch, cursorTurnOut.Seconds()*stretch)
+	// lean's ramps are not stretched (only heading's are).
+	in, out := turnRamps(t, arrive, cursorTurnIn.Seconds(), cursorTurnOut.Seconds())
 	chord := math.Atan2(p.to.Y-p.from.Y, p.to.X-p.from.X)
 	// The direction the tip travels: its velocity by a central difference
 	// over the shown path, or the chord when it barely moves.
@@ -470,9 +472,20 @@ func (p cursorPath) tipAngle(elapsed time.Duration) float64 {
 		travel = math.Atan2(vy, vx)
 	}
 	// Unwrapped about the chord, so a path that wobbles near straight down
-	// never flips between +π and −π.
+	// never flips between +π and −π: the chord's turn, p.turn, is fixed for
+	// the move, and only the path's small swing about the chord is added.
 	target := p.turn + wrapAngle(travel-chord)
-	return target * in * out
+	return leanShape(target, false) * in * out
+}
+
+// leanShape is lean's shaping of a heading turn: cap·tanh(target/cap),
+// the cap smaller while a button is held.
+func leanShape(target float64, pressed bool) float64 {
+	limit := cursorLeanMax
+	if pressed {
+		limit = cursorLeanMaxPressed
+	}
+	return limit * math.Tanh(target/limit)
 }
 
 // turnRamps are the turn's ease-in after the start and ease-out before

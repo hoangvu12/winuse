@@ -190,14 +190,15 @@ func TestCursorTravelDurationIsCuasFitts(t *testing.T) {
 	}
 }
 
-// TestTipTurnsAlongThePathAndLandsUpright (cursor-look 04): the arrow
-// turns toward where it is going, eases in and out, and is exactly upright
-// at the arrival and after it; short hops and reduced motion never turn.
+// TestTipTurnsAlongThePathAndLandsUpright (cursor-look 04, cursor-turn):
+// the arrow leans toward where it is going, at most 30°, eases in and out,
+// and is exactly upright at the arrival and after it; short hops and
+// reduced motion never turn.
 func TestTipTurnsAlongThePathAndLandsUpright(t *testing.T) {
 	right := newCursorPath(fpoint{0, 500}, fpoint{900, 500}, Rect{}, 1, false)
-	// Rightward, the tip (whose own axis, body to tip, points up and a
-	// little left, as cua's) turns some 99.5° clockwise.
-	if want := -cursorTipAxis; math.Abs(right.turn-want) > 1e-9 || want < 97*math.Pi/180 || want > 102*math.Pi/180 {
+	// Rightward, the heading turn of the dart's tip (whose axis, body to
+	// tip, points up-left) is some 136° clockwise; lean caps it near 30°.
+	if want := -cursorTipAxis; math.Abs(right.turn-want) > 1e-9 || want < 130*math.Pi/180 || want > 140*math.Pi/180 {
 		t.Errorf("a rightward travel turns %.1f°, want %.1f°", right.turn*180/math.Pi, want*180/math.Pi)
 	}
 	if right.tipAngle(0) != 0 || right.tipAngle(right.arrive) != 0 || right.tipAngle(right.dur) != 0 {
@@ -213,10 +214,11 @@ func TestTipTurnsAlongThePathAndLandsUpright(t *testing.T) {
 		peak = math.Max(peak, a)
 		prev = a
 	}
-	if peak < 0.8*right.turn || peak > right.turn+0.3 {
-		t.Errorf("a long rightward travel turns at most %.1f°, want near %.1f°", peak*180/math.Pi, right.turn*180/math.Pi)
+	if peak < 28*math.Pi/180 || peak > cursorLeanMax+1e-9 {
+		t.Errorf("a long rightward travel leans at most %.1f°, want near lean's 30°", peak*180/math.Pi)
 	}
-	// Straight down, the turn is near half a turn: never wraps mid-travel.
+	// Straight down, the heading turn is near half a turn: the lean never
+	// wraps mid-travel.
 	down := newCursorPath(fpoint{500, 0}, fpoint{500, 900}, Rect{}, 1, false)
 	prev = 0
 	for el := time.Duration(0); el <= down.arrive; el += time.Millisecond {
@@ -369,8 +371,8 @@ func TestPlacePillBesideTheTipAndFlipsAtWorkAreaEdges(t *testing.T) {
 	work := Rect{Left: 0, Top: 0, Right: 1920, Bottom: 1040}
 	const w, h = 200, 24
 	ox, oy := scaled(cursorPillOffsetX, 1), scaled(cursorPillOffsetY, 1)
-	if ox != 13 || oy != 18 {
-		t.Fatalf("tag offsets = %d, %d; want 13 (12.5 rounded), 18: by the arrow's back", ox, oy)
+	if ox != 13 || oy != 12 {
+		t.Fatalf("tag offsets = %d, %d; want 13 (12.5 rounded), 12: over the arrow's back", ox, oy)
 	}
 
 	got := placePill(fpoint{500, 400}, w, h, work, 1)
@@ -440,12 +442,10 @@ func TestPillSizeCapsAndScales(t *testing.T) {
 	}
 }
 
-// TestArrowShapeAndBounds (cursor-look 11, cursor-turn): Mural's dart, tip
-// at the hotspot, wings at (19, 6.5) and (6.5, 18), the back curving in
-// toward the tip by about cursorArrowNotch, its corners rounded, at rest
-// turned about the tip so its body points to the tip as cua's arrow's
-// does (−99.5°); the bounds hold it turned any way, pressed, with its rim
-// and shadow.
+// TestArrowShapeAndBounds (cursor-look 11): Mural's dart, tip at the
+// hotspot, wings at (19, 6.5) and (6.5, 18), the back curving in toward
+// the tip by about cursorArrowNotch, its corners rounded; the bounds hold
+// it turned any way, pressed, with its rim and shadow.
 func TestArrowShapeAndBounds(t *testing.T) {
 	if cursorArrowNotch != 3.5 {
 		t.Errorf("the back's notch is %v px, want the user's 3.5", cursorArrowNotch)
@@ -457,28 +457,18 @@ func TestArrowShapeAndBounds(t *testing.T) {
 			minX, minY = math.Min(minX, p.X), math.Min(minY, p.Y)
 			maxX, maxY = math.Max(maxX, p.X), math.Max(maxY, p.Y)
 		}
-		// The shape is Mural's, only turned: point for point Mural's pose
-		// turned by cursorArrowUpright about the tip.
-		mural := dartOutline(scale, muralWingTop, muralWingBottom)
-		for i, p := range pts {
-			if q := turnAbout(mural[i], cursorArrowUpright); math.Hypot(p.X-q.X, p.Y-q.Y) > 1e-9 {
-				t.Fatalf("scale %v: point %d is %+v, Mural's turned %+v", scale, i, p, q)
-			}
+		// The rounded tip sits just inside the hotspot; the rounded wings
+		// just inside 19 and 18.
+		if minX < 0 || minY < 0 || minX > 0.5*scale || minY > 0.5*scale {
+			t.Errorf("scale %v: the outline starts at (%.2f, %.2f), want just inside the tip", scale, minX, minY)
 		}
-		// The rounded tip sits just below the hotspot (the dart now points
-		// up), and the rounded wings reach just inside Mural's 20 px.
-		far := 0.0
-		for _, p := range pts {
-			far = math.Max(far, math.Hypot(p.X, p.Y))
-		}
-		if minY < 0 || minY > scale || far/scale < 18.5 || far/scale > 20.1 || maxX-minX < 15*scale {
-			t.Errorf("scale %v: the outline spans x %.1f..%.1f, y from %.2f, reaches %.1f", scale, minX, maxX, minY, far)
+		if w, h := maxX/scale, maxY/scale; w < 17.5 || w > 19 || h < 16.5 || h > 18 {
+			t.Errorf("scale %v: the dart spans %.1f×%.1f logical px, want about 18×17", scale, w, h)
 		}
 		// The back curves in: its middle lies about the notch closer to the
 		// tip than the line between the wings (a little more, as the
 		// rounded wings pull its ends in too).
-		a, b := cursorArrowWingTop, cursorArrowWingBottom
-		mid := fpoint{X: (a.X + b.X) / 2 * scale, Y: (a.Y + b.Y) / 2 * scale}
+		mid := fpoint{X: (19 + 6.5) / 2 * scale, Y: (6.5 + 18) / 2 * scale}
 		if d := polygonSD(pts, mid.X, mid.Y) / scale; d < cursorArrowNotch || d > cursorArrowNotch+1 {
 			t.Errorf("scale %v: the back's middle is %.2f px in, want about %v", scale, d, cursorArrowNotch)
 		}
@@ -496,11 +486,8 @@ func TestArrowShapeAndBounds(t *testing.T) {
 			t.Errorf("scale %v: the reach %v is far more than the dart needs", scale, r)
 		}
 	}
-	if a := cursorTipAxis * 180 / math.Pi; math.Abs(a-(-99.54)) > 0.05 {
-		t.Errorf("the arrow's axis is %.2f°, want cua's −99.54°", a)
-	}
-	if u := cursorArrowUpright * 180 / math.Pi; u < 35 || u > 38 {
-		t.Errorf("the dart is turned %.1f° from Mural's pose, want about 36.6°", u)
+	if a := cursorTipAxis * 180 / math.Pi; a < -137 || a > -134 {
+		t.Errorf("the arrow's axis is %.1f°, want about −135° (the diagonal back to the tip)", a)
 	}
 }
 
@@ -890,13 +877,10 @@ func TestArrowPixels(t *testing.T) {
 		// The rim is white just outside the outline, along the back too.
 		// Walk in from the wings' midpoint toward the tip to the back's
 		// edge, then half the rim out again.
-		wa, wb := cursorArrowWingTop, cursorArrowWingBottom
-		wm := fpoint{X: (wa.X + wb.X) / 2, Y: (wa.Y + wb.Y) / 2}
-		l := math.Hypot(wm.X, wm.Y)
-		mid := fpoint{X: c + wm.X*scale, Y: c + wm.Y*scale}
-		ux, uy := -wm.X/l, -wm.Y/l
+		mid, l := fpoint{X: c + 12.75*scale, Y: c + 12.25*scale}, math.Hypot(12.75, 12.25)
+		ux, uy := -12.75/l, -12.25/l
 		k := 0.0
-		for polygonSD(pts, mid.X+ux*k, mid.Y+uy*k) > 0 && k < l*scale {
+		for polygonSD(pts, mid.X+ux*k, mid.Y+uy*k) > 0 {
 			k += 0.01
 		}
 		back := fpoint{X: mid.X + ux*(k-rim/2), Y: mid.Y + uy*(k-rim/2)}
@@ -940,18 +924,12 @@ func TestArrowPixels(t *testing.T) {
 		if off > 0.03*all {
 			t.Errorf("scale %v: turned a quarter, %.1f %% of the arrow's weight moved elsewhere", scale, 100*off/all)
 		}
-		// The body's centre, below the tip, swings to its left turned 90°
-		// clockwise; near the back the press pulls the edge toward the tip.
-		bc := arrowCentroid()
-		bx, by := int(math.Round(bc.X*scale)), int(math.Round(bc.Y*scale))
-		if body(s, bx, by) != 0xFF || body(turned, -by-1, bx) != 0xFF {
-			t.Errorf("scale %v: turned 90° clockwise the body below the tip swings to its left", scale)
+		d := int(7 * scale)
+		if body(s, d, d) != 0xFF || body(draw(math.Pi/2, 1), -d-1, d) != 0xFF {
+			t.Errorf("scale %v: turned 90° clockwise the body below-right of the tip swings below-left", scale)
 		}
-		// Just inside the back's edge, the press (the back about 0.7 px
-		// nearer the tip) leaves the white rim where the fill was.
-		in := fpoint{X: mid.X + ux*(k+0.3*scale), Y: mid.Y + uy*(k+0.3*scale)}
-		at := func(s *surface) float64 { return colourDist(s.pix[int(in.Y)*n+int(in.X)], cursorAccent) }
-		if at(draw(0, 0.93)) <= at(s)+20 {
+		far := int(13 * scale)
+		if body(draw(0, 0.93), far, far) >= body(s, far, far) && body(s, far, far) > 0 {
 			t.Errorf("scale %v: pressed to 93 %% the arrow shrinks toward its tip", scale)
 		}
 	}

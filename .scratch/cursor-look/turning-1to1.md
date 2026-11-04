@@ -203,7 +203,7 @@ options went to the user: keep it; turn the dart's art so its rest axis is
 cua's −99.5°; use `lean` (30° cap) instead of `heading`; or pick the turn's
 direction otherwise. **The user picked the second** (below).
 
-## The user's pick: the dart rests as cua's arrow
+## Tried, then dropped: the dart rests as cua's arrow (27671c1)
 
 The user chose "do it like cua": the dart's art is turned about its tip,
 as cua turns its arrow's art by `UPRIGHT_DEGREES`, so that its body's
@@ -235,6 +235,52 @@ upright dart's right wing came down to 0.2 px of the tag. The offset is now
 **(12.5, 18)**: 3.3 px clear again, no overlap, the tag below and right of
 the arrow's back.
 
+## The user's final pick: Mural's pose, cua's `lean`
+
+The user kept the dart in Mural's pose (axis −136.2°, tag back at
+(12.5, 12)) and chose cua's other turning mode, `lean`
+(`cursor_pose.rs:117-120`, `:179-185`, `:201-212`): the same pipeline,
+but the ramps are **not stretched** (`stretch` is 1 for every mode but
+heading, `:182-185`), and the heading turn is shaped
+`cap·tanh(target / cap)` with `cap = LEAN_MAX_RADIANS` (30°), or
+`LEAN_MAX_DRAG_RADIANS` (15°) while a button is held (`pressed`,
+`render_state.rs:483`). The 40 pt rule, the half-arrival ramp caps, the
+velocity, the unwrapping and the arrival are heading's. winuse's cursor
+never travels with a button held (a Page drag's cursor goes to the drag's
+start; a Headed drag moves the real pointer), so the 15° cap is ported
+(`leanShape`) but unused.
+
+| 400 px move | heading turn | lean, max (sign) | cua's arrow, lean max |
+|---|---|---|---|
+| rightward | +136.2° | **+30.0°, clockwise** | +29.9°, clockwise |
+| down-right | −178.8° | **−30.0°, counterclockwise** | +30.0°, clockwise |
+| straight down | −133.8° | **−30.0°, counterclockwise** | −30.0°, counterclockwise |
+
+(tanh(136°/30°) is 0.9998, so any turn past about 60° leans the full
+30°; lean never points the tip along the path: 0 % of frames within 30°.)
+
+**Does the sign flip?** Within a move, never. The target is
+`wrap(chord − tip_axis) + wrap(travel − chord)`: the first term is fixed
+for the move, the second (the arc's swing about its chord, a few tens of
+degrees) is added unwrapped, so a turn near ±180° stays on its side for
+the whole travel and tanh keeps it at the cap
+(`TestLeanNeverFlicksOnMovesAwayFromTheTip`: down-right, a degree or two
+either side, straight down and 2° either side; no sign change and no
+frame step over 4°, the ease-in's own peak being 2.5° a frame). Across
+moves, yes, at the direction opposite the tip: chords up to 43.5° lean
++30°, from 44° on −30°. cua's own arrow does the same at its opposite,
+80.5° (80° leans +30°, 80.5° −30°), nearly straight down. So two
+successive moves in nearly that direction may lean opposite ways; that is
+cua's behaviour and is kept 1:1, not a flicker within a move.
+
+**The tag.** At rest the tag and the dart are 3.4 px apart, rim to rim,
+as before. Leaning, a wing swings toward the tag's corner: at ±15° the
+rims are 0–0.5 px apart (0.4 px² overlap at +15°), at +30° they touch
+with 1.6 px² of overlap, at −30° 0.1 px²; the arrow is drawn over the
+tag. A tag 4 px lower (y 16) would keep 1.6 px clear at every lean and
+5.0 px at rest. The offset is kept at Mural's 12, as asked, pending the
+user's word.
+
 ## Not ported: the float's tilt and its float in travel
 
 cua's painted angle also has the float's ±2.5° tilt, at rest and in
@@ -246,15 +292,15 @@ separate decision for the user.
 
 ## The branch
 
-- `internal/win/cursor_motion.go`: `tipAngle` is `travel_rotation`
-  (ramps capped by `turnRamps`, the velocity over ±8 ms of the shown path,
-  the chord below 1 logical px/s); `cursorTipAxis` is body centre → tip
-  (`arrowCentroid`).
+- `internal/win/cursor_motion.go`: `tipAngle` is `travel_rotation` in
+  `lean` mode (unstretched ramps capped by `turnRamps`, the velocity over
+  ±8 ms of the shown path, the chord below 1 logical px/s, `leanShape`);
+  `cursorTipAxis` is body centre → tip (`arrowCentroid`) on Mural's pose.
 - `internal/win/cursor_turn_test.go`: `TestTipTurningIsCuas` re-implements
-  `travel_rotation`, `ramps`, `sample_at` and `velocity_at` from cua and
-  checks `tipAngle` against them every 1/120 s on nine moves (under 0.25°;
-  without the ramp cap it differs by up to 90°);
-  `TestTipAxisIsTheBodyCentreToTheTip` measures the painted dart as cua's
-  test does.
-- Contact sheet: a new row, the 400 px rightward and down-right moves, a
-  frame every 33 ms to the arrival.
+  `travel_rotation` (lean and heading), `ramps`, `sample_at` and
+  `velocity_at` from cua and checks `tipAngle` against its lean every
+  1/120 s on nine moves (under 0.25°), and lean's caps;
+  `TestLeanNeverFlicksOnMovesAwayFromTheTip`; `TestTipAxisIsTheBodyCentreToTheTip`
+  measures the painted dart as cua's test does.
+- Contact sheet: three "Turning as it plays" rows, the 400 px rightward,
+  down-right and straight-down moves, a frame every 33 ms to the arrival.

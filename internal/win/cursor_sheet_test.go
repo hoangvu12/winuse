@@ -170,9 +170,9 @@ func TestAgentCursorContactSheet(t *testing.T) {
 	y += 14
 
 	// 3. Turning: the sprites every 30°, and the turn of a rightward move.
-	heading("Turning (200 %): every 30°, then 99.5° — the full turn of a rightward move, tip leading, as cua's arrow")
+	heading("Turning (200 %): every 30°, then ±30° — lean's most, the whole of a move's turn (cua's cursor.rotate=lean)")
 	x = 16
-	angles := []float64{0, 30, 60, 90, 120, 150, 180, -150, -120, -90, -60, -30, -cursorTipAxis * 180 / math.Pi}
+	angles := []float64{0, 30, 60, 90, 120, 150, 180, -150, -120, -90, -60, -30, 30}
 	for _, deg := range angles {
 		r := card(x, 116, 130, sheetDark)
 		s, at := def.frame(cursorLook{Scale: 2}, deg*math.Pi/180, 1)
@@ -187,7 +187,7 @@ func TestAgentCursorContactSheet(t *testing.T) {
 	for _, mv := range []struct {
 		name string
 		d    fpoint
-	}{{"rightward", fpoint{X: 400}}, {"down-right", fpoint{X: 400 / math.Sqrt2, Y: 400 / math.Sqrt2}}} {
+	}{{"rightward", fpoint{X: 400}}, {"down-right", fpoint{X: 400 / math.Sqrt2, Y: 400 / math.Sqrt2}}, {"straight-down", fpoint{Y: 400}}} {
 		p := newCursorPath(fpoint{X: 100, Y: 100}, fpoint{X: 100 + mv.d.X, Y: 100 + mv.d.Y}, Rect{}, 1, false)
 		heading(fmt.Sprintf("Turning as it plays (150 %%): a 400 px %s move, every 33 ms to the arrival at %d ms; the yellow tick is where the tip is going", mv.name, p.arrive.Milliseconds()))
 		x = 16
@@ -360,7 +360,7 @@ func TestAgentCursorContactSheet(t *testing.T) {
 	big := image.NewRGBA(image.Rect(0, 0, 336, 336))
 	fillRect(big, big.Rect, sheetDark)
 	bs, bat := def.frame(cursorLook{Scale: 12}, 0, 1)
-	pasteCursor(big, bs, bat, fpoint{X: 120, Y: 48}) // the upright dart reaches 5.5 px left of its tip
+	pasteCursor(big, bs, bat, fpoint{X: 48, Y: 48})
 	writePNG(t, filepath.Join(dir, "cursor-arrow-large.png"), big)
 
 	if calc := os.Getenv("WINUSE_CURSOR_SHEET_CALC"); calc != "" {

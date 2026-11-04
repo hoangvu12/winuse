@@ -11,7 +11,7 @@ palette is our own; the trail keeps cua's widths and lifted colour.
   (path.rs, spec.rs, params.rs), the steady timing's in-out sine and
   600 ms floor (plan.rs, style.rs), bump_profile (ease.rs), the Fitts
   duration and the arrival (plan.rs arrival_t), the reduced-motion move;
-- libs/cua-driver/rust/crates/cursor-overlay: the heading rotation and the
+- libs/cua-driver/rust/crates/cursor-overlay: the lean rotation (travel_rotation, cursor.rotate=lean) and the
   float (cursor_pose.rs), the click's press keyframes
   (build_default_theme.py action_click) and the trail (effects.rs);
 - libs/cua-driver/rust/crates/platform-windows/src/overlay.rs: the timer

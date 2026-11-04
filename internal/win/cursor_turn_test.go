@@ -87,15 +87,19 @@ func cuaSmoothstep(x float64) float64 {
 	return t * t * (3 - 2*t)
 }
 
-// cuaTravelRotation is travel_rotation for RotateMode::Heading, not
-// pressed, with tipAxis the arrow's tip_axis().
-func cuaTravelRotation(tr cuaTrajectory, t, tipAxis float64) float64 {
+// cuaTravelRotation is travel_rotation for RotateMode::Lean (lean) or
+// RotateMode::Heading, held (pressed) or not, with tipAxis the arrow's
+// tip_axis().
+func cuaTravelRotation(tr cuaTrajectory, t, tipAxis float64, lean, pressed bool) float64 {
 	a, b := tr.samples[0], tr.samples[len(tr.samples)-1]
 	if t >= tr.arrival || math.Hypot(b.x-a.x, b.y-a.y) < 40 {
 		return 0
 	}
 	chord := math.Atan2(b.y-a.y, b.x-a.x)
-	stretch := 1 + math.Abs(cuaWrap(chord-tipAxis))/math.Pi
+	stretch := 1.0
+	if !lean {
+		stretch = 1 + math.Abs(cuaWrap(chord-tipAxis))/math.Pi
+	}
 	rin := math.Max(math.Min(0.15*stretch, tr.arrival*0.5), 1e-6)
 	rout := math.Max(math.Min(0.25*stretch, tr.arrival*0.5), 1e-6)
 	pin, pout := cuaSmoothstep(t/rin), cuaSmoothstep((tr.arrival-t)/rout)
@@ -105,13 +109,20 @@ func cuaTravelRotation(tr cuaTrajectory, t, tipAxis float64) float64 {
 		travel = math.Atan2(vy, vx)
 	}
 	target := cuaWrap(chord-tipAxis) + cuaWrap(travel-chord)
-	return target * pin * pout
+	shaped := target
+	if lean {
+		limit := 30 * math.Pi / 180
+		if pressed {
+			limit = 15 * math.Pi / 180
+		}
+		shaped = limit * math.Tanh(target/limit)
+	}
+	return shaped * pin * pout
 }
 
 // TestTipTurningIsCuas (cursor-turn): frame by frame at 120 Hz, on long
-// and short moves every way, at 100 % and 150 %, tipAngle is cua's
-// heading rotation for our arrow's tip axis, and, since the dart rests as
-// cua's arrow does, the very angles cua turns its own arrow by.
+// and short moves every way, at 100 % and 150 %, tipAngle is cua's lean
+// (the user's pick) for our arrow's tip axis.
 func TestTipTurningIsCuas(t *testing.T) {
 	from := fpoint{X: 1200, Y: 700}
 	for _, mv := range []struct {
@@ -131,22 +142,24 @@ func TestTipTurningIsCuas(t *testing.T) {
 	} {
 		p := newCursorPath(from, fpoint{X: from.X + mv.d.X, Y: from.Y + mv.d.Y}, Rect{}, mv.scale, false)
 		tr := cuaSampled(p)
-		// cua's own arrow's tip_axis, from its BODY_OFFSET_PT.
-		cuaArrow := math.Atan2(-11.9, -2.0)
-		worst, worstArrow := 0.0, 0.0
+		worst := 0.0
 		for el := time.Duration(0); el <= p.dur+50*time.Millisecond; el += time.Second / 120 {
-			ours := p.tipAngle(el)
-			worst = math.Max(worst, math.Abs(ours-cuaTravelRotation(tr, el.Seconds(), cursorTipAxis)))
-			worstArrow = math.Max(worstArrow, math.Abs(ours-cuaTravelRotation(tr, el.Seconds(), cuaArrow)))
+			ours, theirs := p.tipAngle(el), cuaTravelRotation(tr, el.Seconds(), cursorTipAxis, true, false)
+			worst = math.Max(worst, math.Abs(ours-theirs))
 		}
 		// The two differ only in reading the path exactly or between its
-		// 120 Hz samples, and the dart's axis from cua's by the centroid's
-		// rounding: well under a sprite's 3°.
+		// 120 Hz samples: well under a sprite's 3°.
 		if worst > 0.25*math.Pi/180 {
-			t.Errorf("%s: tipAngle differs from cua's rule by up to %.2f°", mv.name, worst*180/math.Pi)
+			t.Errorf("%s: tipAngle differs from cua's by up to %.2f°", mv.name, worst*180/math.Pi)
 		}
-		if worstArrow > 0.25*math.Pi/180 {
-			t.Errorf("%s: tipAngle differs from cua's arrow's turn by up to %.2f°", mv.name, worstArrow*180/math.Pi)
+	}
+	// lean's caps: 30°, 15° with a button held.
+	for _, target := range []float64{-3, -1, -0.2, 0, 0.3, 1.5, math.Pi} {
+		if got, want := leanShape(target, false), 30*math.Pi/180*math.Tanh(target/(30*math.Pi/180)); math.Abs(got-want) > 1e-12 {
+			t.Errorf("leanShape(%v) = %v, want %v", target, got, want)
+		}
+		if got := leanShape(target, true); math.Abs(got) > 15*math.Pi/180+1e-12 {
+			t.Errorf("leanShape(%v, pressed) = %v, past 15°", target, got)
 		}
 	}
 	// With Windows' animations off nothing turns, as in cua.
@@ -158,8 +171,7 @@ func TestTipTurningIsCuas(t *testing.T) {
 // TestTipAxisIsTheBodyCentreToTheTip (cursor-turn): the tip axis is cua's
 // rule applied to our dart — from the centre of the painted arrow's
 // opaque pixels (cursor_pose.rs the_body_offset_is_the_centre_of_the_
-// painted_arrow) to the tip — and, the dart resting as cua's arrow does,
-// within a degree of cua's own, about −99.5°.
+// painted_arrow) to the tip — and cua's own arrow's is about −99.5°.
 func TestTipAxisIsTheBodyCentreToTheTip(t *testing.T) {
 	const scale = 4
 	m := newArrowMaster(scale, cursorAccent)
@@ -179,16 +191,46 @@ func TestTipAxisIsTheBodyCentreToTheTip(t *testing.T) {
 	if math.Hypot(painted.X-c.X, painted.Y-c.Y) > 0.5 {
 		t.Errorf("the painted body's centre is %+v, the outline's centroid %+v", painted, c)
 	}
-	want := math.Atan2(-painted.Y, -painted.X)
-	if math.Abs(cursorTipAxis-want) > math.Pi/180 {
+	if want := math.Atan2(-painted.Y, -painted.X); math.Abs(cursorTipAxis-want) > math.Pi/180 {
 		t.Errorf("the tip axis is %.1f°, the painted body to the tip %.1f°", cursorTipAxis*180/math.Pi, want*180/math.Pi)
-	}
-	// The dart rests as cua's arrow: its painted body points to the tip at
-	// cua's −99.5°, within a degree.
-	if d := (want - math.Atan2(-11.9, -2.0)) * 180 / math.Pi; math.Abs(d) > 1 {
-		t.Errorf("the painted dart's axis is %.2f°, %.2f° from cua's arrow's", want*180/math.Pi, d)
 	}
 	if a := math.Atan2(-11.9, -2.0) * 180 / math.Pi; a < -100 || a > -99 {
 		t.Errorf("cua's arrow's axis is %.2f°", a)
+	}
+}
+
+// TestLeanNeverFlicksOnMovesAwayFromTheTip (cursor-turn): a move nearly
+// opposite where the tip points (down-right is about 180° from the dart's
+// −136°, straight down and just either side of it ride the same edge)
+// leans one way the whole travel: its sign never changes, and no frame
+// jumps. The heading turn is unwrapped about the chord, so its sign is
+// the chord's for the whole move.
+func TestLeanNeverFlicksOnMovesAwayFromTheTip(t *testing.T) {
+	from := fpoint{X: 1200, Y: 700}
+	for _, d := range []fpoint{
+		{X: 400 / math.Sqrt2, Y: 400 / math.Sqrt2}, // down-right
+		{X: 283, Y: 300}, {X: 300, Y: 283}, // a degree or two either side of it
+		{Y: 600}, {X: 20, Y: 600}, {X: -20, Y: 600}, // straight down and either side
+	} {
+		p := newCursorPath(from, fpoint{X: from.X + d.X, Y: from.Y + d.Y}, Rect{}, 1, false)
+		sign, prev := 0.0, 0.0
+		for el := time.Duration(0); el < p.arrive; el += time.Second / 120 {
+			a := p.tipAngle(el)
+			if math.Abs(a-prev) > 4*math.Pi/180 { // the ease-in peaks at 2.5° a frame; a flick is 60°
+				t.Errorf("move %+v: the lean jumps %.2f° at %v", d, (a-prev)*180/math.Pi, el)
+			}
+			prev = a
+			if math.Abs(a) < 1e-9 {
+				continue
+			}
+			if sign == 0 {
+				sign = math.Copysign(1, a)
+			} else if math.Copysign(1, a) != sign {
+				t.Fatalf("move %+v: the lean changes sign at %v (%.2f°)", d, el, a*180/math.Pi)
+			}
+		}
+		if sign == 0 {
+			t.Errorf("move %+v never leans", d)
+		}
 	}
 }
