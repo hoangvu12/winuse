@@ -60,8 +60,8 @@ program, so give each its own name in `WINUSE_AGENT`, set on every
 command (a Harness often starts a fresh shell per command):
 `$env:WINUSE_AGENT = "reviewer"; winuse click 101 3`. Add
 `WINUSE_CURSOR_COLOR` (a hex colour such as `#FF8A3D`) to choose the
-colour of that agent's Agent Cursor, whose label shows its name above the
-action, such as `reviewer` over `click "Save"`.
+colour of that agent's Agent Cursor, whose tag shows its name, such as
+`reviewer`; an agent with no name shows the arrow alone.
 
 Each agent keeps its own Window State and screenshot of each Window, so
 another agent's read never renumbers your indexes or moves your `@x,y`

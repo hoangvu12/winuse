@@ -1,4 +1,4 @@
-# Agent Cursor look and motion, like cua's
+# Agent Cursor look and motion: cua's motion, Mural's look
 
 Status: done offline (decided by the user; design in ADR 0018); live
 verification is issue 08, ready-for-human
@@ -28,7 +28,9 @@ Every number is from `research.md` §1–§3 unless it says otherwise.
    first moment the tip is within 1 logical px of the target: Travel returns
    then, and the label's reveal is timed to end then (browser-ux 03); the
    follow-through settles while the Action runs.
-2. **New arrow**: cua's upright rounded arrow (MIT), 42 logical px for its
+2. **New arrow** (superseded by issue 11: Mural's dart and name-only tag,
+   a mid-tone palette with the default #2F6FD6, Figtree Bold; ADR 0018
+   Decision 3): cua's upright rounded arrow (MIT), 42 logical px for its
    128-unit canvas, reshaped about its tip (0.82 across, 1.18 down) so its
    tip is its sharpest corner; a pastel fill, #5EC0E8 for the default Agent
    and cua's nine pastels for the others (ADR 0014 colours); a white rim of
@@ -49,7 +51,8 @@ Every number is from `research.md` §1–§3 unless it says otherwise.
 6. **Lower-priority items**: a position-only idle float on a 4 s loop that
    is exactly zero for every travel, click, outline and caret (and 0.5 s
    after); the label pill restyled in the Agent's colour, still shown with
-   every Action (ADR 0018 says why); Windows' "Animation effects" off
+   every Action (ADR 0018 says why; since issue 11 a tag with the Agent's
+   name alone, shown whenever the cursor is, none without a name); Windows' "Animation effects" off
    (`SPI_GETCLIENTAREAANIMATION`) gives a straight 120 ms move, no float, no
    turn, no press; an optional comet trail, `WINUSE_CURSOR_TRAIL=1`, off by
    default.
@@ -67,8 +70,8 @@ change would involve.
 
 The cursor is excluded from capture, so `TestAgentCursorContactSheet`
 (`WINUSE_CURSOR_SHEET=<dir>`) renders frames with the view's own code into
-`cursor-sheet.png` (kept next to this spec), `cursor-path.png` and
-`cursor-arrow-large.png`, and, given the README's original GIF, re-records
+`cursor-sheet.png` (kept next to this spec), `labels.png`,
+`cursor-path.png` and `cursor-arrow-large.png`, and, given the README's original GIF, re-records
 `winuse-calculator.gif`. `TestAgentCursorFrameRate`
 (`WINUSE_CURSOR_MEASURE=1`) measures frames and CPU on the desktop.
 
@@ -84,3 +87,4 @@ The cursor is excluded from capture, so `TestAgentCursorContactSheet`
 - 08 live verification — ready-for-human
 - 09 two-line pill for a named Agent — done
 - 10 flat label tag from multiplayer-app references — done
+- 11 Mural's presence cursor: dart arrow, name-only tag, Figtree — done

@@ -1,4 +1,4 @@
-# ADR 0018: The Agent Cursor looks and moves like cua's
+# ADR 0018: The Agent Cursor moves like cua's and looks like Mural's
 
 ## Status
 
@@ -8,7 +8,10 @@ It replaces the Agent Cursor's look and motion of headless ticket 03 (ported
 from agent-desktop) and keeps ADR 0006 (never in winuse's own captures,
 still excluded from other software's), ADR 0014 (a cursor per Agent, just
 above its Window, its colour) and ADR 0016 (the native cursor on Pages).
-The code is ported from trycua/cua at ecaf10b (MIT; `third_party/cua/LICENSE`).
+The motion is ported from trycua/cua at ecaf10b (MIT; `third_party/cua/LICENSE`).
+*Amended (cursor-look issue 11):* the arrow, the name tag and the palette
+are no longer cua's but drawn after Mural's presence cursor (Decisions 3,
+8 and 11); the motion is unchanged.
 
 ## Context
 
@@ -49,6 +52,15 @@ insertion caret and showing what each Action does.
    is about 56°). On the contact sheet cua's nearly equilateral dart read as
    a "▶" pointing right at rest, past its own tip, and, turned, its other
    corners read as the point.
+   *Superseded (cursor-look issue 11, the user's pick of Mural's presence
+   cursor from `.scratch/cursor-look/refs/`):* the arrow is Mural's dart,
+   measured off its board: the tip at the hotspot, wings at (19, 6.5) and
+   (6.5, 18) logical px, the back curving in toward the tip by 3.5 px
+   (`cursorArrowNotch`, the user's choice among 2–3.5), the tip's corner
+   rounded by 1.3 px and the wings' by 2.4. A 1 px white rim outside the
+   shape, a soft black shadow (16 %, 1 px down, 1.6 px blur) and a flat
+   fill in the Agent's colour: no glow, no halo and no reshape. The master
+   image and its kept sprites stay.
 4. **Frames.** About 120 per second while anything animates: `SetTimer`
    alone fires on the 15.6 ms tick on Windows 11 even with the resolution
    raised (64 measured), so a frame clock (a goroutine with an 8 ms ticker,
@@ -63,7 +75,9 @@ insertion caret and showing what each Action does.
    in over 0.15 s, out over 0.25 s, both stretched by 1 + |turn|/π, none
    under 40 px) and is upright again at the arrival. The arrow's axis is the
    bisector of its wings rather than cua's line to its halo, for the reason
-   in Decision 3.
+   in Decision 3. For Mural's dart (issue 11) that axis is nearly the
+   diagonal, about −135°, so a rightward move turns the tip about 135°
+   (cua's reshaped arrow turned about 108°).
 6. **The click's press** (1 → 0.93 → 1.03 → 1 over 667 ms) replaces the
    disc ripple. The element outline and the insertion caret stay.
 7. **The float.** At rest the tip sways and bobs (position only, so the
@@ -109,6 +123,23 @@ insertion caret and showing what each Action does.
    ranks a person's name and what they are doing. The default Agent keeps
    one centred semibold line in the same flat style. With a flat fill and
    contrast chosen per colour the text shadow no longer helps and is gone.
+   *Superseded (cursor-look issue 11, the user's pick):* the tag is
+   Mural's and shows the Agent's **name only**; the action text is no
+   longer drawn (the API still takes it). An Agent with no name (no
+   `WINUSE_AGENT`, the default Agent) shows no tag, the arrow alone. Since
+   the name does not change from one Action to the next, the tag shows
+   whenever the cursor does and fades with it, as Mural's and Figma's do;
+   the per-Action reveal and its pop are gone. It stays upright while the
+   arrow turns. The tag is 22 px tall, its corners rounded by 5.5 px,
+   padded 8 px at each end, its top-left 12.5 px right of and 12 px below
+   the tip, over the arrow's back; a 1 px white rim and the arrow's soft
+   shadow; flat fill; the text white or near-black by contrast, as before.
+   The name is capped at 24 characters with an ellipsis and set in
+   **Figtree Bold** at 12.5 px, the closest free match to Mural's font,
+   embedded in winuse.exe (`third_party/figtree`, SIL OFL 1.1) and loaded
+   for the process alone with `AddFontMemResourceEx`, with Segoe UI Bold
+   should that fail. The tag still flips left and up at the work area's
+   edges and is clamped into it.
 9. **Reduced motion.** When Windows' "Animation effects" are off
    (`SPI_GETCLIENTAREAANIMATION`, read on every travel and click), the move
    is a straight 120 ms minimum-jerk one with no turn, float, press or
@@ -119,6 +150,13 @@ insertion caret and showing what each Action does.
     Chrome's nine cannot all differ, so the palette is handed out in an
     order whose first six Agents take six different group colours, none
     the default Agent's (now cyan).
+    *Amended (cursor-look issue 11):* the palette is mid-tones like
+    Mural's, so white text reads at 4.5:1 or better on all but the yellow,
+    which takes the near-black: the default Agent's blue #2F6FD6, then
+    violet, orange, green, pink, teal, red, indigo and yellow. The first
+    six take purple, orange, green, pink, cyan and red tab groups; the
+    indigo shares the default's blue and the yellow comes last. The
+    default Agent's tab group is blue again.
 
 ## Not decided: other software's captures
 
@@ -140,4 +178,8 @@ recordings would show the cursor. It is the user's decision.
   floats, none when hidden (`TestAgentCursorFrameRate`).
 - The look is checked offline by rendering it (`TestAgentCursorContactSheet`),
   since the cursor is excluded from capture.
-- The default Agent's tab group is cyan instead of blue.
+- The default Agent's tab group was cyan from issue 02 to issue 10, and
+  is blue again since issue 11.
+- The Agent Cursor no longer says what each Action does: only the
+  Agent's name, and nothing for the default Agent. What an Action did is
+  still in its output and the helper's trace.

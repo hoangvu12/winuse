@@ -72,7 +72,7 @@ resizes and closes windows. In Chrome, Edge and
 Electron apps it also types, presses keys and clicks through window
 messages. It does not move your mouse, press keys or bring the window to
 the front, so you can keep working in another window. A second cursor
-shows where each agent acts and what it is doing. It moves less when
+shows where each agent acts, with the agent's name beside it. It moves less when
 Windows' animation effects are off, and `WINUSE_CURSOR_TRAIL=1` in the
 helper's environment gives it a trail.
 
