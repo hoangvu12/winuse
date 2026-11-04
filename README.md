@@ -2,11 +2,12 @@
 
 Let your coding agent use Windows apps and websites.
 
-[![Three agents work at once in three browser windows, each with its own named cursor: "artist" colours a rocket, "planner" ticks off a launch board and ships it, "writer" types and publishes release notes](docs/images/winuse-demo.gif)](docs/images/winuse-demo.mp4)
+https://github.com/user-attachments/assets/97990ed7-6c0e-4c10-87f4-814074c31d9f
 
 Three agents at once, each with its own cursor and name tag, while your
-own mouse and keyboard stay free
-([full-quality video](docs/images/winuse-demo.mp4)).
+own mouse and keyboard stay free: "artist" colours a rocket, "planner"
+ticks off a launch board and ships it, "writer" types and publishes
+release notes.
 
 winuse is a command-line tool for Windows. It reads any open window as
 text, clicks and fills in its controls, and types and scrolls when a task
