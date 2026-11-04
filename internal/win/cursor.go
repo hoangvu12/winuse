@@ -470,7 +470,7 @@ func (u *cursorUI) render(now time.Time) {
 // traceFrame counts one frame of an animation and, when the animation
 // ends, logs its frame rate and the UI thread's time spent drawing it.
 func (u *cursorUI) traceFrame(now, began time.Time, animating bool) {
-	if !animating && u.frames == 0 {
+	if u.frames == 0 {
 		u.animStart = now
 	}
 	u.frames++
@@ -478,7 +478,7 @@ func (u *cursorUI) traceFrame(now, began time.Time, animating bool) {
 	if u.model.animating() {
 		return
 	}
-	if el := now.Sub(u.animStart); u.frames > 1 && el > 0 {
+	if el := now.Sub(u.animStart); animating && u.frames > 1 && el > 0 {
 		log.Printf("cursor trace: %d frames in %dms (%.0f per second), drawing %.2fms per frame",
 			u.frames, el.Milliseconds(), float64(u.frames-1)/el.Seconds(),
 			float64(u.drawing.Microseconds())/1000/float64(u.frames))

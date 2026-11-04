@@ -47,6 +47,7 @@ import (
 	"image/color"
 	"math"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -98,6 +99,9 @@ const (
 	dtNoPrefix              = 0x0800
 
 	cursorTimerID = 1
+	// wmCursorFrame is the frame clock's message to the arrow window
+	// (WM_APP + 1; the UI thread's own wake is WM_APP, a thread message).
+	wmCursorFrame = wmApp + 1
 	// cursorMaxOutlinePixels skips an outline that would need an absurd
 	// window (a multi-monitor wall of 8K screens and more).
 	cursorMaxOutlinePixels = 64 << 20
@@ -153,7 +157,7 @@ var cursorWndProc = syscall.NewCallback(func(hwnd, message, wp, lp uintptr) uint
 		return htTransparent
 	case wmMouseActivate:
 		return maNoActivate
-	case wmTimer:
+	case wmTimer, wmCursorFrame:
 		if f, ok := cursorTicks.Load(hwnd); ok {
 			f.(func())()
 		}
@@ -196,7 +200,15 @@ type layeredWin struct {
 	origBmp uintptr // the DC's original bitmap, restored before deletion
 	pix     surface // the DIB section's bits
 	shown   bool
+	// What the screen shows: present skips UpdateLayeredWindow when
+	// neither the place, the opacity nor the pixels (dirty) changed.
+	atX, atY int32
+	atOp     float64
+	dirty    bool
 }
+
+// touch records that the pixels changed since the last present.
+func (l *layeredWin) touch() { l.dirty = true }
 
 // newLayeredWin creates one hidden cursor window of class cls.
 func newLayeredWin(hMod uintptr, cls *uint16) (*layeredWin, error) {
@@ -251,6 +263,7 @@ func (l *layeredWin) resize(w, h int32) bool {
 	}
 	l.bmp = bmp
 	l.pix = surface{w: int(w), h: int(h), pix: unsafe.Slice((*uint32)(bits), int(w)*int(h))}
+	l.dirty = true
 	return true
 }
 
@@ -260,6 +273,10 @@ func (l *layeredWin) present(x, y int32, opacity float64) {
 	if l.bmp == 0 {
 		return
 	}
+	if l.shown && !l.dirty && x == l.atX && y == l.atY && opacity == l.atOp {
+		return // nothing new to show
+	}
+	l.atX, l.atY, l.atOp, l.dirty = x, y, opacity, false
 	procGdiFlush.Call()
 	dst := point{X: x, Y: y}
 	size := sizeL{CX: int32(l.pix.w), CY: int32(l.pix.h)}
@@ -310,23 +327,28 @@ type cursorWin struct {
 	look    cursorLook
 	lookOK  bool
 	layout  cursorWindowLayout
-	card    []uint32 // the look's pill, shadow and text alone
-	popped  []uint32 // the pill scaled for its pop
-	base    []uint32 // the pill as shown (dimmed, popped): the window less the arrow
-	cardOp  float64  // the pill's opacity in base; <0: none yet
-	cardPop float64  // and its scale
-	shownA  int      // the arrow's angle step in the window's pixels
-	shownP  float64  // and its press; 0: none yet
+	card    []uint32  // the look's pill, shadow and text alone
+	popped  []uint32  // the pill scaled for its pop
+	base    []uint32  // the pill as shown (dimmed, popped): the window less the arrow
+	cardOp  float64   // the pill's opacity in base; <0: none yet
+	cardPop float64   // and its scale
+	shown   spriteKey // the arrow in the window's pixels
+	shownOK bool      // shown is valid
 
-	// The arrow's master image and its turned sprites (arrowReach-sized
-	// squares, the tip at their centre), kept per scale.
+	// The arrow's master image and its turned and pressed sprites
+	// (arrowReach-sized squares, the tip at their centre), kept per scale.
 	master      arrowMaster
 	masterScale float64
-	sprites     map[int][]uint32
+	sprites     map[spriteKey][]uint32
 	spriteR     int32 // the sprites' reach: side 2·spriteR+1
 
 	trailAlpha []float64 // drawTrail's scratch
 	fast       bool      // this cursor holds the raised timer resolution
+	// The frame clock: while the cursor animates, a goroutine posts
+	// wmCursorFrame every cursorFrameInterval; posted coalesces them, so a
+	// busy UI thread is never handed a backlog of frames.
+	clockStop chan struct{}
+	posted    atomic.Bool
 
 	outTarget Rect
 	outScale  float64
@@ -371,7 +393,10 @@ func newCursorWin(accent color.RGBA) (*cursorWin, error) {
 
 // setTick installs the controller's timer callback.
 func (w *cursorWin) setTick(f func()) {
-	cursorTicks.Store(w.arrow.hwnd, f)
+	cursorTicks.Store(w.arrow.hwnd, func() {
+		w.posted.Store(false)
+		f()
+	})
 }
 
 func (w *cursorWin) monitorAt(p fpoint) (Rect, uint32) {
@@ -479,20 +504,20 @@ func (w *cursorWin) showCursor(tip fpoint, opacity, labelOp, labelPop, angle, pr
 	if !w.lookOK || look != w.look {
 		w.lookOK = w.renderArrow(look)
 		w.look = look
-		w.cardOp, w.shownP = -1, 0
+		w.cardOp, w.shownOK = -1, false
 	}
 	if !w.lookOK {
 		return
 	}
-	step := int(math.Round(angle / cursorSpriteStep))
+	k := spriteFor(angle, press)
 	if labelOp != w.cardOp || labelPop != w.cardPop {
 		w.composeCard(labelOp, labelPop)
 		w.cardOp, w.cardPop = labelOp, labelPop
-		w.shownP = 0
+		w.shownOK = false
 	}
-	if step != w.shownA || press != w.shownP {
-		w.composeArrow(step, press)
-		w.shownA, w.shownP = step, press
+	if !w.shownOK || k != w.shown {
+		w.composeArrow(k)
+		w.shown, w.shownOK = k, true
 	}
 	tx, ty := roundPoint(tip)
 	w.arrow.present(tx+w.layout.OriginX, ty+w.layout.OriginY, opacity)
@@ -527,20 +552,29 @@ func (w *cursorWin) readyMaster(scale float64) {
 	w.master = newArrowMaster(scale, w.accent)
 	w.masterScale = scale
 	w.spriteR = arrowReach(scale)
-	w.sprites = map[int][]uint32{}
+	w.sprites = map[spriteKey][]uint32{}
 }
 
-// sprite is the arrow turned to step (multiples of cursorSpriteStep),
-// made on first use and kept: a turning arrow's frame copies it.
-func (w *cursorWin) sprite(step int) []uint32 {
-	if sp, ok := w.sprites[step]; ok {
+// spriteKey names one kept sprite: the arrow turned to step (multiples of
+// cursorSpriteStep) and pressed to 1 + press·cursorPressStep.
+type spriteKey struct{ step, press int }
+
+// cursorPressStep is the press sprites' scale step: the click's 0.93–1.03
+// squeeze is about twenty kept sprites, each made once.
+const cursorPressStep = 0.005
+
+// sprite is the arrow for k, made on first use and kept: every frame of a
+// turning or pressed arrow copies one.
+func (w *cursorWin) sprite(k spriteKey) []uint32 {
+	if sp, ok := w.sprites[k]; ok {
 		return sp
 	}
 	n := int(2*w.spriteR) + 1
 	s := surface{w: n, h: n, pix: make([]uint32, n*n)}
 	c := float64(w.spriteR)
-	s.drawArrowSprite(&w.master, fpoint{X: c, Y: c}, float64(step)*cursorSpriteStep, 1, Rect{Right: int32(n), Bottom: int32(n)})
-	w.sprites[step] = s.pix
+	s.drawArrowSprite(&w.master, fpoint{X: c, Y: c}, float64(k.step)*cursorSpriteStep,
+		1+float64(k.press)*cursorPressStep, Rect{Right: int32(n), Bottom: int32(n)})
+	w.sprites[k] = s.pix
 	return s.pix
 }
 
@@ -571,31 +605,44 @@ func (w *cursorWin) composeCard(labelOp, labelPop float64) {
 	if len(w.base) != len(s.pix) {
 		w.base = make([]uint32, len(s.pix))
 	}
-	for i := range w.base {
-		w.base[i] = dimPixel(card[i], labelOp)
+	if labelOp >= 1 {
+		copy(w.base, card)
+		return
+	}
+	// dimPixel in integers: this runs every frame of the label's reveal.
+	f := uint32(math.Round(clamp01(labelOp) * 256))
+	for i, p := range card {
+		if p == 0 {
+			w.base[i] = 0
+			continue
+		}
+		w.base[i] = (p>>24*f>>8)<<24 | (p>>16&0xFF*f>>8)<<16 | (p>>8&0xFF*f>>8)<<8 | (p & 0xFF * f >> 8)
+	}
+}
+
+// spriteFor is the sprite key of an arrow turned by angle and pressed by
+// press.
+func spriteFor(angle, press float64) spriteKey {
+	return spriteKey{
+		step:  int(math.Round(angle / cursorSpriteStep)),
+		press: int(math.Round((press - 1) / cursorPressStep)),
 	}
 }
 
 // composeArrow puts the window's pixels together: base (the pill as
-// shown) with the arrow over it, turned to step and pressed by press. An
-// unpressed arrow is a kept sprite copied in; a pressed one (a click's
-// 667 ms) is sampled from the master each frame.
-func (w *cursorWin) composeArrow(step int, press float64) {
+// shown) with k's kept sprite copied over it.
+func (w *cursorWin) composeArrow(k spriteKey) {
 	s := &w.arrow.pix
 	if len(w.base) != len(s.pix) {
 		return
 	}
 	copy(s.pix, w.base)
+	w.arrow.touch()
 	r := w.spriteR
 	tip := w.layout.Tip
 	ox, oy := int(tip.X)-int(r), int(tip.Y)-int(r)
 	n := int(2*r) + 1
-	if press != 1 {
-		s.drawArrowSprite(&w.master, tip, float64(step)*cursorSpriteStep, press,
-			Rect{Left: int32(ox), Top: int32(oy), Right: int32(ox + n), Bottom: int32(oy + n)})
-		return
-	}
-	sp := w.sprite(step)
+	sp := w.sprite(k)
 	for y := range n {
 		wy := oy + y
 		if wy < 0 || wy >= s.h {
@@ -660,6 +707,7 @@ func (w *cursorWin) showTrail(pts []fpoint, opacity, scale float64) {
 	s := &w.trail.pix
 	s.clear()
 	w.trailAlpha = s.drawTrail(local, scale, w.accent, w.trailAlpha)
+	w.trail.touch()
 	w.trail.present(r.Left, r.Top, opacity)
 }
 
@@ -677,6 +725,10 @@ func (w *cursorWin) reducedMotion() bool { return reducedMotion() }
 // runs, each frame redraws only the band the outline moved through
 // (popOutline), and once it settles the pixels stay.
 func (w *cursorWin) showOutline(target Rect, opacity, pop, scale float64) {
+	// The pop is redrawn in steps of 1/250 (a fraction of a pixel on any
+	// element), not every frame: at 120 frames per second a band redrawn
+	// each frame cost more than all the rest of the cursor.
+	pop = math.Round(pop*250) / 250
 	local := func() Rect {
 		return Rect{
 			Left: target.Left - w.outPos.Left, Top: target.Top - w.outPos.Top,
@@ -693,10 +745,12 @@ func (w *cursorWin) showOutline(target Rect, opacity, pop, scale float64) {
 			s := &w.outline.pix
 			s.clear()
 			s.drawOutline(local(), scale, pop, w.accent)
+			w.outline.touch()
 			w.outPop = pop
 		}
 	} else if w.outPos.Width() > 0 && pop != w.outPop {
 		w.outline.pix.popOutline(local(), scale, w.outPop, pop, w.accent)
+		w.outline.touch()
 		w.outPop = pop
 	}
 	if w.outPos.Width() <= 0 {
@@ -745,6 +799,7 @@ func (w *cursorWin) showCaret(bar Rect, opacity float64) {
 	s.fillSDF(Rect{Right: bar.Width(), Bottom: bar.Height()}, w.accent, 1, func(x, y float64) float64 {
 		return roundRectSD(0, 0, bw, bh, bw/2, x, y)
 	})
+	w.caret.touch() // a few pixels, redrawn each frame
 	w.caret.present(bar.Left, bar.Top, opacity)
 }
 
@@ -754,12 +809,22 @@ func (w *cursorWin) hideCaret() {
 	}
 }
 
-// schedule arms the timer for d, holding the raised timer resolution
-// while d is the frame interval (something animates) and giving it back
-// for the slower float and idle wakes.
+// schedule arms the next wake after d. At the frame interval (something
+// animates) the frame clock runs and the timer resolution is raised; for
+// the slower float and idle wakes the clock stops, the resolution is
+// given back and a SetTimer timer waits. SetTimer alone cannot keep
+// 120 frames per second: on Windows 11 it fires on the 15.6 ms tick even
+// with the resolution raised (64 frames per second measured).
 func (w *cursorWin) schedule(d time.Duration) {
 	d = max(d, cursorFrameInterval)
-	holdFastFrames(d <= cursorFrameInterval, &w.fast)
+	fast := d <= cursorFrameInterval
+	holdFastFrames(fast, &w.fast)
+	if fast {
+		w.killTimer()
+		w.startClock()
+		return
+	}
+	w.stopClock()
 	if d == w.interval {
 		return // already armed with this period
 	}
@@ -771,9 +836,48 @@ func (w *cursorWin) schedule(d time.Duration) {
 
 func (w *cursorWin) cancel() {
 	holdFastFrames(false, &w.fast)
+	w.stopClock()
+	w.killTimer()
+}
+
+func (w *cursorWin) killTimer() {
 	if w.interval != 0 {
 		procKillTimer.Call(w.arrow.hwnd, cursorTimerID)
 		w.interval = 0
+	}
+}
+
+// startClock starts the frame clock, if it is not running: Go's timers
+// are high-resolution waitable timers on Windows, so it keeps the 8 ms.
+func (w *cursorWin) startClock() {
+	if w.clockStop != nil {
+		return
+	}
+	stop := make(chan struct{})
+	w.clockStop = stop
+	hwnd := w.arrow.hwnd
+	go func() {
+		t := time.NewTicker(cursorFrameInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				if w.posted.CompareAndSwap(false, true) {
+					if r, _, _ := procPostMessageW.Call(hwnd, wmCursorFrame, 0, 0); r == 0 {
+						w.posted.Store(false)
+					}
+				}
+			}
+		}
+	}()
+}
+
+func (w *cursorWin) stopClock() {
+	if w.clockStop != nil {
+		close(w.clockStop)
+		w.clockStop = nil
 	}
 }
 

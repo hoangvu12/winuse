@@ -67,8 +67,8 @@ const (
 	// cursorPressMax is the largest the click's press grows the arrow.
 	cursorPressMax = 1.03
 	// cursorArrowNarrow and cursorArrowTall reshape cua's outline about
-	// its tip: narrower and taller, so its tip (about 48° instead of 61°)
-	// is its sharpest corner. cua's upright dart is nearly equilateral: at
+	// its tip: narrower and taller, so its tip (about 43° instead of 56°,
+	// the system arrow's is 45°) is its sharpest corner. cua's upright dart is nearly equilateral: at
 	// rest it read as a "▶" pointing right, past its own tip, and turned a
 	// little another corner read as the point (ADR 0018). The left edge
 	// stays vertical; the area stays about the same.

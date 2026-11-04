@@ -59,7 +59,7 @@ func (w *cursorWin) frame(look cursorLook, labelOp, labelPop, angle, press float
 		w.look = look
 	}
 	w.composeCard(labelOp, labelPop)
-	w.composeArrow(int(math.Round(angle/cursorSpriteStep)), press)
+	w.composeArrow(spriteFor(angle, press))
 	s := &surface{w: w.arrow.pix.w, h: w.arrow.pix.h, pix: append([]uint32(nil), w.arrow.pix.pix...)}
 	return s, w.layout.Tip
 }
@@ -170,9 +170,9 @@ func TestAgentCursorContactSheet(t *testing.T) {
 	y += 14
 
 	// 3. Turning: the sprites every 30°, and the turn of a rightward move.
-	heading("Turning (200 %): every 30°, then 109° — the full turn of a rightward move, tip leading")
+	heading("Turning (200 %): every 30°, then 105° — the full turn of a rightward move, tip leading")
 	x = 16
-	angles := []float64{0, 30, 60, 90, 120, 150, 180, -150, -120, -90, -60, -30, 109}
+	angles := []float64{0, 30, 60, 90, 120, 150, 180, -150, -120, -90, -60, -30, 105}
 	for _, deg := range angles {
 		r := card(x, 116, 130, sheetDark)
 		s, at := def.frame(cursorLook{Scale: 2}, 1, 1, deg*math.Pi/180, 1)
@@ -502,4 +502,54 @@ func writeGIF(t *testing.T, path string, frames []*image.RGBA, step time.Duratio
 		t.Fatal(err)
 	}
 	t.Logf("wrote %s (%d frames)", path, len(frames))
+}
+
+// BenchmarkCursorFrame measures the UI thread's drawing per frame (no
+// UpdateLayeredWindow): a turning arrow with its label (sprites cached),
+// a pressed one, and the first frames of a new look (the master image).
+func BenchmarkCursorFrame(b *testing.B) {
+	t := &testing.T{}
+	w := sheetWin(t, cursorAccent)
+	look := w.lookAt(fpoint{X: 500, Y: 400}, `click "Save"`, Rect{Right: 1920, Bottom: 1080}, 1)
+	w.frame(look, 1, 1, 0, 1)
+	for k := -60; k <= 60; k++ {
+		w.sprite(spriteKey{step: k})
+	}
+	b.Run("turning", func(b *testing.B) {
+		for i := range b.N {
+			w.composeArrow(spriteKey{step: i%60 - 30})
+		}
+	})
+	b.Run("pressed", func(b *testing.B) {
+		for i := range b.N {
+			w.composeArrow(spriteFor(0, 0.93+0.1*float64(i%100)/100))
+		}
+	})
+	b.Run("label reveal", func(b *testing.B) {
+		for i := range b.N {
+			w.composeCard(float64(i%100)/100, 0.94+0.06*float64(i%100)/100)
+			w.composeArrow(spriteKey{})
+		}
+	})
+	b.Run("new sprite", func(b *testing.B) {
+		for i := range b.N {
+			delete(w.sprites, spriteKey{step: 7})
+			_ = i
+			w.sprite(spriteKey{step: 7})
+		}
+	})
+	b.Run("master at 100 %", func(b *testing.B) {
+		for range b.N {
+			newArrowMaster(1, cursorAccent)
+		}
+	})
+	b.Run("outline pop band", func(b *testing.B) {
+		s := &surface{w: 220, h: 120, pix: make([]uint32, 220*120)}
+		tgt := Rect{Left: 60, Top: 40, Right: 160, Bottom: 80}
+		s.drawOutline(tgt, 1, 1.08, cursorAccent)
+		for i := range b.N {
+			from := 1 + 0.08*float64(i%50)/50
+			s.popOutline(tgt, 1, from, from-0.0016, cursorAccent)
+		}
+	})
 }

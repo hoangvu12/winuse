@@ -196,8 +196,8 @@ func TestCursorTravelDurationIsCuasFitts(t *testing.T) {
 func TestTipTurnsAlongThePathAndLandsUpright(t *testing.T) {
 	right := newCursorPath(fpoint{0, 500}, fpoint{900, 500}, Rect{}, 1, false)
 	// Rightward, the tip (whose own axis, between its wings, points up and
-	// a little left) turns about 109° clockwise.
-	if want := 109 * math.Pi / 180; math.Abs(right.turn-want) > 0.01 {
+	// a little left) turns some 105–110° clockwise.
+	if want := -cursorTipAxis; math.Abs(right.turn-want) > 1e-9 || want < 100*math.Pi/180 || want > 112*math.Pi/180 {
 		t.Errorf("a rightward travel turns %.1f°, want %.1f°", right.turn*180/math.Pi, want*180/math.Pi)
 	}
 	if right.tipAngle(0) != 0 || right.tipAngle(right.arrive) != 0 || right.tipAngle(right.dur) != 0 {
@@ -457,8 +457,15 @@ func TestArrowShapeAndBounds(t *testing.T) {
 			minX, minY = math.Min(minX, p.X), math.Min(minY, p.Y)
 			maxX, maxY = math.Max(maxX, p.X), math.Max(maxY, p.Y)
 		}
-		if w, h := (maxX-minX)/scale, (maxY-minY)/scale; math.Abs(w-19.9) > 0.2 || math.Abs(h-25.3) > 0.2 {
-			t.Errorf("scale %v: the body spans %.1f×%.1f logical px, want about 19.9×25.3", scale, w, h)
+		// cua's 19.9×25.3, narrowed and made taller about the tip.
+		if w, h := (maxX-minX)/scale, (maxY-minY)/scale; math.Abs(w-19.9*cursorArrowNarrow) > 0.2 || math.Abs(h-25.3*cursorArrowTall) > 0.2 {
+			t.Errorf("scale %v: the body spans %.1f×%.1f logical px, want about 16.3×29.9", scale, w, h)
+		}
+		// The tip is the sharpest corner: about 43° between its wings
+		// (cua's is about 56°), like the system arrow's 45°.
+		wl, wr := arrowCanvas(arrowWings[0]), arrowCanvas(arrowWings[1])
+		if a := math.Abs(math.Atan2(wl.Y, wl.X)-math.Atan2(wr.Y, wr.X)) * 180 / math.Pi; a < 41 || a > 45 {
+			t.Errorf("the tip's angle is %.1f°, want about 43°", a)
 		}
 		// Upright: the left edge (the second bezier) is vertical.
 		a, b := pts[cursorArrowFlat], pts[2*cursorArrowFlat-1]
@@ -1560,7 +1567,9 @@ func TestTravelReturnsAtTheArrival(t *testing.T) {
 			t.Error("the follow-through keeps animating after the arrival")
 		}
 		// Mid-travel a long move turns its tip (unless animations are off).
-		c.postWait(func() { c.ui.travel(0, origin, Rect{Left: 10, Top: 500, Right: 30, Bottom: 520}, "click", make(chan struct{})) }, time.Second)
+		c.postWait(func() {
+			c.ui.travel(0, origin, Rect{Left: 10, Top: 500, Right: 30, Bottom: 520}, "click", make(chan struct{}))
+		}, time.Second)
 		clock.set(t0.Add(p.arrive + 250*time.Millisecond))
 		c.postWait(func() { c.ui.tick() }, time.Second)
 		if st := view.state(); reduced != (st.angle == 0) {

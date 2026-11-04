@@ -606,12 +606,23 @@ func outlineShape(target Rect, scale, pop float64, accent color.RGBA) (box, skip
 	}
 	// The border's centre line: the outer edge inset by half the border.
 	cl, ct, cr, cb, crad := l+hw, t+hw, r-hw, b-hw, math.Max(rad-hw, 0)
+	// The border's shadow, a band of width bw blurred by σ, as a function
+	// of the distance to the centre line: tabled every 1/32 px and read
+	// linearly, so a pixel costs no error function (the pop redraws the
+	// band at the frame rate).
+	const perPx = 32
+	glow := make([]float64, int((hw+reach)*perPx)+2)
+	for i := range glow {
+		d := float64(i) / perPx
+		glow[i] = cursorHighlightGlow * (gaussCDF((d+hw)/sigma) - gaussCDF((d-hw)/sigma))
+	}
 	px = func(x, y float64) uint32 {
 		var p uint32
 		d := math.Abs(roundRectSD(cl, ct, cr, cb, crad, x, y)) // to the centre line
 		if d < hw+reach {
-			// The border's shadow: a band of width bw blurred by σ.
-			g := cursorHighlightGlow * (gaussCDF((d+hw)/sigma) - gaussCDF((d-hw)/sigma))
+			f := d * perPx
+			i := int(f)
+			g := glow[i] + (glow[i+1]-glow[i])*(f-float64(i))
 			p = premultiply(accent, g)
 		}
 		if cov := clamp01(0.5 - roundRectSD(l, t, r, b, rad, x, y)); cov > 0 {
