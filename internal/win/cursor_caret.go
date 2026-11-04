@@ -47,11 +47,13 @@ func caretBar(x, top, bottom int32, scale float64) Rect {
 }
 
 // startCaret shows the caret bar from now. It keeps the cursor active
-// (no idle fade meanwhile) but neither shows nor moves the dart.
+// (no idle fade meanwhile) and stills its float, but neither shows nor
+// moves the arrow.
 func (m *cursorModel) startCaret(now time.Time, bar Rect) {
 	if bar.Width() <= 0 || bar.Height() <= 0 {
 		return
 	}
+	m.quiet(now)
 	m.caret, m.caretBar, m.caretStart = true, bar, now
 	m.lastActive = now
 }

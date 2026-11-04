@@ -1,26 +1,29 @@
 package win
 
-// The Agent Cursor's pixels (headless ticket 03): a small rasterizer over
-// a premultiplied 32bpp BGRA buffer — the layout UpdateLayeredWindow
-// takes from a top-down DIB section (each pixel a little-endian
-// 0xAARRGGBB). Pure, so the premultiplication, the compositing, the text
-// blend and the shapes are tested offline; the window side points a
-// surface at its DIB section's bits.
+// The Agent Cursor's pixels (headless ticket 03, cursor-look): a small
+// rasterizer over a premultiplied 32bpp BGRA buffer — the layout
+// UpdateLayeredWindow takes from a top-down DIB section (each pixel a
+// little-endian 0xAARRGGBB). Pure, so the premultiplication, the
+// compositing, the text blend and the shapes are tested offline; the
+// window side points a surface at its DIB section's bits.
+//
+// The arrow, its colours, the pill's colours and the trail are trycua/cua's
+// at ecaf10b (MIT; see third_party/cua/LICENSE): cursor-overlay's
+// build_default_theme.py (the white rim, the eight glow strokes), theme.rs
+// (#5EC0E8), cursor_pose.rs (the halo), session_badge.rs (the badge's
+// gradient, rim and glow) and effects.rs (the trail, the lifted colour).
+// cua paints with tiny-skia; we draw the upright arrow exactly once per
+// look, finer than the screen, and sample every turned or pressed sprite
+// from it.
 //
 // Ported from vercel-labs/agent-desktop at HEAD 9eb9b29 (Apache-2.0; see
 // third_party/agent-desktop/LICENSE), modified:
-//   - crates/windows/src/system/cursor_overlay/raster.rs: the rimmed dart
-//     and the ripple (centre disc and spreading ring, both fading);
 //   - crates/windows/src/system/cursor_overlay/rounded.rs: the highlight
 //     and the label pill with its soft shadow (shadow_strength);
 //   - crates/windows/src/system/cursor_overlay/fade.rs: dimming a
 //     premultiplied pixel;
 //   - crates/windows/src/system/cursor_overlay/text.rs: GDI draws only
-//     the text, onto the opaque pill;
-//   - crates/core/src/cursor_overlay/style.rs: the colours (accent
-//     #4299FF, rim #111318, the fill defaulting to the accent);
-//   - crates/macos/src/system/cursor_overlay/cursor_overlay_bridge.m: the
-//     dart's drop shadow, the black pill with white text;
+//     the text, onto the pill;
 //   - crates/macos/src/system/cursor_overlay/cursor_overlay_chrome_bridge.m:
 //     the highlight's tint and glow, and the two pops (ADShowBubble: the
 //     label's bitmap scaled; ADHighlightShow: the highlight's layer
@@ -39,33 +42,50 @@ import (
 	"math"
 )
 
-// cursorAccent is the Agent Cursor's accent — the dart's fill, the ripple
-// and the highlight: agent-desktop's default blue. Set it to OverlayAccent
-// for the banner's teal.
-var cursorAccent = color.RGBA{R: 0x42, G: 0x99, B: 0xFF, A: 0xFF}
+// cursorAccent is the Agent Cursor's accent — the arrow's fill, the
+// outline and the caret: cua's default pastel blue (theme.rs).
+var cursorAccent = color.RGBA{R: 0x5E, G: 0xC0, B: 0xE8, A: 0xFF}
 
 // AgentCursorAccent is the cursor's accent colour as drawn, for the e2e
 // test that checks winuse's own screenshots never contain the cursor.
 func AgentCursorAccent() color.RGBA { return cursorAccent }
 
 var (
-	// cursorRimColor is the dart's dark rim (style.rs DEFAULT_RIM).
-	cursorRimColor = color.RGBA{R: 0x11, G: 0x13, B: 0x18, A: 0xFF}
-	// cursorShadowColor is the dart's and the pill's shadow.
+	// cursorRimColor is the arrow's white rim.
+	cursorRimColor = color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
+	// cursorShadowColor is the pill's shadow.
 	cursorShadowColor = color.RGBA{A: 0xFF}
-	// cursorPillColor and cursorTextColor: a black pill with white text
-	// (rounded.rs draw_label_pill; the macOS bridge's blackColor bubble
-	// and whiteColor text).
-	cursorPillColor = color.RGBA{A: 0xFF}
+	// cursorTextColor is the label's text.
 	cursorTextColor = color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
-	// cursorPillEdgeColor at cursorPillEdgeAlpha is an optional 1 px
-	// lighter edge inside the pill's outline (ours, not agent-desktop's),
-	// for a black pill on a dark-themed app. Off, to match theirs exactly;
-	// 0.22 turns it back on.
-	cursorPillEdgeColor = color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
+	// cursorPillStops is the pill's diagonal gradient before it is mixed
+	// toward the Agent's colour by cursorPillMix (session_badge.rs).
+	cursorPillStops = [3]color.RGBA{
+		{R: 0x5E, G: 0x97, B: 0xB2, A: 0xFF},
+		{R: 0x2B, G: 0x5C, B: 0x77, A: 0xFF},
+		{R: 0x0D, G: 0x1B, B: 0x26, A: 0xFF},
+	}
 )
 
-const cursorPillEdgeAlpha = 0.0
+const (
+	cursorPillAlpha    = 0.95 // the pill body's opacity
+	cursorPillRimAlpha = 0.75 // its 1 px rim: white mixed toward the Agent's colour
+	cursorPillRimMix   = 0.55
+	// cursorEffectLift lifts the accent toward white for the effects (the
+	// trail), as cua's effects.rs does.
+	cursorEffectLift = 0.45
+)
+
+// cursorPillMix is how far each gradient stop is mixed toward the Agent's
+// colour (session_badge.rs). The dark end stays dark so white text reads
+// whatever the colour.
+var cursorPillMix = [3]float64{0.66, 0.52, 0.26}
+
+// mixColor is a mixed f of the way toward b.
+func mixColor(a, b color.RGBA, f float64) color.RGBA {
+	f = clamp01(f)
+	m := func(x, y uint8) uint8 { return uint8(math.Round(float64(x) + (float64(y)-float64(x))*f)) }
+	return color.RGBA{R: m(a.R, b.R), G: m(a.G, b.G), B: m(a.B, b.B), A: m(a.A, b.A)}
+}
 
 // surface is a premultiplied BGRA pixel buffer, top-down, w×h.
 type surface struct {
@@ -171,7 +191,7 @@ func shadowStrength(distance, blur float64) float64 {
 // polygonSD is the signed distance from (x, y) to the closed polygon pts
 // (negative inside, even-odd rule).
 func polygonSD(pts []fpoint, x, y float64) float64 {
-	best := math.Inf(1)
+	best := math.Inf(1) // squared: one square root per point, not per edge
 	inside := false
 	j := len(pts) - 1
 	for i := range pts {
@@ -179,13 +199,20 @@ func polygonSD(pts []fpoint, x, y float64) float64 {
 		if (b.Y > y) != (a.Y > y) && x < (a.X-b.X)*(y-b.Y)/(a.Y-b.Y)+b.X {
 			inside = !inside
 		}
-		best = math.Min(best, segmentDist(a, b, x, y))
+		dx, dy := b.X-a.X, b.Y-a.Y
+		px, py := x-a.X, y-a.Y
+		t := 0.0
+		if l2 := dx*dx + dy*dy; l2 > 0 {
+			t = clamp01((px*dx + py*dy) / l2)
+		}
+		ex, ey := px-t*dx, py-t*dy
+		best = math.Min(best, ex*ex+ey*ey)
 		j = i
 	}
 	if inside {
-		return -best
+		return -math.Sqrt(best)
 	}
-	return best
+	return math.Sqrt(best)
 }
 
 // segmentDist is the distance from (x, y) to the segment a–b.
@@ -212,35 +239,157 @@ func roundRectSD(left, top, right, bottom, rad, x, y float64) float64 {
 	return outside + inside - rad
 }
 
-// drawDart draws the agent's dart with its tip at tip: a soft shadow
-// below and to the right, the dark rim, then the fill — the path grown
-// by each one's half stroke width, with round joins.
-func (s *surface) drawDart(tip fpoint, scale float64, fill, rim color.RGBA) {
-	pts := dartPoints(scale)
-	for i := range pts {
-		pts[i].X += tip.X
-		pts[i].Y += tip.Y
-	}
-	b := dartBounds(scale)
-	box := Rect{
-		Left: int32(math.Floor(tip.X)) + b.Left, Top: int32(math.Floor(tip.Y)) + b.Top,
-		Right: int32(math.Ceil(tip.X)) + b.Right, Bottom: int32(math.Ceil(tip.Y)) + b.Bottom,
-	}
-	rimGrow := cursorDartRimGrow * scale
-	ox, oy := cursorDartShadowX*scale, cursorDartShadowY*scale
-	blur := cursorDartShadowBlur * scale
-	s.fillSoft(box, cursorShadowColor, cursorDartShadowOpacity, func(x, y float64) float64 {
-		return shadowStrength(polygonSD(pts, x-ox, y-oy)-rimGrow, blur)
-	})
-	s.fillSDF(box, rim, 1, func(x, y float64) float64 { return polygonSD(pts, x, y) - rimGrow })
-	fillGrow := cursorDartFillGrow * scale
-	s.fillSDF(box, fill, 1, func(x, y float64) float64 { return polygonSD(pts, x, y) - fillGrow })
+// arrowSuper is how much finer than the screen the arrow's master image
+// is drawn: each sprite averages arrowSuper² samples of it per pixel.
+const arrowSuper = 2
+
+// arrowMaster is the upright arrow drawn exactly once per look, finer
+// than the screen; every sprite — turned, pressed or neither — is sampled
+// from it, so a frame never re-rasterizes the shape.
+type arrowMaster struct {
+	n   int     // the image's side
+	c   float64 // the tip's coordinate on both axes (a pixel corner)
+	pix []uint32
 }
 
-// drawPill draws the label pill into r (rounded.rs draw_label_pill): its
-// soft shadow, then the opaque black, fully rounded body, then — when
-// cursorPillEdgeAlpha is on — a faint lighter edge just inside it.
-func (s *surface) drawPill(r Rect, scale float64) {
+// haloStop is the halo's radial gradient at t ∈ [0, 1] of its radius:
+// 1 at the centre, 0.55 at 0.45, 0 at the edge (cursor_pose.rs).
+func haloStop(t float64) float64 {
+	switch {
+	case t >= 1:
+		return 0
+	case t <= 0.45:
+		return 1 - (1-0.55)*t/0.45
+	}
+	return 0.55 * (1 - (t-0.45)/0.55)
+}
+
+// newArrowMaster draws the upright arrow at scale·arrowSuper in fill:
+// the halo, the coloured glow strokes, the white rim and the fill, the
+// rim a 1.6-logical-pixel stroke centred on the outline (theme stroke 5).
+func newArrowMaster(scale float64, fill color.RGBA) arrowMaster {
+	hs := scale * arrowSuper
+	r := arrowReach(hs)
+	m := arrowMaster{n: int(2*r) + 1, c: float64(r)}
+	m.pix = make([]uint32, m.n*m.n)
+	pts := arrowPoints(hs)
+	for i := range pts {
+		pts[i].X += m.c
+		pts[i].Y += m.c
+	}
+	rim := cursorArrowRim * hs
+	unitPx := cursorArrowUnit * hs
+	hx, hy, hr := m.c+arrowHalo.X*hs, m.c+arrowHalo.Y*hs, cursorArrowHaloR*hs
+	glowReach := arrowGlowReach(hs) + 1
+	for y := 0; y < m.n; y++ {
+		cy := float64(y) + 0.5
+		for x := 0; x < m.n; x++ {
+			cx := float64(x) + 0.5
+			var p uint32
+			if t := math.Hypot(cx-hx, cy-hy) / hr; t < 1 {
+				p = premultiply(fill, cursorArrowHaloOp*haloStop(t))
+			}
+			sd := polygonSD(pts, cx, cy)
+			if sd < glowReach {
+				for _, g := range cursorArrowGlow {
+					if cov := clamp01(g.width/2*unitPx - math.Abs(sd) + 0.5); cov > 0 {
+						p = over(p, premultiply(fill, g.opacity*cov))
+					}
+				}
+				if cov := clamp01(0.5 - (sd - rim)); cov > 0 {
+					p = over(p, premultiply(cursorRimColor, cov))
+				}
+				if cov := clamp01(0.5 - (sd + rim)); cov > 0 {
+					p = over(p, premultiply(fill, cov))
+				}
+			}
+			m.pix[y*m.n+x] = p
+		}
+	}
+	return m
+}
+
+// sample is the master's premultiplied pixel at (x, y), bilinearly, as
+// four float channels (b, g, r, a); transparent outside it.
+func (m *arrowMaster) sample(x, y float64) (b, g, r, a float64) {
+	x -= 0.5
+	y -= 0.5
+	fx, fy := math.Floor(x), math.Floor(y)
+	tx, ty := x-fx, y-fy
+	ix, iy := int(fx), int(fy)
+	at := func(i, j int) uint32 {
+		if i < 0 || j < 0 || i >= m.n || j >= m.n {
+			return 0
+		}
+		return m.pix[j*m.n+i]
+	}
+	w := [4]float64{(1 - tx) * (1 - ty), tx * (1 - ty), (1 - tx) * ty, tx * ty}
+	for k, p := range [4]uint32{at(ix, iy), at(ix+1, iy), at(ix, iy+1), at(ix+1, iy+1)} {
+		if p == 0 {
+			continue
+		}
+		b += w[k] * float64(p&0xFF)
+		g += w[k] * float64(p>>8&0xFF)
+		r += w[k] * float64(p>>16&0xFF)
+		a += w[k] * float64(p>>24)
+	}
+	return b, g, r, a
+}
+
+// drawArrowSprite draws the arrow from m into s with its tip at tip,
+// turned by angle (radians, clockwise) and scaled by press about the tip,
+// over what is there, inside box only: each pixel averages arrowSuper²
+// samples of the master.
+func (s *surface) drawArrowSprite(m *arrowMaster, tip fpoint, angle, press float64, box Rect) {
+	if press <= 0 || math.IsNaN(press) {
+		press = 1
+	}
+	cos, sin := math.Cos(angle), math.Sin(angle)
+	k := arrowSuper / press
+	const n = arrowSuper
+	x0, y0, x1, y1 := s.clipBox(box)
+	for y := y0; y < y1; y++ {
+		for x := x0; x < x1; x++ {
+			var sb, sg, sr, sa float64
+			for j := range n {
+				for i := range n {
+					// The sub-sample, relative to the tip, turned back by angle.
+					vx := float64(x) + (float64(i)+0.5)/n - tip.X
+					vy := float64(y) + (float64(j)+0.5)/n - tip.Y
+					ux, uy := cos*vx+sin*vy, -sin*vx+cos*vy
+					b, g, r, a := m.sample(m.c+ux*k, m.c+uy*k)
+					sb, sg, sr, sa = sb+b, sg+g, sr+r, sa+a
+				}
+			}
+			if sa <= 0 {
+				continue
+			}
+			q := 1.0 / (n * n)
+			ch := func(v float64) uint32 { return uint32(min(math.Round(v*q), 255)) }
+			p := ch(sa)<<24 | ch(sr)<<16 | ch(sg)<<8 | ch(sb)
+			i := y*s.w + x
+			s.pix[i] = over(s.pix[i], p)
+		}
+	}
+}
+
+// pillColor is the pill's body colour at t ∈ [0, 1] along its diagonal:
+// the three gradient stops, each mixed toward accent.
+func pillColor(accent color.RGBA, t float64) color.RGBA {
+	a := mixColor(cursorPillStops[0], accent, cursorPillMix[0])
+	b := mixColor(cursorPillStops[1], accent, cursorPillMix[1])
+	c := mixColor(cursorPillStops[2], accent, cursorPillMix[2])
+	if t < 0.5 {
+		return mixColor(a, b, t*2)
+	}
+	return mixColor(b, c, t*2-1)
+}
+
+// drawPill draws the label pill into r in the Agent's colour (cua's
+// verbose badge, session_badge.rs): a soft black shadow below and a glow
+// in accent, the fully rounded body in a diagonal gradient of dark stops
+// mixed toward accent, and a 1 px rim of white mixed toward accent.
+func (s *surface) drawPill(r Rect, scale float64, accent color.RGBA) {
 	if r.Width() <= 0 || r.Height() <= 0 {
 		return
 	}
@@ -251,14 +400,31 @@ func (s *surface) drawPill(r Rect, scale float64) {
 	s.fillSoft(pillShadowBounds(r, scale), cursorShadowColor, cursorPillShadowOpacity, func(x, y float64) float64 {
 		return shadowStrength(roundRectSD(l, t+off, rt, b+off, rad, x, y), blur)
 	})
+	s.fillSoft(pillShadowBounds(r, scale), accent, cursorPillGlowOpacity, func(x, y float64) float64 {
+		return shadowStrength(roundRectSD(l, t, rt, b, rad, x, y), blur)
+	})
 	sd := func(x, y float64) float64 { return roundRectSD(l, t, rt, b, rad, x, y) }
-	s.fillSDF(r, cursorPillColor, 1, sd)
-	if cursorPillEdgeAlpha > 0 {
-		// A one-pixel band just inside the outline: distance ∈ [−1, 0].
-		s.fillSDF(r, cursorPillEdgeColor, cursorPillEdgeAlpha, func(x, y float64) float64 {
-			return math.Abs(sd(x, y)+0.5) - 0.5
-		})
+	// The diagonal runs from the top-left to the bottom-right corner.
+	dx, dy := rt-l, b-t
+	d2 := dx*dx + dy*dy
+	x0, y0, x1, y1 := s.clipBox(r)
+	for y := y0; y < y1; y++ {
+		cy := float64(y) + 0.5
+		for x := x0; x < x1; x++ {
+			cx := float64(x) + 0.5
+			cov := clamp01(0.5 - sd(cx, cy))
+			if cov <= 0 {
+				continue
+			}
+			c := pillColor(accent, ((cx-l)*dx+(cy-t)*dy)/d2)
+			i := y*s.w + x
+			s.pix[i] = over(s.pix[i], premultiply(c, cursorPillAlpha*cov))
+		}
 	}
+	// A one-pixel band just inside the outline: distance ∈ [−1, 0].
+	s.fillSDF(r, mixColor(cursorRimColor, accent, cursorPillRimMix), cursorPillRimAlpha, func(x, y float64) float64 {
+		return math.Abs(sd(x, y)+0.5) - 0.5
+	})
 }
 
 // clipBox clips r to the surface.
@@ -307,30 +473,48 @@ func (s *surface) putText(r Rect, saved []uint32, c color.RGBA) {
 	}
 }
 
-// drawRipple draws the click ripple centred at c at phase ∈ (0, 1): a
-// solid centre disc and a spreading ring, both fading as it advances.
-func (s *surface) drawRipple(c fpoint, phase, scale float64, accent color.RGBA) {
-	if phase <= 0 || phase >= 1 {
-		return
+// drawTrail draws the comet trail pts (surface coordinates, tail first)
+// in the accent lifted toward white (effects.rs): each piece a round-capped
+// stroke widening from cursorTrailWidthMin to cursorTrailWidthMax toward
+// the head, at opacity cursorTrailAlpha·k². Where pieces overlap the
+// strongest wins, so the joints show no beads; each piece costs only its
+// own box. alpha is the scratch buffer (resized as needed), returned.
+func (s *surface) drawTrail(pts []fpoint, scale float64, accent color.RGBA, alpha []float64) []float64 {
+	if len(pts) < 2 {
+		return alpha
 	}
-	op := rippleOpacity(phase)
-	ext := cursorRippleSize/2*scale + 1
-	box := Rect{
-		Left: int32(math.Floor(c.X - ext)), Top: int32(math.Floor(c.Y - ext)),
-		Right: int32(math.Ceil(c.X + ext)), Bottom: int32(math.Ceil(c.Y + ext)),
+	if len(alpha) < len(s.pix) {
+		alpha = make([]float64, len(s.pix))
 	}
-	core := rippleCoreRadius(phase, scale)
-	s.fillSDF(box, accent, cursorRippleCoreAlpha*op, func(x, y float64) float64 {
-		return math.Hypot(x-c.X, y-c.Y) - core
-	})
-	// The ring is the band [ring − width, ring]; a ring still smaller than
-	// its width is a disc.
-	ring := rippleRingRadius(phase, scale)
-	hw := math.Min(cursorRippleRingWidth*scale, ring) / 2
-	mid := ring - hw
-	s.fillSDF(box, accent, cursorRippleRingAlpha*op, func(x, y float64) float64 {
-		return math.Abs(math.Hypot(x-c.X, y-c.Y)-mid) - hw
-	})
+	alpha = alpha[:len(s.pix)]
+	clear(alpha)
+	n := len(pts) - 1
+	for i := range n {
+		a, b := pts[i], pts[i+1]
+		k := float64(i+1) / float64(n)
+		hw := (cursorTrailWidthMin + (cursorTrailWidthMax-cursorTrailWidthMin)*k) * scale / 2
+		op := cursorTrailAlpha * k * k
+		box := Rect{
+			Left: int32(math.Floor(math.Min(a.X, b.X) - hw - 1)), Top: int32(math.Floor(math.Min(a.Y, b.Y) - hw - 1)),
+			Right: int32(math.Ceil(math.Max(a.X, b.X) + hw + 1)), Bottom: int32(math.Ceil(math.Max(a.Y, b.Y) + hw + 1)),
+		}
+		x0, y0, x1, y1 := s.clipBox(box)
+		for y := y0; y < y1; y++ {
+			for x := x0; x < x1; x++ {
+				cov := clamp01(0.5 - (segmentDist(a, b, float64(x)+0.5, float64(y)+0.5) - hw))
+				if v := op * cov; v > alpha[y*s.w+x] {
+					alpha[y*s.w+x] = v
+				}
+			}
+		}
+	}
+	c := mixColor(accent, cursorRimColor, cursorEffectLift)
+	for i, v := range alpha {
+		if v > 0 {
+			s.pix[i] = over(s.pix[i], premultiply(c, v))
+		}
+	}
+	return alpha
 }
 
 // drawOutline draws the highlight around target (surface coordinates),

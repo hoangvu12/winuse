@@ -12,16 +12,23 @@ import (
 )
 
 // CursorPalette are the colours handed to Agents that name none, in
-// order: distinct from each other and from the default accent, and
-// readable on light and dark Windows.
+// order: cua's nine pastels for named sessions (theme.rs, trycua/cua at
+// ecaf10b, MIT; see third_party/cua/LICENSE), readable on light and dark
+// Windows behind the arrow's white rim. cua picks one by the session's
+// name; winuse hands them out in this order (ADR 0014), so the first six
+// take six different tab group colours, none the default Agent's cyan,
+// and the three that share a tab group colour with an earlier one — the
+// cyan nearest the default's own blue among them — come last.
 var CursorPalette = []color.RGBA{
-	{R: 0xFF, G: 0x8A, B: 0x3D, A: 0xFF}, // orange
-	{R: 0x2F, G: 0xBF, B: 0x71, A: 0xFF}, // green
-	{R: 0xA0, G: 0x66, B: 0xFF, A: 0xFF}, // violet
-	{R: 0xFF, G: 0x5C, B: 0x93, A: 0xFF}, // pink
-	{R: 0x20, G: 0xB8, B: 0xC8, A: 0xFF}, // teal
-	{R: 0xE8, G: 0xB5, B: 0x00, A: 0xFF}, // amber
-	{R: 0xF0, G: 0x52, B: 0x4F, A: 0xFF}, // red
+	{R: 0xB2, G: 0x84, B: 0xFF, A: 0xFF}, // violet
+	{R: 0xF7, G: 0x84, B: 0xAA, A: 0xFF}, // pink
+	{R: 0x60, G: 0xDA, B: 0xAE, A: 0xFF}, // mint
+	{R: 0xF4, G: 0xB2, B: 0x42, A: 0xFF}, // amber
+	{R: 0xE8, G: 0x52, B: 0x62, A: 0xFF}, // red
+	{R: 0x50, G: 0x7E, B: 0xEC, A: 0xFF}, // blue
+	{R: 0xDD, G: 0x71, B: 0xEC, A: 0xFF}, // orchid
+	{R: 0xB8, G: 0xDC, B: 0x36, A: 0xFF}, // lime
+	{R: 0x4C, G: 0xCC, B: 0xE0, A: 0xFF}, // cyan
 }
 
 // tabGroupHues are Chrome's tab group colours (chrome.tabGroups.Color) by

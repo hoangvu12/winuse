@@ -1,14 +1,18 @@
 package win
 
-// The Agent Cursor's layout (headless ticket 03): the dart's shape, the
-// label pill's size and placement beside it, label ellipsizing, and the
-// rectangles of the three layered windows. Pure functions of physical
-// pixels and a DPI scale (dpi/96), tested offline.
+// The Agent Cursor's layout (headless ticket 03, cursor-look): the
+// arrow's shape, the label pill's size and placement beside it, label
+// ellipsizing, and the rectangles of the layered windows. Pure functions
+// of physical pixels and a DPI scale (dpi/96), tested offline.
 //
-// Ported from vercel-labs/agent-desktop at HEAD 9eb9b29 (Apache-2.0; see
-// third_party/agent-desktop/LICENSE), modified:
-//   - crates/windows/src/system/cursor_overlay/geometry.rs: the dart, the
-//     glyph box, the rim, the ripple's size, core and ring inset, the
+// The arrow is trycua/cua's default arrow at ecaf10b (MIT; see
+// third_party/cua/LICENSE): its outline, rim, glow and halo
+// (libs/cua-driver/rust/crates/cursor-overlay assets/build_default_theme.py,
+// theme.rs, cursor_pose.rs), and the trail's widths (effects.rs).
+//
+// The rest is ported from vercel-labs/agent-desktop at HEAD 9eb9b29
+// (Apache-2.0; see third_party/agent-desktop/LICENSE), modified:
+//   - crates/windows/src/system/cursor_overlay/geometry.rs: the
 //     highlight's border, corner radius and padding, the label shadow's
 //     extent (label_shadow_rect);
 //   - crates/windows/src/system/cursor_overlay/render.rs: the text's
@@ -19,7 +23,6 @@ package win
 //     beside the tip, below and to the right, flipping left and up when it
 //     would leave the monitor's work area, then clamped into it;
 //   - crates/macos/src/system/cursor_overlay/cursor_overlay_bridge.m: the
-//     dart's fill and rim stroke widths and its drop shadow, and the
 //     label bubble's margin (ADBubbleMargin), which its pop grows from;
 //   - crates/macos/src/system/cursor_overlay/cursor_overlay_chrome_bridge.m:
 //     the highlight's tint and glow, and the extent of its pop
@@ -33,36 +36,139 @@ import (
 	"unicode"
 )
 
-// cursorDart is agent-desktop's four-point dart in its 32×40 glyph box,
-// top-down, the tip first (geometry.rs DART).
-var cursorDart = [...]fpoint{{1.0, 5.0}, {29.6, 22.5}, {12.7, 23.7}, {4.2, 38.4}}
+// cursorArrowOutline is cua's default arrow (build_default_theme.py
+// DART_OUTLINE, already turned upright by UPRIGHT_DEGREES about the
+// hotspot): eight cubic beziers on its 128-unit canvas, each the three
+// points after the one before, starting and ending at the hotspot. A
+// classic pointer with rounded corners, its left edge vertical.
+var cursorArrowOutline = [...]fpoint{
+	{55.0, 30.0},
+	{49.11, 25.73}, {41.76, 28.37}, {39.96, 36.23},
+	{39.96, 36.23}, {40.20, 96.98}, {40.20, 96.98},
+	{40.28, 105.52}, {45.92, 107.57}, {52.07, 102.36},
+	{52.07, 102.36}, {67.37, 86.65}, {67.37, 86.65},
+	{70.62, 83.58}, {74.47, 81.78}, {78.91, 81.27},
+	{78.91, 81.27}, {93.52, 79.14}, {93.52, 79.14},
+	{101.47, 77.78}, {102.57, 71.79}, {97.02, 66.58},
+	{97.02, 66.58}, {55.00, 30.00}, {55.00, 30.00},
+}
 
-// The dart's look, logical pixels. macOS strokes the dart's path twice
-// with round joins: the rim at 6.5 wide under the fill at 3 wide, so the
-// fill reaches 1.5 and the rim 3.25 beyond the path, with a soft shadow
-// below and to the right of both.
+// The arrow's look (theme.rs, cursor_pose.rs, build_default_theme.py).
+// The canvas is painted as a 42-logical-pixel footprint; everything else
+// is in logical pixels.
 const (
-	cursorDartFillGrow      = 1.5  // the fill layer's lineWidth 3, halved
-	cursorDartRimGrow       = 3.25 // geometry.rs GLYPH_RIM_WIDTH 6.5, halved
-	cursorDartShadowOpacity = 0.34
-	cursorDartShadowX       = 2.5 // the shadow's offset: right …
-	cursorDartShadowY       = 3.0 // … and down
-	cursorDartShadowBlur    = 5.0
+	cursorArrowUnit   = 42.0 / 128 // logical pixels per canvas unit (DISPLAY_SIZE / CANVAS_SIZE)
+	cursorArrowFlat   = 12         // line pieces per bezier when flattened
+	cursorArrowRim    = 2.5 * cursorArrowUnit
+	cursorArrowHaloX  = 2.0  // the halo's centre from the tip …
+	cursorArrowHaloY  = 11.9 // … on the body (HALO_CENTER)
+	cursorArrowHaloR  = 14.0 // HALO_RADIUS_PT: 28 across
+	cursorArrowHaloOp = 0.11 // its peak opacity, at the centre
+	// cursorPressMax is the largest the click's press grows the arrow.
+	cursorPressMax = 1.03
+	// cursorArrowNarrow and cursorArrowTall reshape cua's outline about
+	// its tip: narrower and taller, so its tip (about 48° instead of 61°)
+	// is its sharpest corner. cua's upright dart is nearly equilateral: at
+	// rest it read as a "▶" pointing right, past its own tip, and turned a
+	// little another corner read as the point (ADR 0018). The left edge
+	// stays vertical; the area stays about the same.
+	cursorArrowNarrow = 0.82
+	cursorArrowTall   = 1.18
 )
 
-// The label pill, logical pixels (label_pill.rs): black, fully rounded,
-// white text centred in it (colours in cursor_raster.go).
+// arrowCanvas maps a canvas point to logical pixels off the tip, reshaped.
+func arrowCanvas(p fpoint) fpoint {
+	return fpoint{
+		X: (p.X - cursorArrowHotspot.X) * cursorArrowUnit * cursorArrowNarrow,
+		Y: (p.Y - cursorArrowHotspot.Y) * cursorArrowUnit * cursorArrowTall,
+	}
+}
+
+// arrowWings are the rounded corners of the arrow's two wings on the
+// canvas: the bottom-left and the right one.
+var arrowWings = [2]fpoint{{43.5, 103.5}, {99.5, 72}}
+
+// arrowHalo is the halo's centre off the tip, logical pixels: cua's body
+// centre (cursor_pose.rs), reshaped with the outline.
+var arrowHalo = fpoint{X: cursorArrowHaloX * cursorArrowNarrow, Y: cursorArrowHaloY * cursorArrowTall}
+
+// cursorArrowHotspot is the tip on the canvas: the point the arrow names.
+var cursorArrowHotspot = fpoint{55, 30}
+
+// cursorArrowGlow is the arrow's coloured glow: the outline stroked in the
+// fill colour at these widths (canvas units) and opacities, widest and
+// faintest first, under the body (build_default_theme.py). There is no
+// dark drop shadow: the white rim and the glow read on light and dark.
+var cursorArrowGlow = []struct{ width, opacity float64 }{
+	{44, 0.020}, {36, 0.024}, {29, 0.030}, {23, 0.038},
+	{18, 0.048}, {14, 0.060}, {10, 0.075}, {7, 0.095},
+}
+
+// arrowPoints returns the arrow's outline at scale, relative to the tip:
+// each bezier flattened into cursorArrowFlat pieces, a closed polygon.
+func arrowPoints(scale float64) []fpoint {
+	o := cursorArrowOutline
+	at := func(p fpoint) fpoint {
+		q := arrowCanvas(p)
+		return fpoint{q.X * scale, q.Y * scale}
+	}
+	pts := make([]fpoint, 0, (len(o)-1)/3*cursorArrowFlat)
+	for i := 0; i+3 < len(o); i += 3 {
+		a, b, c, d := at(o[i]), at(o[i+1]), at(o[i+2]), at(o[i+3])
+		for j := range cursorArrowFlat {
+			s := float64(j) / cursorArrowFlat
+			v := 1 - s
+			w0, w1, w2, w3 := v*v*v, 3*v*v*s, 3*v*s*s, s*s*s
+			pts = append(pts, fpoint{
+				X: w0*a.X + w1*b.X + w2*c.X + w3*d.X,
+				Y: w0*a.Y + w1*b.Y + w2*c.Y + w3*d.Y,
+			})
+		}
+	}
+	return pts
+}
+
+// arrowGlowReach is how far the glow reaches outside the outline at scale.
+func arrowGlowReach(scale float64) float64 {
+	return cursorArrowGlow[0].width / 2 * cursorArrowUnit * scale
+}
+
+// arrowReach is the radius about the tip that the arrow's pixels can
+// touch at scale, turned any way and pressed to its largest: the farthest
+// of the outline with its glow and of the halo, plus a pixel.
+func arrowReach(scale float64) int32 {
+	far := 0.0
+	for _, p := range arrowPoints(scale) {
+		far = math.Max(far, math.Hypot(p.X, p.Y))
+	}
+	far += arrowGlowReach(scale)
+	halo := (math.Hypot(arrowHalo.X, arrowHalo.Y) + cursorArrowHaloR) * scale
+	return int32(math.Ceil(math.Max(far, halo)*cursorPressMax)) + 1
+}
+
+// arrowBounds is the box (relative to the tip) the arrow's pixels can
+// touch at scale: a square about the tip, so the arrow may turn freely.
+func arrowBounds(scale float64) Rect {
+	r := arrowReach(scale)
+	return Rect{Left: -r, Top: -r, Right: r + 1, Bottom: r + 1}
+}
+
+// The label pill, logical pixels: fully rounded, white text centred in
+// it, in the Agent's colour (cua's verbose badge; colours in
+// cursor_raster.go). The sizes started from agent-desktop's
+// label_pill.rs.
 const (
-	cursorPillHeight    = 24.0  // LABEL_PILL_HEIGHT; the radius is half of it
-	cursorPillPadX      = 10.0  // LABEL_PILL_PADDING, each end
+	cursorPillHeight    = 26.0  // the radius is half of it
+	cursorPillPadX      = 11.0  // each end
 	cursorPillMaxWidth  = 360.0 // LABEL_PILL_MAX_WIDTH; longer labels are ellipsized
-	cursorPillFontPx    = 12.5  // LABEL_FONT_POINTS, semibold as in text.rs (cursorLabelFaces)
+	cursorPillFontPx    = 12.5  // semibold (cursorLabelFaces)
 	cursorPillTextInset = 2.0   // render.rs TEXT_VERTICAL_INSET
-	// The pill's shadow: black at this opacity, offset down and blurred
-	// (LABEL_SHADOW_OPACITY, _OFFSET, _BLUR).
-	cursorPillShadowOpacity = 0.31
+	// The pill's shadow: black at this opacity, offset down and blurred,
+	// under a glow in the Agent's colour (session_badge.rs).
+	cursorPillShadowOpacity = 0.22
 	cursorPillShadowOffset  = 2.0
-	cursorPillShadowBlur    = 2.5
+	cursorPillShadowBlur    = 3.0
+	cursorPillGlowOpacity   = 0.30
 	// The pill sits this far right of and below the tip, and as far left
 	// of and above it when flipped (layout.rs LABEL_OFFSET_X/Y).
 	cursorPillOffsetX = 20.0
@@ -72,17 +178,6 @@ const (
 	cursorPillMargin = 8.0
 
 	cursorLabelMaxRunes = 200 // labels are cut before measuring
-)
-
-// The click ripple, logical pixels (geometry.rs, raster.rs draw_ripple).
-const (
-	cursorRippleSize       = 108.0 // RIPPLE_SIZE: the ripple's full extent
-	cursorRippleCoreRadius = 19.0  // RIPPLE_CORE_RADIUS: the solid centre disc
-	cursorRippleRingInset  = 4.0   // RIPPLE_RING_INSET: the ring's largest radius is 108/2 − 4
-	cursorRippleRingWidth  = 3.0
-	cursorRippleCoreShrink = 0.4 // the disc shrinks by this much as the ring spreads
-	cursorRippleCoreAlpha  = 0.55
-	cursorRippleRingAlpha  = 0.85
 )
 
 // The target's highlight, logical pixels (geometry.rs; the tint and the
@@ -111,35 +206,6 @@ func scaled(v, scale float64) int32 {
 		r = 1
 	}
 	return r
-}
-
-// dartPoints returns the dart's outline at scale, relative to the tip.
-func dartPoints(scale float64) []fpoint {
-	tip := cursorDart[0]
-	pts := make([]fpoint, len(cursorDart))
-	for i, p := range cursorDart {
-		pts[i] = fpoint{(p.X - tip.X) * scale, (p.Y - tip.Y) * scale}
-	}
-	return pts
-}
-
-// dartBounds is the box (relative to the tip) the dart's pixels can touch
-// at scale: the outline's bounds grown by the rim, the shadow's offset
-// and blur, and a pixel of antialiasing.
-func dartBounds(scale float64) Rect {
-	minX, minY, maxX, maxY := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
-	for _, p := range dartPoints(scale) {
-		minX, minY = math.Min(minX, p.X), math.Min(minY, p.Y)
-		maxX, maxY = math.Max(maxX, p.X), math.Max(maxY, p.Y)
-	}
-	rim := cursorDartRimGrow * scale
-	shadow := rim + (cursorDartShadowBlur+math.Max(cursorDartShadowX, cursorDartShadowY))*scale
-	return Rect{
-		Left:   int32(math.Floor(minX - rim - 1)),
-		Top:    int32(math.Floor(minY - rim - 1)),
-		Right:  int32(math.Ceil(maxX + shadow + 1)),
-		Bottom: int32(math.Ceil(maxY + shadow + 1)),
-	}
 }
 
 // sanitizeLabel makes a label one line: control characters and runs of
@@ -228,9 +294,9 @@ func placePill(tip fpoint, w, h int32, work Rect, scale float64) Rect {
 	return Rect{Left: x, Top: y, Right: x + w, Bottom: y + h}
 }
 
-// pillShadowBounds is the box a pill's shadow can touch (geometry.rs
-// label_shadow_rect): the pill moved down by the shadow's offset and
-// grown by twice its blur, plus a pixel.
+// pillShadowBounds is the box a pill's shadow and glow can touch
+// (geometry.rs label_shadow_rect): the pill moved down by the shadow's
+// offset and grown by twice its blur, plus a pixel.
 func pillShadowBounds(pill Rect, scale float64) Rect {
 	g := int32(math.Ceil(2*cursorPillShadowBlur*scale)) + 1
 	off := int32(math.Ceil(cursorPillShadowOffset * scale))
@@ -259,10 +325,10 @@ type cursorWindowLayout struct {
 }
 
 // layoutCursorWindow computes the window geometry for look: the union of
-// the dart's box and the pill with its shadow, so the window is only as
+// the arrow's box and the pill with its shadow, so the window is only as
 // large as what it shows.
 func layoutCursorWindow(look cursorLook) cursorWindowLayout {
-	b := dartBounds(look.Scale)
+	b := arrowBounds(look.Scale)
 	hasPill := look.Label != "" && look.Pill.Width() > 0 && look.Pill.Height() > 0
 	if hasPill {
 		b = unionRect(b, pillShadowBounds(look.Pill, look.Scale))
@@ -284,27 +350,23 @@ func layoutCursorWindow(look cursorLook) cursorWindowLayout {
 	return l
 }
 
-// rippleSpread is how far the ripple has spread at phase ∈ [0, 1]:
-// linearly, as their Windows port draws it (raster.rs draw_ripple; the
-// phase is motion.rs's linear ripple progress).
-func rippleSpread(phase float64) float64 { return clamp01(phase) }
-
-// rippleRingRadius is the ring's outer radius at phase: from nothing to
-// the ripple's half extent less the ring inset.
-func rippleRingRadius(phase, scale float64) float64 {
-	return (cursorRippleSize/2 - cursorRippleRingInset) * rippleSpread(phase) * scale
-}
-
-// rippleCoreRadius is the centre disc's radius at phase: shrinking a
-// little as the ring spreads.
-func rippleCoreRadius(phase, scale float64) float64 {
-	return cursorRippleCoreRadius * (1 - cursorRippleCoreShrink*rippleSpread(phase)) * scale
-}
-
-// rippleWindowSize is the ripple window's side: the ripple's full extent
-// plus antialiasing. The window is centred on the click.
-func rippleWindowSize(scale float64) int32 {
-	return 2*int32(math.Ceil(cursorRippleSize/2*scale+1)) + 1
+// trailWindowRect is the trail window's screen rectangle for the trail
+// pts at scale: their bounds grown by half the widest stroke and a pixel.
+// Empty without a trail.
+func trailWindowRect(pts []fpoint, scale float64) Rect {
+	if len(pts) < 2 {
+		return Rect{}
+	}
+	minX, minY, maxX, maxY := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
+	for _, p := range pts {
+		minX, minY = math.Min(minX, p.X), math.Min(minY, p.Y)
+		maxX, maxY = math.Max(maxX, p.X), math.Max(maxY, p.Y)
+	}
+	g := cursorTrailWidthMax/2*scale + 1
+	return Rect{
+		Left: int32(math.Floor(minX - g)), Top: int32(math.Floor(minY - g)),
+		Right: int32(math.Ceil(maxX + g)), Bottom: int32(math.Ceil(maxY + g)),
+	}
 }
 
 // cursorLabelFaces are the label's fonts, best first, all semibold as
