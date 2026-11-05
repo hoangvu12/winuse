@@ -174,16 +174,17 @@ func (w *slowWire) stats() (waves int, calls int64, methods map[string]int) {
 // benchPage is a synthetic shop-like page: sections of rows, each row a
 // role-less clickable div (cursor:pointer), a link and a paragraph, plus a
 // password field; and a cross-origin iframe with a few clickables of its
-// own, with the clickables.js pass's answers (Runtime.getProperties plus
-// describeNode).
+// own. Its answers are given both ways: the clickables.js pass's
+// (Runtime.getProperties plus describeNode) and DOMSnapshot's.
 type benchPage struct {
-	ax    map[string][]AXNode         // by session
-	props map[string][]map[string]any // by session
-	nodes map[string]int64            // describeNode: objectId to backendNodeId
+	ax       map[string][]AXNode         // by session
+	props    map[string][]map[string]any // by session
+	nodes    map[string]int64            // describeNode: objectId to backendNodeId
+	snapshot map[string]map[string]any   // by session
 }
 
 func newBenchPage(rows, frameRows int) *benchPage {
-	p := &benchPage{ax: map[string][]AXNode{}, props: map[string][]map[string]any{}, nodes: map[string]int64{}}
+	p := &benchPage{ax: map[string][]AXNode{}, props: map[string][]map[string]any{}, nodes: map[string]int64{}, snapshot: map[string]map[string]any{}}
 	p.add("session-T3", "F1", rows, 1)
 	p.add("CHILD1", "F2", frameRows, 100000)
 	return p
@@ -268,6 +269,7 @@ func (p *benchPage) add(session, frame string, rows int, first int64) {
 	walk(doc, "")
 	p.ax[session] = nodes
 	p.props[session] = props
+	p.snapshot[session] = snapshotOf([]string{frame}, doc)
 }
 
 func axString(s string) *AXValue {
@@ -326,13 +328,18 @@ func (p *benchPage) serve(m cdptest.Message, emit func(string, string, any)) (an
 		return map[string]any{"node": map[string]any{"backendNodeId": p.nodes[d.ObjectID]}}, nil
 	case "DOM.getFrameOwner":
 		return map[string]any{"backendNodeId": 99999}, nil
+	case "DOMSnapshot.captureSnapshot":
+		if s := p.snapshot[m.SessionID]; s != nil {
+			return s, nil
+		}
+		return nil, fmt.Errorf("no snapshot")
 	}
 	return nil, nil
 }
 
 // benchRead sets up a warm Reader over a slowWire (the Tab attached, as in
 // the helper after its first read) and returns a read function.
-func benchRead(tb testing.TB, oneWay time.Duration, rows int) (*slowWire, func() *Raw) {
+func benchRead(tb testing.TB, oneWay time.Duration, rows int, js bool) (*slowWire, func() *Raw) {
 	tb.Helper()
 	p := newBenchPage(rows, 5)
 	w := newSlowWire(oneWay, p.serve)
@@ -340,6 +347,7 @@ func benchRead(tb testing.TB, oneWay time.Duration, rows int) (*slowWire, func()
 	tb.Cleanup(func() { c.Close() })
 	conn := &browser.Connection{Browser: "chrome", Mode: browser.ModeLaunch, PID: 4242, Client: c}
 	r := testReader()
+	setJSMarks(r, js)
 	g := Geometry{Title: "Checkout - Google Chrome", DPI: 144, Rect: Box{Left: 150, Top: 75, Right: 1950, Bottom: 1275}}
 	read := func() *Raw {
 		raw, err := r.Read(context.Background(), conn, g)
@@ -360,31 +368,36 @@ func benchRead(tb testing.TB, oneWay time.Duration, rows int) (*slowWire, func()
 //
 //	go test ./internal/page -run '^$' -bench PageRead -benchtime 20x
 func BenchmarkPageRead(b *testing.B) {
-	for _, rtt := range []time.Duration{0, time.Millisecond, 4 * time.Millisecond} {
-		b.Run(fmt.Sprintf("rtt=%s", rtt), func(b *testing.B) {
-			w, read := benchRead(b, rtt/2, 200)
-			b.ResetTimer()
-			var waves int
-			var calls int64
-			for i := 0; i < b.N; i++ {
-				w.reset()
-				read()
-				waves, calls, _ = w.stats()
-			}
-			b.ReportMetric(float64(waves), "waves/read")
-			b.ReportMetric(float64(calls), "calls/read")
-		})
+	for _, mode := range []string{"snapshot", "js"} {
+		for _, rtt := range []time.Duration{0, time.Millisecond, 4 * time.Millisecond} {
+			b.Run(fmt.Sprintf("%s/rtt=%s", mode, rtt), func(b *testing.B) {
+				w, read := benchRead(b, rtt/2, 200, mode == "js")
+				b.ResetTimer()
+				var waves int
+				var calls int64
+				for i := 0; i < b.N; i++ {
+					w.reset()
+					read()
+					waves, calls, _ = w.stats()
+				}
+				b.ReportMetric(float64(waves), "waves/read")
+				b.ReportMetric(float64(calls), "calls/read")
+			})
+		}
 	}
 }
 
-// TestReadOverlapsItsRoundTrips: a warm read of the benchmark page sends
-// no enable and overlaps its documents' reads: the Tab's own read and its
+func setJSMarks(r *Reader, js bool) { r.JSMarks = js }
+
+// TestReadOverlapsItsRoundTrips: a warm read of the benchmark page through
+// the clickables.js pass (the fallback) sends no enable and overlaps its
+// documents' reads: the Tab's own read and its
 // iframe's go at once, so the round trips one after another are about
 // those of the Tab's document alone: the find, the burst, the pass's
 // evaluate, getProperties, 201 describeNode 16 at a time, the release.
 // The read before overlapped nothing: 32.
 func TestReadOverlapsItsRoundTrips(t *testing.T) {
-	w, read := benchRead(t, time.Millisecond, 200)
+	w, read := benchRead(t, time.Millisecond, 200, true)
 	w.reset()
 	read()
 	waves, calls, methods := w.stats()

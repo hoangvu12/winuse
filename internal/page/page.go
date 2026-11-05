@@ -13,7 +13,10 @@
 //     Connection, attaches a flattened session (cached per Tab), turns on
 //     auto-attach for cross-origin iframes, and records a Raw read:
 //     Accessibility.getFullAXTree, the frame tree's loader ids, and the
-//     cursor-pointer pass (clickables.js).
+//     marks of the cursor-pointer pass, each document's commands sent
+//     together.
+//   - snapshot.go: the marks from DOMSnapshot.captureSnapshot, by the
+//     rules of clickables.js, which stays the fallback.
 //   - build.go and roles.go: Raw to Window State Elements, pure, with the
 //     same caps and truncation notes as the UI Automation walk (ADR 0004).
 //   - merge.go: the Elements spliced in at the document Element.
@@ -57,6 +60,9 @@ type Doc struct {
 	// role-less clickables are added, and no edit field shows its value,
 	// since password fields could not be told apart.
 	Marks *Marks `json:"marks,omitempty"`
+	// Snapshot says the marks came from DOMSnapshot.captureSnapshot, not
+	// the clickables.js pass (speed issue 07).
+	Snapshot bool `json:"-"`
 }
 
 // Frame is an iframe whose document is not in its parent's tree: a

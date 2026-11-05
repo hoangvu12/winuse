@@ -11,6 +11,10 @@ Amended by ADR 0017: besides the Window's one Window State, a Tab target
 (`<window>:<tab>`) has a Window State of its own, its Page read through CDP
 alone, whether or not the Window shows it.
 
+Amended (speed issue 07, below): a Page is read in one burst of
+commands, and the role-less clickables come from
+`DOMSnapshot.captureSnapshot` instead of an injected script.
+
 Amended by ADR 0013: Decision 6's "Chromium browsers only" is reversed
 for Electron and WebView2 Apps that winuse launches with a debugging
 port, and for an opt-in attach to a running Electron App (headless-max
@@ -141,3 +145,48 @@ section 3) measured both hosts with the foreground unchanged.
   `browser detach`, a dropped connection and the helper's exit all detach
   the debuggers and close the inspector.
 - WebView2 stays launch-time only.
+
+## Amendment: the Page read in one burst, marks from DOMSnapshot (2026-11-05)
+
+Speed issue 07 (`.scratch/speed/issues/07-page-read-burst.md`), from
+research recommendation 7. A warm read of a Page used about 10 commands
+one after another, then one `DOM.describeNode` per mark of the
+`clickables.js` pass (16 at a time), and the same again for each iframe,
+one iframe after another. On a page with 200 role-less clickables and one
+cross-origin iframe that was 225 commands in 32 round trips, one after
+another.
+
+- Each document's commands go out together, in the order the browser then
+  runs them: the frame tree, the accessibility tree and
+  `DOMSnapshot.captureSnapshot`. The dialog probe, every cross-origin
+  iframe's read (with its `DOM.getFrameOwner`) and the Tab's own read go
+  at the same time. Same-origin iframes the Tab's tree left out are read
+  together right after it. A Window's Tab is found with its bounds asked
+  for together too. The same page now takes 10 commands in 3 round trips.
+- `DOM.enable` and `Accessibility.enable` go once per session, with its
+  first read. The extension detaches a Tab nobody drove for 5 minutes and
+  attaches it again on the next command without telling winuse, which
+  turns every domain off. So a read more than 4 minutes after the
+  session's last one turns them on again. `DOMSnapshot.enable` is not
+  sent. That `captureSnapshot` answers without it is unverified until the
+  live check runs; a read whose snapshot fails falls back to the pass.
+- The marks (role-less clickables, password fields) are computed from the
+  snapshot by the rules of `clickables.js`, with its caps (5000 elements
+  looked at, 200 found, 80 UTF-16 units of text). The snapshot gives
+  backendNodeIds, attributes, boxes, layout text and four computed
+  styles: cursor, visibility, display, text-transform. Nothing runs in the
+  page and nothing is left in it.
+- Differences from the pass, on purpose: password fields in shadow trees
+  and in iframes the Tab's tree holds are marked too, so their values are
+  never shown.
+- Differences, accepted: innerText is approximated, not read. Text a
+  shadow tree renders in place of an element's children is not seen, and
+  a `white-space: pre` text of spaces only is taken for no text. An
+  element under a `display: contents` parent that sets `cursor: pointer`
+  itself is compared with the nearest boxed ancestor's cursor, because the
+  snapshot has no style for a node without a box.
+- `chrome.debugger` lists DOMSnapshot among its domains, so the snapshot
+  also goes through the extension. A browser or bridge that refuses it
+  (no such method, or the extension's refusal) gets the `clickables.js`
+  pass, and that connection is not asked again. Any other failure of the
+  snapshot falls back for that read only.

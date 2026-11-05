@@ -899,6 +899,33 @@ go test -tags e2e -v -timeout 20m -run "TestBrowserPages" ./test/e2e
 `-run "TestBrowserPages$/chrome/dialogs"` runs one subtest, and
 `-run TestBrowserPagesExtension` only the extension subset.
 
+## The Page read comparison
+
+`page_read_test.go` (speed issue 07) reads the same Tab two ways, through
+`DOMSnapshot.captureSnapshot` and through the `clickables.js` pass it
+replaced, and fails on any difference in the role-less clickables, in the
+password fields the pass found, or in the rendered Elements. Password
+fields only the snapshot finds (in a shadow tree, or in an iframe the
+Tab's tree holds) are logged, not failed. It logs both reads' median time
+over 7 warm reads. It reads in process through `internal/page`, with no
+winuse binary and no helper.
+
+- `TestPageReadSnapshot` starts each installed Chrome and Edge itself,
+  headless, on a throwaway profile with a loopback debugging port, and
+  reads `testdata/page-marks.html` (every rule of the pass, a shadow
+  tree, an SVG, a `<select>`, more than 200 clickables) and
+  `browser-pages.html` with its cross-origin iframe.
+  `WINUSE_E2E_PAGE_URLS` (comma separated) adds real sites.
+- `TestPageReadSnapshotExtension` does the same through every connected
+  winuse extension bridge (Chrome, Edge, Brave) in one background tab it
+  opens and closes in the user's browser, so it also needs
+  `WINUSE_E2E_USER_BROWSER=1`.
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -timeout 10m -run "TestPageReadSnapshot$" ./test/e2e
+```
+
 ## The occlusion flag test
 
 `browser_occlusion_test.go` (ticket 04 of `.scratch/headless-max/`)

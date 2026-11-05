@@ -40,9 +40,15 @@ const settleAfterAutoAttach = 100 * time.Millisecond
 type Reader struct {
 	// Settle overrides settleAfterAutoAttach (tests).
 	Settle time.Duration
+	// JSMarks finds role-less clickables and password fields with the
+	// clickables.js pass instead of DOMSnapshot.captureSnapshot. A read
+	// falls back to the pass on its own where the browser refuses the
+	// snapshot; tests and the live comparison set it.
+	JSMarks bool
 
-	mu   sync.Mutex
-	tabs map[tabKey]*tabSession
+	mu         sync.Mutex
+	tabs       map[tabKey]*tabSession
+	noSnapshot map[*cdp.Client]bool // connections that refused DOMSnapshot
 }
 
 // NewReader builds a Reader with no sessions yet.
@@ -293,6 +299,7 @@ func (r *Reader) readTab(ctx context.Context, conn *browser.Connection, tab Tab)
 		}
 		ready <- err
 	}()
+	snap := !r.JSMarks && !r.refused(c)
 
 	// Cross-origin iframes, one level deep, each through its own session,
 	// alongside the Tab's own document: the iframe element that holds it
@@ -309,7 +316,7 @@ func (r *Reader) readTab(ctx context.Context, conn *browser.Connection, tab Tab)
 		own[id] = ch
 		go func(id, session string) {
 			owner := c.Send(ts.id, "DOM.getFrameOwner", map[string]any{"frameId": id})
-			doc, err := r.readDoc(rctx, c, ts, session)
+			doc, err := r.readDoc(rctx, c, ts, session, snap)
 			o, oerr := ownerOf(owner.Wait(rctx))
 			if err == nil {
 				err = oerr
@@ -318,7 +325,7 @@ func (r *Reader) readTab(ctx context.Context, conn *browser.Connection, tab Tab)
 		}(id, session)
 	}
 
-	main, err := r.readDoc(rctx, c, ts, ts.id)
+	main, err := r.readDoc(rctx, c, ts, ts.id, snap)
 	if rerr := <-ready; rerr != nil {
 		return nil, rerr
 	}
@@ -379,10 +386,12 @@ func (r *Reader) readTab(ctx context.Context, conn *browser.Connection, tab Tab)
 	return raw, nil
 }
 
-// docResult is one session's document read: its Doc and its frame tree.
+// docResult is one session's document read: its Doc, its frame tree, and
+// the snapshot its marks came from (nil when they came from the pass).
 type docResult struct {
 	Doc
 	tree frameTree
+	snap *domSnapshot
 }
 
 // domains are turned on once per session (enableAgain).
@@ -398,10 +407,11 @@ const enableAgain = 4 * time.Minute
 
 // readDoc reads one session's document in one round trip: its domains on
 // (the first read of the session, and after enableAgain), the frame tree's
-// loader ids and the accessibility tree. The commands go out together, in
-// that order, which the browser keeps. The marks come from the
-// clickables.js pass, round trips of its own.
-func (r *Reader) readDoc(ctx context.Context, c *cdp.Client, ts *tabSession, session string) (docResult, error) {
+// loader ids, the accessibility tree, and with snap
+// DOMSnapshot.captureSnapshot for the marks. The commands go out together,
+// in that order, which the browser keeps. Without a usable snapshot the
+// marks come from the clickables.js pass, round trips of its own.
+func (r *Reader) readDoc(ctx context.Context, c *cdp.Client, ts *tabSession, session string, snap bool) (docResult, error) {
 	var ons []*cdp.Pending
 	if ts.turnOn(session) {
 		for _, m := range domains {
@@ -410,7 +420,11 @@ func (r *Reader) readDoc(ctx context.Context, c *cdp.Client, ts *tabSession, ses
 	}
 	tree := c.Send(session, "Page.getFrameTree", nil)
 	ax := c.Send(session, "Accessibility.getFullAXTree", nil)
-	all := append(ons, tree, ax)
+	var shot *cdp.Pending
+	if snap {
+		shot = c.Send(session, "DOMSnapshot.captureSnapshot", snapshotParams)
+	}
+	all := append(ons, tree, ax, shot)
 	fail := func(err error) (docResult, error) {
 		ts.forget(session)
 		giveUp(all...)
@@ -443,13 +457,31 @@ func (r *Reader) readDoc(ctx context.Context, c *cdp.Client, ts *tabSession, ses
 		return fail(err)
 	}
 	d.Nodes = axTree.Nodes
-	d.Marks = readMarks(ctx, c, session, 0)
+	if shot != nil {
+		res, err := shot.Wait(ctx)
+		if err == nil {
+			d.snap, err = decodeSnapshot(res)
+		}
+		if doc := d.snap.doc(d.FrameID); doc != nil {
+			d.Marks = marksOf(d.snap, doc)
+		}
+		if d.Marks != nil {
+			d.Snapshot = true
+		} else {
+			d.snap = nil
+			r.refuse(c, err)
+		}
+	}
+	if d.Marks == nil {
+		d.Marks = readMarks(ctx, c, session, 0)
+	}
 	return d, nil
 }
 
 // sameProcessFrame reads a same-origin iframe the main tree left out: the
-// iframe element that holds it, its accessibility tree by frameId, and the
-// clickables.js pass in an isolated world of that frame.
+// iframe element that holds it, and its accessibility tree by frameId; its
+// marks are its document in the Tab's snapshot, else the clickables.js
+// pass in an isolated world of that frame.
 func (r *Reader) sameProcessFrame(ctx context.Context, c *cdp.Client, session, frameID string, main docResult) (Doc, int64, error) {
 	owner := c.Send(session, "DOM.getFrameOwner", map[string]any{"frameId": frameID})
 	ax := c.Send(session, "Accessibility.getFullAXTree", map[string]any{"frameId": frameID})
@@ -471,6 +503,13 @@ func (r *Reader) sameProcessFrame(ctx context.Context, c *cdp.Client, session, f
 	doc := Doc{SessionID: session, FrameID: frameID, Loaders: map[string]string{}, Nodes: tree.Nodes}
 	for k, v := range main.Loaders {
 		doc.Loaders[k] = v
+	}
+	if sd := main.snap.doc(frameID); sd != nil {
+		doc.Marks = marksOf(main.snap, sd)
+		doc.Snapshot = doc.Marks != nil
+	}
+	if doc.Marks != nil {
+		return doc, o, nil
 	}
 	if res, err := c.CallSession(ctx, session, "Page.createIsolatedWorld", map[string]any{"frameId": frameID, "worldName": "winuse"}); err == nil {
 		var w struct {
@@ -510,6 +549,34 @@ func (ts *tabSession) forget(session string) {
 	ts.mu.Lock()
 	delete(ts.read, session)
 	ts.mu.Unlock()
+}
+
+// refused reports a connection that refused DOMSnapshot.captureSnapshot.
+func (r *Reader) refused(c *cdp.Client) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.noSnapshot[c]
+}
+
+// refuse remembers a connection whose browser does not offer
+// DOMSnapshot.captureSnapshot (no such method, or the extension refused
+// it), so its later reads use the clickables.js pass from the start. Any
+// other failure (a navigation under way, a timeout) is this read's alone.
+func (r *Reader) refuse(c *cdp.Client, err error) {
+	var ce *cdp.Error
+	if !errors.As(err, &ce) {
+		return
+	}
+	msg := strings.ToLower(ce.Message)
+	if ce.Code != -32601 && ce.Code != bridge.CodeRefused && !strings.Contains(msg, "wasn't found") && !strings.Contains(msg, "not allowed") {
+		return
+	}
+	r.mu.Lock()
+	if r.noSnapshot == nil {
+		r.noSnapshot = map[*cdp.Client]bool{}
+	}
+	r.noSnapshot[c] = true
+	r.mu.Unlock()
 }
 
 // ownerOf reads DOM.getFrameOwner's answer.
