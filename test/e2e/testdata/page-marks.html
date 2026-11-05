@@ -1,0 +1,78 @@
+<!doctype html>
+<!-- The marks page (speed issue 07): every rule of clickables.js, so the
+     DOMSnapshot pass can be compared with it on a real browser
+     (page_read_test.go). -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>winuse e2e marks</title>
+<style>
+  .p { cursor: pointer; }
+  .shout { text-transform: uppercase; }
+  .star::before { content: "* "; }
+  .hide { visibility: hidden; }
+  .none { display: none; }
+  .zero { width: 0; height: 0; overflow: hidden; }
+  .flex { display: flex; gap: 4px; }
+  .grid { display: grid; grid-template-columns: repeat(10, 1fr); }
+</style>
+</head>
+<body>
+<h1>Marks</h1>
+<div class="p" id="plain">Open settings</div>
+<div class="p" id="outer"><div id="inner">Inner</div></div>
+<span onclick="void 0" id="onclick">Close</span>
+<div tabindex="0">Focusable</div>
+<div tabindex="-1">Not focusable</div>
+<div class="p hide">Hidden</div>
+<div class="p none">None</div>
+<div class="p zero">Zero</div>
+<button><span class="p">Buy</span></button>
+<a href="#x"><div class="p">Link card</div></a>
+<a><div class="p">Anchor card</div></a>
+<div role="tab"><span class="p">Tab text</span></div>
+<label class="p">Label</label>
+<div class="p" role=" Button ">Role button</div>
+<div class="p" role="region">Region</div>
+<div contenteditable><div tabindex="0">Editable</div></div>
+<div contenteditable="true"><div contenteditable="false"><div tabindex="0">Not editable</div></div></div>
+<div class="p"><h3>Blue mug</h3>12 EUR</div>
+<div class="p">Foo<b>bar</b></div>
+<div class="p">Line one<br>Line two</div>
+<div class="p"><span>Shown</span><span class="hide"> Secret</span></div>
+<div class="p star">Star</div>
+<div class="p shout">Buy now</div>
+<div class="p"><select><option>One</option><optgroup label="G"><option>Two</option></optgroup></select> pick</div>
+<div class="p">  a&nbsp;&nbsp;b
+   c  </div>
+<div class="p" aria-label="Search"></div>
+<div class="p" aria-label="" title="Help"></div>
+<div class="p">abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij</div>
+<div class="p">日本語のテキスト!😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀</div>
+<div class="p flex"><span>Card</span><span>with</span><span>items</span></div>
+<table><tr><td class="p">Cell one</td><td>Cell two</td></tr></table>
+<ul><li class="p">List item</li></ul>
+<div class="p"><img alt="Photo" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="> caption</div>
+<div class="p"><input value="typed"> after input</div>
+<div class="p" id="host" title="Host"></div>
+<div class="p" id="slotted"><span>Slotted text</span></div>
+<svg width="60" height="20"><rect class="p" width="20" height="20" onclick="void 0"></rect><g class="p" aria-label="Chart"><text x="25" y="15">Label</text></g></svg>
+<form><input type="password" id="pw"><input type="PASSWORD"></form>
+<div class="grid" id="many"></div>
+<script>
+  // A shadow tree: its text, its pointer elements and its password field.
+  const host = document.getElementById("host").attachShadow({ mode: "open" });
+  host.innerHTML = '<span class="p" style="cursor:pointer">Shadow text</span><input type="password">';
+  const slot = document.getElementById("slotted").attachShadow({ mode: "open" });
+  slot.innerHTML = '<b>Before </b><slot></slot>';
+  // Past the cap of 200 clickables.
+  const many = document.getElementById("many");
+  for (let i = 0; i < 230; i++) {
+    const d = document.createElement("div");
+    d.className = "p";
+    d.textContent = "Cell " + i;
+    many.appendChild(d);
+  }
+</script>
+</body>
+</html>

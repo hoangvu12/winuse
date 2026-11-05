@@ -474,8 +474,10 @@ func TestUsersTabComesBackWhenTheGuardMisses(t *testing.T) {
 	if _, e := r.as(t, "claude", "click", protocol.ClickArgs{Window: "301:e200", ElementIndex: idx(elLink)}); e != nil {
 		t.Fatal(e.Msg)
 	}
+	// The check selects the user's Tab, then adopts the new one into the
+	// group: wait for both.
 	deadline := time.Now().Add(3 * time.Second)
-	for r.ext.ActiveTab(1) != bgInbox && time.Now().Before(deadline) {
+	for (r.ext.ActiveTab(1) != bgInbox || r.ext.Group("OPENED4").Title == "") && time.Now().Before(deadline) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	if got := r.ext.ActiveTab(1); got != bgInbox {

@@ -28,6 +28,12 @@ const (
 	marksGroup  = "winuse-marks"
 )
 
+// attachTimeout bounds attaching to a Tab. An attach takes well under a
+// second; a Tab that has not attached in this long does not answer, and
+// the read fails with *NotAnsweringError instead of waiting out its
+// request.
+var attachTimeout = 10 * time.Second
+
 // settleAfterAutoAttach is how long a Tab's first read waits after
 // Target.setAutoAttach for the attachedToTarget events of the iframes
 // already there.
@@ -40,9 +46,15 @@ const settleAfterAutoAttach = 100 * time.Millisecond
 type Reader struct {
 	// Settle overrides settleAfterAutoAttach (tests).
 	Settle time.Duration
+	// JSMarks finds role-less clickables and password fields with the
+	// clickables.js pass instead of DOMSnapshot.captureSnapshot. A read
+	// falls back to the pass on its own where the browser refuses the
+	// snapshot; tests and the live comparison set it.
+	JSMarks bool
 
-	mu   sync.Mutex
-	tabs map[tabKey]*tabSession
+	mu         sync.Mutex
+	tabs       map[tabKey]*tabSession
+	noSnapshot map[*cdp.Client]bool // connections that refused DOMSnapshot
 }
 
 // NewReader builds a Reader with no sessions yet.
@@ -60,7 +72,8 @@ type tabSession struct {
 	subs []*cdp.Subscription
 
 	mu       sync.Mutex
-	children map[string]string // iframe target id (= its frame id) to its session id
+	children map[string]string    // iframe target id (= its frame id) to its session id
+	read     map[string]time.Time // session to its last read, once its domains are on
 }
 
 // Read finds the Tab the browser Window g shows over conn (MatchTab) and
@@ -135,7 +148,20 @@ func FindTabSettled(ctx context.Context, conn *browser.Connection, geo func() Ge
 
 // windowTab is FindTab, also returning every Tab it listed.
 func windowTab(ctx context.Context, conn *browser.Connection, g Geometry) (Tab, []Tab, error) {
+	// On the extension the windows' bounds are asked for alongside the Tabs.
+	var windows map[int]DIPBounds
+	var werr error
+	wdone := make(chan struct{})
+	if conn.Mode == browser.ModeExtension {
+		go func() {
+			defer close(wdone)
+			windows, werr = extensionWindows(ctx, conn.Client)
+		}()
+	} else {
+		close(wdone)
+	}
 	tabs, err := pageTabs(ctx, conn.Client)
+	<-wdone
 	if err != nil {
 		return Tab{}, nil, err
 	}
@@ -146,9 +172,8 @@ func windowTab(ctx context.Context, conn *browser.Connection, g Geometry) (Tab, 
 		return tab, tabs, err
 	}
 	if conn.Mode == browser.ModeExtension {
-		windows, err := extensionWindows(ctx, conn.Client)
-		if err != nil {
-			return Tab{}, nil, err
+		if werr != nil {
+			return Tab{}, nil, werr
 		}
 		for i := range tabs {
 			if b, ok := windows[tabs[i].WindowID]; ok {
@@ -157,13 +182,22 @@ func windowTab(ctx context.Context, conn *browser.Connection, g Geometry) (Tab, 
 		}
 		g.Memory.prune(conn.Client, windows)
 	} else {
+		// The bounds of every Tab the title does not rule out, asked for
+		// together.
+		ws := make([]*cdp.Pending, len(tabs))
 		for i := range tabs {
-			if !TitleMatches(g.Title, tabs[i].Title, conn.Browser) {
-				continue // the title rules it out; no need for its bounds
+			if TitleMatches(g.Title, tabs[i].Title, conn.Browser) {
+				ws[i] = conn.Client.Send("", "Browser.getWindowForTarget", map[string]any{"targetId": tabs[i].TargetID})
 			}
-			w, err := windowForTarget(ctx, conn.Client, tabs[i].TargetID)
+		}
+		for i, p := range ws {
+			if p == nil {
+				continue
+			}
+			w, err := windowOf(p.Wait(ctx))
 			if err != nil {
 				if ctx.Err() != nil {
+					giveUp(ws[i:]...)
 					return Tab{}, nil, err
 				}
 				continue
@@ -191,7 +225,11 @@ type cdpWindow struct {
 
 // windowForTarget is Browser.getWindowForTarget.
 func windowForTarget(ctx context.Context, c *cdp.Client, targetID string) (cdpWindow, error) {
-	res, err := c.Call(ctx, "Browser.getWindowForTarget", map[string]any{"targetId": targetID})
+	return windowOf(c.Call(ctx, "Browser.getWindowForTarget", map[string]any{"targetId": targetID}))
+}
+
+// windowOf reads Browser.getWindowForTarget's answer.
+func windowOf(res json.RawMessage, err error) (cdpWindow, error) {
 	if err != nil {
 		return cdpWindow{}, err
 	}
@@ -239,7 +277,11 @@ func extensionWindows(ctx context.Context, c *cdp.Client) (map[int]DIPBounds, er
 	return out, nil
 }
 
-// readTab reads one Tab's Page over its (cached) session.
+// readTab reads one Tab's Page over its (cached) session, in as few round
+// trips as the answers allow (speed issue 07): the Tab's document and
+// every cross-origin iframe's are read at once, each document's commands
+// sent together (readDoc), and the same-origin iframes the Tab's tree left
+// out are read together after it. The dialog probe goes alongside.
 func (r *Reader) readTab(ctx context.Context, conn *browser.Connection, tab Tab) (*Raw, error) {
 	c := conn.Client
 	ts, err := r.session(ctx, conn, tab.TargetID)
@@ -248,29 +290,66 @@ func (r *Reader) readTab(ctx context.Context, conn *browser.Connection, tab Tab)
 	}
 	// A Page a JavaScript dialog holds answers none of the read's calls
 	// until the dialog is answered (watch.go, ticket 06): fail at once on a
-	// dialog the watch saw, and within AnswerTimeout on one it missed.
-	if err := Ready(ctx, c, ts.id); err != nil {
-		return nil, err
+	// dialog the watch saw, and within AnswerTimeout on one it missed; the
+	// read's commands, sent meanwhile, are then given up.
+	if d := OpenDialog(c, ts.id); d != nil {
+		return nil, &DialogOpenError{Dialog: *d}
 	}
-	main, ft, err := readDoc(ctx, c, ts.id, "", 0)
+	rctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	ready := make(chan error, 1)
+	go func() {
+		err := Ready(ctx, c, ts.id)
+		if err != nil {
+			cancel()
+		}
+		ready <- err
+	}()
+	snap := !r.JSMarks && !r.refused(c)
+
+	// Cross-origin iframes, one level deep, each through its own session,
+	// alongside the Tab's own document: the iframe element that holds it
+	// (in the Tab's session) and its document.
+	type frameRead struct {
+		owner int64
+		doc   Doc
+		err   error
+	}
+	children := ts.snapshot()
+	own := map[string]chan frameRead{}
+	for id, session := range children {
+		ch := make(chan frameRead, 1)
+		own[id] = ch
+		go func(id, session string) {
+			owner := c.Send(ts.id, "DOM.getFrameOwner", map[string]any{"frameId": id})
+			doc, err := r.readDoc(rctx, c, ts, session, snap)
+			o, oerr := ownerOf(owner.Wait(rctx))
+			if err == nil {
+				err = oerr
+			}
+			ch <- frameRead{owner: o, doc: doc.Doc, err: err}
+		}(id, session)
+	}
+
+	main, err := r.readDoc(rctx, c, ts, ts.id, snap)
+	if rerr := <-ready; rerr != nil {
+		return nil, rerr
+	}
 	if err != nil {
 		return nil, err
 	}
-	raw := &Raw{Browser: conn.Browser, TargetID: tab.TargetID, Title: tab.Title, URL: tab.URL, Main: main, Client: c}
+	raw := &Raw{Browser: conn.Browser, TargetID: tab.TargetID, Title: tab.Title, URL: tab.URL, Main: main.Doc, Client: c}
 
-	// Iframes, one level deep: a cross-origin one through its own
-	// session, a same-origin one the main tree left out through the Tab's
-	// session with its frameId.
+	// The same-origin iframes the Tab's tree left out, read through the
+	// Tab's session with their frameIds, all at once.
 	inTree := map[string]bool{}
 	for _, n := range main.Nodes {
 		if n.FrameID != "" {
 			inTree[n.FrameID] = true
 		}
 	}
-	children := ts.snapshot()
-	done := map[string]bool{}
 	var frameIDs []string
-	for _, cf := range ft.ChildFrames {
+	for _, cf := range main.tree.ChildFrames {
 		frameIDs = append(frameIDs, cf.Frame.ID)
 	}
 	var extra []string
@@ -279,103 +358,235 @@ func (r *Reader) readTab(ctx context.Context, conn *browser.Connection, tab Tab)
 	}
 	sort.Strings(extra)
 	frameIDs = append(frameIDs, extra...)
+	reads := map[string]chan frameRead{}
 	for _, id := range frameIDs {
-		if done[id] || ctx.Err() != nil {
+		if _, ok := own[id]; ok || inTree[id] || reads[id] != nil {
+			continue
+		}
+		ch := make(chan frameRead, 1)
+		reads[id] = ch
+		go func(id string) {
+			doc, owner, err := r.sameProcessFrame(rctx, c, ts.id, id, main)
+			ch <- frameRead{owner: owner, doc: doc, err: err}
+		}(id)
+	}
+	done := map[string]bool{}
+	for _, id := range frameIDs {
+		if done[id] {
 			continue
 		}
 		done[id] = true
-		session, own := children[id]
-		if !own && inTree[id] {
-			continue
+		ch := own[id]
+		if ch == nil {
+			ch = reads[id]
 		}
-		owner, err := frameOwner(ctx, c, ts.id, id)
-		if err != nil || owner == 0 {
-			continue
+		if ch == nil {
+			continue // in the Tab's tree already
 		}
-		var doc Doc
-		if own {
-			doc, _, err = readDoc(ctx, c, session, "", 0)
-		} else {
-			doc, err = sameProcessFrame(ctx, c, ts.id, id, main.Loaders[id])
-		}
-		if err != nil {
+		f := <-ch
+		if f.err != nil || f.owner == 0 {
 			continue // the iframe is left out; the rest of the Page stands
 		}
-		raw.Frames = append(raw.Frames, Frame{Owner: owner, Doc: doc})
+		raw.Frames = append(raw.Frames, Frame{Owner: f.owner, Doc: f.doc})
 	}
 	return raw, nil
 }
 
-// readDoc reads one document over a session: DOM and Accessibility on, the
-// frame tree's loader ids, the accessibility tree (of frameID when set)
-// and the cursor-pointer pass (in contextID when set).
-func readDoc(ctx context.Context, c *cdp.Client, session, frameID string, contextID int) (Doc, frameTree, error) {
-	for _, m := range []string{"DOM.enable", "Accessibility.enable"} {
-		if _, err := c.CallSession(ctx, session, m, nil); err != nil && isGone(err) {
-			return Doc{}, frameTree{}, err
+// docResult is one session's document read: its Doc, its frame tree, and
+// the snapshot its marks came from (nil when they came from the pass).
+type docResult struct {
+	Doc
+	tree frameTree
+	snap *domSnapshot
+}
+
+// domains are turned on once per session (enableAgain).
+var domains = []string{"DOM.enable", "Accessibility.enable"}
+
+// enableAgain is how long after a session's last read its domains are
+// turned on again. The extension detaches a Tab nobody drove for 5 minutes
+// and attaches it again on the next command without telling winuse
+// (background.js IDLE_DETACH_MS), and a new attachment has every domain
+// off; every read is such a command, so within this a session is still the
+// one turned on.
+const enableAgain = 4 * time.Minute
+
+// readDoc reads one session's document in one round trip: its domains on
+// (the first read of the session, and after enableAgain), the frame tree's
+// loader ids, the accessibility tree, and with snap
+// DOMSnapshot.captureSnapshot for the marks. The commands go out together,
+// in that order, which the browser keeps. Without a usable snapshot the
+// marks come from the clickables.js pass, round trips of its own.
+func (r *Reader) readDoc(ctx context.Context, c *cdp.Client, ts *tabSession, session string, snap bool) (docResult, error) {
+	var ons []*cdp.Pending
+	if ts.turnOn(session) {
+		for _, m := range domains {
+			ons = append(ons, c.Send(session, m, nil))
 		}
 	}
-	res, err := c.CallSession(ctx, session, "Page.getFrameTree", nil)
+	tree := c.Send(session, "Page.getFrameTree", nil)
+	ax := c.Send(session, "Accessibility.getFullAXTree", nil)
+	var shot *cdp.Pending
+	if snap {
+		shot = c.Send(session, "DOMSnapshot.captureSnapshot", snapshotParams)
+	}
+	all := append(ons, tree, ax, shot)
+	fail := func(err error) (docResult, error) {
+		ts.forget(session)
+		giveUp(all...)
+		return docResult{}, err
+	}
+	for _, p := range ons {
+		if _, err := p.Wait(ctx); err != nil && isGone(err) {
+			return fail(err)
+		}
+	}
+	res, err := tree.Wait(ctx)
 	if err != nil {
-		return Doc{}, frameTree{}, err
+		return fail(err)
 	}
 	var f struct {
 		FrameTree frameTree `json:"frameTree"`
 	}
 	if err := json.Unmarshal(res, &f); err != nil {
-		return Doc{}, frameTree{}, err
+		return fail(err)
 	}
-	doc := Doc{SessionID: session, FrameID: f.FrameTree.Frame.ID, Loaders: map[string]string{}}
-	f.FrameTree.loaders(doc.Loaders, -1)
-	var params any
-	if frameID != "" {
-		doc.FrameID = frameID
-		params = map[string]any{"frameId": frameID}
+	d := docResult{Doc: Doc{SessionID: session, FrameID: f.FrameTree.Frame.ID, Loaders: map[string]string{}}, tree: f.FrameTree}
+	f.FrameTree.loaders(d.Loaders, -1)
+	if res, err = ax.Wait(ctx); err != nil {
+		return fail(err)
 	}
-	res, err = c.CallSession(ctx, session, "Accessibility.getFullAXTree", params)
-	if err != nil {
-		return Doc{}, frameTree{}, err
-	}
-	var ax struct {
+	var axTree struct {
 		Nodes []AXNode `json:"nodes"`
 	}
-	if err := json.Unmarshal(res, &ax); err != nil {
-		return Doc{}, frameTree{}, err
+	if err := json.Unmarshal(res, &axTree); err != nil {
+		return fail(err)
 	}
-	doc.Nodes = ax.Nodes
-	doc.Marks = readMarks(ctx, c, session, contextID)
-	return doc, f.FrameTree, nil
+	d.Nodes = axTree.Nodes
+	if shot != nil {
+		res, err := shot.Wait(ctx)
+		if err == nil {
+			d.snap, err = decodeSnapshot(res)
+		}
+		if doc := d.snap.doc(d.FrameID); doc != nil {
+			d.Marks = marksOf(d.snap, doc)
+		}
+		if d.Marks != nil {
+			d.Snapshot = true
+		} else {
+			d.snap = nil
+			r.refuse(c, err)
+		}
+	}
+	if d.Marks == nil {
+		d.Marks = readMarks(ctx, c, session, 0)
+	}
+	return d, nil
 }
 
-// sameProcessFrame reads a same-origin iframe the main tree left out: its
-// accessibility tree by frameId, and the cursor-pointer pass in an
-// isolated world of that frame.
-func sameProcessFrame(ctx context.Context, c *cdp.Client, session, frameID, loader string) (Doc, error) {
-	world := 0
+// sameProcessFrame reads a same-origin iframe the main tree left out: the
+// iframe element that holds it, and its accessibility tree by frameId; its
+// marks are its document in the Tab's snapshot, else the clickables.js
+// pass in an isolated world of that frame.
+func (r *Reader) sameProcessFrame(ctx context.Context, c *cdp.Client, session, frameID string, main docResult) (Doc, int64, error) {
+	owner := c.Send(session, "DOM.getFrameOwner", map[string]any{"frameId": frameID})
+	ax := c.Send(session, "Accessibility.getFullAXTree", map[string]any{"frameId": frameID})
+	o, err := ownerOf(owner.Wait(ctx))
+	if err != nil || o == 0 {
+		giveUp(ax)
+		return Doc{}, 0, err
+	}
+	res, err := ax.Wait(ctx)
+	if err != nil {
+		return Doc{}, 0, err
+	}
+	var tree struct {
+		Nodes []AXNode `json:"nodes"`
+	}
+	if err := json.Unmarshal(res, &tree); err != nil {
+		return Doc{}, 0, err
+	}
+	doc := Doc{SessionID: session, FrameID: frameID, Loaders: map[string]string{}, Nodes: tree.Nodes}
+	for k, v := range main.Loaders {
+		doc.Loaders[k] = v
+	}
+	if sd := main.snap.doc(frameID); sd != nil {
+		doc.Marks = marksOf(main.snap, sd)
+		doc.Snapshot = doc.Marks != nil
+	}
+	if doc.Marks != nil {
+		return doc, o, nil
+	}
 	if res, err := c.CallSession(ctx, session, "Page.createIsolatedWorld", map[string]any{"frameId": frameID, "worldName": "winuse"}); err == nil {
 		var w struct {
 			ExecutionContextID int `json:"executionContextId"`
 		}
 		json.Unmarshal(res, &w)
-		world = w.ExecutionContextID
+		if w.ExecutionContextID != 0 {
+			doc.Marks = readMarks(ctx, c, session, w.ExecutionContextID)
+		}
 	}
-	doc, _, err := readDoc(ctx, c, session, frameID, world)
-	if err != nil {
-		return Doc{}, err
-	}
-	if world == 0 {
-		doc.Marks = nil // the pass ran in the main frame, not this one
-	}
-	if loader != "" {
-		doc.Loaders[frameID] = loader
-	}
-	return doc, nil
+	return doc, o, nil
 }
 
-// frameOwner is the backendNodeId of the iframe element that holds a
-// frame, in the session that holds the element.
-func frameOwner(ctx context.Context, c *cdp.Client, session, frameID string) (int64, error) {
-	res, err := c.CallSession(ctx, session, "DOM.getFrameOwner", map[string]any{"frameId": frameID})
+// giveUp stops waiting for answers a failed read no longer needs.
+func giveUp(ps ...*cdp.Pending) {
+	done, cancel := context.WithCancel(context.Background())
+	cancel()
+	for _, p := range ps {
+		if p != nil {
+			p.Wait(done)
+		}
+	}
+}
+
+// turnOn reports whether a read over session must turn its domains on
+// (its first, or enableAgain after the last), and records the read.
+func (ts *tabSession) turnOn(session string) bool {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	last, ok := ts.read[session]
+	ts.read[session] = time.Now()
+	return !ok || time.Since(last) > enableAgain
+}
+
+// forget makes the next read over session turn its domains on again.
+func (ts *tabSession) forget(session string) {
+	ts.mu.Lock()
+	delete(ts.read, session)
+	ts.mu.Unlock()
+}
+
+// refused reports a connection that refused DOMSnapshot.captureSnapshot.
+func (r *Reader) refused(c *cdp.Client) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.noSnapshot[c]
+}
+
+// refuse remembers a connection whose browser does not offer
+// DOMSnapshot.captureSnapshot (no such method, or the extension refused
+// it), so its later reads use the clickables.js pass from the start. Any
+// other failure (a navigation under way, a timeout) is this read's alone.
+func (r *Reader) refuse(c *cdp.Client, err error) {
+	var ce *cdp.Error
+	if !errors.As(err, &ce) {
+		return
+	}
+	msg := strings.ToLower(ce.Message)
+	if ce.Code != -32601 && ce.Code != bridge.CodeRefused && !strings.Contains(msg, "wasn't found") && !strings.Contains(msg, "not allowed") {
+		return
+	}
+	r.mu.Lock()
+	if r.noSnapshot == nil {
+		r.noSnapshot = map[*cdp.Client]bool{}
+	}
+	r.noSnapshot[c] = true
+	r.mu.Unlock()
+}
+
+// ownerOf reads DOM.getFrameOwner's answer.
+func ownerOf(res json.RawMessage, err error) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
@@ -515,17 +726,28 @@ func (r *Reader) session(ctx context.Context, conn *browser.Connection, targetID
 		return ts, nil
 	}
 	c := conn.Client
-	id, err := conn.AttachPage(ctx, targetID)
+	// Bounded: a Tab whose renderer does not answer (hung, or held by a
+	// dialog) can keep Target.attachToTarget waiting for minutes (a
+	// headless Chrome tab did in the speed issue 07 live check).
+	actx, cancel := context.WithTimeout(ctx, attachTimeout)
+	id, err := conn.AttachPage(actx, targetID)
+	cancel()
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			return nil, &NotAnsweringError{After: attachTimeout}
+		}
 		return nil, err
 	}
-	ts = &tabSession{id: id, children: map[string]string{}}
+	ts = &tabSession{id: id, children: map[string]string{}, read: map[string]time.Time{}}
 	Watch(ctx, c, id) // dialogs and file choosers (watch.go, ticket 06)
 	attached := c.Subscribe(id, "Target.attachedToTarget")
 	detached := c.Subscribe(id, "Target.detachedFromTarget")
 	ts.subs = []*cdp.Subscription{attached, detached}
 	go ts.track(c, attached, detached)
-	if _, err := c.CallSession(ctx, id, "Target.setAutoAttach", map[string]any{"autoAttach": true, "waitForDebuggerOnStart": false, "flatten": true}); err == nil {
+	sctx, scancel := context.WithTimeout(ctx, setupTimeout)
+	_, err = c.CallSession(sctx, id, "Target.setAutoAttach", map[string]any{"autoAttach": true, "waitForDebuggerOnStart": false, "flatten": true})
+	scancel()
+	if err == nil {
 		settle := r.Settle
 		if settle == 0 {
 			settle = settleAfterAutoAttach

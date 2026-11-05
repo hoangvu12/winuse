@@ -97,11 +97,23 @@ func (c *Client) Call(ctx context.Context, method string, params any) (json.RawM
 // and waits for its result, ctx's end, or the connection's end. A context
 // without a deadline gets DefaultTimeout.
 func (c *Client) CallSession(ctx context.Context, sessionID, method string, params any) (json.RawMessage, error) {
-	if _, ok := ctx.Deadline(); !ok {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, DefaultTimeout)
-		defer cancel()
-	}
+	return c.Send(sessionID, method, params).Wait(ctx)
+}
+
+// Pending is a command Send put on the wire, its answer still to come.
+type Pending struct {
+	c      *Client
+	id     int64
+	method string
+	ch     chan callResult // nil when sending failed (err)
+	err    error
+}
+
+// Send puts a command on the wire now and returns at once; Wait collects
+// its answer. A browser runs one session's commands in the order they
+// arrive, so commands sent one after another from one goroutine run in that
+// order, while their round trips overlap.
+func (c *Client) Send(sessionID, method string, params any) *Pending {
 	if params == nil {
 		params = struct{}{}
 	}
@@ -110,7 +122,7 @@ func (c *Client) CallSession(ctx context.Context, sessionID, method string, para
 	if c.err != nil {
 		err := c.err
 		c.mu.Unlock()
-		return nil, fmt.Errorf("%s: %w", method, err)
+		return &Pending{method: method, err: fmt.Errorf("%s: %w", method, err)}
 	}
 	c.nextID++
 	id := c.nextID
@@ -124,21 +136,35 @@ func (c *Client) CallSession(ctx context.Context, sessionID, method string, para
 	data, err := json.Marshal(msg)
 	if err != nil {
 		c.forget(id)
-		return nil, fmt.Errorf("%s: %w", method, err)
+		return &Pending{method: method, err: fmt.Errorf("%s: %w", method, err)}
 	}
 	c.writeMu.Lock()
 	err = c.t.WriteText(data)
 	c.writeMu.Unlock()
 	if err != nil {
 		c.forget(id)
-		return nil, fmt.Errorf("%s: %w", method, err)
+		return &Pending{method: method, err: fmt.Errorf("%s: %w", method, err)}
+	}
+	return &Pending{c: c, id: id, method: method, ch: call.ch}
+}
+
+// Wait waits for the answer, ctx's end, or the connection's end. A context
+// without a deadline gets DefaultTimeout. Wait once per Pending.
+func (p *Pending) Wait(ctx context.Context) (json.RawMessage, error) {
+	if p.err != nil {
+		return nil, p.err
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, DefaultTimeout)
+		defer cancel()
 	}
 	select {
-	case r := <-call.ch:
+	case r := <-p.ch:
 		return r.raw, r.err
 	case <-ctx.Done():
-		c.forget(id)
-		return nil, fmt.Errorf("%s: %w", method, ctx.Err())
+		p.c.forget(p.id)
+		return nil, fmt.Errorf("%s: %w", p.method, ctx.Err())
 	}
 }
 
