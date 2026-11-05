@@ -231,7 +231,8 @@ type windowArgs struct {
 
 	// The output budgets of a read (speed 05, find.go).
 	Compact  bool   `json:"compact,omitempty"`
-	MaxChars int    `json:"max_chars,omitempty"`
+	MaxChars *int   `json:"max_chars,omitempty"` // nil: the helper's default cap
+	Full     bool   `json:"full,omitempty"`
 	Out      string `json:"out,omitempty"` // absolute
 }
 

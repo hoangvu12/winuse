@@ -44,22 +44,38 @@ func lineIndexes(t *testing.T, out string) map[int]string {
 	return got
 }
 
-func TestRenderViewWholeIsRender(t *testing.T) {
+func TestRenderViewFullIsRender(t *testing.T) {
 	tree := viewTree()
-	if got := RenderView(tree, View{Ref: "7"}); got != Render(tree) {
-		t.Errorf("the zero view must print what Render prints:\n%s\nwant:\n%s", got, Render(tree))
+	if got := RenderView(tree, View{Full: true, Interactive: true, MaxChars: 10, Ref: "7"}); got != Render(tree) {
+		t.Errorf("--full must print what Render prints, byte for byte:\n%s\nwant:\n%s", got, Render(tree))
+	}
+}
+
+// TestRenderViewDropsSharedIDs: the zero view (the default, speed 13)
+// prints every Element and leaves out only the IDs several Elements
+// share, the focused Element's sentence included; a tree without one
+// prints exactly what Render prints.
+func TestRenderViewDropsSharedIDs(t *testing.T) {
+	tree := viewTree()
+	want := strings.NewReplacer(" ID: b\n", "\n", " ID: b.\n", ".\n").Replace(Render(tree))
+	if got := RenderView(tree, View{Ref: "7"}); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+	tree.Elements[4].AutomationId = "save"
+	if got := RenderView(tree, View{Ref: "7"}); got != Render(tree) || !strings.Contains(got, "3 button Open ID: b\n") {
+		t.Errorf("unique IDs always print:\n%s", got)
 	}
 }
 
 func TestRenderViewInteractive(t *testing.T) {
 	want := `Window: "Views", App: app.exe.
 	0 window Views Secondary Actions: Raise ID: w
-		3 button Open ID: b
-		4 button Save ID: b
+		3 button Open
+		4 button Save
 		7 custom (truncated: 7, omitted 3 children)
 		8 edit (settable, string) Find
 
-The focused UI element is 4 button Save ID: b.
+The focused UI element is 4 button Save.
 Note: a walk note
 Note: --interactive left out 4 of the 9 Elements; their Element Indexes still work
 `
@@ -79,7 +95,7 @@ func TestRenderViewCompact(t *testing.T) {
 			7 custom (truncated: 7, omitted 3 children)
 			8 edit (settable, string) Find
 
-The focused UI element is 4 button Save ID: b.
+The focused UI element is 4 button Save.
 Note: a walk note
 Note: --compact left out 1 of the 9 Elements; their Element Indexes still work
 `
@@ -109,13 +125,12 @@ func TestRenderViewKeepsIndexes(t *testing.T) {
 			t.Fatal(err)
 		}
 		whole := lineIndexes(t, Render(tree))
-		for _, v := range []View{{Interactive: true}, {Compact: true}, {Depth: 2}, {Interactive: true, Compact: true}, {MaxChars: 900}} {
+		for _, v := range []View{{}, {Interactive: true}, {Compact: true}, {Depth: 2}, {Interactive: true, Compact: true}, {MaxChars: 900}} {
 			for i, line := range lineIndexes(t, RenderView(tree, v)) {
 				full := whole[i]
-				if v.Compact {
-					full = regexp.MustCompile(` ID: \S+`).ReplaceAllString(full, "")
-					line = regexp.MustCompile(` ID: \S+`).ReplaceAllString(line, "")
-				}
+				// Shared IDs are left out of every view.
+				full = regexp.MustCompile(` ID: \S+`).ReplaceAllString(full, "")
+				line = regexp.MustCompile(` ID: \S+`).ReplaceAllString(line, "")
 				full = strings.TrimSuffix(full, " ")
 				if line != full && !strings.HasPrefix(line, full+" (+") {
 					t.Errorf("%s %+v: Element %d prints %q, the full read %q", name, v, i, line, whole[i])
@@ -130,7 +145,7 @@ func TestRenderViewMaxChars(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	full := Render(tree)
+	full := RenderView(tree, View{Ref: "7"}) // the default view, uncut
 	for _, max := range []int{900, 1200, 1600} {
 		out := RenderView(tree, View{MaxChars: max, Ref: "7"})
 		if n := utf8.RuneCountInString(out); n > max {
@@ -149,7 +164,7 @@ func TestRenderViewMaxChars(t *testing.T) {
 			}
 		}
 	}
-	if out := RenderView(tree, View{MaxChars: len(full) + 1000}); out != full {
+	if out := RenderView(tree, View{MaxChars: len(full) + 1000, Ref: "7"}); out != full {
 		t.Errorf("a cap the read fits in must print it whole:\n%s", out)
 	}
 }

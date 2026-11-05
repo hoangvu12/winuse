@@ -122,8 +122,10 @@ where typed text lands. Trust the tree first; add `--screenshot` for
 canvases, visual questions or a sparse tree, and open the printed
 `Screenshot: <path>` with your file tool. A big Window: `winuse find
 <window> --name save`, or `--skeleton` then `--root <index>`; to print
-less of a full read, `--interactive --compact` or `--max-chars N`, and
-`--out <file>` to keep it in a file (topic `reading`).
+less of a full read, `--interactive --compact`. A read stops before 28000
+characters with a note on what it left out (`--max-chars N` sets the cap,
+`--out <file>` writes it all to a file) and drops IDs several Elements
+share, which `id:` cannot name (topic `reading`).
 
 ## Name an Element
 

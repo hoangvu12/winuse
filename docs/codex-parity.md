@@ -387,8 +387,15 @@ deliberate divergences: **English role names** derived from the numeric
 ControlType (Codex prints locale-dependent LocalizedControlType — a
 bug in every non-English locale), and **bounded, explicit truncation**
 with Codex's `(truncated: <limit>, omitted <n> children)` suffix where
-Codex's budgets are unknown. **matched (grammar) / intentionally
-different (roles, bounds)**.
+Codex's budgets are unknown. Two defaults print less than Codex's text
+(speed 13, ADR 0004): an `ID:` two or more Elements share is left out
+(Codex prints it, and `id:` refuses it as ambiguous in both), and the
+output stops before 28000 characters with a `Note:` naming the first
+Element not printed (Codex prints the whole tree, which a Harness's
+~30k-character cap on a command's output then cuts in the middle).
+`get-window-state --full` (and `find --full`) prints Codex's text byte
+for byte. **matched (grammar; byte for byte under `--full`) /
+intentionally different (roles, bounds, shared IDs, the default cap)**.
 
 ### secondary actions
 

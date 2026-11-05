@@ -62,8 +62,11 @@ func find(s Services) Command {
 		if a.First && a.Count || a.Limit > 0 && (a.First || a.Count) {
 			return "", Fail("find: pass one of --first, --limit and --count", findUsage)
 		}
-		if a.Limit < 0 || a.MaxChars < 0 {
-			return "", Fail("find: --limit and --max-chars take a positive number", findUsage)
+		if a.Limit < 0 || a.MaxChars != nil && *a.MaxChars < 0 {
+			return "", Fail("find: --limit takes a positive number and --max-chars a number (0: no cap)", findUsage)
+		}
+		if a.Full && a.MaxChars != nil {
+			return "", Fail("find: --full prints every match uncut, with every ID; it takes no --max-chars", findUsage)
 		}
 		if a.First {
 			a.Limit = 1
@@ -93,16 +96,40 @@ func find(s Services) Command {
 		if res.Count == 0 {
 			return "", noMatch(w, q, res.RolesPresent)
 		}
-		cut := findCut{limit: a.Limit, matched: res.Count, maxChars: a.MaxChars}
+		cut := newFindCut(a, res.Count, res.SharedIDs)
 		return renderAdded(w, res.Added, true, "matched "+q.String(), cut), nil
 	}
 }
 
-// findCut is what find left out of its answer: the matches past --limit
-// and the lines past --max-chars. The zero findCut leaves nothing out.
+// findCut is what find or a region read leaves out of its answer: the
+// matches past --limit, the lines past --max-chars, and the IDs the
+// walk's Elements share (speed 13). The zero findCut leaves nothing out.
 type findCut struct {
 	limit, matched int // --limit, and every match
 	maxChars       int
+	shared         map[string]bool // IDs left out of the lines
+	narrow         string          // how to see the lines --max-chars cut, after "Narrow ..."; "" for find's
+}
+
+// newFindCut is find's cut: --limit, --max-chars or the default cap, and
+// the walk's shared IDs, all off with --full.
+func newFindCut(a protocol.FindArgs, matched int, shared map[string]bool) findCut {
+	c := findCut{limit: a.Limit, matched: matched}
+	if a.Full {
+		return c
+	}
+	c.maxChars, c.shared = defaultMaxChars, shared
+	if a.MaxChars != nil {
+		c.maxChars = *a.MaxChars
+	}
+	return c
+}
+
+// line is Element e's line at index, indented by tabs, its shared ID left
+// out.
+func (c findCut) line(tabs, index int, e wstate.Element) wstate.PrintedLine {
+	e = e.WithoutSharedID(c.shared)
+	return wstate.PrintedLine{Index: index, Text: strings.Repeat("\t", tabs) + wstate.Line(index, &e) + "\n"}
 }
 
 // limitNote is the note on the matches --limit left out, or "".
@@ -114,7 +141,10 @@ func (c findCut) limitNote(shown int) string {
 }
 
 // hint is how to see the lines --max-chars did not print.
-func (findCut) hint() string {
+func (c findCut) hint() string {
+	if c.narrow != "" {
+		return c.narrow
+	}
 	return "Narrow the filters, pass --limit, or raise --max-chars"
 }
 
@@ -125,23 +155,25 @@ func findInFreshRead(s Services, ctx context.Context, w win.WindowInfo, q wstate
 	if terr != nil {
 		return "", terr
 	}
-	var lines []wstate.PrintedLine
-	count := 0
+	var matches []int
 	for i := range tree.Elements {
-		if !q.Match(tree.Elements[i]) {
-			continue
-		}
-		if count++; a.Limit <= 0 || count <= a.Limit {
-			lines = append(lines, wstate.PrintedLine{Index: i, Text: "\t" + wstate.Line(i, &tree.Elements[i]) + "\n"})
+		if q.Match(tree.Elements[i]) {
+			matches = append(matches, i)
 		}
 	}
 	if a.Count {
-		return strconv.Itoa(count) + "\n", nil
+		return strconv.Itoa(len(matches)) + "\n", nil
 	}
-	if count == 0 {
+	if len(matches) == 0 {
 		return "", noMatch(w, q, wstate.RolesPresent(tree.Elements))
 	}
-	cut := findCut{limit: a.Limit, matched: count, maxChars: a.MaxChars}
+	cut := newFindCut(a, len(matches), wstate.SharedIDs(tree.Elements))
+	var lines []wstate.PrintedLine
+	for _, i := range matches {
+		if a.Limit <= 0 || len(lines) < a.Limit {
+			lines = append(lines, cut.line(1, i, tree.Elements[i]))
+		}
+	}
 	var tail strings.Builder
 	how := " through its Browser Connection"
 	for _, n := range tree.Notes {
@@ -175,13 +207,12 @@ func header(w win.WindowInfo) string {
 // and the numbering note.
 func renderAdded(w win.WindowInfo, added uia.Added, flat bool, what string, cut findCut) string {
 	lines := make([]wstate.PrintedLine, len(added.Elements))
-	for i := range added.Elements {
-		e := &added.Elements[i]
+	for i, e := range added.Elements {
 		tabs := 1
 		if !flat {
 			tabs = e.Depth + 1
 		}
-		lines[i] = wstate.PrintedLine{Index: added.Indexes[i], Text: strings.Repeat("\t", tabs) + wstate.Line(added.Indexes[i], e) + "\n"}
+		lines[i] = cut.line(tabs, added.Indexes[i], e)
 	}
 	var tail strings.Builder
 	for _, n := range added.Notes {
@@ -217,17 +248,16 @@ func indexList(idx []int) string {
 // Window, or its outline: --root and --skeleton. handled is false for a
 // plain read.
 func windowStateShape(s Services, ctx context.Context, w win.WindowInfo, a windowRef) (out string, rerr *Error, handled bool) {
+	if e := budgetError(a); e != nil {
+		return "", e, true
+	}
 	switch {
 	case a.Skeleton && a.Root != "":
 		return "", Fail("get-window-state: --skeleton reads the whole Window and --root one Element; pass one", windowStateUsage), true
 	case a.Skeleton && a.Depth != 0:
 		return "", Fail(fmt.Sprintf("get-window-state: --skeleton reads %d levels; --depth goes with a full read or --root <element>", uia.SkeletonDepth), windowStateUsage), true
-	case a.Root != "" && (a.Compact || a.MaxChars != 0 || a.Out != ""):
-		return "", Fail("get-window-state: --compact, --max-chars and --out shape a full read; --root takes --depth and --interactive", windowStateUsage), true
-	case a.Depth < 0 || a.MaxChars < 0:
-		return "", Fail("get-window-state: --depth and --max-chars take a positive number", windowStateUsage), true
-	case a.MaxChars != 0 && a.Out != "":
-		return "", Fail("get-window-state: pass --out or --max-chars, not both: --out writes the whole Window State to the file", windowStateUsage), true
+	case a.Root != "" && (a.Compact || a.Out != ""):
+		return "", Fail("get-window-state: --compact and --out shape a full read; --root takes --depth, --interactive, --max-chars and --full", windowStateUsage), true
 	case a.Skeleton:
 		tree, err := s.Trees.Capture(uia.WithSkeleton(ctx), w.ID, w.Title, win.AppExeName(w), s.Budget)
 		if err != nil {
@@ -244,7 +274,7 @@ func windowStateShape(s Services, ctx context.Context, w win.WindowInfo, a windo
 }
 
 // windowStateUsage is get-window-state's usage line.
-const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--timeout <seconds>]"
+const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--full] [--timeout <seconds>]"
 
 // readRegion is get-window-state --root: the Element's subtree, read
 // afresh and added after the Window State's indexes; a Page Element's from
@@ -269,7 +299,7 @@ func readRegion(s Services, ctx context.Context, w win.WindowInfo, a windowRef) 
 	if a.Interactive {
 		what = "the interactive Elements under " + strconv.Itoa(index)
 	}
-	return renderAdded(w, added, false, what, findCut{}), nil
+	return renderAdded(w, added, false, what, a.regionCut(wstate.SharedIDs(added.Elements))), nil
 }
 
 // holdsPage reports whether the Element behind index is a Page Element,
@@ -321,11 +351,11 @@ func storedSubtree(ctx context.Context, s Services, w win.WindowInfo, index int,
 	if !ok || index >= len(els) {
 		return "", elementError(fmt.Errorf("%w: element %d", uia.ErrStale, index), w, index)
 	}
-	var b strings.Builder
-	b.WriteString(header(w))
+	cut := a.regionCut(wstate.SharedIDs(els))
+	var lines []wstate.PrintedLine
 	root := els[index].Depth
 	for i := index; i < len(els); i++ {
-		e := &els[i]
+		e := els[i]
 		if i > index && e.Depth <= root {
 			break
 		}
@@ -333,8 +363,8 @@ func storedSubtree(ctx context.Context, s Services, w win.WindowInfo, index int,
 		if a.Depth > 0 && rel > a.Depth || i > index && a.Interactive && !e.Interactive() {
 			continue
 		}
-		b.WriteString(strings.Repeat("\t", rel+1) + wstate.Line(i, e) + "\n")
+		lines = append(lines, cut.line(rel+1, i, e))
 	}
-	fmt.Fprintf(&b, "\n%sElement %d holds Page Elements, read whole with the Window State, so these keep their Element Indexes\n", notePrefix, index)
-	return b.String(), nil
+	tail := fmt.Sprintf("%sElement %d holds Page Elements, read whole with the Window State, so these keep their Element Indexes\n", notePrefix, index)
+	return wstate.Cut(header(w), lines, tail, cut.maxChars, cut.hint()), nil
 }

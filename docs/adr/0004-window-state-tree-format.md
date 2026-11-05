@@ -136,9 +136,8 @@ snapshot-qualified refs with re-identification; or added indexes).
   (`(truncated: ...)`, `(+N children)`) always print. `--depth` adds
   `(+N children)` where it stops, as the skeleton does.
 - `--compact` folds only an Element whose line would carry nothing but its
-  index and role, and drops only the `ID:`s that several Elements share,
-  which an `id:` reference refuses as ambiguous anyway. An unnamed
-  container with a unique ID keeps its line: `--root id:<ID>` may need it.
+  index and role. An unnamed container with a unique ID keeps its line:
+  `--root id:<ID>` may need it.
 - `--max-chars` cuts whole lines and never the header or the tail (the
   focused Element and the walk's notes). `--out` writes the view to the
   file and prints the header, a `Window State: <path> (...)` line and the
@@ -150,3 +149,34 @@ snapshot-qualified refs with re-identification; or added indexes).
   −36.5%, `--compact` −11.4%, both −38.1%, `--depth 3` −67.5%. Folding
   bare lines alone is −5.8% and dropping shared IDs alone −5.3%. Changing
   a default is left to the user (`.scratch/speed/issues/05-output-budgets.md`).
+
+### Addendum: two budgets are the default (speed 13, 2026-11-05)
+
+The user chose two of the proposed defaults
+(`.scratch/speed/issues/13-default-budgets.md`):
+
+- **Shared IDs are left out.** Every read, `find` and `--root` leave out
+  the `ID:` of an Element whose ID another Element of the same read
+  shares (for `find`, of its walk), the focused Element's sentence
+  included. `id:` refuses those IDs as ambiguous, so the line loses
+  nothing an agent can name. A unique ID always prints. Folding stays
+  opt-in under `--compact`.
+- **The output stops before 28000 characters.** Claude Code cuts a Bash
+  command's output at about 30000 characters, in the middle. A read now
+  cuts at a line boundary first, with the `--max-chars` note naming the
+  first Element not printed. The cap covers the note itself and, with
+  `--screenshot`, room for the Screenshot line, and leaves about 2000
+  characters for the shell's own lines. `--max-chars N` sets the cap,
+  `--max-chars 0` lifts it, and `--out <file>` writes the read uncut.
+- **`--full`** prints Codex's text byte for byte: every ID, no cap
+  (`wstate.Render`). It refuses `--interactive`, `--depth`, `--compact`
+  and `--max-chars` on a full read. With `--root`, `--depth` and
+  `--interactive` still shape the walk. `find --full` does the same for
+  find.
+- The cap counts the text's characters; under `--json` the escaped text
+  is longer.
+- Measured on the same 14 real Window States: the default prints 5.3%
+  fewer tokens (−4.8% characters). Six of the 14 change, by −1.3% to −9%
+  each. The largest is 17,260 characters, so the cap never cuts any of
+  them; it only matters on dense Windows (about 40k tokens at the
+  3000-Element cap).

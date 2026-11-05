@@ -80,13 +80,20 @@ winuse get-window-state <window> --skeleton        # three levels, with "(+N chi
 winuse get-window-state <window> --root 42 --depth 2 --interactive
 winuse get-window-state <window> --interactive --compact   # a full read, printing only what you act on
 winuse get-window-state <window> --max-chars 20000 # stop the tree before 20000 characters, with a note
-winuse get-window-state <window> --out state.txt   # write it to a file; prints the path and the notes
+winuse get-window-state <window> --out state.txt   # write it to a file, uncut; prints the path and the notes
+winuse get-window-state <window> --full            # Codex's text byte for byte: every ID, no cap
 ```
 
+By default a read, `find` and `--root` stop before 28000 characters
+(under the Harness's 30000-character cap on a command's output) with a
+note naming the first Element not printed, and leave out the IDs two or
+more Elements share, which `id:` refuses as ambiguous; a unique ID always
+prints. `--max-chars N` sets the cap, `--max-chars 0` lifts it, and
+`--out <file>` writes the whole read to the file.
+
 On a full read, `--interactive`, `--depth N` and `--compact` (folds
-unnamed containers, drops IDs several Elements share) print less, but
-the Window State is kept whole: every index printed is its own, and the
-ones left out still work.
+unnamed containers) print less, but the Window State is kept whole:
+every index printed is its own, and the ones left out still work.
 
 `--role` takes the role as the tree prints it, and `--name` and `--text` a
 part of the name (or the value and description), ignoring case. A role

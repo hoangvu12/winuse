@@ -931,10 +931,12 @@ type windowRef struct {
 	// The output budgets of a full read (speed 05, views.go):
 	// --interactive and --depth above, --compact, --max-chars N and --out
 	// <file> (an absolute path) shape what is printed of the Window State,
-	// which is stored whole.
+	// which is stored whole. MaxChars nil is the default cap (speed 13,
+	// defaultMaxChars), 0 no cap; Full prints Codex's text byte for byte.
 	Compact  bool   `json:"compact,omitempty"`
-	MaxChars int    `json:"max_chars,omitempty"`
+	MaxChars *int   `json:"max_chars,omitempty"`
 	Out      string `json:"out,omitempty"`
+	Full     bool   `json:"full,omitempty"`
 }
 
 // getWindowState answers `winuse get-window-state <window>`: the resolved

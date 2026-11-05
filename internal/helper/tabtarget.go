@@ -648,6 +648,9 @@ func (s Services) tabWindowState(ctx context.Context, bt *bgTab, args json.RawMe
 	if err := parseArgs(args, &a); err != nil {
 		return "", Fail("get-window-state: "+err.Error(), windowStateUsage)
 	}
+	if e := budgetError(a); e != nil {
+		return "", e
+	}
 	if bt.tab.Internal {
 		return "", Fail(fmt.Sprintf("tab %s of window %d shows a browser page (%s), which winuse does not read or act in", bt.short(), bt.w.ID, bt.tab.URL),
 			"run winuse navigate "+bt.ref()+" <url> to open a site")
