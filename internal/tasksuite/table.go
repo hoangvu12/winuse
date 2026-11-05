@@ -30,7 +30,23 @@ type TaskResult struct {
 	Seconds    float64 // wall clock of the measured part (setup→check)
 	Reason     string  // the Check's failure line, or the timeout/error note
 	ScratchDir string
+
+	// The speed metrics (speed ticket 01). Arm is the A/B arm's label
+	// ("" in a plain run), Repeat the run's number for its task and arm
+	// (from 1).
+	Arm            string
+	Repeat         int
+	SetupSeconds   float64
+	HarnessSeconds float64 // the agent's wall time: the Harness process from start to exit
+	CheckSeconds   float64
+	Usage          Usage        // the model's turns, tokens and cost
+	Trace          TraceSummary // the run's winuse commands, from WINUSE_TRACE
+	TraceFound     bool         // the trace file existed (false: no winuse command ran, or tracing failed)
 }
+
+// measured reports whether a run has speed metrics: it ran the Harness
+// to an end the Check judged (or the time limit cut).
+func (r TaskResult) measured() bool { return r.Status == Pass || r.Status == Fail }
 
 // FormatTable renders the pass/fail table with steps and time, plus the
 // failure reasons under their rows and a summary line. Plain text, no
@@ -39,7 +55,17 @@ func FormatTable(results []TaskResult) string {
 	if len(results) == 0 {
 		return "no tasks ran\n"
 	}
+	// A run with repeats or A/B arms names each row's run.
+	named := false
+	for _, r := range results {
+		if r.Arm != "" || r.Repeat > 1 {
+			named = true
+		}
+	}
 	headers := []string{"Task", "Category", "Result", "Steps", "Time"}
+	if named {
+		headers = []string{"Task", "Run", "Category", "Result", "Steps", "Time"}
+	}
 	rows := make([][]string, len(results))
 	for i, r := range results {
 		steps := "-"
@@ -47,6 +73,9 @@ func FormatTable(results []TaskResult) string {
 			steps = fmt.Sprintf("%d", r.Steps)
 		}
 		rows[i] = []string{r.Task.ID, r.Task.Category, string(r.Status), steps, formatSeconds(r.Seconds)}
+		if named {
+			rows[i] = append([]string{r.Task.ID, runName(r)}, rows[i][1:]...)
+		}
 	}
 	widths := make([]int, len(headers))
 	for i, h := range headers {
