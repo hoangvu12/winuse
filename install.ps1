@@ -78,11 +78,21 @@ Write-Host "installed $exe"
 # The agent skill, user-wide. With Node.js, the skills CLI links it into
 # every agent it detects (npx.cmd, not npx, so a restrictive execution
 # policy cannot block npx.ps1). Either way the binary then writes its own
-# embedded copy to ~\.agents\skills, the folder the skills CLI links from,
-# so the skill always matches the installed winuse.exe and the skill step
-# works without Node.js.
+# embedded copy (SKILL.md and its topics) to the user-level folders the
+# harnesses read, so the skill always matches the installed winuse.exe and
+# the skill step works without Node.js:
+#   ~\.agents\skills  Codex, Copilot, Cursor, Gemini CLI and most others,
+#                     and the folder the skills CLI links from
+#   ~\.claude\skills  Claude Code, which never reads ~\.agents\skills
+#                     (CLAUDE_CONFIG_DIR\skills when that is set)
+$claudeHome = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $env:USERPROFILE ".claude" }
+$skillDirs = @(
+    (Join-Path $env:USERPROFILE ".agents\skills"),
+    (Join-Path $claudeHome "skills")
+)
 if ($env:WINUSE_NO_SKILL -eq "1") {
-    Write-Host "skipped the agent skill (WINUSE_NO_SKILL=1); install it later with: winuse skill install `"$env:USERPROFILE\.agents\skills`""
+    Write-Host "skipped the agent skill (WINUSE_NO_SKILL=1); install it later with:"
+    foreach ($dir in $skillDirs) { Write-Host "  winuse skill install `"$dir`"" }
 } else {
     if (Get-Command npx.cmd -ErrorAction SilentlyContinue) {
         Write-Host "linking the agent skill into your agents: npx skills add $repo -g -y"
@@ -90,18 +100,22 @@ if ($env:WINUSE_NO_SKILL -eq "1") {
         & npx.cmd -y skills add $repo -g -y
         $ErrorActionPreference = "Stop"
     } else {
-        Write-Host "Node.js was not found, so the skill goes only to ~\.agents\skills." -ForegroundColor Yellow
+        Write-Host "Node.js was not found, so the skill goes only to $($skillDirs -join ' and ')." -ForegroundColor Yellow
         Write-Host "for agents that read another skills folder, install Node.js (https://nodejs.org) and run: npx skills add $repo -g"
     }
-    $skills = Join-Path $env:USERPROFILE ".agents\skills"
-    $ErrorActionPreference = "Continue"
-    & $exe skill install $skills | Out-Null
-    $installed = $LASTEXITCODE -eq 0
-    $ErrorActionPreference = "Stop"
-    if ($installed) {
-        Write-Host "installed the winuse skill for your agents (winuse skill prints it)"
+    $failed = @()
+    foreach ($dir in $skillDirs) {
+        $ErrorActionPreference = "Continue"
+        & $exe skill install $dir | Out-Null
+        if ($LASTEXITCODE -ne 0) { $failed += $dir }
+        $ErrorActionPreference = "Stop"
+    }
+    if ($failed.Count -eq 0) {
+        Write-Host "installed the winuse skill for your agents in $($skillDirs -join ' and ') (winuse skill prints it)"
     } else {
-        Write-Host "the agent skill did not install; run: winuse skill install `"$skills`"" -ForegroundColor Yellow
+        foreach ($dir in $failed) {
+            Write-Host "the agent skill did not install in $dir; run: winuse skill install `"$dir`"" -ForegroundColor Yellow
+        }
     }
 }
 

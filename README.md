@@ -25,10 +25,13 @@ irm https://raw.githubusercontent.com/hoangvu12/winuse/main/install.ps1 | iex
 
 It puts `winuse.exe` in `%LOCALAPPDATA%\winuse`, adds that folder to your
 PATH, and installs the skill. It writes the skill that ships inside
-`winuse.exe` to `~\.agents\skills\winuse` with `winuse skill install`, so
-the skill always matches the binary. With Node.js it also runs `npx skills`
-first, which links the skill into every agent it finds. Set
-`WINUSE_NO_SKILL=1` to skip the skill.
+`winuse.exe` with `winuse skill install`, so the skill always matches the
+binary, to the two user-level skills folders agents read:
+`~\.claude\skills\winuse` for Claude Code (`$env:CLAUDE_CONFIG_DIR\skills`
+when that is set) and `~\.agents\skills\winuse` for Codex, Copilot, Cursor,
+Gemini CLI and most others. With Node.js it also runs `npx skills` first,
+which links the skill into every agent it finds. Set `WINUSE_NO_SKILL=1` to
+skip the skill.
 
 Then ask your agent something like "open Calculator and work out 7 + 2
 using winuse".
@@ -36,7 +39,8 @@ using winuse".
 To build from source instead, use Go 1.27 or newer:
 `$env:CGO_ENABLED=0; go build -o winuse.exe ./cmd/winuse`, then
 `npx skills add hoangvu12/winuse`, or `.\winuse.exe skill install <dir>` to
-write the skill into an agent's skills folder.
+write the skill into an agent's skills folder, such as
+`"$env:USERPROFILE\.claude\skills"`.
 
 ## How it works
 
@@ -182,10 +186,14 @@ at all, and winuse says so.
 | `browser status`, `browser ext install`, `browser launch`, `browser clone`, `browser connect` | Connects to a browser and reports how |
 | `status` | Prints the versions (and both builds when the helper is another build of this version), whether the helper runs, the lock state, integrity level, DPI awareness, browser connections and Windows build, without starting anything |
 | `--trace <file>`, `trace show <file>` | Records one JSON line per command (or set `WINUSE_TRACE`), with typed text, values, clipboard content and eval redacted unless `--trace-unredacted`, rolling over at 32 MiB; `trace show` prints a summary |
+| `help`, `<command> --help`, `help all` | Prints the short command index, one command's examples and usage, or the full reference; a mistyped command gets "did you mean" and its usage line |
 
-[SKILL.md](skills/winuse/SKILL.md) is the full guide your agent loads.
-`winuse skill` prints the copy built into your binary, so it always
-matches the version you run.
+[SKILL.md](skills/winuse/SKILL.md) is the guide your agent loads: a short
+core with the safety rules, the Esc stop, recovery and the loop, plus
+topics in [references/](skills/winuse/references/) (browser, tabs, input,
+windows and more) that the agent reads when a task needs one. `winuse
+skill` prints the core built into your binary and `winuse skill <topic>`
+one topic, so the text always matches the version you run.
 
 ## More
 

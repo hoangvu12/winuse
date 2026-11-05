@@ -142,9 +142,13 @@ turns.
 **A/B runs** compare two winuse builds, two skills, or both:
 
 - `--winuse <exe|tree>` and `--skill <file|dir|tree>` set arm A (by
-  default this tree's build and SKILL.md). A winuse.exe is copied into
+  default this tree's build and skill). A winuse.exe is copied into
   the run directory, and a source tree (a directory holding `go.mod`,
   such as a branch's worktree) is built there; nothing else is written.
+  A skill is the folder that holds the SKILL.md named (a file, a folder
+  holding it, or a tree's `skills\winuse\`): that SKILL.md and the
+  topics in `references\` beside it, read once when the run starts and
+  hashed together.
 - `--b-winuse`, `--b-skill` and `--b-label` set arm B, which takes arm
   A's value for whatever it does not override. Any `--b-*` option makes
   the run A/B. `--label` names arm A (default `A`).
@@ -178,8 +182,10 @@ For each task, in a fixed order:
    expectations live. Nothing outside it is touched (apps keep their
    own MRUs and caches, as any interactive use does; no real file or
    setting is the task's to change).
-2. Copies this repo's `skills/winuse/SKILL.md` (or the arm's `--skill`) into the scratch folder (`.claude/skills/`
-   and `.agents/skills/`), so every run starts from the same guidance.
+2. Copies this repo's skill, `skills/winuse/SKILL.md` and its topics in
+   `references/` (or the arm's `--skill` folder), into the scratch folder
+   (`.claude/skills/` and `.agents/skills/`), so every run starts from
+   the same guidance.
 3. Runs the task's `setup.ps1` in the scratch folder.
 4. Starts the local task server (127.0.0.1, rooted at the scratch
    folder) for tasks marked `http:` — browser pages are served from it,
@@ -283,7 +289,7 @@ files, settings, app state — never anything a model said.
   apps.
 - The skill the agent loads is copied from this source tree into the
   scratch folder, so runs do not depend on what is installed
-  user-wide, and a run always tests the SKILL.md of the tree it is in.
+  user-wide, and a run always tests the skill of the tree it is in.
 - Claude runs use `--dangerously-skip-permissions` because an
   unattended run cannot answer permission prompts; the scratch folder
   is the blast radius. That flag is the Task Suite's choice, not the

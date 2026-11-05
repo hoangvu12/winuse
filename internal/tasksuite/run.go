@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -110,7 +112,7 @@ func resolveSkillPath(p string) (string, error) {
 type armState struct {
 	ArmRecord
 	binDir string
-	skill  []byte
+	skill  map[string][]byte // the skill folder: SKILL.md, references\<topic>.md
 }
 
 // Run executes the Task Suite: every (selected) task, unattended, through
@@ -377,13 +379,12 @@ func prepareArm(repoRoot, runRoot string, ao ArmOptions, named bool) (*armState,
 		skillPath, _ = filepath.Abs(p)
 		arm.SkillSource = skillPath
 	}
-	raw, err := os.ReadFile(skillPath)
+	files, err := readSkillFolder(skillPath)
 	if err != nil {
 		return nil, fmt.Errorf("arm %s: reading the skill: %w", ao.Label, err)
 	}
-	arm.skill = raw
-	sum := sha256.Sum256(raw)
-	arm.SkillSHA256 = hex.EncodeToString(sum[:])
+	arm.skill = files
+	arm.SkillSHA256 = skillHash(files)
 	return arm, nil
 }
 
@@ -805,18 +806,55 @@ func buildWinuse(srcRoot, binDir string) error {
 	return nil
 }
 
-// installSkill writes an arm's SKILL.md into both harnesses'
-// project-skill locations inside the scratch folder.
-func installSkill(raw []byte, scratch string) error {
-	for _, dest := range []string{
-		filepath.Join(scratch, ".claude", "skills", "winuse", "SKILL.md"),
-		filepath.Join(scratch, ".agents", "skills", "winuse", "SKILL.md"),
-	} {
-		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-			return err
+// readSkillFolder reads the skill folder that holds skillPath: that
+// SKILL.md and the topics in references\ beside it, keyed by their path
+// relative to the folder (SKILL.md, references\<topic>.md).
+func readSkillFolder(skillPath string) (map[string][]byte, error) {
+	raw, err := os.ReadFile(skillPath)
+	if err != nil {
+		return nil, err
+	}
+	files := map[string][]byte{"SKILL.md": raw}
+	topics, err := filepath.Glob(filepath.Join(filepath.Dir(skillPath), "references", "*.md"))
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range topics {
+		raw, err := os.ReadFile(t)
+		if err != nil {
+			return nil, err
 		}
-		if err := os.WriteFile(dest, raw, 0o644); err != nil {
-			return err
+		files[filepath.Join("references", filepath.Base(t))] = raw
+	}
+	return files, nil
+}
+
+// skillHash is a skill folder's SHA-256: over each file's relative path
+// and contents, in path order, so a changed topic changes it too.
+func skillHash(files map[string][]byte) string {
+	h := sha256.New()
+	for _, rel := range slices.Sorted(maps.Keys(files)) {
+		fmt.Fprintf(h, "%s\x00%d\x00", filepath.ToSlash(rel), len(files[rel]))
+		h.Write(files[rel])
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// installSkill writes an arm's skill folder, SKILL.md and its topics in
+// references\, into both harnesses' project-skill locations inside the
+// scratch folder.
+func installSkill(files map[string][]byte, scratch string) error {
+	for rel, raw := range files {
+		for _, dest := range []string{
+			filepath.Join(scratch, ".claude", "skills", "winuse", rel),
+			filepath.Join(scratch, ".agents", "skills", "winuse", rel),
+		} {
+			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(dest, raw, 0o644); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

@@ -8,7 +8,7 @@ one **matched** by winuse, **intentionally different** (the spec or the
 orchestrator decided otherwise — every known Codex Windows bug is fixed
 on purpose), or an **extension** (something Codex cannot do).
 
-The winuse side is what `winuse --help` ships; the guard test
+The winuse side is what `winuse help all` prints; the guard test
 (`internal/skill/parity_test.go`) fails when a Codex tool, a parameter
 or a cross-cutting behaviour drops off this list, when a row loses its
 status, or when the checklist names a command the CLI does not actually

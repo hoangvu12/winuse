@@ -9,6 +9,7 @@ package helper
 
 import (
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -18,7 +19,7 @@ import (
 )
 
 // cliOnlyCommands run in the CLI and never reach the helper.
-var cliOnlyCommands = map[string]bool{"version": true, "skill": true, "trace": true}
+var cliOnlyCommands = map[string]bool{"version": true, "skill": true, "trace": true, "help": true}
 
 // groupCommands take a subcommand: "browser status" is the wire command
 // browser-status, "browser ext install" browser-ext-install.
@@ -99,13 +100,24 @@ func TestEveryDocumentedCommandHasAHandler(t *testing.T) {
 	}
 }
 
-// TestEveryCommandInTheSkillHasAHandler: a `winuse <command>` line in
-// SKILL.md's code blocks names a real command. (Ticket 08 writes the
-// skill's browser guidance; this keeps it honest.)
+// TestEveryCommandInTheSkillHasAHandler: a `winuse <command>` line in the
+// code blocks of SKILL.md and its topics names a real command. (Ticket 08
+// writes the skill's browser guidance; this keeps it honest.)
 func TestEveryCommandInTheSkillHasAHandler(t *testing.T) {
 	raw, err := os.ReadFile("../../skills/winuse/SKILL.md")
 	if err != nil {
 		t.Fatalf("reading SKILL.md: %v", err)
+	}
+	topics, err := filepath.Glob("../../skills/winuse/references/*.md")
+	if err != nil || len(topics) == 0 {
+		t.Fatalf("listing the skill's topics: %v (%d found)", err, len(topics))
+	}
+	for _, path := range topics {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("reading %s: %v", path, err)
+		}
+		raw = append(append(raw, '\n'), b...)
 	}
 	cmds := CommandsWith(Services{Trees: &fakeTrees{}})
 	inBlock := false

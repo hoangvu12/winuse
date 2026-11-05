@@ -28,7 +28,7 @@ type ArmRecord struct {
 	WinuseSource string `json:"winuse_source"` // "tree" (built from the run's tree), a tree path or an exe path
 	WinuseBuild  string `json:"winuse_build"`  // the exe's Go build id
 	SkillSource  string `json:"skill_source"`  // "tree" or a SKILL.md path
-	SkillSHA256  string `json:"skill_sha256"`
+	SkillSHA256  string `json:"skill_sha256"`  // over the skill folder: SKILL.md and references\<topic>.md (run.go skillHash)
 }
 
 // RunRecord is a run's results file (results.json).
