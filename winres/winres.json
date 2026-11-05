@@ -28,22 +28,22 @@
     "#1": {
       "0000": {
         "fixed": {
-          "file_version": "0.2.0.0",
-          "product_version": "0.2.0.0"
+          "file_version": "0.3.0.0",
+          "product_version": "0.3.0.0"
         },
         "info": {
           "0409": {
             "Comments": "Windows computer use for coding agents",
             "CompanyName": "",
             "FileDescription": "winuse",
-            "FileVersion": "0.2.0",
+            "FileVersion": "0.3.0",
             "InternalName": "winuse",
             "LegalCopyright": "MIT License",
             "LegalTrademarks": "",
             "OriginalFilename": "winuse.exe",
             "PrivateBuild": "",
             "ProductName": "winuse",
-            "ProductVersion": "0.2.0",
+            "ProductVersion": "0.3.0",
             "SpecialBuild": ""
           }
         }
