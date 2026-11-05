@@ -49,11 +49,13 @@ type Added struct {
 }
 
 // FindResult is find's answer: the matches it added, how many Elements
-// matched in all, and the roles the Window shows.
+// matched in all, the roles the Window shows, and the IDs two or more of
+// the walk's Elements share (left out of find's lines: speed 13).
 type FindResult struct {
 	Added
 	Count        int
 	RolesPresent []string
+	SharedIDs    map[string]bool
 }
 
 // Find walks hwnd's live tree (up to FindMaxNodes Elements, within the
@@ -83,6 +85,7 @@ func (c *Client) Find(ctx context.Context, hwnd uint64, budget time.Duration, ma
 			return
 		}
 		out.RolesPresent = wstate.RolesPresent(res.Elements)
+		out.SharedIDs = wstate.SharedIDs(res.Elements)
 		out.Notes = partialOnly(res.Notes)
 		keep := pickMatches(res.Elements, match, limit, countOnly, &out.Count)
 		var live []comPtr

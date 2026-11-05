@@ -53,14 +53,17 @@ func parseFindArgs(args []string) (protocol.FindArgs, error) {
 		}
 		name, value, inline := strings.Cut(tok[2:], "=")
 		switch name {
-		case "first", "count":
+		case "first", "count", "full":
 			if inline {
 				return a, fmt.Errorf("--%s is a flag (no value)", name)
 			}
-			if name == "first" {
+			switch name {
+			case "first":
 				a.First = true
-			} else {
+			case "count":
 				a.Count = true
+			default:
+				a.Full = true
 			}
 			continue
 		case "role", "name", "text", "state", "limit", "max-chars":
@@ -78,16 +81,18 @@ func parseFindArgs(args []string) (protocol.FindArgs, error) {
 			return a, fmt.Errorf("--%s needs a value", name)
 		}
 		switch name {
-		case "limit", "max-chars":
+		case "limit":
 			n, err := positive(name, value)
 			if err != nil {
 				return a, err
 			}
-			if name == "limit" {
-				a.Limit = n
-			} else {
-				a.MaxChars = n
+			a.Limit = n
+		case "max-chars":
+			n, err := charCap(value)
+			if err != nil {
+				return a, err
 			}
+			a.MaxChars = &n
 		case "role":
 			a.Role = value
 		case "name":
@@ -104,6 +109,9 @@ func parseFindArgs(args []string) (protocol.FindArgs, error) {
 	if a.First && a.Count || a.Limit > 0 && (a.First || a.Count) {
 		return a, errors.New("pass one of --first, --limit and --count")
 	}
+	if a.Full && a.MaxChars != nil {
+		return a, errors.New("pass --full or --max-chars, not both: --full prints every match uncut")
+	}
 	a.Window = pos[0]
 	return a, nil
 }
@@ -117,6 +125,15 @@ func positive(name, value string) (int, error) {
 	return n, nil
 }
 
+// charCap parses --max-chars: a number of characters, 0 for no cap.
+func charCap(value string) (int, error) {
+	n, err := strconv.Atoi(value)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("--max-chars needs a number of characters (0: no cap), got %q", value)
+	}
+	return n, nil
+}
+
 // windowShape is get-window-state's partial-read and output-budget flags.
 type windowShape struct {
 	Root        string
@@ -124,12 +141,13 @@ type windowShape struct {
 	Interactive bool
 	Skeleton    bool
 	Compact     bool
-	MaxChars    int
+	MaxChars    *int   // nil: the helper's default cap (speed 13)
 	Out         string // absolute
+	Full        bool
 }
 
 // takeShapeFlags takes --root <element>, --depth N, --interactive,
-// --skeleton, --compact, --max-chars N and --out <file> out of
+// --skeleton, --compact, --max-chars N, --out <file> and --full out of
 // get-window-state's arguments and returns the rest.
 func takeShapeFlags(args []string) ([]string, windowShape, error) {
 	var sh windowShape
@@ -142,7 +160,7 @@ func takeShapeFlags(args []string) ([]string, windowShape, error) {
 		}
 		name, value, inline := strings.Cut(tok[2:], "=")
 		switch name {
-		case "interactive", "skeleton", "compact":
+		case "interactive", "skeleton", "compact", "full":
 			if inline {
 				return nil, sh, fmt.Errorf("--%s is a flag (no value)", name)
 			}
@@ -151,8 +169,10 @@ func takeShapeFlags(args []string) ([]string, windowShape, error) {
 				sh.Interactive = true
 			case "skeleton":
 				sh.Skeleton = true
-			default:
+			case "compact":
 				sh.Compact = true
+			default:
+				sh.Full = true
 			}
 			continue
 		case "root", "depth", "max-chars", "out":
@@ -182,20 +202,25 @@ func takeShapeFlags(args []string) ([]string, windowShape, error) {
 				return nil, sh, fmt.Errorf("--out %q: %v", value, err)
 			}
 			sh.Out = abs
-		default:
+		case "depth":
 			n, err := positive(name, value)
 			if err != nil {
 				return nil, sh, err
 			}
-			if name == "depth" {
-				sh.Depth = n
-			} else {
-				sh.MaxChars = n
+			sh.Depth = n
+		default:
+			n, err := charCap(value)
+			if err != nil {
+				return nil, sh, err
 			}
+			sh.MaxChars = &n
 		}
 	}
-	if sh.Out != "" && sh.MaxChars > 0 {
+	if sh.Out != "" && sh.MaxChars != nil && *sh.MaxChars > 0 {
 		return nil, sh, errors.New("pass --out or --max-chars, not both: --out writes the whole Window State to the file")
+	}
+	if sh.Full && (sh.Compact || sh.MaxChars != nil || sh.Root == "" && (sh.Interactive || sh.Depth != 0)) {
+		return nil, sh, errors.New("--full prints the Window State as Codex does, whole and uncut: it takes no --interactive, --depth, --compact or --max-chars (with --root, --depth and --interactive still shape the read)")
 	}
 	return rest, sh, nil
 }

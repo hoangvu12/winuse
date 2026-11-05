@@ -113,7 +113,7 @@ commands:
                                command that ends a process. Windows' own
                                processes (explorer, dwm, csrss, ...) and
                                administrator Apps are refused, nothing sent
-  get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--timeout <seconds>]
+  get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--full] [--timeout <seconds>]
                                print a Window's State: its Element tree as text,
                                and with --screenshot a screenshot saved to a file
                                whose path is printed (sized to the model's
@@ -130,24 +130,29 @@ commands:
                                Element's subtree (--depth N levels,
                                --interactive Elements only) and adds its
                                Elements after the Window State's indexes.
+                               A read leaves out the IDs that several
+                               Elements share (id: refuses those) and stops
+                               before 28000 characters with a note on what it
+                               left out; --max-chars N sets the cap, 0 none.
                                On a full read, --interactive prints only the
                                Elements you act on, --depth N the first N
-                               levels, --compact folds unnamed containers and
-                               drops IDs that several Elements share; the
-                               Window State is still read and kept whole, so
-                               the indexes printed are its own and the rest
-                               still work. --max-chars N stops the tree before
-                               N characters with a note on what it left out;
-                               --out <file> writes the Window State to the
-                               file and prints its header, path and notes
-  find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N]
+                               levels, --compact folds unnamed containers;
+                               the Window State is still read and kept whole,
+                               so the indexes printed are its own and the
+                               rest still work. --out <file> writes the
+                               Window State to the file, uncut, and prints
+                               its header, path and notes. --full prints
+                               Codex's text byte for byte: every ID, no cap
+  find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N | --full]
                                search the Window's whole live tree, past the
                                Window State's caps: print the matching
                                Elements, added after its Element Indexes
                                (the earlier ones still work); --limit N keeps
                                the first N and says how many matched;
                                --count prints how many; a role that matches
-                               nothing lists the roles present
+                               nothing lists the roles present. Like a read,
+                               it leaves out shared IDs and stops before
+                               28000 characters (--max-chars, --full)
   record-tree <window> <file> record a Window's real tree to a fixture file
   zoom <window> <x>,<y>,<w>,<h>
                                save a full-resolution crop of a region of the
@@ -538,7 +543,9 @@ var commandGroups = []struct {
 			"winuse get-window-state 4242 --screenshot",
 			"winuse get-window-state 4242 --skeleton",
 			"winuse get-window-state 4242 --root 42 --depth 2 --interactive",
-			"winuse get-window-state 4242 --interactive --compact --max-chars 20000"}},
+			"winuse get-window-state 4242 --interactive --compact --max-chars 20000",
+			"winuse get-window-state 4242 --out state.txt",
+			"winuse get-window-state 4242 --full"}},
 		{"find", "search the whole live tree: role, name, text", []string{
 			"winuse find 4242 --role button --name save",
 			`winuse find 4242 --text "invoice" --first`,

@@ -4,6 +4,10 @@ package wstate
 // of a Window State without changing it. The Window State the helper
 // stores is the whole read either way, so every Element Index a view
 // prints is the full read's, and one it leaves out still works.
+//
+// Every view but Full leaves out the IDs two or more Elements of the read
+// share (speed 13: the default), which an id: reference refuses as
+// ambiguous anyway; a unique ID always prints.
 
 import (
 	"fmt"
@@ -13,8 +17,13 @@ import (
 )
 
 // View shapes how RenderView prints a Window State. The zero View prints
-// it whole, exactly as Render does.
+// every Element and leaves out only the shared IDs; Full prints exactly
+// what Render does.
 type View struct {
+	// Full prints the Window State as Render does, byte for byte: Codex's
+	// text, shared IDs included, never cut. The other fields are ignored.
+	Full bool
+
 	// Interactive prints only the Elements an agent acts on (Interactive),
 	// plus the root and the Elements that carry a walk's cut marks.
 	Interactive bool
@@ -26,8 +35,7 @@ type View struct {
 
 	// Compact folds every Element whose line would say nothing but its
 	// index and role (an unnamed, valueless, stateless, non-interactive
-	// container) into its parent, and leaves out the IDs more than one
-	// Element shares, which an id: reference cannot name anyway.
+	// container, its shared ID left out) into its parent.
 	Compact bool
 
 	// MaxChars stops printing Element lines before the output passes this
@@ -39,11 +47,6 @@ type View struct {
 	// Ref is the Window as the notes' --root commands name it ("1234");
 	// empty, the notes leave --root out (a Tab target has no --root).
 	Ref string
-}
-
-// Whole reports whether v prints the Window State whole.
-func (v View) Whole() bool {
-	return !v.Interactive && v.Depth == 0 && !v.Compact && v.MaxChars == 0
 }
 
 // flags names the view's shaping flags as the CLI spells them.
@@ -65,17 +68,19 @@ func (v View) flags() string {
 // each printed Element indented one level below its nearest printed
 // ancestor, and a note saying what the view left out and how to see it.
 func RenderView(t *Tree, v View) string {
-	if v.Whole() {
+	if v.Full {
 		return Render(t)
 	}
-	lines, hidden := viewLines(t, v)
+	shared := SharedIDs(t.Elements)
+	lines, hidden := viewLines(t, v, shared)
 
 	var head strings.Builder
 	writeHeader(&head, t)
 	var tail strings.Builder
 	if focused := t.Focused(); focused >= 0 {
+		e := t.Elements[focused].WithoutSharedID(shared)
 		tail.WriteString("The focused UI element is ")
-		writeElement(&tail, focused, &t.Elements[focused], false)
+		writeElement(&tail, focused, &e, false)
 		tail.WriteString(".\n")
 	}
 	for _, n := range t.Notes {
@@ -141,28 +146,40 @@ func Cut(head string, lines []PrintedLine, tail string, maxChars int, hint strin
 	return b.String()
 }
 
-// viewLines picks and indents the Element lines v prints, and counts the
-// Elements it leaves out (a --max-chars cut aside).
-func viewLines(t *Tree, v View) ([]PrintedLine, int) {
-	shared := map[string]int{}
-	if v.Compact {
-		for i := range t.Elements {
-			if id := Collapse(t.Elements[i].AutomationId); id != "" {
-				shared[id]++
-			}
+// SharedIDs are the IDs (collapsed, as printed) two or more of the
+// Elements share: an id: reference naming one is refused as ambiguous.
+func SharedIDs(els []Element) map[string]bool {
+	seen := make(map[string]bool, len(els))
+	shared := map[string]bool{}
+	for i := range els {
+		if id := Collapse(els[i].AutomationId); id != "" {
+			shared[id] = shared[id] || seen[id]
+			seen[id] = true
 		}
 	}
+	return shared
+}
+
+// WithoutSharedID is e with its ID left out when the ID is one of shared.
+func (e Element) WithoutSharedID(shared map[string]bool) Element {
+	if shared[Collapse(e.AutomationId)] {
+		e.AutomationId = ""
+	}
+	return e
+}
+
+// viewLines picks and indents the Element lines v prints, its shared IDs
+// left out, and counts the Elements it leaves out (a --max-chars cut
+// aside).
+func viewLines(t *Tree, v View, shared map[string]bool) ([]PrintedLine, int) {
 	type shown struct{ depth, level int }
 	var stack []shown // the printed ancestors of the current Element
 	var out []PrintedLine
 	hidden := 0
 	for i := range t.Elements {
-		e := t.Elements[i]
+		e := t.Elements[i].WithoutSharedID(shared)
 		for len(stack) > 0 && stack[len(stack)-1].depth >= e.Depth {
 			stack = stack[:len(stack)-1]
-		}
-		if v.Compact && shared[Collapse(e.AutomationId)] > 1 {
-			e.AutomationId = ""
 		}
 		if v.Depth > 0 && e.Depth == v.Depth {
 			e.MoreChildren = max(e.MoreChildren, directChildren(t.Elements, i))

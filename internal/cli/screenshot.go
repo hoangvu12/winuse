@@ -123,7 +123,7 @@ func windowStateRequest(args []string, headed bool) (windowArgs, error) {
 	}
 	return windowArgs{Window: window, Screenshot: screenshot, Headed: headed,
 		Root: sh.Root, Depth: sh.Depth, Interactive: sh.Interactive, Skeleton: sh.Skeleton,
-		Compact: sh.Compact, MaxChars: sh.MaxChars, Out: sh.Out}, nil
+		Compact: sh.Compact, MaxChars: sh.MaxChars, Out: sh.Out, Full: sh.Full}, nil
 }
 
 // errZoomArgs is zoom's argument-count failure: the usage line alone says

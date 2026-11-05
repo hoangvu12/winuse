@@ -493,7 +493,7 @@ func TestBrowserWalkLeavesTheCapsToThePage(t *testing.T) {
 	}
 
 	s, trees = walkServices(t, &fakePages{err: &page.NoTabError{}}, dense)
-	out, _ = runCommand(t, CommandsWith(s), "get-window-state", windowRef{Window: "301"})
+	out, _ = runCommand(t, CommandsWith(s), "get-window-state", windowRef{Window: "301", Full: true}) // the whole 3000 Elements, past the default cap
 	whole, _, err := trees.walk(browserWindowID, nil)
 	if err != nil {
 		t.Fatal(err)

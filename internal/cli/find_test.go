@@ -19,8 +19,11 @@ func TestParseFindArgs(t *testing.T) {
 	if a, err := parseFindArgs([]string{"101", "--count"}); err != nil || !a.Count {
 		t.Errorf("--count: %+v, %v", a, err)
 	}
-	if a, err := parseFindArgs([]string{"101", "--limit", "20", "--max-chars=4000"}); err != nil || a.Limit != 20 || a.MaxChars != 4000 {
+	if a, err := parseFindArgs([]string{"101", "--limit", "20", "--max-chars=4000"}); err != nil || a.Limit != 20 || a.MaxChars == nil || *a.MaxChars != 4000 {
 		t.Errorf("--limit, --max-chars: %+v, %v", a, err)
+	}
+	if a, err := parseFindArgs([]string{"101", "--full"}); err != nil || !a.Full || a.MaxChars != nil {
+		t.Errorf("--full: %+v, %v", a, err)
 	}
 	for _, bad := range [][]string{
 		{},
@@ -34,6 +37,7 @@ func TestParseFindArgs(t *testing.T) {
 		{"101", "--limit", "3", "--first"},
 		{"101", "--limit", "3", "--count"},
 		{"101", "--max-chars", "x"},
+		{"101", "--full", "--max-chars", "10"},
 	} {
 		if _, err := parseFindArgs(bad); err == nil {
 			t.Errorf("%q parsed", bad)
@@ -55,8 +59,23 @@ func TestWindowStateShapeFlags(t *testing.T) {
 	}
 	// The output budgets of a full read (speed 05).
 	req, err = windowStateRequest([]string{"101", "--interactive", "--depth", "4", "--compact", "--max-chars", "8000", "--screenshot"}, false)
-	if err != nil || !req.Interactive || req.Depth != 4 || !req.Compact || req.MaxChars != 8000 || !req.Screenshot || req.Root != "" {
+	if err != nil || !req.Interactive || req.Depth != 4 || !req.Compact || req.MaxChars == nil || *req.MaxChars != 8000 || !req.Screenshot || req.Root != "" {
 		t.Errorf("budgets: %+v, %v", req, err)
+	}
+	req, err = windowStateRequest([]string{"101", "--max-chars", "0"}, false)
+	if err != nil || req.MaxChars == nil || *req.MaxChars != 0 {
+		t.Errorf("--max-chars 0 lifts the cap: %+v, %v", req, err)
+	}
+	if req, err = windowStateRequest([]string{"101"}, false); err != nil || req.MaxChars != nil || req.Full {
+		t.Errorf("no flag leaves the helper's default: %+v, %v", req, err)
+	}
+	req, err = windowStateRequest([]string{"101", "--full", "--root", "4", "--depth", "2", "--screenshot"}, false)
+	if err != nil || !req.Full || req.Root != "4" || req.Depth != 2 {
+		t.Errorf("--full: %+v, %v", req, err)
+	}
+	req, err = windowStateRequest([]string{"101", "--out", "state.txt", "--max-chars", "0"}, false)
+	if err != nil || req.Out == "" {
+		t.Errorf("--out with --max-chars 0: %+v, %v", req, err)
 	}
 	req, err = windowStateRequest([]string{"101", "--out", "state.txt"}, false)
 	if err != nil || !filepath.IsAbs(req.Out) || filepath.Base(req.Out) != "state.txt" {
@@ -66,7 +85,10 @@ func TestWindowStateShapeFlags(t *testing.T) {
 		{"101", "--out"},
 		{"101", "--out", " "},
 		{"101", "--out", "a.txt", "--max-chars", "100"},
-		{"101", "--max-chars", "0"},
+		{"101", "--max-chars", "-1"},
+		{"101", "--full", "--interactive"},
+		{"101", "--full", "--max-chars", "0"},
+		{"101", "--full=1"},
 		{"101", "--compact=1"},
 		{"101", "--root"},
 		{"101", "--depth", "0"},
