@@ -537,10 +537,12 @@ var commandGroups = []struct {
 			"winuse get-window-state 4242",
 			"winuse get-window-state 4242 --screenshot",
 			"winuse get-window-state 4242 --skeleton",
-			"winuse get-window-state 4242 --root 42 --depth 2 --interactive"}},
+			"winuse get-window-state 4242 --root 42 --depth 2 --interactive",
+			"winuse get-window-state 4242 --interactive --compact --max-chars 20000"}},
 		{"find", "search the whole live tree: role, name, text", []string{
 			"winuse find 4242 --role button --name save",
-			`winuse find 4242 --text "invoice" --first`}},
+			`winuse find 4242 --text "invoice" --first`,
+			`winuse find 4242 --role "list item" --limit 20`}},
 		{"zoom", "a full-resolution crop of the latest screenshot", []string{
 			"winuse zoom 4242 100,80,400,300"}},
 	}},
