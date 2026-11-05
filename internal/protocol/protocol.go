@@ -231,16 +231,19 @@ type CloseAppArgs struct {
 }
 
 // FindArgs are find's arguments (desktop-parity 04): the Window and the
-// filters, every one optional; First keeps the first match, Count prints
-// only how many matched.
+// filters, every one optional; First keeps the first match, Limit the
+// first Limit matches, Count prints only how many matched; MaxChars caps
+// the printed answer (speed 05).
 type FindArgs struct {
-	Window string `json:"window"`
-	Role   string `json:"role,omitempty"`
-	Name   string `json:"name,omitempty"`
-	Text   string `json:"text,omitempty"`
-	State  string `json:"state,omitempty"`
-	First  bool   `json:"first,omitempty"`
-	Count  bool   `json:"count,omitempty"`
+	Window   string `json:"window"`
+	Role     string `json:"role,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Text     string `json:"text,omitempty"`
+	State    string `json:"state,omitempty"`
+	First    bool   `json:"first,omitempty"`
+	Limit    int    `json:"limit,omitempty"`
+	Count    bool   `json:"count,omitempty"`
+	MaxChars int    `json:"max_chars,omitempty"`
 }
 
 // AttachArgs are the arguments of browser attach and browser detach

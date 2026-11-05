@@ -58,7 +58,7 @@ func TestListDisplaysPrintsTheListing(t *testing.T) {
 }
 
 // TestDisplayScreenshot: the line names the display and its rectangle,
-// the image is scaled to the long-edge cap like a Window's screenshot, and
+// the image is scaled to the image budget like a Window's screenshot, and
 // the note says it has no @x,y binding. Nothing is recorded for @x,y.
 func TestDisplayScreenshot(t *testing.T) {
 	t.Setenv("TMP", t.TempDir())
@@ -70,7 +70,7 @@ func TestDisplayScreenshot(t *testing.T) {
 	if cmdErr != nil {
 		t.Fatal(cmdErr.Msg)
 	}
-	line := regexp.MustCompile(`^Screenshot: (.+\.jpg) \(1568x882 px, scale 0.817, display 1 at -1920,0 1920x1080\)\n`)
+	line := regexp.MustCompile(`^Screenshot: (.+\.jpg) \(1456x819 px, scale 0.758, display 1 at -1920,0 1920x1080\)\n`)
 	m := line.FindStringSubmatch(out)
 	if m == nil {
 		t.Fatalf("out = %q, want the display Screenshot line", out)
@@ -87,8 +87,8 @@ func TestDisplayScreenshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b := img.Bounds(); b.Dx() != 1568 || b.Dy() != 882 {
-		t.Errorf("image %dx%d, want the 1568-px long edge (1568x882)", b.Dx(), b.Dy())
+	if b := img.Bounds(); b.Dx() != 1456 || b.Dy() != 819 {
+		t.Errorf("image %dx%d, want 1456x819, within the 1,568 visual tokens", b.Dx(), b.Dy())
 	}
 	if len(captured) != 1 || captured[0] != 1 {
 		t.Errorf("captured %v, want display 1", captured)
@@ -100,7 +100,7 @@ func TestDisplayScreenshot(t *testing.T) {
 	}
 
 	out, cmdErr = runCommand(t, CommandsWith(s), "screenshot", protocol.ScreenshotArgs{Display: intPtr(0)})
-	if cmdErr != nil || !strings.Contains(out, "px, scale 0.49, display 0 at 0,0 3200x2000)") {
+	if cmdErr != nil || !strings.Contains(out, "(1389x868 px, scale 0.434, display 0 at 0,0 3200x2000)") {
 		t.Errorf("display 0: %q, %v", out, cmdErr)
 	}
 }

@@ -231,7 +231,7 @@ func TestSkillShipsAlone(t *testing.T) {
 
 // TestInstallerWritesEverySkillsFolder pins where install.ps1 writes the
 // skill: Claude Code reads only ~\.claude\skills (or CLAUDE_CONFIG_DIR's
-// skills folder), the other harnesses ~\.agents\skills (speed issue 01).
+// skills folder), the other harnesses ~\.agents\skills (speed issue 04).
 func TestInstallerWritesEverySkillsFolder(t *testing.T) {
 	ps, err := os.ReadFile("../../install.ps1")
 	if err != nil {
@@ -327,7 +327,7 @@ func TestSkillTopicsAreListedAndResolve(t *testing.T) {
 
 // oldSections is where each section of the single-file SKILL.md (as of
 // dbce051) went when the skill split into a core and topics: nothing was
-// dropped, only moved (speed issue 01). The core keeps a short form of
+// dropped, only moved (speed issue 04). The core keeps a short form of
 // "Name an Element" and "Read the result"; their full text is in the topic
 // named here. The sentence-level check of the move is
 // .scratch/speed/preserve_check.py.

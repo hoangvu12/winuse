@@ -121,7 +121,9 @@ One line per Element: index, role, name, state (`disabled`, `settable`,
 where typed text lands. Trust the tree first; add `--screenshot` for
 canvases, visual questions or a sparse tree, and open the printed
 `Screenshot: <path>` with your file tool. A big Window: `winuse find
-<window> --name save`, or `--skeleton` then `--root <index>` (topic `reading`).
+<window> --name save`, or `--skeleton` then `--root <index>`; to print
+less of a full read, `--interactive --compact` or `--max-chars N`, and
+`--out <file>` to keep it in a file (topic `reading`).
 
 ## Name an Element
 

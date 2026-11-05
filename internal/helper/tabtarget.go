@@ -245,9 +245,9 @@ func refuseOnTab(name string, args json.RawMessage, ref string) *Error {
 			"drop --post: "+name+" reaches the Tab through its Browser Connection"))
 	case f.Point != nil:
 		return point()
-	case name == "get-window-state" && (f.Root != "" || f.Skeleton || f.Depth != 0 || f.Interactive):
-		return Fail("get-window-state reads a Tab target whole: --root, --depth, --interactive and --skeleton read UI Automation, which shows only the Tab a Window shows",
-			"run winuse get-window-state "+ref)
+	case name == "get-window-state" && (f.Root != "" || f.Skeleton):
+		return Fail("get-window-state reads a Tab target whole: --root and --skeleton read UI Automation, which shows only the Tab a Window shows",
+			"run winuse get-window-state "+ref+"; --interactive, --depth, --compact, --max-chars and --out shape what it prints")
 	case (name == "scroll" || name == "hover") && f.ElementIndex == nil && f.Ref == "":
 		return point()
 	case name == "drag" && (f.FromIndex == nil && f.FromRef == "" || f.ToIndex == nil && f.ToRef == ""):
@@ -685,7 +685,10 @@ func (s Services) tabWindowState(ctx context.Context, bt *bgTab, args json.RawMe
 	}
 	tree.Notes = append(tree.Notes, bt.stateNote())
 	s.tabStates.put(AgentOf(ctx).ID, tabKeyOf(bt), &tabState{elements: els, origins: origins})
-	out := wstate.Render(tree)
+	out, rerr := renderState(tree, a, "") // no --root hint: a Tab target takes none
+	if rerr != nil {
+		return "", rerr
+	}
 	if a.Screenshot {
 		out += s.tabScreenshot(ctx, bt)
 	}

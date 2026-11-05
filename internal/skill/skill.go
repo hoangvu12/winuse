@@ -6,7 +6,7 @@
 // add`, the skill keeps covering the full command surface as the CLI
 // grows, it never mentions the tool it must not depend on, and the
 // installer's asset names stay in sync with what the release workflow
-// builds. Since speed issue 01 they also pin the split: the core keeps
+// builds. Since speed issue 04 they also pin the split: the core keeps
 // the safety rules, the Esc stop and recovery first and stays small,
 // every topic is listed and every pointer to one resolves, and every
 // section of the old single file has a home. The binary's embedded copy

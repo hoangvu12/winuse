@@ -203,8 +203,8 @@ func TestGetWindowStateScreenshotScalesBigWindow(t *testing.T) {
 	if cmdErr != nil {
 		t.Fatalf("screenshot: %v", cmdErr.Error())
 	}
-	if !strings.Contains(out, "(1568x882 px, scale 0.408, window at 0,0 3840x2160)") {
-		t.Errorf("the long edge must cap at 1568 px with the scale recorded:\n%s", out)
+	if !strings.Contains(out, "(1456x819 px, scale 0.379, window at 0,0 3840x2160)") {
+		t.Errorf("the image must fit the 1,568-token budget (1456x819) with the scale recorded:\n%s", out)
 	}
 	path := screenshotPath(t, out)
 	f, err := os.Open(path)
@@ -216,8 +216,8 @@ func TestGetWindowStateScreenshotScalesBigWindow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if cfg.Width != 1568 || cfg.Height != 882 {
-		t.Errorf("decoded size = %dx%d, want 1568x882", cfg.Width, cfg.Height)
+	if cfg.Width != 1456 || cfg.Height != 819 {
+		t.Errorf("decoded size = %dx%d, want 1456x819", cfg.Width, cfg.Height)
 	}
 
 	// The mapping recorded for the Window describes the saved image.
@@ -225,11 +225,11 @@ func TestGetWindowStateScreenshotScalesBigWindow(t *testing.T) {
 	if !ok {
 		t.Fatal("the mapping must be recorded")
 	}
-	if m.Width != 1568 || m.Height != 882 {
-		t.Errorf("recorded mapping size = %dx%d, want 1568x882", m.Width, m.Height)
+	if m.Width != 1456 || m.Height != 819 {
+		t.Errorf("recorded mapping size = %dx%d, want 1456x819", m.Width, m.Height)
 	}
-	if m.Scale != 1568.0/3840 {
-		t.Errorf("recorded scale = %v, want %v", m.Scale, 1568.0/3840)
+	if m.Scale != 1456.0/3840 {
+		t.Errorf("recorded scale = %v, want %v", m.Scale, 1456.0/3840)
 	}
 }
 
@@ -324,9 +324,9 @@ func TestGetWindowStateWithoutFlagCapturesNothing(t *testing.T) {
 
 func TestZoomCropIsFullResolution(t *testing.T) {
 	s := newShotSpy(t)
-	// First a screenshot to record the mapping: a 3136×1960 window at
-	// (100, 200) — over the cap, so it scales by exactly 0.5.
-	s.frame = syntheticFrame(3136, 1960, 100, 200)
+	// First a screenshot to record the mapping: a 2184×2184 window at
+	// (100, 200) — over the image budget, so it scales by exactly 0.5.
+	s.frame = syntheticFrame(2184, 2184, 100, 200)
 	cmds := CommandsWith(s.svc)
 	_, cmdErr := runJSON(t, cmds, "get-window-state", windowRef{Window: "101", Screenshot: true})
 	if cmdErr != nil {

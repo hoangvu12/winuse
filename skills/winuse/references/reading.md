@@ -1,6 +1,6 @@
 # Reading a Window
 
-Read when: you need Element References in full (stale indexes, re-found names, points), the tree's details, screenshots and `zoom`, a Chromium tree that stays thin, a slow or partial read, or a big Window (`find`, `--skeleton`, `--root`).
+Read when: you need Element References in full (stale indexes, re-found names, points), the tree's details, screenshots and `zoom`, a Chromium tree that stays thin, a slow or partial read, or a big Window (`find`, `--skeleton`, `--root`, `--interactive`, `--compact`, `--max-chars`, `--out`).
 
 This is one topic of the winuse skill. `winuse skill reading` prints it, and `winuse skill` prints the core, SKILL.md, which holds the safety rules, the Esc stop and recovery.
 
@@ -75,9 +75,18 @@ instead:
 winuse find <window> --role button --name save     # search the whole live tree, past the caps
 winuse find <window> --text "invoice" --first      # also --state disabled|enabled|selected|expanded|collapsed|settable|on|off|interactive
 winuse find <window> --role "list item" --count    # just how many
+winuse find <window> --role "list item" --limit 20 # the first 20, and how many matched
 winuse get-window-state <window> --skeleton        # three levels, with "(+N children)" where it stops
 winuse get-window-state <window> --root 42 --depth 2 --interactive
+winuse get-window-state <window> --interactive --compact   # a full read, printing only what you act on
+winuse get-window-state <window> --max-chars 20000 # stop the tree before 20000 characters, with a note
+winuse get-window-state <window> --out state.txt   # write it to a file; prints the path and the notes
 ```
+
+On a full read, `--interactive`, `--depth N` and `--compact` (folds
+unnamed containers, drops IDs several Elements share) print less, but
+the Window State is kept whole: every index printed is its own, and the
+ones left out still work.
 
 `--role` takes the role as the tree prints it, and `--name` and `--text` a
 part of the name (or the value and description), ignoring case. A role

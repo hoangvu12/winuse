@@ -57,10 +57,11 @@ type FindResult struct {
 }
 
 // Find walks hwnd's live tree (up to FindMaxNodes Elements, within the
-// read budget), keeps the Elements match accepts (the first only, with
-// first) and adds them to the Agent's live store. With countOnly nothing
-// is added: only Count is set.
-func (c *Client) Find(ctx context.Context, hwnd uint64, budget time.Duration, match func(wstate.Element) bool, first, countOnly bool) (FindResult, error) {
+// read budget), keeps the Elements match accepts (the first limit of them
+// when limit is above 0) and adds them to the Agent's live store. Count is
+// every match, kept or not. With countOnly nothing is added: only Count is
+// set.
+func (c *Client) Find(ctx context.Context, hwnd uint64, budget time.Duration, match func(wstate.Element) bool, limit int, countOnly bool) (FindResult, error) {
 	var out FindResult
 	var jobErr error
 	cfg := walkConfig(ctx, budget)
@@ -83,7 +84,7 @@ func (c *Client) Find(ctx context.Context, hwnd uint64, budget time.Duration, ma
 		}
 		out.RolesPresent = wstate.RolesPresent(res.Elements)
 		out.Notes = partialOnly(res.Notes)
-		keep := pickMatches(res.Elements, match, first, countOnly, &out.Count)
+		keep := pickMatches(res.Elements, match, limit, countOnly, &out.Count)
 		var live []comPtr
 		for i := range res.Elements {
 			if keep[i] {
@@ -101,19 +102,17 @@ func (c *Client) Find(ctx context.Context, hwnd uint64, budget time.Duration, ma
 	return out, jobErr
 }
 
-// pickMatches marks the Elements find keeps and counts the matches: every
-// match, or the first one only; none kept with countOnly.
-func pickMatches(els []wstate.Element, match func(wstate.Element) bool, first, countOnly bool, count *int) []bool {
+// pickMatches marks the Elements find keeps and counts every match: it
+// keeps every match, or the first limit of them when limit is above 0;
+// none with countOnly.
+func pickMatches(els []wstate.Element, match func(wstate.Element) bool, limit int, countOnly bool, count *int) []bool {
 	keep := make([]bool, len(els))
 	for i, e := range els {
 		if !match(e) {
 			continue
 		}
-		if first && *count > 0 {
-			continue
-		}
 		*count++
-		keep[i] = !countOnly
+		keep[i] = !countOnly && (limit <= 0 || *count <= limit)
 	}
 	return keep
 }

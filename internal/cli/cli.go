@@ -228,6 +228,11 @@ type windowArgs struct {
 	Depth       int    `json:"depth,omitempty"`
 	Interactive bool   `json:"interactive,omitempty"`
 	Skeleton    bool   `json:"skeleton,omitempty"`
+
+	// The output budgets of a read (speed 05, find.go).
+	Compact  bool   `json:"compact,omitempty"`
+	MaxChars int    `json:"max_chars,omitempty"`
+	Out      string `json:"out,omitempty"` // absolute
 }
 
 // recordArgs is record-tree's CLI→helper argument shape.
@@ -237,7 +242,7 @@ type recordArgs struct {
 }
 
 // windowStateUsage is get-window-state's usage line.
-const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element> [--depth N] [--interactive]] [--timeout <seconds>]"
+const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--timeout <seconds>]"
 
 // getWindowStateCmd prints the Window State: Codex's depth-first,
 // indented, numbered Element tree — with --screenshot, the screenshot line

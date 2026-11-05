@@ -1,4 +1,4 @@
-# 01: A lean skill core, cheap help, and a skill install Claude Code finds
+# 04: A lean skill core, cheap help, and a skill install Claude Code finds
 
 **What to build:** the agent-UX items of the speed research (`.scratch/research-speed/report.md` recs 3, 4 and 10a, `notes-skills.md`, `notes-cli.md` gap list).
 
