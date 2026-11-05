@@ -28,6 +28,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -57,7 +58,7 @@ func TestPageReadSnapshot(t *testing.T) {
 		ran++
 		t.Run(name, func(t *testing.T) {
 			port := freePort(t)
-			startIsolatedBrowser(t, b.Path, "--headless=new", fmt.Sprintf("--remote-debugging-port=%d", port), "about:blank")
+			pid := startIsolatedBrowser(t, b.Path, "--headless=new", fmt.Sprintf("--remote-debugging-port=%d", port), "about:blank")
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 			defer cancel()
 			var ws string
@@ -75,18 +76,21 @@ func TestPageReadSnapshot(t *testing.T) {
 				t.Fatalf("dialing %s: %v", ws, err)
 			}
 			c := cdp.NewClient(tr)
-			defer c.Close()
+			// Closed the browser's own way before startIsolatedBrowser's cleanup
+			// terminates it, so its helper processes let go of the profile.
+			t.Cleanup(func() {
+				cctx, ccancel := context.WithTimeout(context.Background(), 5*time.Second)
+				c.Call(cctx, "Browser.close", nil)
+				ccancel()
+				c.Close()
+				for deadline := time.Now().Add(10 * time.Second); pidAlive(pid) && time.Now().Before(deadline); {
+					time.Sleep(100 * time.Millisecond)
+				}
+				time.Sleep(time.Second)
+			})
 			conn := &browser.Connection{Browser: name, Mode: browser.ModeLaunch, WSURL: ws, Port: port, Client: c}
-			res, err := c.Call(ctx, "Target.createTarget", map[string]any{"url": "about:blank"})
-			if err != nil {
-				t.Fatalf("Target.createTarget: %v", err)
-			}
-			var target struct {
-				TargetID string `json:"targetId"`
-			}
-			json.Unmarshal(res, &target)
 			for _, u := range pageReadURLs(srv) {
-				comparePageReads(t, ctx, conn, target.TargetID, u)
+				comparePageReads(t, ctx, conn, u)
 			}
 		})
 	}
@@ -116,27 +120,12 @@ func TestPageReadSnapshotExtension(t *testing.T) {
 				t.Skipf("the %s extension bridge did not answer: %v", name, err)
 			}
 			c := cdp.NewClient(bc)
-			defer c.Close()
+			t.Cleanup(func() { c.Close() })
 			conn := &browser.Connection{Browser: name, Mode: browser.ModeExtension, PID: uint32(info.BrowserPID), Client: c}
-			// A background tab in the agent's group; the user's own stays
-			// selected.
-			res, err := c.Call(ctx, "Target.createTarget", map[string]any{"url": "about:blank"})
-			if err != nil {
-				t.Fatalf("Target.createTarget: %v", err)
-			}
-			var target struct {
-				TargetID string `json:"targetId"`
-			}
-			json.Unmarshal(res, &target)
-			t.Cleanup(func() {
-				cctx, ccancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer ccancel()
-				if _, err := c.Call(cctx, "Target.closeTarget", map[string]any{"targetId": target.TargetID}); err != nil {
-					t.Errorf("closing the test's tab %s: %v", target.TargetID, err)
-				}
-			})
+			// Each page in a background tab of the agent's group, closed after;
+			// the user's own tab stays selected.
 			for _, u := range pageReadURLs(srv) {
-				comparePageReads(t, ctx, conn, target.TargetID, u)
+				comparePageReads(t, ctx, conn, u)
 			}
 		})
 	}
@@ -153,33 +142,24 @@ func pageReadURLs(srv *pageServers) []string {
 	return urls
 }
 
-// comparePageReads shows u in the Tab, then reads it both ways: the
+// comparePageReads opens u in a new tab (openAnsweringTab), then reads it
+// both ways and closes the tab: the
 // clickables and passwords must match, and so must the rendered Elements.
 // A password field only the snapshot sees (in a shadow tree or an iframe
 // in the Tab's tree) is logged, not failed: speed issue 07 adds those on
 // purpose.
-func comparePageReads(t *testing.T, ctx context.Context, conn *browser.Connection, targetID, u string) {
+func comparePageReads(t *testing.T, ctx context.Context, conn *browser.Connection, u string) {
 	t.Helper()
-	c := conn.Client
-	sess, err := conn.AttachPage(ctx, targetID)
-	if err != nil {
-		t.Fatalf("attaching to %s: %v", targetID, err)
-	}
-	if _, err := c.CallSession(ctx, sess, "Page.navigate", map[string]any{"url": u}); err != nil {
-		t.Fatalf("navigating to %s: %v", u, err)
-	}
-	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
-		res, err := c.CallSession(ctx, sess, "Runtime.evaluate", map[string]any{"expression": "document.readyState + ' ' + location.href", "returnByValue": true})
-		var v struct {
-			Result struct {
-				Value string `json:"value"`
-			} `json:"result"`
+	start := time.Now()
+	targetID := openAnsweringTab(t, ctx, conn, u)
+	t.Logf("%s: loaded in tab %s at %v", u, targetID, time.Since(start).Round(time.Millisecond))
+	defer func() {
+		cctx, ccancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer ccancel()
+		if _, err := conn.Client.Call(cctx, "Target.closeTarget", map[string]any{"targetId": targetID}); err != nil {
+			t.Errorf("closing the test's tab %s: %v", targetID, err)
 		}
-		if err == nil && json.Unmarshal(res, &v) == nil && strings.HasPrefix(v.Result.Value, "complete ") && !strings.HasSuffix(v.Result.Value, "about:blank") {
-			break
-		}
-	}
-	time.Sleep(time.Second) // late script, web fonts and the iframe's attach
+	}()
 	tab := page.Tab{TargetID: targetID, URL: u}
 
 	read := func(js bool) (*page.Raw, []time.Duration) {
@@ -189,9 +169,11 @@ func comparePageReads(t *testing.T, ctx context.Context, conn *browser.Connectio
 		var times []time.Duration
 		for i := 0; i < pageReadRuns+1; i++ {
 			start := time.Now()
-			got, err := r.ReadTab(ctx, conn, tab)
+			rctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			got, err := r.ReadTab(rctx, conn, tab)
+			cancel()
 			if err != nil {
-				t.Fatalf("%s read of %s (js=%v): %v", conn.Mode, u, js, err)
+				t.Fatalf("%s read %d of %s (js=%v) after %v: %v", conn.Mode, i, u, js, time.Since(start).Round(time.Millisecond), err)
 			}
 			if i > 0 { // the first attaches and turns the domains on
 				times = append(times, time.Since(start))
@@ -247,6 +229,69 @@ func comparePageReads(t *testing.T, ctx context.Context, conn *browser.Connectio
 	}
 }
 
+// openAnsweringTab opens u in a new background tab and waits for it to
+// load, every call bounded. A new headless Chrome tab now and then never
+// answers its session at all (the 2026-11-05 runs: the attach's setup timed
+// out, every Runtime.evaluate hung): such a tab is closed and another one
+// opened, with a log line, three tries in all.
+func openAnsweringTab(t *testing.T, ctx context.Context, conn *browser.Connection, u string) string {
+	t.Helper()
+	c := conn.Client
+	for try := 1; try <= 3; try++ {
+		res, err := c.Call(ctx, "Target.createTarget", map[string]any{"url": u})
+		if err != nil {
+			t.Fatalf("Target.createTarget %s: %v", u, err)
+		}
+		var target struct {
+			TargetID string `json:"targetId"`
+		}
+		json.Unmarshal(res, &target)
+		if tabLoaded(ctx, conn, target.TargetID, u, 10*time.Second) {
+			time.Sleep(time.Second) // late script, web fonts and the iframe's attach
+			return target.TargetID
+		}
+		t.Logf("%s: the new tab %s did not answer within 10s (try %d of 3); closing it and opening another", u, target.TargetID, try)
+		cctx, ccancel := context.WithTimeout(ctx, 5*time.Second)
+		c.Call(cctx, "Target.closeTarget", map[string]any{"targetId": target.TargetID})
+		ccancel()
+	}
+	t.Fatalf("%s: three new tabs in a row did not answer", u)
+	return ""
+}
+
+// tabLoaded attaches a session of its own to the tab and polls its
+// readyState, each call bounded, until it shows u complete or limit
+// passes.
+func tabLoaded(ctx context.Context, conn *browser.Connection, targetID, u string, limit time.Duration) bool {
+	c := conn.Client
+	lctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
+	sess, err := conn.AttachPage(lctx, targetID)
+	if err != nil {
+		return false
+	}
+	defer func() {
+		dctx, dcancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer dcancel()
+		c.Call(dctx, "Target.detachFromTarget", map[string]any{"sessionId": sess})
+	}()
+	for lctx.Err() == nil {
+		ectx, ecancel := context.WithTimeout(lctx, time.Second)
+		res, err := c.CallSession(ectx, sess, "Runtime.evaluate", map[string]any{"expression": "document.readyState + ' ' + location.href", "returnByValue": true})
+		ecancel()
+		var v struct {
+			Result struct {
+				Value string `json:"value"`
+			} `json:"result"`
+		}
+		if err == nil && json.Unmarshal(res, &v) == nil && strings.HasPrefix(v.Result.Value, "complete ") && !strings.HasSuffix(v.Result.Value, "about:blank") {
+			return true
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return false
+}
+
 func clickableDiff(snap, pass []page.Clickable) string {
 	s := map[int64]string{}
 	for _, c := range snap {
@@ -298,12 +343,15 @@ func setDiff(a, b []int64) (onlyA, onlyB []int64) {
 	return
 }
 
-// lineDiff lists the lines one rendering has and the other lacks.
+// lineDiff lists the lines one rendering has and the other lacks, compared
+// without their Element Indexes, so one extra line does not shift every
+// line after it into the diff.
 func lineDiff(a, b string) string {
+	index := regexp.MustCompile(`^(\t*)\d+ |(element is )\d+ `)
 	count := func(s string) map[string]int {
 		m := map[string]int{}
 		for _, l := range strings.Split(s, "\n") {
-			m[l]++
+			m[index.ReplaceAllString(l, "$1$2")]++
 		}
 		return m
 	}

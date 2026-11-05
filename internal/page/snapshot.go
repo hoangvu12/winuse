@@ -91,14 +91,21 @@ func (s *domSnapshot) str(i int) string {
 	return s.Strings[i]
 }
 
-// docView is one snapshot document indexed for marksOf.
+// docView is one snapshot document indexed for marksOf. The snapshot is
+// the flat tree, as measured on Chrome: a shadow tree's nodes sit under
+// their host, each with shadowRootType set, a slotted node under its
+// <slot>, and neither a user-agent shadow tree (a field's inner parts) nor
+// an unassigned child of a host is in it. clickables.js and innerText see
+// the light tree, so docView rebuilds it: a node not in a shadow tree
+// hangs under its nearest ancestor that is not either.
 type docView struct {
 	s       *domSnapshot
 	d       *snapDoc
 	n       int
-	kids    [][]int
-	layout  []int  // node to its first layout entry, -1 for none
-	outside []bool // in a shadow tree, a template's content or a pseudo-element
+	up      []int   // the light-tree parent, -1 for none
+	kids    [][]int // the light-tree children, in snapshot order
+	layout  []int   // node to its first layout entry, -1 for none
+	outside []bool  // in a shadow tree or a fragment, or a pseudo-element
 }
 
 func newDocView(s *domSnapshot, d *snapDoc) *docView {
@@ -106,7 +113,7 @@ func newDocView(s *domSnapshot, d *snapDoc) *docView {
 	if len(d.Nodes.NodeType) < n || len(d.Nodes.NodeName) < n || len(d.Nodes.BackendNodeID) < n {
 		return nil
 	}
-	v := &docView{s: s, d: d, n: n, kids: make([][]int, n), layout: make([]int, n), outside: make([]bool, n)}
+	v := &docView{s: s, d: d, n: n, up: make([]int, n), kids: make([][]int, n), layout: make([]int, n), outside: make([]bool, n)}
 	for i := range v.layout {
 		v.layout[i] = -1
 	}
@@ -115,15 +122,30 @@ func newDocView(s *domSnapshot, d *snapDoc) *docView {
 			v.layout[ni] = li
 		}
 	}
-	pseudo := map[int]bool{}
+	shadow := make([]bool, n)
+	for _, i := range d.Nodes.ShadowRootType.Index {
+		if i >= 0 && i < n {
+			shadow[i] = true
+		}
+	}
+	pseudo := make([]bool, n)
 	for _, i := range d.Nodes.PseudoType.Index {
-		pseudo[i] = true
+		if i >= 0 && i < n {
+			pseudo[i] = true
+		}
 	}
 	for i := 0; i < n; i++ {
-		p := d.Nodes.ParentIndex[i]
 		// Nodes come in document order, a parent before its children.
-		out := pseudo[i] || d.Nodes.NodeType[i] == 11
-		if p >= 0 && p < i {
+		p := d.Nodes.ParentIndex[i]
+		if p < 0 || p >= i {
+			p = -1
+		}
+		for !shadow[i] && p >= 0 && shadow[p] {
+			p = d.Nodes.ParentIndex[p] // a slotted node: up to its host
+		}
+		v.up[i] = p
+		out := shadow[i] || pseudo[i] || d.Nodes.NodeType[i] == 11
+		if p >= 0 {
 			v.kids[p] = append(v.kids[p], i)
 			out = out || v.outside[p]
 		}
@@ -136,13 +158,8 @@ func (v *docView) name(i int) string { return v.s.str(v.d.Nodes.NodeName[i]) }
 
 func (v *docView) isElement(i int) bool { return v.d.Nodes.NodeType[i] == 1 }
 
-func (v *docView) parent(i int) int {
-	p := v.d.Nodes.ParentIndex[i]
-	if p < 0 || p >= i {
-		return -1
-	}
-	return p
-}
+// parent is the light-tree parent.
+func (v *docView) parent(i int) int { return v.up[i] }
 
 // attr is an attribute's value and whether the element has it.
 func (v *docView) attr(i int, name string) (string, bool) {
@@ -353,12 +370,13 @@ func (v *docView) insideWidget(i int) bool {
 }
 
 // innerText approximates el.innerText, which clickables.js reads, then
-// collapses, as Chromium computes it (element_inner_text.cc): the rendered
-// text nodes among the element's descendants in document order (not in a
-// shadow tree or generated content), none whose style hides it, a break
-// around every block-level box and at a <br>, and a <select>'s options'
-// text. Only an HTML element has innerText: an SVG element's is undefined,
-// so clickables.js falls back to its labels.
+// collapses, as Chromium computes it: the rendered text nodes among the
+// element's light-tree descendants in document order (no shadow tree's
+// text, as measured on Chrome and Edge, and no generated content), none
+// whose style hides it, a break around every block-level box and at a
+// <br>, and a <select>'s options' text. Only an HTML element has
+// innerText: an SVG element's is undefined, so clickables.js falls back to
+// its labels.
 func (v *docView) innerText(i int) string {
 	if name := v.name(i); name != strings.ToUpper(name) {
 		return "" // an SVG or MathML element: its nodeName is not upper case

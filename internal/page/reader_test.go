@@ -406,3 +406,26 @@ func TestFindTabOfAnAttachedApp(t *testing.T) {
 		}
 	}
 }
+
+// TestReadAttachIsBounded: a Tab whose renderer never answers the attach
+// (a hung headless tab in the speed issue 07 live check kept
+// Target.attachToTarget waiting for 3 minutes) fails the read within
+// attachTimeout, as a Page that does not answer.
+func TestReadAttachIsBounded(t *testing.T) {
+	old := attachTimeout
+	attachTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { attachTimeout = old })
+	f := newFakeChrome(t)
+	f.srv.Stall(func(m cdptest.Message) bool { return m.Method == "Target.attachToTarget" })
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	start := time.Now()
+	_, err := testReader().Read(ctx, f.connection(t), checkoutWindow())
+	var quiet *NotAnsweringError
+	if !errors.As(err, &quiet) || quiet.After != attachTimeout {
+		t.Fatalf("err = %v, want a NotAnsweringError after %v", err, attachTimeout)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("the read took %v", d)
+	}
+}

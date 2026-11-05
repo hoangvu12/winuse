@@ -28,6 +28,12 @@ const (
 	marksGroup  = "winuse-marks"
 )
 
+// attachTimeout bounds attaching to a Tab. An attach takes well under a
+// second; a Tab that has not attached in this long does not answer, and
+// the read fails with *NotAnsweringError instead of waiting out its
+// request.
+var attachTimeout = 10 * time.Second
+
 // settleAfterAutoAttach is how long a Tab's first read waits after
 // Target.setAutoAttach for the attachedToTarget events of the iframes
 // already there.
@@ -720,8 +726,16 @@ func (r *Reader) session(ctx context.Context, conn *browser.Connection, targetID
 		return ts, nil
 	}
 	c := conn.Client
-	id, err := conn.AttachPage(ctx, targetID)
+	// Bounded: a Tab whose renderer does not answer (hung, or held by a
+	// dialog) can keep Target.attachToTarget waiting for minutes (a
+	// headless Chrome tab did in the speed issue 07 live check).
+	actx, cancel := context.WithTimeout(ctx, attachTimeout)
+	id, err := conn.AttachPage(actx, targetID)
+	cancel()
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			return nil, &NotAnsweringError{After: attachTimeout}
+		}
 		return nil, err
 	}
 	ts = &tabSession{id: id, children: map[string]string{}, read: map[string]time.Time{}}
@@ -730,7 +744,10 @@ func (r *Reader) session(ctx context.Context, conn *browser.Connection, targetID
 	detached := c.Subscribe(id, "Target.detachedFromTarget")
 	ts.subs = []*cdp.Subscription{attached, detached}
 	go ts.track(c, attached, detached)
-	if _, err := c.CallSession(ctx, id, "Target.setAutoAttach", map[string]any{"autoAttach": true, "waitForDebuggerOnStart": false, "flatten": true}); err == nil {
+	sctx, scancel := context.WithTimeout(ctx, setupTimeout)
+	_, err = c.CallSession(sctx, id, "Target.setAutoAttach", map[string]any{"autoAttach": true, "waitForDebuggerOnStart": false, "flatten": true})
+	scancel()
+	if err == nil {
 		settle := r.Settle
 		if settle == 0 {
 			settle = settleAfterAutoAttach

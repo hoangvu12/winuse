@@ -168,8 +168,10 @@ another.
   attaches it again on the next command without telling winuse, which
   turns every domain off. So a read more than 4 minutes after the
   session's last one turns them on again. `DOMSnapshot.enable` is not
-  sent. That `captureSnapshot` answers without it is unverified until the
-  live check runs; a read whose snapshot fails falls back to the pass.
+  sent; `captureSnapshot` answers without it (Chrome and Edge, measured).
+- Attaching to a Tab is bounded at 10 seconds: a Tab whose renderer does
+  not answer fails the read as a Page that does not answer, instead of
+  holding it for the request's whole time.
 - The marks (role-less clickables, password fields) are computed from the
   snapshot by the rules of `clickables.js`, with its caps (5000 elements
   looked at, 200 found, 80 UTF-16 units of text). The snapshot gives
@@ -179,9 +181,11 @@ another.
 - Differences from the pass, on purpose: password fields in shadow trees
   and in iframes the Tab's tree holds are marked too, so their values are
   never shown.
-- Differences, accepted: innerText is approximated, not read. Text a
-  shadow tree renders in place of an element's children is not seen, and
-  a `white-space: pre` text of spaces only is taken for no text. An
+- The snapshot is the flat tree (a shadow tree's nodes under their host,
+  a slotted node under its slot). The pass and innerText see the light
+  tree, so the light tree is rebuilt from it before the rules apply.
+- Differences, accepted: innerText is approximated, not read; a
+  `white-space: pre` text of spaces only is taken for no text. An
   element under a `display: contents` parent that sets `cursor: pointer`
   itself is compared with the nearest boxed ancestor's cursor, because the
   snapshot has no style for a node without a box.

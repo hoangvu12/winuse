@@ -147,13 +147,13 @@ medians, on this machine (i9-12900HK):
   its own document's light tree. Chrome masks a password's value as
   bullets anyway, which `value` already drops, so this is a guard.
 - **Accepted, from the innerText approximation:**
-  - Text a shadow tree renders in place of an element's children is not
-    seen. The clickable's name falls back to its aria-label or title, as
-    if it had no text. This assumes Chromium's innerText walks the DOM
-    children; the live page has a shadow host to check it.
   - A `white-space: pre` text of spaces only counts as no text.
   - A `::first-letter` split falls back to the node's own text, with
     upper- or lowercase applied, but not `capitalize`.
+  - Light-tree order is the snapshot's (flat-tree) order. Slotted children
+    that named slots reorder, and a host's unassigned children (missing
+    from the snapshot), can differ from the pass's document order and
+    count toward the 5000 cap differently.
 - **Accepted, `display: contents`:** an element under a `display: contents`
   parent that sets `cursor: pointer` itself is compared with the nearest
   boxed ancestor's cursor (the snapshot has no style for a node without a
@@ -172,9 +172,8 @@ medians, on this machine (i9-12900HK):
   through unchanged. The extension is not changed.
 - Brave: unverified. A Brave that refused the domain would get the pass,
   through the fallback.
-- `DOMSnapshot.enable` is not sent. That `captureSnapshot` answers without
-  it is unverified until the live check. A failure there would show as
-  "did not come from DOMSnapshot" in the live test.
+- `DOMSnapshot.enable` is not sent; `captureSnapshot` answers without it
+  (live check 1, Chrome and Edge).
 - Found, not changed: after the extension's silent idle re-attach, the
   Tab's `Target.setAutoAttach` and its dialog watch are gone too, and
   winuse's cached session does not know. This branch turns the domains on
@@ -189,12 +188,67 @@ medians, on this machine (i9-12900HK):
   then sends `Winuse.adoptTab`, and the test checked the group as soon as
   it saw the selection. It now waits for both (50 of 50 pass).
 
+## Live check 1 (2026-11-05): fixed and passing
+
+The orchestrator's first run of `TestPageReadSnapshot` failed on
+`page-marks.html`, Chrome and Edge both; `browser-pages.html` with its
+iframe matched. Two causes:
+
+- **The snapshot is the flat tree.** A real `captureSnapshot` (dumped from
+  headless Chrome) puts a shadow tree's nodes under their host, each with
+  `shadowRootType` set; it has no fragment nodes. It puts a slotted light
+  node under its `<slot>`, and leaves out user-agent shadow trees and a
+  host's unassigned children. `marksOf` had taken the shadow nodes for the
+  host's own children. As a result it named the shadow host
+  `"Shadow text"` where the pass, whose innerText is light-tree only,
+  named it `"Host"` (its title), and it named the slotted host
+  `"Before Slotted text"` against `"Slotted text"`.
+  - Fix: `docView` rebuilds the light tree. A node outside any shadow tree
+    hangs under its nearest ancestor that is also outside one, and shadow
+    nodes are left out of the scan and of innerText.
+  - `tdom_test.go` now builds snapshots in that layout (`#shadow`,
+    `#light`, `#ua-shadow`).
+- **A tab that never answers.** On Chrome, about 1 run in 2, the test's
+  `about:blank` tab, created and then navigated, answered nothing on its
+  session. Its attach setup timed out, every `Runtime.evaluate` waited for
+  the test's 3-minute context, and then the read's
+  `Target.attachToTarget` did too.
+  - **The read:** `Reader.session` bounds the attach at `attachTimeout`
+    (10 s) and fails with `*NotAnsweringError` ("the Page did not answer
+    within 10s ..."), as `Ready` does for a Page a dialog holds.
+    `Target.setAutoAttach` gets the 1 s setup bound.
+    `TestReadAttachIsBounded` covers it offline.
+  - **The test:** each page now opens in its own
+    `Target.createTarget {url}` tab, probed with a 1 s bound per call. A
+    tab that has not loaded within 10 s is closed and another one opened,
+    logged, 3 tries. Every read is bounded at 30 s. The tab closes at the
+    end, and the browser is closed with `Browser.close` before the profile
+    is removed.
+  - With `createTarget {url}` the dead tab did not happen again in 6 runs
+    (12 tabs): the retry was never needed.
+- The rendered-tree diff now compares lines without their Element
+  Indexes, so it names only the lines that differ.
+
+**Result, 3 runs each, all PASS.** Median of 7 warm reads:
+
+| Run | page-marks: snapshot | page-marks: clickables.js | browser-pages + iframe: snapshot | browser-pages + iframe: clickables.js |
+|---|---|---|---|---|
+| Chrome 1 | 23.0 ms | 40.4 ms | 5.8 ms | 9.4 ms |
+| Chrome 2 | 22.0 ms | 52.9 ms | 8.6 ms | 10.8 ms |
+| Chrome 3 | 23.7 ms | 48.9 ms | 8.1 ms | 13.3 ms |
+| Edge 1 | 20.3 ms | 36.9 ms | 5.1 ms | 8.4 ms |
+| Edge 2 | 19.1 ms | 33.7 ms | 6.9 ms | 6.5 ms |
+| Edge 3 | 20.3 ms | 38.2 ms | 5.0 ms | 7.2 ms |
+
+In each run the one logged difference is the password field in
+`page-marks.html`'s shadow tree, which only the snapshot marks, on purpose.
+
 ## Live check (the user's to run)
 
-- [ ] `TestPageReadSnapshot` (in-process, headless Chrome and Edge on
+- [x] `TestPageReadSnapshot` (in-process, headless Chrome and Edge on
   throwaway profiles, no helper): no differences on
   `testdata/page-marks.html` and `browser-pages.html` with its
-  cross-origin iframe; note both reads' median times.
+  cross-origin iframe; see above.
 - [ ] Optionally `WINUSE_E2E_PAGE_URLS` with a link-heavy news page, a
   modal-heavy app and a long list (research experiment 8).
 - [ ] `TestPageReadSnapshotExtension` through each connected extension

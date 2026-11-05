@@ -91,9 +91,16 @@ func TestSnapshotMarksFollowTheClickablesRules(t *testing.T) {
 		el("DIV", []string{"id", "titled", "aria-label", "", "title", "Help"}, pointer),
 		// 80 UTF-16 units of text at most.
 		el("DIV", []string{"id", "long"}, pointer, txt(long)),
-		// A shadow tree's text is not seen; its elements are not scanned.
+		// innerText is the light tree's: not a shadow tree's text (the host's
+		// title stands in), but a slotted child's; and a field's value (its
+		// user-agent shadow tree) never. Shadow trees' elements are not
+		// scanned.
 		el("DIV", []string{"id", "host", "title", "Host"}, pointer,
 			&tn{name: "#shadow", kids: []*tn{el("SPAN", []string{"id", "inshadow", "tabindex", "0"}, nil, txt("Shadow text")), el("INPUT", []string{"type", "PASSWORD", "id", "shadowpw"}, nil)}}),
+		el("DIV", []string{"id", "slotted"}, pointer,
+			&tn{name: "#shadow", kids: []*tn{el("B", nil, nil, txt("Before ")), el("SLOT", nil, map[string]string{"display": "contents"},
+				&tn{name: "#light", kids: []*tn{el("SPAN", nil, nil, txt("Slotted"))}})}}),
+		el("DIV", []string{"id", "field"}, pointer, el("INPUT", nil, map[string]string{"display": "inline-block"}, &tn{name: "#ua-shadow", kids: []*tn{el("DIV", nil, block, txt("typed"))}}), txt(" after input")),
 		el("INPUT", []string{"type", "password", "id", "pw"}, nil),
 	)
 	m := marksOfPage(t, doc)
@@ -119,6 +126,8 @@ func TestSnapshotMarksFollowTheClickablesRules(t *testing.T) {
 		{doc.find("titled").id, "Help"},
 		{doc.find("long").id, long[:80]},
 		{doc.find("host").id, "Host"},
+		{doc.find("slotted").id, "Slotted"},
+		{doc.find("field").id, "after input"},
 	}
 	if !reflect.DeepEqual(m.Clickables, want) {
 		t.Errorf("clickables:\n got %v\nwant %v", m.Clickables, want)

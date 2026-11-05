@@ -9,7 +9,7 @@ import (
 // answer is built from (snapshotOf), so the snapshot pass is checked
 // against pages written as trees instead of hand-indexed arrays.
 type tn struct {
-	name  string            // "DIV", "#text", "#shadow" (an open shadow root), "::before"
+	name  string            // "DIV", "#text", "::before"; "#shadow", "#ua-shadow" or "#light" (slotted) groups
 	value string            // a text node's text
 	attrs []string          // name, value, name, value ...
 	style map[string]string // computed styles; cursor, visibility and text-transform inherit
@@ -122,9 +122,24 @@ func (b *snapBuilder) doc(frame string, d *tn) map[string]any {
 	layout := &snapLayout{}
 	var shadowIdx, shadowVal, pseudoIdx, pseudoVal []int
 	inherited := map[string]string{"cursor": "auto", "visibility": "visible"}
-	var walk func(n *tn, parent int, parentStyle map[string]string, parentShown bool)
-	walk = func(n *tn, parent int, parentStyle map[string]string, parentShown bool) {
+	var walk func(n *tn, parent int, parentStyle map[string]string, parentShown, inShadow bool)
+	walk = func(n *tn, parent int, parentStyle map[string]string, parentShown, inShadow bool) {
+		// The snapshot is the flat tree: a shadow tree's nodes go under their
+		// host, marked; a #light node's (slotted) under the <slot> it is in; a
+		// user-agent shadow tree is left out.
+		switch n.name {
+		case "#shadow", "#light":
+			for _, k := range n.kids {
+				walk(k, parent, parentStyle, parentShown, n.name == "#shadow")
+			}
+			return
+		case "#ua-shadow":
+			return
+		}
 		i := len(nodes.NodeType)
+		if inShadow {
+			shadowIdx, shadowVal = append(shadowIdx, i), append(shadowVal, b.s("open"))
+		}
 		nodes.ParentIndex = append(nodes.ParentIndex, parent)
 		nodes.BackendNodeID = append(nodes.BackendNodeID, n.id)
 		var attrs []int
@@ -141,9 +156,6 @@ func (b *snapBuilder) doc(frame string, d *tn) map[string]any {
 			typ = 9
 		case n.name == "#text":
 			typ, value = 3, b.s(n.value)
-		case n.name == "#shadow":
-			typ, name = 11, "#document-fragment"
-			shadowIdx, shadowVal = append(shadowIdx, i), append(shadowVal, b.s("open"))
 		case strings.HasPrefix(n.name, "::"):
 			pseudoIdx, pseudoVal = append(pseudoIdx, i), append(pseudoVal, b.s(strings.TrimPrefix(n.name, "::")))
 		}
@@ -197,12 +209,12 @@ func (b *snapBuilder) doc(frame string, d *tn) map[string]any {
 			return
 		}
 		for _, k := range n.kids {
-			// A shadow root's children render; a display:contents element's
-			// children do too, though it has no box itself.
-			walk(k, i, kidStyle, shown || (typ == 11 && parentShown) || (typ == 1 && disp == "contents" && parentShown && n.box != nil))
+			// A display:contents element's children render, though it has no
+			// box itself.
+			walk(k, i, kidStyle, shown || (typ == 1 && disp == "contents" && parentShown && n.box != nil), inShadow)
 		}
 	}
-	walk(d, -1, inherited, true)
+	walk(d, -1, inherited, true, false)
 	nodes.ShadowRootType = map[string]any{"index": nonNil(shadowIdx), "value": nonNil(shadowVal)}
 	nodes.PseudoType = map[string]any{"index": nonNil(pseudoIdx), "value": nonNil(pseudoVal)}
 	return map[string]any{"frameId": b.s(frame), "documentURL": b.s("https://test/" + frame), "nodes": nodes, "layout": layout}
