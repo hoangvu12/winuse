@@ -113,6 +113,7 @@ const (
 	elCachedAutomationId     = 61 // get_CachedAutomationId(*BSTR)
 	elCachedClassName        = 62 // get_CachedClassName(*BSTR)
 	elCachedHelpText         = 63 // get_CachedHelpText(*BSTR)
+	elCachedBoundingRect     = 75 // get_CachedBoundingRectangle(*RECT)
 	elGetClickablePoint      = 84 // GetClickablePoint(*POINT, *BOOL)
 )
 
@@ -143,8 +144,10 @@ var iidScrollItemPattern = windows.GUID{
 // UIA property ids cached for the tree read (SDK; uia-go.md §3). The
 // basic ticket-03 set plus the ticket-07 pattern-availability and
 // pattern-state properties (value.go's prop* constants) the rich Window
-// State lines and Secondary Actions render from.
+// State lines and Secondary Actions render from, and the bounds a point
+// Action is first matched against (point.go, speed ticket 03).
 var treeProperties = []uint32{
+	30001, // BoundingRectangle
 	30003, // ControlType
 	30005, // Name
 	30008, // HasKeyboardFocus

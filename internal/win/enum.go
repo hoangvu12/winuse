@@ -130,7 +130,7 @@ func Collect() ([]WindowInfo, error) {
 	hwnds = withShellCoreWindows(hwnds, topLevelCoreWindows(), isShellFlyoutHost)
 	shell := windows.GetShellWindow()
 	selfExe, _ := os.Executable()
-	apps := newAppNames()
+	apps := sharedNames
 
 	out := make([]WindowInfo, 0, len(hwnds))
 	for _, h := range hwnds {

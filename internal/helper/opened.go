@@ -29,6 +29,17 @@ package helper
 // Page Actions add their own notes (pageactions.go): a JavaScript dialog
 // their input opened, and a new Tab, found by a probe (watchNewTabs) that
 // is polled in the same settle.
+//
+// The settle is watched (speed ticket 01, ADR 0019): a WinEvent hook on
+// the target's App (win.AppWatch) makes it look as soon as a top-level
+// window of the App shows, and it stops early once the App is quiet (no
+// thread of it ran between two samples and its UI thread waits for
+// messages), with no window it created still to show. The looks are the
+// same diff at the same times as the polled settle, or sooner; only the
+// stop is earlier. A Chromium or Electron Window (its page and popups come
+// from other processes), a shell surface (Start shows from its own host),
+// a Page Action's new-Tab probe and an App the watch cannot read keep the
+// polled settle.
 
 import (
 	"context"
@@ -51,7 +62,45 @@ const (
 	openedSettle = 300 * time.Millisecond
 	// openedPoll is the pause between two snapshots in the settle.
 	openedPoll = 50 * time.Millisecond
+	// openedQuietGap is how soon after the first look a watched settle
+	// samples the App again: the shortest span it must stay quiet.
+	openedQuietGap = 20 * time.Millisecond
 )
+
+// AppWatch is what a watched settle hears from the target's App
+// (*win.AppWatch; tests fake it).
+type AppWatch interface {
+	// Wait waits up to d, returning true early when a top-level window
+	// of the App showed, or the target hid or closed.
+	Wait(d time.Duration) bool
+	// Pending reports whether a top-level window the App created has not
+	// shown yet.
+	Pending() bool
+	// Sample reads the App's threads; win.AppQuiet compares two.
+	Sample() win.AppSample
+	Close()
+}
+
+// watchesSettle reports whether the settle after an Action on target can
+// be watched: not a Chromium or Electron Window, whose page and popups
+// are other processes' work, nor a shell surface, whose Start and Action
+// Center show from their own hosts.
+func watchesSettle(target win.WindowInfo) bool {
+	return target.Shell == "" && !strings.HasPrefix(target.Class, "Chrome_WidgetWin_")
+}
+
+// watchSettle starts the App watch for a reported Action; nil keeps the
+// polled settle.
+func (s Services) watchSettle(before openedBefore, windows bool) AppWatch {
+	if !windows || s.WatchApp == nil || !watchesSettle(before.target) {
+		return nil
+	}
+	w, err := s.WatchApp(before.target)
+	if err != nil {
+		return nil
+	}
+	return w
+}
 
 // notePrefix starts every note line an Action adds after its `ok`.
 const notePrefix = "Note: "
@@ -146,16 +195,22 @@ func (s Services) reportOpened(name string, cmd Command) Command {
 			return cmd(ctx, args)
 		}
 		before, windows := s.snapshotOpened(args)
+		// The watch starts before the Action, so a window the Action opens
+		// while it runs is heard too.
+		watch := s.watchSettle(before, windows)
+		if watch != nil {
+			defer watch.Close()
+		}
 		probes := &openedProbes{}
 		out, err := cmd(context.WithValue(ctx, openedProbesKey{}, probes), args)
 		if ranOn(err) {
-			err.Out = withNotes(err.Out, s.openedNotes(ctx, before, windows, probes.all()))
+			err.Out = withNotes(err.Out, s.openedNotes(ctx, before, windows, probes.all(), watch))
 			return out, err
 		}
 		if err != nil {
 			return out, err
 		}
-		return withNotes(out, s.openedNotes(ctx, before, windows, probes.all())), nil
+		return withNotes(out, s.openedNotes(ctx, before, windows, probes.all(), watch)), nil
 	}
 }
 
@@ -214,19 +269,15 @@ func (s Services) snapshotWindow(w win.WindowInfo) (openedBefore, bool) {
 // Window, for the target to close, or for a probe to find something (a
 // new Tab), and renders the note lines; "" when nothing changed. windows
 // is false when the Window snapshot was skipped: only the probes run.
-func (s Services) openedNotes(ctx context.Context, before openedBefore, windows bool, probes []openedProbe) string {
+// watch, when not nil, watches the settle (settleWatched); a Page
+// Action's probes keep it polled.
+func (s Services) openedNotes(ctx context.Context, before openedBefore, windows bool, probes []openedProbe, watch AppWatch) string {
 	if !windows && len(probes) == 0 {
 		return ""
 	}
-	sleep := s.Sleep
-	if sleep == nil {
-		sleep = time.Sleep
-	}
-	for polls := int(openedSettle / openedPoll); polls > 0; polls-- {
-		sleep(openedPoll)
-		if ctx.Err() != nil {
-			return ""
-		}
+	// look takes one snapshot and runs the probes: the notes, and whether
+	// the settle is over.
+	look := func() (string, bool) {
 		var notes string
 		if windows {
 			after, err := s.Surfaces()
@@ -245,12 +296,70 @@ func (s Services) openedNotes(ctx context.Context, before openedBefore, windows 
 				}
 			}
 		}
-		if notes != "" {
-			return notes
-		}
-		if !windows && len(probes) == 0 {
+		return notes, notes != "" || (!windows && len(probes) == 0)
+	}
+	if watch != nil && windows && len(probes) == 0 {
+		return s.settleWatched(ctx, watch, look)
+	}
+	sleep := s.Sleep
+	if sleep == nil {
+		sleep = time.Sleep
+	}
+	for polls := int(openedSettle / openedPoll); polls > 0; polls-- {
+		sleep(openedPoll)
+		if ctx.Err() != nil {
 			return ""
 		}
+		if notes, done := look(); done {
+			return notes
+		}
+	}
+	return ""
+}
+
+// openedLooks are when a watched settle looks, from the Action's end: at
+// the polled settle's first look, once more a quiet gap later (the
+// earliest the App can be found quiet), then at each of its later looks.
+func openedLooks() []time.Duration {
+	looks := []time.Duration{openedPoll, openedPoll + openedQuietGap}
+	for at := 2 * openedPoll; at <= openedSettle; at += openedPoll {
+		looks = append(looks, at)
+	}
+	return looks
+}
+
+// settleWatched is the watched settle: it looks at openedLooks, and at
+// once whenever a top-level window of the App shows, and it stops after a
+// look that finds nothing when the App was quiet since the look before
+// and no window it created is still to show.
+func (s Services) settleWatched(ctx context.Context, watch AppWatch, look func() (string, bool)) string {
+	now := s.Now
+	if now == nil {
+		now = time.Now
+	}
+	start := now()
+	var prev win.AppSample
+	looks := openedLooks()
+	for i, at := range looks {
+		for watch.Wait(at - now().Sub(start)) {
+			if ctx.Err() != nil {
+				return ""
+			}
+			if notes, done := look(); done {
+				return notes
+			}
+		}
+		if ctx.Err() != nil {
+			return ""
+		}
+		if notes, done := look(); done || i == len(looks)-1 {
+			return notes
+		}
+		sample := watch.Sample()
+		if i > 0 && win.AppQuiet(prev, sample) && !watch.Pending() {
+			return ""
+		}
+		prev = sample
 	}
 	return ""
 }

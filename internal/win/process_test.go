@@ -1,6 +1,9 @@
 package win
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestStringLangID(t *testing.T) {
 	cases := []struct {
@@ -48,4 +51,27 @@ func TestAppNameFallbacks(t *testing.T) {
 	if got := apps.Name(""); got != "" {
 		t.Errorf("empty path must give empty App, got %q", got)
 	}
+}
+
+// BenchmarkAppName is one App name lookup for system executables: read
+// from the version resource (what every Collect paid per distinct exe
+// when it built a fresh cache) and from the shared cache.
+func BenchmarkAppName(b *testing.B) {
+	dir := os.Getenv("SystemRoot")
+	paths := []string{dir + `\explorer.exe`, dir + `\System32\notepad.exe`, dir + `\System32\cmd.exe`, dir + `\System32\svchost.exe`}
+	b.Run("fresh", func(b *testing.B) {
+		for b.Loop() {
+			apps := newAppNames()
+			for _, p := range paths {
+				apps.Name(p)
+			}
+		}
+	})
+	b.Run("shared", func(b *testing.B) {
+		for b.Loop() {
+			for _, p := range paths {
+				sharedNames.Name(p)
+			}
+		}
+	})
 }
