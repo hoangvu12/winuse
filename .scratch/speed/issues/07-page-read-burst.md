@@ -179,7 +179,8 @@ medians, on this machine (i9-12900HK):
   Tab's `Target.setAutoAttach` and its dialog watch are gone too, and
   winuse's cached session does not know. This branch turns the domains on
   again after `enableAgain`, but cross-origin iframes stay unread until the
-  session is dropped. That is an older gap, worth its own issue.
+  session is dropped. That is an older gap: issue 14
+  (`14-extension-idle-reattach.md`).
 
 ## Also
 
