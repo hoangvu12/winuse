@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
 )
 
@@ -77,6 +78,21 @@ headed only with --headed: every other Action (double, right and middle
   type-text with no headless route, and a point with no usable Element) is refused
   with "nothing was sent" and the exact --headed retry. activate-window always takes the foreground: that is
   what it is for.
+
+act and see the effect in one call: <action> ... --observe[=diff|full]
+  [--interactive] [--depth N] [--compact] [--max-chars N | --out <file>] [--full]
+  after any Action on a Window or Tab, or a batch (before its first Action),
+  reads the Window and prints its Window State under the output. full prints
+  all of it; --observe (diff) only the Element Indexes whose line changed
+  since your last read of that Window: ~ changed, * new, - gone (no Element
+  has that index now); an index not listed is unchanged. No earlier read, or
+  a change that moves indexes, prints the whole State with a note. Either way
+  the read replaces your Window State, as get-window-state does. The budgets
+  and their defaults (shared IDs left out, the 28000-character cap; --full
+  for Codex's text) shape it as on a read; like --headed they go before the
+  command or anywhere after it outside type-text's text and set-value's
+  value. A failed Action prints none; a read that fails is a note and the
+  Action's result stands.
 
 commands:
   list-windows [--details] [--app <name>] [--shell]
@@ -219,7 +235,7 @@ commands:
 const usageTail = `);
                                @x,y acts on the Element under a point of the
                                latest screenshot
-  batch <window> [--timeout <seconds>] [--stop-on-error] <action> [arguments] [then <action> [arguments]] ...
+  batch <window> [--timeout <seconds>] [--stop-on-error] [--observe[=diff|full]] <action> [arguments] [then <action> [arguments]] ...
                                run several Actions on one Window in order and
                                print each one's output as Action N (<action>):
                                ...; e.g.
@@ -231,13 +247,18 @@ const usageTail = `);
                                A Batch has 60 s; --timeout before the first
                                Action gives it up to 300. An Action starting
                                in <window> acts in that Window, and in new in
-                               the Window the Action before it opened
+                               the Window the Action before it opened.
+                               get-window-state and find are steps too, with
+                               their own flags and no Window, so one Batch can
+                               act, read and act again; --observe before the
+                               first Action reads the Batch's Window once
+                               after the last (see --observe below)
   batch -                    the same Batch read from stdin: the Window and
                                the Batch flags on the first line, then one
                                Action per line with no then; double quotes
                                group words (\" is a quote inside them), and
                                blank lines and lines starting with # are
-                               skipped
+                               skipped; --observe goes on the command line
   scroll <window> <element index | name: | id:> <up|down|left|right> [steps]
                                scroll the list or page holding an Element by
                                steps (1 to 50, default 3)
@@ -558,7 +579,8 @@ var commandGroups = []struct {
 			"winuse click 4242 3",
 			`winuse click 4242 "name:Save As"`,
 			"winuse click 4242 id:okButton",
-			"winuse click 4242 @412,88"}},
+			"winuse click 4242 @412,88",
+			"winuse click 4242 id:okButton --observe"}},
 		{"set-value", "fill a field, set a toggle, pick an item", []string{
 			`winuse set-value 4242 id:searchBox "invoice 2026"`,
 			`winuse set-value 4242 "name:Notify me" on`}},
@@ -588,7 +610,9 @@ var commandGroups = []struct {
 			"winuse --headed hover 4242 @300,40"}},
 		{"batch", "several Actions in one call", []string{
 			"winuse batch 4242 click id:field then type-text hello then press-key Return",
-			"winuse batch 4242 click name:Delete then in new press-key Return"}},
+			"winuse batch 4242 click name:Delete then in new press-key Return",
+			"winuse batch 4242 --observe set-value id:qty 3 then press-key Return",
+			"winuse batch 4242 click name:Open then in new get-window-state --interactive"}},
 		{"wait", "wait for text, a state, a Window or a Page", []string{
 			`winuse wait 4242 text "Saved"`,
 			"winuse wait 4242 name:Next enabled",
@@ -792,6 +816,14 @@ func commandUsage(words []string) (string, bool) {
 	for _, bl := range blocks {
 		b.WriteString(bl.text + "\n")
 		window = window || strings.Contains(bl.text, "<window>")
+	}
+	if protocol.Observable(c.name) {
+		b.WriteString(`
+--observe prints the Window State after it: --observe (diff) the Element
+Indexes whose line changed since your last read (~ changed, * new, - gone;
+the rest are unchanged), --observe=full all of it; --interactive, --depth N,
+--compact, --max-chars N, --out <file> and --full shape it as on a read (winuse help all).
+`)
 	}
 	if window {
 		b.WriteString(`

@@ -271,6 +271,11 @@ the foreground by itself ends with `Note: the App took the foreground`
 (headless-max 03); a Headed one never does, since it takes the foreground
 on purpose, but one that keeps the foreground for a menu or Window it
 left open says so in a `Note:` (multi-agent 08). **intentionally different**.
+An Action or Batch sent with `--observe` echoes the Window State after it:
+whole (`--observe=full`) or the Element Indexes whose line changed since
+the Agent's last read (`--observe`, diff), with the whole State past 60%
+changed (speed observe, ADR 0021). It is opt-in: without it the output is
+the `ok` above. **extension**.
 
 ### timeouts
 
@@ -499,7 +504,9 @@ the first failure instead. `winuse batch -` reads the Batch from stdin,
 one step per line (agent-desktop's PR #439 reads its JSON there). Like
 agent-desktop's steps, each with its own target, a step may name its own
 Window (`in <window>`, desktop-parity 24), and `in new` acts in the Window
-the step before it opened; the Batch takes every step's lanes up front. Headless Actions bring two
+the step before it opened; the Batch takes every step's lanes up front.
+`get-window-state` and `find` are Batch steps too (speed observe), so one
+call can act, read and act again. Headless Actions bring two
 more: the global `--headed` flag (before or after the command, and on a
 Batch) that restores Codex's foreground, real-input behaviour for any
 Action, and the Agent Cursor — a presentation-only second cursor that

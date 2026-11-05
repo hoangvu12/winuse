@@ -192,6 +192,9 @@ func (s Services) lanesFor(ctx context.Context, name string, args json.RawMessag
 	if name == "batch" {
 		return s.batchLanes(ctx, args, w)
 	}
+	if readStep(name) {
+		return newLaneSet(w.ID, readLanes(args)...) // a Batch's read step (batch.go)
+	}
 	headed, page := s.stepClass(ctx, name, args, w)
 	return newLaneSet(w.ID, s.classKeys(w.ID, headed, page)...)
 }
@@ -253,6 +256,11 @@ func (s Services) batchLanes(ctx context.Context, args json.RawMessage, w win.Wi
 		}
 		if err != nil {
 			return newLaneSet(w.ID, s.classKeys(w.ID, true, false)...)
+		}
+		if readStep(st.Kind) {
+			keys = append(keys, readLanes(step)...) // batch.go: a read takes no lane
+			prev = sw
+			continue
 		}
 		headed, page := inNewHeaded(st.Kind, step), false
 		if !st.InNew {
@@ -333,6 +341,9 @@ func (s Services) serialized(cmd Command) Command {
 		return cmd
 	}
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
+		if held, ok := laneSetOf(ctx); ok && held.has(desktopLane) {
+			return cmd(ctx, args) // a Batch's screenshot step: the Batch took the lane (readLanes)
+		}
 		return s.onLanes(ctx, newLaneSet(0, desktopLane), cmd, args)
 	}
 }

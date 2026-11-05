@@ -305,6 +305,31 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 		return parseBatchTabStep(kind, rest) // tab.go: tab list|new|close|switch
 	case "navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval":
 		return parseBatchPageStep(kind, rest) // page.go: the page-only Actions
+	case "get-window-state":
+		// A read as a step (speed observe): get-window-state's flags, without
+		// the Window or --timeout (the Batch's budget covers it).
+		shapeRest, sh, err := takeShapeFlags(rest)
+		if err != nil {
+			return protocol.Step{}, fmt.Errorf("a batch get-window-state step: %v", err)
+		}
+		shot := false
+		for _, tok := range shapeRest {
+			if tok != "--screenshot" {
+				return protocol.Step{}, fmt.Errorf("a batch get-window-state step takes the Batch's Window and get-window-state's flags; %q is neither", tok)
+			}
+			shot = true
+		}
+		args = windowArgs{Screenshot: shot, Root: sh.Root, Depth: sh.Depth, Interactive: sh.Interactive, Skeleton: sh.Skeleton,
+			Compact: sh.Compact, MaxChars: sh.MaxChars, Out: sh.Out, Full: sh.Full}
+	case "find":
+		fa, pos, err := parseFindTokens(rest)
+		if err == nil && len(pos) > 0 {
+			err = fmt.Errorf("a batch find step takes the Batch's Window and find's flags; %q is neither", pos[0])
+		}
+		if err != nil {
+			return protocol.Step{}, err
+		}
+		args = fa
 	default:
 		return protocol.Step{}, fmt.Errorf("unknown batch action %q; expected one of %s", kind, batchKindsWord())
 	}

@@ -207,7 +207,7 @@ func refuseOnTab(name string, args json.RawMessage, ref string) *Error {
 				return nothingSent(Fail(fmt.Sprintf("Action %d of a Batch on a Tab target names its own Window; every Action of it acts in %s", i+1, ref),
 					"run the Actions for another Window or Tab in a Batch of their own"))
 			}
-			if st.Kind == "batch" || st.Kind == "get-window-state" || !tabTargetCommands[st.Kind] {
+			if st.Kind == "batch" || !tabTargetCommands[st.Kind] {
 				return nothingSent(Fail(fmt.Sprintf("Action %d (%s) of a Batch on a Tab target has no Page route", i+1, st.Kind), hint))
 			}
 			if rerr := refuseOnTab(st.Kind, st.Args, ref); rerr != nil {
@@ -651,8 +651,26 @@ func (s Services) tabWindowState(ctx context.Context, bt *bgTab, args json.RawMe
 	if e := budgetError(a); e != nil {
 		return "", e
 	}
+	tree, rerr := s.readTabTree(ctx, bt)
+	if rerr != nil {
+		return "", rerr
+	}
+	out, rerr := renderState(tree, a, "") // no --root hint: a Tab target takes none
+	if rerr != nil {
+		return "", rerr
+	}
+	if a.Screenshot {
+		out += s.tabScreenshot(ctx, bt)
+	}
+	return out, nil
+}
+
+// readTabTree reads a Tab target's Page and keeps it as this Agent's
+// Window State of the Tab: get-window-state's read, and --observe's
+// (observe.go).
+func (s Services) readTabTree(ctx context.Context, bt *bgTab) (*wstate.Tree, *Error) {
 	if bt.tab.Internal {
-		return "", Fail(fmt.Sprintf("tab %s of window %d shows a browser page (%s), which winuse does not read or act in", bt.short(), bt.w.ID, bt.tab.URL),
+		return nil, Fail(fmt.Sprintf("tab %s of window %d shows a browser page (%s), which winuse does not read or act in", bt.short(), bt.w.ID, bt.tab.URL),
 			"run winuse navigate "+bt.ref()+" <url> to open a site")
 	}
 	if now, err := page.TabNow(ctx, bt.conn.Client, bt.tab.TargetID); err == nil {
@@ -660,7 +678,7 @@ func (s Services) tabWindowState(ctx context.Context, bt *bgTab, args json.RawMe
 	}
 	raw, err := bt.reader.ReadTab(ctx, bt.conn, bt.tab)
 	if err != nil {
-		return "", tabReadError(err, bt)
+		return nil, tabReadError(err, bt)
 	}
 	res := page.Build(raw, page.Limits{
 		MaxNodes: page.MaxNodes - 1, MaxDepth: page.MaxDepth - 1, MaxChildren: page.MaxChildren,
@@ -688,14 +706,7 @@ func (s Services) tabWindowState(ctx context.Context, bt *bgTab, args json.RawMe
 	}
 	tree.Notes = append(tree.Notes, bt.stateNote())
 	s.tabStates.put(AgentOf(ctx).ID, tabKeyOf(bt), &tabState{elements: els, origins: origins})
-	out, rerr := renderState(tree, a, "") // no --root hint: a Tab target takes none
-	if rerr != nil {
-		return "", rerr
-	}
-	if a.Screenshot {
-		out += s.tabScreenshot(ctx, bt)
-	}
-	return out, nil
+	return tree, nil
 }
 
 // stateNote is the note every Tab target's Window State ends with.

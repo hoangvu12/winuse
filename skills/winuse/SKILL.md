@@ -92,7 +92,10 @@ Any Action, app change or user input can make a reference stale (see
 "Name an Element"). After a failure, read a fresh Window State before you
 reuse one. When you know the next few routine steps (fill a form, then OK),
 send them as one `winuse batch` rather than a command per turn: each turn
-costs seconds.
+costs seconds. Add `--observe` to an Action or Batch to get steps 2 and 3
+in one call: it prints only the Element Indexes whose line changed since
+your last read (`~` changed, `*` new, `-` gone; the rest are unchanged), or
+the whole State when that is shorter (topic `batch-and-wait`).
 
 ```
 winuse list-windows                     # <Window ID>  <App>  <title>
@@ -224,7 +227,7 @@ Read `references/<topic>.md`, or run `winuse skill <topic>`
 | `windows` | `list-windows` and `launch-app` flags (`--cdp` too), dialogs, displays, moving, resizing, maximizing, closing Windows and Apps |
 | `reading` | Element References in full, tree details, screenshots and `zoom`, thin Chromium trees, slow reads, big Windows (`find`, `--skeleton`, `--root`) |
 | `shell` | The taskbar, Start, the tray, quick settings, toast notifications |
-| `batch-and-wait` | Long Batches, `batch -` from stdin, `in new`, failed steps, every `wait` form |
+| `batch-and-wait` | `--observe`, reads as Batch steps, long Batches, `batch -` from stdin, `in new`, failed steps, every `wait` form |
 | `multi-agent` | More than one agent on the desktop |
 | `troubleshooting` | Every result phrase and note, refusals, timeouts, `--json`, `--trace`, `winuse status` |
 | `setup` | winuse missing, SmartScreen, building from source, installing the skill |

@@ -336,8 +336,8 @@ func TestBatchRefusesMalformedStepsBeforeAnyInput(t *testing.T) {
 	}{
 		{
 			name:  "unknown action in a later step",
-			steps: []protocol.Step{stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(1)}), {Kind: "get-window-state"}},
-			want:  `Action 2 (get-window-state) is not a batchable action`,
+			steps: []protocol.Step{stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(1)}), {Kind: "list-windows"}},
+			want:  `Action 2 (list-windows) is not a batchable action`,
 		},
 		{
 			name:  "observation command",

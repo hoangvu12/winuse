@@ -207,8 +207,16 @@ func TestParseBatchStepRemainingActions(t *testing.T) {
 			wantErr: "a batch hover Action takes an @x,y point"},
 		{name: "hover rejects a second argument", tokens: []string{"hover", "@1,2", "extra"},
 			wantErr: "a batch hover Action takes an @x,y point"},
-		{name: "unknown action", tokens: []string{"get-window-state", "101"},
-			wantErr: `unknown batch action "get-window-state"`},
+		{name: "unknown action", tokens: []string{"list-windows"},
+			wantErr: `unknown batch action "list-windows"`},
+		{name: "a read step takes no Window", tokens: []string{"get-window-state", "101"},
+			wantErr: `a batch get-window-state step takes the Batch's Window and get-window-state's flags; "101" is neither`},
+		{name: "a read step", tokens: []string{"get-window-state", "--interactive", "--max-chars", "4000"},
+			want: windowArgs{Interactive: true, MaxChars: charsOf(4000)}},
+		{name: "a find step", tokens: []string{"find", "--role", "button", "--limit", "5"},
+			want: protocol.FindArgs{Role: "button", Limit: 5}},
+		{name: "a find step takes no Window", tokens: []string{"find", "101", "--role", "button"},
+			wantErr: `a batch find step takes the Batch's Window and find's flags; "101" is neither`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -94,9 +94,15 @@ func renderState(tree *wstate.Tree, a windowRef, ref string) (string, *Error) {
 		return wstate.RenderView(tree, v), nil
 	}
 	v.MaxChars = 0
-	text := wstate.RenderView(tree, v)
-	if err := writeFileAtomic(a.Out, []byte(text)); err != nil {
-		return "", Fail("writing the Window State to "+a.Out+" failed: "+err.Error(), "pass --out a file in a folder you can write to")
+	return writeStateOut(wstate.RenderView(tree, v), tree, a.Out, "Window State")
+}
+
+// writeStateOut writes a printed Window State (or --observe's diff of one)
+// to the file out, uncut, and returns what is printed instead: its header,
+// one line naming the file (what says what it holds) and its tail.
+func writeStateOut(text string, tree *wstate.Tree, out, what string) (string, *Error) {
+	if err := writeFileAtomic(out, []byte(text)); err != nil {
+		return "", Fail("writing the "+what+" to "+out+" failed: "+err.Error(), "pass --out a file in a folder you can write to")
 	}
 	interactive := 0
 	for i := range tree.Elements {
@@ -107,8 +113,8 @@ func renderState(tree *wstate.Tree, a windowRef, ref string) (string, *Error) {
 	head, _, _ := strings.Cut(text, "\n")
 	var b strings.Builder
 	b.WriteString(head + "\n")
-	fmt.Fprintf(&b, "Window State: %s (%d Elements, %d interactive; %d characters; its Element Indexes work as printed there)\n",
-		a.Out, len(tree.Elements), interactive, utf8.RuneCountInString(text))
+	fmt.Fprintf(&b, "%s: %s (%d Elements, %d interactive; %d characters; its Element Indexes work as printed there)\n",
+		what, out, len(tree.Elements), interactive, utf8.RuneCountInString(text))
 	if _, tail, ok := strings.Cut(text, "\n\n"); ok {
 		b.WriteString("\n" + tail)
 	}

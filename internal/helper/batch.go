@@ -292,7 +292,9 @@ func batch(commands map[string]Command, s Services) Command {
 				err = s.stepHung(ctx, st)
 			}
 			out := ""
-			if err == nil {
+			if bt := tabTargetOf(ctx); err == nil && bt != nil && st.kind == "get-window-state" {
+				out, err = s.tabWindowState(ctx, bt, st.args) // the Tab's read, as standalone (tabtarget.go)
+			} else if err == nil {
 				out, err = st.cmd(ctx, st.args)
 			}
 			if next {
@@ -417,12 +419,34 @@ func actionsWord(ns []string) string {
 
 // batchableStep reports whether kind is an Action a Batch step can be.
 func batchableStep(kind string) bool {
-	for _, k := range protocol.BatchStepKinds {
-		if kind == k {
-			return true
-		}
+	return slices.Contains(protocol.BatchStepKinds, kind)
+}
+
+// readStep reports whether a Batch step reads instead of acting
+// (get-window-state and find, speed observe): it runs as the standalone
+// read does, with no lane but the desktop lane a screenshot takes
+// (readLanes), and never makes the Batch Headed unless it captures with
+// headed.
+func readStep(kind string) bool {
+	return slices.Contains(protocol.BatchReadSteps, kind)
+}
+
+// readLanes is the lanes a read step takes: none, or the desktop lane of
+// a screenshot, which hides the indicator and the cursors as the
+// standalone get-window-state --screenshot does (serialized).
+func readLanes(args json.RawMessage) []string {
+	if shotRead(args) {
+		return []string{desktopLane}
 	}
-	return false
+	return nil
+}
+
+// shotRead reports whether a read step's arguments ask for a screenshot.
+func shotRead(args json.RawMessage) bool {
+	var f struct {
+		Screenshot bool `json:"screenshot"`
+	}
+	return json.Unmarshal(args, &f) == nil && f.Screenshot
 }
 
 // withWindow injects the Batch's Window into one step's raw arguments,

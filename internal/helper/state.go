@@ -474,6 +474,9 @@ func CommandsWith(s Services) map[string]Command {
 		default:
 			cmd = s.recordReads(name, cmd) // identity.go: what a read Window ID names
 		}
+		// --observe reads the Window once the command released its lanes
+		// (observe.go, speed observe); another command refuses the flag.
+		cmd = s.observed(name, cmd)
 		if name != StatusCommand {
 			cmd = s.tracked(name, cmd)
 		}

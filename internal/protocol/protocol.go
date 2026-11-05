@@ -162,7 +162,58 @@ func Budget(req *Request, def time.Duration) time.Duration {
 	if d, ok := CallerTimeout(req); ok && d > budget {
 		budget = d
 	}
+	if req.Observe != nil {
+		budget += ObserveTimeout
+	}
 	return budget
+}
+
+// ObserveTimeout is what --observe adds to a request's budget (speed
+// observe, ADR 0021): the read after the Action gets a plain
+// get-window-state's budget of its own, and the Action keeps its own.
+const ObserveTimeout = RequestTimeout
+
+// The --observe modes (ADR 0021): the Window State after the Action
+// whole, or what changed in it since the Agent's last read.
+const (
+	ObserveDiff = "diff"
+	ObserveFull = "full"
+)
+
+// Observe asks an Action or a Batch for the Window State of its Window
+// after it ran (speed observe, ADR 0021): Mode is ObserveDiff or
+// ObserveFull, and the rest are get-window-state's output budgets, which
+// shape the printed observation the way they shape a full read: MaxChars
+// nil is the read's default cap (speed 13), 0 none, and Full prints
+// Codex's text, every ID, never cut.
+type Observe struct {
+	Mode        string `json:"mode"`
+	Interactive bool   `json:"interactive,omitempty"`
+	Depth       int    `json:"depth,omitempty"`
+	Compact     bool   `json:"compact,omitempty"`
+	MaxChars    *int   `json:"max_chars,omitempty"`
+	Out         string `json:"out,omitempty"` // absolute (the CLI resolves it)
+	Full        bool   `json:"full,omitempty"`
+}
+
+// ObservableCommands are the commands that take --observe: the Actions
+// aimed at one Window or Tab, and batch. The CLI and the helper share the
+// list.
+var ObservableCommands = append([]string{
+	"click", "type-text", "press-key", "set-value", "perform-secondary-action", "activate-window",
+	"scroll", "drag", "hover", "select-text", "invoke-menu",
+	"restore-window", "minimize-window", "maximize-window", "move-window", "resize-window", "close-window",
+	"batch",
+}, "navigate", "back", "forward", "reload", "upload", "dialog", "eval")
+
+// Observable reports whether a command takes --observe.
+func Observable(cmd string) bool {
+	for _, c := range ObservableCommands {
+		if c == cmd {
+			return true
+		}
+	}
+	return false
 }
 
 // Request is one command sent by the CLI.
@@ -188,6 +239,10 @@ type Request struct {
 	// a helper of another build answers stale as for another Ver. Empty
 	// on either side (a CLI or helper from before it) matches.
 	Build string `json:"build,omitempty"`
+
+	// Observe asks for the Window State after the command (--observe,
+	// speed observe, ADR 0021); only the ObservableCommands take it.
+	Observe *Observe `json:"observe,omitempty"`
 }
 
 // ListWindowsArgs are list-windows's optional arguments (desktop-parity
@@ -637,7 +692,14 @@ var BatchStepKinds = append(append([]string{
 	"select-text",
 	// Headless-max ticket 08: invoke-menu.
 	"invoke-menu",
+	// Speed observe (ADR 0021): the reads, so a Batch can act and read in
+	// one call.
+	"get-window-state", "find",
 )
+
+// BatchReadSteps are the Batch steps that read instead of act (speed
+// observe): they take no Headed or Posted flag of their own.
+var BatchReadSteps = []string{"get-window-state", "find"}
 
 // Response is the helper's answer.
 type Response struct {
