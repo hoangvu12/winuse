@@ -284,6 +284,9 @@ func (s Services) keyRoute(args json.RawMessage, w win.WindowInfo) *win.KeyTarge
 // press-key and type-text need the Batch's Window (w nil when it did not
 // resolve: the first step then fails on it anyway) and probe it.
 func (s Services) stepHeadless(ctx context.Context, kind string, args json.RawMessage, w *win.WindowInfo) bool {
+	if readStep(kind) {
+		return !shotRead(args) || !stepHeaded(args) // batch.go: a read activates only for a headed screenshot
+	}
 	if w != nil && s.pageStep(ctx, kind, args, *w) {
 		return true // a Page step (pageactions.go)
 	}

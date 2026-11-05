@@ -233,6 +233,9 @@ func (s *Server) handle(req *protocol.Request) (resp protocol.Response) {
 	defer cancel()
 	// The Agent the request comes from (agents.go, multi-agent ticket 02).
 	ctx = withAgent(ctx, requestAgent(req))
+	if req.Observe != nil {
+		ctx = withObserve(ctx, req.Observe) // observe.go: the registry's wrapper reads it
+	}
 	// A traced request gets what its command noted (trace.go,
 	// desktop-parity ticket 19), whatever the outcome.
 	ctx, notes := withTraceNotes(ctx, req.Trace)

@@ -102,8 +102,8 @@ Window with `--skeleton`, then read the part you need with `--root`.
 
 `find` and `--root` number the Elements they print after the Window
 State's own (if the tree ended at 240, `find` prints 241, 242...), and the
-earlier indexes keep working. The next full read, `--skeleton` included,
-renumbers from 0. In a browser Window with a Browser Connection, `find`
+earlier indexes keep working. The next full read, `--skeleton` and an
+Action's `--observe` included, renumbers from 0. In a browser Window with a Browser Connection, `find`
 reads the Window State afresh and says so; use its indexes.
 
 ## Name an Element
@@ -137,3 +137,8 @@ finds, saying
 your Window State's indexes still work. Prefer `name:` and `id:` for an
 Element you will act on again. A fresh read that finds the name twice
 refuses, with the candidates under new indexes.
+
+An Action's `--observe` is a full read too, so it renumbers the same way;
+its diff lists every index whose line changed, and an index it does not
+list names an Element with the same line as before, so you can keep using
+it. An index it lists as gone (`-`) is stale (topic `batch-and-wait`).

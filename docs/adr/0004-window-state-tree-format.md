@@ -180,3 +180,13 @@ The user chose two of the proposed defaults
   each. The largest is 17,260 characters, so the cap never cuts any of
   them; it only matters on dense Windows (about 40k tokens at the
   3000-Element cap).
+
+## Amendment: an Action's --observe is a full read (speed observe, 2026-11-05)
+
+An Action or Batch sent with `--observe` reads its Window after it as a
+full read, so it renumbers from 0 like `get-window-state`. Its diff lists
+every Element Index whose line changed, appeared or went since the Agent's
+latest Window State, so an index it leaves out still names an Element with
+the same line. ADR 0021 has the baseline, the 60% fallback and why indexes
+stay positional. The observation takes the read's defaults (shared IDs left
+out, the 28000-character cap) and --full.

@@ -43,8 +43,20 @@ func findCmd(args []string) int {
 // parseFindArgs parses find's Window and filters, flags anywhere, as
 // --flag value or --flag=value.
 func parseFindArgs(args []string) (protocol.FindArgs, error) {
-	var a protocol.FindArgs
-	var pos []string
+	a, pos, err := parseFindTokens(args)
+	if err != nil {
+		return a, err
+	}
+	if len(pos) != 1 {
+		return a, errors.New("find takes one window reference")
+	}
+	a.Window = pos[0]
+	return a, nil
+}
+
+// parseFindTokens parses find's filters and returns its positionals: the
+// standalone form's Window, none in a Batch step (batch.go).
+func parseFindTokens(args []string) (a protocol.FindArgs, pos []string, err error) {
 	for i := 0; i < len(args); i++ {
 		tok := args[i]
 		if !strings.HasPrefix(tok, "--") {
@@ -55,7 +67,7 @@ func parseFindArgs(args []string) (protocol.FindArgs, error) {
 		switch name {
 		case "first", "count", "full":
 			if inline {
-				return a, fmt.Errorf("--%s is a flag (no value)", name)
+				return a, nil, fmt.Errorf("--%s is a flag (no value)", name)
 			}
 			switch name {
 			case "first":
@@ -68,29 +80,29 @@ func parseFindArgs(args []string) (protocol.FindArgs, error) {
 			continue
 		case "role", "name", "text", "state", "limit", "max-chars":
 		default:
-			return a, fmt.Errorf("unknown flag %s", tok)
+			return a, nil, fmt.Errorf("unknown flag %s", tok)
 		}
 		if !inline {
 			if i+1 >= len(args) {
-				return a, fmt.Errorf("--%s needs a value", name)
+				return a, nil, fmt.Errorf("--%s needs a value", name)
 			}
 			i++
 			value = args[i]
 		}
 		if strings.TrimSpace(value) == "" {
-			return a, fmt.Errorf("--%s needs a value", name)
+			return a, nil, fmt.Errorf("--%s needs a value", name)
 		}
 		switch name {
 		case "limit":
 			n, err := positive(name, value)
 			if err != nil {
-				return a, err
+				return a, nil, err
 			}
 			a.Limit = n
 		case "max-chars":
 			n, err := charCap(value)
 			if err != nil {
-				return a, err
+				return a, nil, err
 			}
 			a.MaxChars = &n
 		case "role":
@@ -103,17 +115,13 @@ func parseFindArgs(args []string) (protocol.FindArgs, error) {
 			a.State = value
 		}
 	}
-	if len(pos) != 1 {
-		return a, errors.New("find takes one window reference")
-	}
 	if a.First && a.Count || a.Limit > 0 && (a.First || a.Count) {
-		return a, errors.New("pass one of --first, --limit and --count")
+		return a, nil, errors.New("pass one of --first, --limit and --count")
 	}
 	if a.Full && a.MaxChars != nil {
-		return a, errors.New("pass --full or --max-chars, not both: --full prints every match uncut")
+		return a, nil, errors.New("pass --full or --max-chars, not both: --full prints every match uncut")
 	}
-	a.Window = pos[0]
-	return a, nil
+	return a, pos, nil
 }
 
 // positive parses a flag's value as a number of at least 1.

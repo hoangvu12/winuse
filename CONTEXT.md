@@ -43,6 +43,7 @@ _Avoid_: CDP session, debug port, endpoint
 **Window State**:
 What the agent observes about one Window at one moment: its accessibility tree of Elements as text and, when requested, a screenshot.
 Each Agent keeps its own Window State per Window (ADR 0014), so another Agent's read never replaces it.
+An Action or Batch sent with `--observe` reads its Window afterwards and prints the new Window State, whole or as the Element Indexes whose line changed since that Agent's latest Window State of the Window (ADR 0021).
 _Avoid_: App state, snapshot, skyshot
 
 **Element**:
@@ -77,7 +78,7 @@ How an Action names its target: an Element Index, an Element's name, an Element'
 _Avoid_: Selector, locator
 
 **Batch**:
-Several Actions sent in one call and run in order, each one's output printed under its number. A failed Action does not stop the Batch unless the agent asks for that; the Batch then fails as a whole, naming every Action that failed and marking those that may have taken effect. The Actions act on the Batch's Window, unless one names its own Window or the Window the Action before it opened.
+Several Actions sent in one call and run in order, each one's output printed under its number. A step may also read: `get-window-state` and `find` are steps, so one call can act, read and act again. A failed Action does not stop the Batch unless the agent asks for that; the Batch then fails as a whole, naming every Action that failed and marking those that may have taken effect. The Actions act on the Batch's Window, unless one names its own Window or the Window the Action before it opened.
 _Avoid_: Script, macro, sequence
 
 **Headless Action**:

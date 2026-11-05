@@ -50,6 +50,15 @@ func runCommand(args []string) (code int) {
 	if len(args) == 0 {
 		return helpCmd(nil) // help.go: the command index
 	}
+	if args[0] != "help" {
+		// observe.go: --observe and its output budgets, sent with the request.
+		rest, observe, err := extractObserve(args)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, observeUsage)
+			return 2
+		}
+		args, activeObserve = rest, observe
+	}
 	switch args[0] {
 	case "help", helpFlag, helpShortFlag:
 		return helpCmd(args[1:])
@@ -447,6 +456,9 @@ func runRequest(cmd string, args any, edit func(*protocol.Request)) error {
 	}
 	if edit != nil {
 		edit(req)
+	}
+	if activeObserve != nil && protocol.Observable(cmd) {
+		req.Observe = activeObserve // observe.go
 	}
 	req.Trace = tracing()
 	resp, err := client.Call(context.Background(), req)

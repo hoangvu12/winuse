@@ -92,6 +92,8 @@ func parseBatchHead(words []string) (window string, timeout time.Duration, stop 
 			i += used - 1
 		case w == headedFlag:
 			return "", 0, false, errors.New("--headed goes on the command line: winuse --headed batch -")
+		case observeFlagLen(words[i:]) > 0:
+			return "", 0, false, fmt.Errorf("%s goes on the command line: winuse batch - --observe", strings.SplitN(w, "=", 2)[0])
 		case window == "" && !strings.HasPrefix(w, "--"):
 			window = w
 		default:
