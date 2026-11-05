@@ -120,3 +120,31 @@ Out of scope: output formats, perf and the cursor. Another worker is adding the 
 - While checking the literal-text cases, I ran `type-text 1 --help` and `set-value 1 2 --help` from a %TEMP% build. They are real Actions, and correctly so: the text is literal.
 - That build started its own helper from `%TEMP%\wu-speed\winuse.exe`. Both requests failed with "no open Window with ID 1", so nothing was sent to any app.
 - The installed `winuse.exe` process (PID 26168) kept its start time, so it was not restarted. I stopped the temp-build helper by its PID once I saw it. From then on I ran only help, skill, version and usage-error paths, and covered the literal-text cases with unit tests (`TestHoistGlobalFlags`).
+- Correction (orchestrator): the temp build's helper did make the installed helper exit, as ticket 25 restarts a helper of another build; PID 26168 was another winuse process. The orchestrator restarted the helper. The rule since: run no non-installed winuse command that reaches the helper.
+
+### 2026-11-05: fix, skill install through a junction (on speed-all, after main 62868e1)
+
+**Bug.** `npx skills` links `~\.claude\skills\winuse` to `~\.agents\skills\winuse` with a junction. Through that layout, `winuse skill install "$env:USERPROFILE\.claude\skills"` failed with `mkdir ...\.claude\skills\winuse: Cannot create a file when that file already exists.` So install.ps1's second install failed.
+
+**Cause** (probed in a temp dir with Go 1.27.1):
+- `os.Lstat` reports a junction as an irregular file, not a directory. `os.Stat` and opening a path through one fail with "The path cannot be traversed because it contains an untrusted mount point". So `MkdirAll` tries to create it.
+- `filepath.EvalSymlinks` returns the junction's path unchanged. Only `os.Readlink` gives its target.
+
+**Fix.**
+- `installSkill` now resolves every existing junction or symlink along `<dir>\winuse` with `os.Readlink` (`followLinks`), resolving relative targets against the link's folder, at most 32 hops.
+- It writes into the target and never through the link. The link is left in place, and the printed path is still `<dir>\winuse\SKILL.md`.
+- Installing into both folders writes the one target folder twice, which is fine.
+- A reparse point that is no link (a cloud-files placeholder) is kept as it is.
+
+**install.ps1.**
+- Each folder's install runs in its own try/catch, with its stderr captured. A failed folder is reported in yellow with its reason and its `winuse skill install` retry, and the other folder is still written.
+- The success line lists only the folders that installed. `npx skills add` gets the same try/catch.
+- Checked with `installer_loop_check.ps1` (session scratchpad, not committed): it extracts install.ps1's own loop and runs it in Windows PowerShell 5.1 against temp folders only. The folders were `.agents\skills`, a `.claude\skills` whose `winuse` is a junction to it, and a folder blocked by a file. The blocked one was reported, the other two installed (12 topics), the junction was kept, and the script went on.
+
+**Tests** (`internal/cli/skilllink_test.go`):
+- Installing through a `winuse` junction, in the installer's order and again in either order; a stale topic in the target is removed and the junction is kept.
+- Installing into a skills folder that is itself a junction.
+- Installing through a relative directory symlink (skipped where symlinks need a privilege).
+- A plain path is unchanged.
+
+The three install tests failed with the reported error when `followLinks` was bypassed.

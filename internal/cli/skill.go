@@ -127,12 +127,19 @@ func didYouMean(name string, candidates []string) string {
 // installSkill writes the embedded skill folder into dir\winuse: SKILL.md
 // and references\<topic>.md, creating the folders, replacing an older
 // copy and removing the topics an older copy had that this one does not.
-// It returns SKILL.md's path.
+// A dir\winuse that is a junction or symlink (`npx skills` links
+// ~\.claude\skills\winuse to ~\.agents\skills\winuse) is written in its
+// target, so installing into both folders writes that one folder twice.
+// It returns SKILL.md's path as dir names it.
 func installSkill(dir string) (string, error) {
 	if dir == "" {
 		return "", fmt.Errorf("the skills dir is empty")
 	}
-	skillDir := filepath.Join(dir, "winuse")
+	named := filepath.Join(dir, "winuse")
+	skillDir, err := followLinks(named)
+	if err != nil {
+		return "", err
+	}
 	refDir := filepath.Join(skillDir, "references")
 	if err := os.MkdirAll(refDir, 0o755); err != nil {
 		return "", err
@@ -152,9 +159,51 @@ func installSkill(dir string) (string, error) {
 			}
 		}
 	}
-	path := filepath.Join(skillDir, "SKILL.md")
-	if err := os.WriteFile(path, []byte(winuse.Skill), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(winuse.Skill), 0o644); err != nil {
 		return "", err
 	}
-	return path, nil
+	return filepath.Join(named, "SKILL.md"), nil
+}
+
+// followLinks returns path with every existing junction or symlink along
+// it replaced by its target, so the folders are created and written where
+// the links point. Go does not traverse a junction for that: os.Stat
+// reports it as no directory (MkdirAll then fails with "Cannot create a
+// file when that file already exists"), and opening a path through one
+// can fail with "untrusted mount point". A reparse point that is no link
+// (a cloud-files placeholder) is kept as it is.
+func followLinks(path string) (string, error) {
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	for hops := 0; ; hops++ {
+		if hops > 32 {
+			return "", fmt.Errorf("%s: too many links", path)
+		}
+		vol := filepath.VolumeName(path)
+		parts := strings.Split(strings.Trim(path[len(vol):], `\/`), string(filepath.Separator))
+		cur, next := vol+string(filepath.Separator), ""
+		for i, part := range parts {
+			step := filepath.Join(cur, part)
+			fi, err := os.Lstat(step)
+			if err != nil {
+				break // not there yet: the rest is created
+			}
+			if fi.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+				if target, err := os.Readlink(step); err == nil {
+					if !filepath.IsAbs(target) {
+						target = filepath.Join(cur, target)
+					}
+					next = filepath.Join(append([]string{target}, parts[i+1:]...)...)
+					break
+				}
+			}
+			cur = step
+		}
+		if next == "" {
+			return path, nil
+		}
+		path = filepath.Clean(next)
+	}
 }

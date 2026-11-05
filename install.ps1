@@ -97,25 +97,39 @@ if ($env:WINUSE_NO_SKILL -eq "1") {
     if (Get-Command npx.cmd -ErrorAction SilentlyContinue) {
         Write-Host "linking the agent skill into your agents: npx skills add $repo -g -y"
         $ErrorActionPreference = "Continue"
-        & npx.cmd -y skills add $repo -g -y
+        try {
+            & npx.cmd -y skills add $repo -g -y
+        } catch {
+            Write-Host "npx skills add failed: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
         $ErrorActionPreference = "Stop"
     } else {
         Write-Host "Node.js was not found, so the skill goes only to $($skillDirs -join ' and ')." -ForegroundColor Yellow
         Write-Host "for agents that read another skills folder, install Node.js (https://nodejs.org) and run: npx skills add $repo -g"
     }
-    $failed = @()
+    # Each folder on its own: one that fails (a permission, a broken link)
+    # is reported and the other is still written. A folder whose winuse is
+    # a link to the other's (npx skills' layout) is written through the
+    # link, which is fine: it is the same folder again.
+    $installedIn = @()
     foreach ($dir in $skillDirs) {
         $ErrorActionPreference = "Continue"
-        & $exe skill install $dir | Out-Null
-        if ($LASTEXITCODE -ne 0) { $failed += $dir }
-        $ErrorActionPreference = "Stop"
-    }
-    if ($failed.Count -eq 0) {
-        Write-Host "installed the winuse skill for your agents in $($skillDirs -join ' and ') (winuse skill prints it)"
-    } else {
-        foreach ($dir in $failed) {
-            Write-Host "the agent skill did not install in $dir; run: winuse skill install `"$dir`"" -ForegroundColor Yellow
+        try {
+            $output = & $exe skill install $dir 2>&1 | ForEach-Object { "$_" }
+            $ok = $LASTEXITCODE -eq 0
+        } catch {
+            $output = $_.Exception.Message
+            $ok = $false
         }
+        $ErrorActionPreference = "Stop"
+        if ($ok) {
+            $installedIn += $dir
+        } else {
+            Write-Host "the agent skill did not install in $dir ($($output -join ' ')); run: winuse skill install `"$dir`"" -ForegroundColor Yellow
+        }
+    }
+    if ($installedIn.Count -gt 0) {
+        Write-Host "installed the winuse skill for your agents in $($installedIn -join ' and ') (winuse skill prints it)"
     }
 }
 
