@@ -148,7 +148,7 @@ func TestResolveHarnessClaudeExe(t *testing.T) {
 		t.Errorf("argv[0] = %q", inv.Argv[0])
 	}
 	joined := strings.Join(inv.Argv, " ")
-	for _, want := range []string{"-p", "--model claude-opus-5-5", "--max-turns 40", "--output-format json", "--dangerously-skip-permissions"} {
+	for _, want := range []string{"-p", "--model claude-opus-5-5", "--max-turns 40", "--output-format stream-json --verbose", "--dangerously-skip-permissions"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("claude argv missing %q: %v", want, inv.Argv)
 		}
@@ -316,5 +316,93 @@ func TestParsePiEventsStringContent(t *testing.T) {
 func TestParsePiEventsNoEvents(t *testing.T) {
 	if _, err := ParsePiEvents(""); err == nil {
 		t.Error("an empty stream must be an error")
+	}
+}
+
+func readTestdata(t *testing.T, name string) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+func TestParseClaudeResultStreamUsage(t *testing.T) {
+	out, err := ParseClaudeResult(readTestdata(t, "claude-stream.jsonl"))
+	if err != nil {
+		t.Fatalf("ParseClaudeResult: %v", err)
+	}
+	u := out.Usage
+	if out.Steps != 3 || u.Turns != 3 {
+		t.Errorf("steps/turns = %d/%d, want 3/3", out.Steps, u.Turns)
+	}
+	if out.FinalText != "Saved the note." {
+		t.Errorf("final text = %q", out.FinalText)
+	}
+	if !u.Known || u.Partial {
+		t.Errorf("usage known/partial = %v/%v, want true/false", u.Known, u.Partial)
+	}
+	if u.InputTokens != 6+13100+39800 || u.UncachedInputTokens != 6 || u.CacheWriteTokens != 13100 || u.CacheReadTokens != 39800 {
+		t.Errorf("input tokens = %+v", u)
+	}
+	if u.OutputTokens != 125 || u.CostUSD != 0.4125 || u.APIMS != 28500 {
+		t.Errorf("output/cost/api = %d/%v/%d", u.OutputTokens, u.CostUSD, u.APIMS)
+	}
+}
+
+func TestParseClaudeResultKilledStream(t *testing.T) {
+	// A run killed at its time limit: no result object, a torn last
+	// line. The turns and tokens come from the assistant messages, each
+	// message id once.
+	out, err := ParseClaudeResult(readTestdata(t, "claude-stream-killed.jsonl"))
+	if err == nil {
+		t.Fatal("no result object must still be an error")
+	}
+	u := out.Usage
+	if !u.Partial || !u.Known || u.Turns != 2 {
+		t.Fatalf("usage = %+v, want partial, known, 2 turns", u)
+	}
+	if u.InputTokens != (3+12000+5000)+(2+2500+17000) || u.OutputTokens != 75 {
+		t.Errorf("tokens in/out = %d/%d", u.InputTokens, u.OutputTokens)
+	}
+	if u.CostUSD != -1 {
+		t.Errorf("cost = %v, want unknown (-1)", u.CostUSD)
+	}
+}
+
+func TestParseClaudeResultWithoutUsage(t *testing.T) {
+	out, err := ParseClaudeResult(`{"type":"result","subtype":"success","is_error":false,"num_turns":2,"result":"ok"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Usage.Known || out.Usage.CostUSD != -1 || out.Usage.Turns != 2 {
+		t.Errorf("usage = %+v, want unknown tokens and cost, 2 turns", out.Usage)
+	}
+}
+
+func TestParsePiEventsUsage(t *testing.T) {
+	stream := `{"type":"message_end","message":{"role":"assistant","content":"a","usage":{"input":100,"output":20,"cacheRead":900,"cacheWrite":50,"cost":{"total":0.01}}}}
+{"type":"tool_execution_start","toolCallId":"c1","toolName":"bash"}
+{"type":"message_end","message":{"role":"assistant","content":"b","usage":{"input":10,"output":5,"cacheRead":1000,"cacheWrite":0,"cost":{"total":0.002}}}}
+`
+	out, err := ParsePiEvents(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := out.Usage
+	if u.Turns != 2 || out.Steps != 1 {
+		t.Errorf("turns/steps = %d/%d", u.Turns, out.Steps)
+	}
+	if u.InputTokens != 100+900+50+10+1000 || u.OutputTokens != 25 {
+		t.Errorf("tokens = %d/%d", u.InputTokens, u.OutputTokens)
+	}
+	if u.CostUSD < 0.0119 || u.CostUSD > 0.0121 {
+		t.Errorf("cost = %v", u.CostUSD)
+	}
+	// The older stream without usage blocks: tokens and cost unknown.
+	out, _ = ParsePiEvents(piStream)
+	if out.Usage.Known || out.Usage.CostUSD != -1 {
+		t.Errorf("usage without blocks = %+v", out.Usage)
 	}
 }

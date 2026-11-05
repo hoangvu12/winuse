@@ -92,7 +92,10 @@ func harnessFlags(spec HarnessSpec) []string {
 			"-p", // headless: run the prompt (read from stdin) and exit
 			"--model", spec.ModelID,
 			"--max-turns", strconv.Itoa(spec.MaxTurns),
-			"--output-format", "json", // the result JSON carries num_turns
+			// One JSON event per line, the result (num_turns, usage, cost)
+			// last: a run killed at its time limit still leaves the turns
+			// and tokens it used. stream-json needs --verbose.
+			"--output-format", "stream-json",
 			"--verbose",
 			// Unattended runs cannot answer permission prompts; the task
 			// works only in its scratch folder, which contains the blast
@@ -189,20 +192,74 @@ type HarnessOutcome struct {
 	Steps     int    // claude: num_turns; pi: tool calls; -1 = unknown
 	FinalText string // the agent's final reply
 	Err       string // a Harness-level note (still measured by the Check)
+	Usage     Usage  // the model's turns, tokens and cost
 }
 
-// ParseClaudeResult parses `claude -p --output-format json` stdout: a
-// result JSON object with num_turns and the reply. The object may be
-// printed on one line or pretty-printed; leading noise is tolerated.
+// Usage is what the model spent on one task run, as the Harness reports
+// it. InputTokens counts every prompt token, cached or not; the cache
+// split is kept beside it.
+type Usage struct {
+	Turns               int     `json:"turns"` // model turns; -1 = unknown
+	InputTokens         int64   `json:"input_tokens"`
+	UncachedInputTokens int64   `json:"uncached_input_tokens"`
+	CacheReadTokens     int64   `json:"cache_read_tokens"`
+	CacheWriteTokens    int64   `json:"cache_write_tokens"`
+	OutputTokens        int64   `json:"output_tokens"`
+	CostUSD             float64 `json:"cost_usd"` // the Harness's own estimate; -1 = unknown
+	APIMS               int64   `json:"api_ms"`   // time in model calls (claude's duration_api_ms); 0 = unknown
+	Partial             bool    `json:"partial"`  // no final result (a killed run): summed from the messages seen
+	Known               bool    `json:"known"`    // the Harness reported tokens or cost at all
+}
+
+// tokenUsage is the usage block of a claude result or assistant message.
+type tokenUsage struct {
+	Input      int64 `json:"input_tokens"`
+	CacheWrite int64 `json:"cache_creation_input_tokens"`
+	CacheRead  int64 `json:"cache_read_input_tokens"`
+	Output     int64 `json:"output_tokens"`
+}
+
+func (u *Usage) addTokens(t tokenUsage) {
+	u.UncachedInputTokens += t.Input
+	u.CacheReadTokens += t.CacheRead
+	u.CacheWriteTokens += t.CacheWrite
+	u.InputTokens += t.Input + t.CacheRead + t.CacheWrite
+	u.OutputTokens += t.Output
+}
+
+// ParseClaudeResult parses `claude -p --output-format stream-json`
+// stdout (one event per line, the result object last) or the older
+// `--output-format json` forms (a single result object, possibly
+// pretty-printed, or one array of every event): num_turns, the reply,
+// and the usage, cost and API time. Leading noise is tolerated. With no
+// result object (the run was killed at its time limit), the usage is
+// summed from the assistant messages streamed so far and marked
+// partial, and the error still says there was no result.
 func ParseClaudeResult(stdout string) (HarnessOutcome, error) {
 	objs := claudeResultObjects(stdout)
 	if len(objs) == 0 {
-		return HarnessOutcome{Steps: -1}, fmt.Errorf("no result JSON in claude output")
+		out := HarnessOutcome{Steps: -1, Usage: claudeStreamedUsage(stdout)}
+		return out, fmt.Errorf("no result JSON in claude output")
 	}
 	last := objs[len(objs)-1]
-	out := HarnessOutcome{Steps: -1}
+	out := HarnessOutcome{Steps: -1, Usage: Usage{Turns: -1, CostUSD: -1}}
 	if n, ok := last["num_turns"].(float64); ok {
 		out.Steps = int(n)
+		out.Usage.Turns = int(n)
+	}
+	if raw, ok := last["usage"]; ok {
+		var t tokenUsage
+		if b, err := json.Marshal(raw); err == nil && json.Unmarshal(b, &t) == nil {
+			out.Usage.addTokens(t)
+			out.Usage.Known = true
+		}
+	}
+	if c, ok := last["total_cost_usd"].(float64); ok {
+		out.Usage.CostUSD = c
+		out.Usage.Known = true
+	}
+	if ms, ok := last["duration_api_ms"].(float64); ok {
+		out.Usage.APIMS = int64(ms)
 	}
 	if r, ok := last["result"].(string); ok {
 		out.FinalText = r
@@ -258,11 +315,68 @@ func claudeResultObjects(stdout string) []map[string]any {
 	return found
 }
 
+// claudeStreamedUsage sums the assistant messages of a stream-json
+// output that has no result (a killed run): one turn per message id,
+// each message's usage counted once (claude streams a message once per
+// content block, every copy with the same id and usage). The cost is
+// unknown; a message's output count may be a streaming placeholder.
+func claudeStreamedUsage(stdout string) Usage {
+	u := Usage{Turns: -1, CostUSD: -1}
+	seen := map[string]bool{}
+	for _, line := range strings.Split(stdout, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "{") {
+			continue
+		}
+		var ev struct {
+			Type    string `json:"type"`
+			Message *struct {
+				ID    string      `json:"id"`
+				Usage *tokenUsage `json:"usage"`
+			} `json:"message"`
+		}
+		if json.Unmarshal([]byte(line), &ev) != nil || ev.Type != "assistant" || ev.Message == nil {
+			continue
+		}
+		if ev.Message.ID != "" {
+			if seen[ev.Message.ID] {
+				continue
+			}
+			seen[ev.Message.ID] = true
+		}
+		if u.Turns < 0 {
+			u.Turns = 0
+		}
+		u.Turns++
+		if ev.Message.Usage != nil {
+			u.addTokens(*ev.Message.Usage)
+			u.Known = true
+		}
+	}
+	if u.Turns >= 0 {
+		u.Partial = true
+	}
+	return u
+}
+
+// piUsage is the usage block pi puts on an assistant message.
+type piUsage struct {
+	Input      int64 `json:"input"`
+	Output     int64 `json:"output"`
+	CacheRead  int64 `json:"cacheRead"`
+	CacheWrite int64 `json:"cacheWrite"`
+	Cost       *struct {
+		Total float64 `json:"total"`
+	} `json:"cost"`
+}
+
 // ParsePiEvents parses `pi --mode json` stdout: one JSON object per
 // line. Steps are the tool executions; the final reply is the last
-// assistant message.
+// assistant message. Turns are the assistant messages, and their usage
+// blocks (when pi sends them) are summed into the tokens and cost.
 func ParsePiEvents(stdout string) (HarnessOutcome, error) {
-	out := HarnessOutcome{Steps: 0}
+	out := HarnessOutcome{Steps: 0, Usage: Usage{Turns: 0}}
+	cost, costKnown := 0.0, false
 	sawEvent := false
 	for _, line := range strings.Split(stdout, "\n") {
 		line = strings.TrimSpace(line)
@@ -274,6 +388,7 @@ func ParsePiEvents(stdout string) (HarnessOutcome, error) {
 			Message *struct {
 				Role    string          `json:"role"`
 				Content json.RawMessage `json:"content"`
+				Usage   *piUsage        `json:"usage"`
 			} `json:"message"`
 		}
 		if err := json.Unmarshal([]byte(line), &ev); err != nil {
@@ -286,13 +401,26 @@ func ParsePiEvents(stdout string) (HarnessOutcome, error) {
 		case "message_end":
 			if ev.Message != nil && ev.Message.Role == "assistant" {
 				out.FinalText = extractText(ev.Message.Content)
+				out.Usage.Turns++
+				if u := ev.Message.Usage; u != nil {
+					out.Usage.addTokens(tokenUsage{Input: u.Input, CacheRead: u.CacheRead, CacheWrite: u.CacheWrite, Output: u.Output})
+					out.Usage.Known = true
+					if u.Cost != nil {
+						cost += u.Cost.Total
+						costKnown = true
+					}
+				}
 			}
 		case "agent_settled":
 			// aborted runs are surfaced through the exit code; nothing to do
 		}
 	}
 	if !sawEvent {
-		return HarnessOutcome{Steps: -1}, fmt.Errorf("no JSON events in pi output")
+		return HarnessOutcome{Steps: -1, Usage: Usage{Turns: -1, CostUSD: -1}}, fmt.Errorf("no JSON events in pi output")
+	}
+	out.Usage.CostUSD = -1
+	if costKnown {
+		out.Usage.CostUSD = cost
 	}
 	return out, nil
 }

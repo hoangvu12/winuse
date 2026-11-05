@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -261,6 +262,13 @@ type Services struct {
 	// which refuses inside an offline test binary (the diff is then
 	// skipped); tests fake it.
 	Surfaces func() ([]win.WindowInfo, error)
+	// WatchApp watches the target's App while an Action settles (speed
+	// ticket 01, ADR 0019): it hears the App's top-level windows show and
+	// samples whether the App went quiet, so the settle looks as a Window
+	// shows and stops once the App is quiet. Nil falls back to
+	// win.WatchApp, which refuses inside an offline test binary (the
+	// settle then polls its full 300 ms); tests fake it.
+	WatchApp func(target win.WindowInfo) (AppWatch, error)
 
 	// The in-control indicator (ticket 13): raised over the target Window
 	// for the duration of every Action, click-through, never focused, and
@@ -843,6 +851,15 @@ func defaultServices(s Services) Services {
 			return win.Collect()
 		}
 	}
+	if s.WatchApp == nil {
+		s.WatchApp = func(target win.WindowInfo) (AppWatch, error) {
+			w, err := win.WatchApp(target.ID)
+			if err != nil {
+				return nil, err
+			}
+			return w, nil
+		}
+	}
 	if s.Browser == nil {
 		s.Browser = browser.NewManager(browser.Live())
 	}
@@ -910,15 +927,24 @@ type windowRef struct {
 	Depth       int    `json:"depth,omitempty"`
 	Interactive bool   `json:"interactive,omitempty"`
 	Skeleton    bool   `json:"skeleton,omitempty"`
+
+	// The output budgets of a full read (speed 05, views.go):
+	// --interactive and --depth above, --compact, --max-chars N and --out
+	// <file> (an absolute path) shape what is printed of the Window State,
+	// which is stored whole.
+	Compact  bool   `json:"compact,omitempty"`
+	MaxChars int    `json:"max_chars,omitempty"`
+	Out      string `json:"out,omitempty"`
 }
 
 // getWindowState answers `winuse get-window-state <window>`: the resolved
 // Window's State as Codex's depth-first, indented, numbered tree. A read
 // that hits the tree budget returns the partial tree with a note. With
 // --screenshot (screenshot.go), the Window is captured without activation
-// (activated first under --headed), the image saved scaled (long edge at
-// most 1568 px, JPEG q80) with its path printed and its mapping recorded
-// for `@x,y` references and zoom regions.
+// (activated first under --headed), the image saved scaled (to the
+// model's image budget, shot.FitScale; JPEG q80) with its path printed and
+// its mapping recorded for `@x,y` references and zoom regions. The output
+// budgets (views.go) shape what is printed of the tree.
 func getWindowState(s Services, ctx context.Context, args json.RawMessage) (string, *Error) {
 	var a windowRef
 	if err := parseArgs(args, &a); err != nil {
@@ -940,14 +966,14 @@ func getWindowState(s Services, ctx context.Context, args json.RawMessage) (stri
 		// Cursor hidden, and activates under --headed: serialize it like an
 		// Action (finding 11), while the plain tree read stays concurrent.
 		return s.serialized(func(ctx context.Context, args json.RawMessage) (string, *Error) {
-			return windowStateScreenshot(s, ctx, w, a.Headed)
+			return windowStateScreenshot(s, ctx, w, a)
 		})(ctx, args)
 	}
 	tree, terr := readWindowTree(s, ctx, w)
 	if terr != nil {
 		return "", terr
 	}
-	return wstate.Render(tree), nil
+	return renderState(tree, a, strconv.FormatUint(w.ID, 10))
 }
 
 // stateSettle is the Chromium settle budget of a get-window-state under

@@ -1,0 +1,6 @@
+{"type":"system","subtype":"init","session_id":"s-2","model":"claude-opus-5-5"}
+{"type":"assistant","message":{"id":"msg_11","role":"assistant","content":[{"type":"text","text":"Starting."}],"usage":{"input_tokens":3,"cache_creation_input_tokens":12000,"cache_read_input_tokens":5000,"output_tokens":30}}}
+{"type":"assistant","message":{"id":"msg_11","role":"assistant","content":[{"type":"tool_use","id":"tu_1","name":"Bash","input":{"command":"winuse get-window-state notepad"}}],"usage":{"input_tokens":3,"cache_creation_input_tokens":12000,"cache_read_input_tokens":5000,"output_tokens":30}}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu_1","content":"..."}]}}
+{"type":"assistant","message":{"id":"msg_12","role":"assistant","content":[{"type":"tool_use","id":"tu_2","name":"Bash","input":{"command":"winuse click notepad 4"}}],"usage":{"input_tokens":2,"cache_creation_input_tokens":2500,"cache_read_input_tokens":17000,"output_tokens":45}}}
+{"type":"assistant","message":{"id":"msg_13","role":"assist

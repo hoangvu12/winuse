@@ -4,9 +4,13 @@ package helper
 // agent-desktop's `find`, `--root` and `--skeleton`): ways to work in a
 // dense Window without reading, or rereading, all of it.
 //
-//	winuse find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --count]
+//	winuse find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N]
 //	winuse get-window-state <window> --root <element> [--depth N] [--interactive]
 //	winuse get-window-state <window> --skeleton
+//
+// A full read takes the output budgets too (speed 05, views.go):
+// --interactive, --depth, --compact, --max-chars and --out shape what is
+// printed of the Window State, which is stored whole.
 //
 // find walks the live tree past a printed Window State's caps and prints
 // the matching Elements' lines; --root reads one Element's subtree. Both
@@ -39,14 +43,14 @@ import (
 // Finder is the tree reader's side of find and the region read:
 // *uia.Client.
 type Finder interface {
-	Find(ctx context.Context, hwnd uint64, budget time.Duration, match func(wstate.Element) bool, first, countOnly bool) (uia.FindResult, error)
+	Find(ctx context.Context, hwnd uint64, budget time.Duration, match func(wstate.Element) bool, limit int, countOnly bool) (uia.FindResult, error)
 	ReadRegion(ctx context.Context, hwnd uint64, index, depth int, interactive bool, budget time.Duration) (uia.Added, error)
 }
 
 var _ Finder = (*uia.Client)(nil)
 
 // findUsage is find's usage line.
-const findUsage = "usage: winuse find <window> [--role <role>] [--name <text>] [--text <text>] [--state <state>] [--first | --count] [--timeout <seconds>]"
+const findUsage = "usage: winuse find <window> [--role <role>] [--name <text>] [--text <text>] [--state <state>] [--first | --limit N | --count] [--max-chars N] [--timeout <seconds>]"
 
 // find answers `winuse find <window> ...`.
 func find(s Services) Command {
@@ -55,8 +59,14 @@ func find(s Services) Command {
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("find: "+err.Error(), findUsage)
 		}
-		if a.First && a.Count {
-			return "", Fail("find: pass --first or --count, not both", findUsage)
+		if a.First && a.Count || a.Limit > 0 && (a.First || a.Count) {
+			return "", Fail("find: pass one of --first, --limit and --count", findUsage)
+		}
+		if a.Limit < 0 || a.MaxChars < 0 {
+			return "", Fail("find: --limit and --max-chars take a positive number", findUsage)
+		}
+		if a.First {
+			a.Limit = 1
 		}
 		if a.State != "" && !wstate.ValidState(a.State) {
 			return "", Fail(fmt.Sprintf("find: unknown state %q", a.State), "a state is one of "+strings.Join(wstate.States, ", "))
@@ -73,7 +83,7 @@ func find(s Services) Command {
 		if !ok {
 			return "", Fail("find is unavailable: no UIA client", "")
 		}
-		res, err := f.Find(ctx, w.ID, s.Budget, q.Match, a.First, a.Count)
+		res, err := f.Find(ctx, w.ID, s.Budget, q.Match, a.Limit, a.Count)
 		if err != nil {
 			return "", treeReadError(err)
 		}
@@ -83,8 +93,29 @@ func find(s Services) Command {
 		if res.Count == 0 {
 			return "", noMatch(w, q, res.RolesPresent)
 		}
-		return renderAdded(w, res.Added, true, "matched "+q.String()), nil
+		cut := findCut{limit: a.Limit, matched: res.Count, maxChars: a.MaxChars}
+		return renderAdded(w, res.Added, true, "matched "+q.String(), cut), nil
 	}
+}
+
+// findCut is what find left out of its answer: the matches past --limit
+// and the lines past --max-chars. The zero findCut leaves nothing out.
+type findCut struct {
+	limit, matched int // --limit, and every match
+	maxChars       int
+}
+
+// limitNote is the note on the matches --limit left out, or "".
+func (c findCut) limitNote(shown int) string {
+	if c.limit <= 0 || c.matched <= shown {
+		return ""
+	}
+	return fmt.Sprintf("%sthese are the first %d of %d matches (--limit %d); narrow the filters, or pass a larger --limit\n", notePrefix, shown, c.matched, c.limit)
+}
+
+// hint is how to see the lines --max-chars did not print.
+func (findCut) hint() string {
+	return "Narrow the filters, pass --limit, or raise --max-chars"
 }
 
 // findInFreshRead is find on a browser Window: a full read (its Page over
@@ -94,14 +125,15 @@ func findInFreshRead(s Services, ctx context.Context, w win.WindowInfo, q wstate
 	if terr != nil {
 		return "", terr
 	}
-	var b strings.Builder
+	var lines []wstate.PrintedLine
 	count := 0
 	for i := range tree.Elements {
-		if !q.Match(tree.Elements[i]) || (a.First && count > 0) {
+		if !q.Match(tree.Elements[i]) {
 			continue
 		}
-		count++
-		b.WriteString("\t" + wstate.Line(i, &tree.Elements[i]) + "\n")
+		if count++; a.Limit <= 0 || count <= a.Limit {
+			lines = append(lines, wstate.PrintedLine{Index: i, Text: "\t" + wstate.Line(i, &tree.Elements[i]) + "\n"})
+		}
 	}
 	if a.Count {
 		return strconv.Itoa(count) + "\n", nil
@@ -109,15 +141,18 @@ func findInFreshRead(s Services, ctx context.Context, w win.WindowInfo, q wstate
 	if count == 0 {
 		return "", noMatch(w, q, wstate.RolesPresent(tree.Elements))
 	}
-	out := header(w) + b.String() + "\n"
+	cut := findCut{limit: a.Limit, matched: count, maxChars: a.MaxChars}
+	var tail strings.Builder
 	how := " through its Browser Connection"
 	for _, n := range tree.Notes {
-		out += notePrefix + n + "\n"
+		tail.WriteString(notePrefix + n + "\n")
 		if strings.HasPrefix(n, page.FallbackPrefix) {
 			how = "" // read through UI Automation: saying otherwise contradicted the note above (browser-ux 07)
 		}
 	}
-	return out + fmt.Sprintf("%sfind read window %d's Window State afresh%s, so its earlier Element Indexes were replaced by these\n", notePrefix, w.ID, how), nil
+	tail.WriteString(cut.limitNote(len(lines)))
+	fmt.Fprintf(&tail, "%sfind read window %d's Window State afresh%s, so its earlier Element Indexes were replaced by these\n", notePrefix, w.ID, how)
+	return wstate.Cut(header(w), lines, tail.String(), cut.maxChars, cut.hint()), nil
 }
 
 // noMatch is find's failure when nothing matched; a role filter lists the
@@ -136,26 +171,26 @@ func header(w win.WindowInfo) string {
 }
 
 // renderAdded prints Elements find or a region read added: flat (find) or
-// indented by depth (a region), then the walk's notes and the numbering
-// note.
-func renderAdded(w win.WindowInfo, added uia.Added, flat bool, what string) string {
-	var b strings.Builder
-	b.WriteString(header(w))
+// indented by depth (a region), then the walk's notes, what cut left out,
+// and the numbering note.
+func renderAdded(w win.WindowInfo, added uia.Added, flat bool, what string, cut findCut) string {
+	lines := make([]wstate.PrintedLine, len(added.Elements))
 	for i := range added.Elements {
 		e := &added.Elements[i]
 		tabs := 1
 		if !flat {
 			tabs = e.Depth + 1
 		}
-		b.WriteString(strings.Repeat("\t", tabs) + wstate.Line(added.Indexes[i], e) + "\n")
+		lines[i] = wstate.PrintedLine{Index: added.Indexes[i], Text: strings.Repeat("\t", tabs) + wstate.Line(added.Indexes[i], e) + "\n"}
 	}
-	b.WriteByte('\n')
+	var tail strings.Builder
 	for _, n := range added.Notes {
-		b.WriteString(notePrefix + n + "\n")
+		tail.WriteString(notePrefix + n + "\n")
 	}
-	fmt.Fprintf(&b, "%sthese Elements (%s) are in window %d's Window State as %s; its earlier Element Indexes still work until the next full get-window-state\n",
+	tail.WriteString(cut.limitNote(len(lines)))
+	fmt.Fprintf(&tail, "%sthese Elements (%s) are in window %d's Window State as %s; its earlier Element Indexes still work until the next full get-window-state\n",
 		notePrefix, what, w.ID, indexList(added.Indexes))
-	return b.String()
+	return wstate.Cut(header(w), lines, tail.String(), cut.maxChars, cut.hint())
 }
 
 // indexList names Element Indexes: "241 to 245" when they run in order,
@@ -185,17 +220,22 @@ func windowStateShape(s Services, ctx context.Context, w win.WindowInfo, a windo
 	switch {
 	case a.Skeleton && a.Root != "":
 		return "", Fail("get-window-state: --skeleton reads the whole Window and --root one Element; pass one", windowStateUsage), true
-	case a.Root == "" && (a.Depth != 0 || a.Interactive):
-		return "", Fail("get-window-state: --depth and --interactive go with --root <element>", windowStateUsage), true
-	case a.Depth < 0:
-		return "", Fail("get-window-state: --depth must be a positive number", windowStateUsage), true
+	case a.Skeleton && a.Depth != 0:
+		return "", Fail(fmt.Sprintf("get-window-state: --skeleton reads %d levels; --depth goes with a full read or --root <element>", uia.SkeletonDepth), windowStateUsage), true
+	case a.Root != "" && (a.Compact || a.MaxChars != 0 || a.Out != ""):
+		return "", Fail("get-window-state: --compact, --max-chars and --out shape a full read; --root takes --depth and --interactive", windowStateUsage), true
+	case a.Depth < 0 || a.MaxChars < 0:
+		return "", Fail("get-window-state: --depth and --max-chars take a positive number", windowStateUsage), true
+	case a.MaxChars != 0 && a.Out != "":
+		return "", Fail("get-window-state: pass --out or --max-chars, not both: --out writes the whole Window State to the file", windowStateUsage), true
 	case a.Skeleton:
 		tree, err := s.Trees.Capture(uia.WithSkeleton(ctx), w.ID, w.Title, win.AppExeName(w), s.Budget)
 		if err != nil {
 			return "", treeReadError(err), true
 		}
 		tree.Notes = append(tree.Notes, fmt.Sprintf("this is a skeleton: %d levels below the Window, with each deeper part's child count; read a part whole with winuse get-window-state %d --root <element>", uia.SkeletonDepth, w.ID))
-		return wstate.Render(tree), nil, true
+		out, rerr := renderState(tree, a, strconv.FormatUint(w.ID, 10))
+		return out, rerr, true
 	case a.Root != "":
 		out, rerr := readRegion(s, ctx, w, a)
 		return out, rerr, true
@@ -204,7 +244,7 @@ func windowStateShape(s Services, ctx context.Context, w win.WindowInfo, a windo
 }
 
 // windowStateUsage is get-window-state's usage line.
-const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element> [--depth N] [--interactive]] [--timeout <seconds>]"
+const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--timeout <seconds>]"
 
 // readRegion is get-window-state --root: the Element's subtree, read
 // afresh and added after the Window State's indexes; a Page Element's from
@@ -229,7 +269,7 @@ func readRegion(s Services, ctx context.Context, w win.WindowInfo, a windowRef) 
 	if a.Interactive {
 		what = "the interactive Elements under " + strconv.Itoa(index)
 	}
-	return renderAdded(w, added, false, what), nil
+	return renderAdded(w, added, false, what, findCut{}), nil
 }
 
 // holdsPage reports whether the Element behind index is a Page Element,

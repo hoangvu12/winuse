@@ -8,7 +8,7 @@ one **matched** by winuse, **intentionally different** (the spec or the
 orchestrator decided otherwise — every known Codex Windows bug is fixed
 on purpose), or an **extension** (something Codex cannot do).
 
-The winuse side is what `winuse --help` ships; the guard test
+The winuse side is what `winuse help all` prints; the guard test
 (`internal/skill/parity_test.go`) fails when a Codex tool, a parameter
 or a cross-cutting behaviour drops off this list, when a row loses its
 status, or when the checklist names a command the CLI does not actually
@@ -371,8 +371,9 @@ Codex: Windows.Graphics.Capture only, "fails loudly", DPI-normalized
 logical pixels, JPEG q80 data URLs, no size cap. winuse: WGC first
 (same capture stack, hand-written interop), then the screen region
 widened with overlapping popups, then PrintWindow — a method chain
-that never depends on one method; JPEG q80, the long edge capped at
-1568 px, the scale recorded so `@x,y` maps back exactly; the path is
+that never depends on one method; JPEG q80, sized to the model's image
+budget (28 px patches, at most 1,568 of them and 1,568 px a side: ADR
+0020), the scale recorded so `@x,y` maps back exactly; the path is
 printed instead of a data URL (a CLI carries text, not images).
 `zoom` adds a full-resolution PNG crop. **intentionally different**.
 

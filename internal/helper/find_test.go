@@ -25,7 +25,7 @@ type findTrees struct {
 	found      uia.FindResult
 	findErr    error
 	findCalls  int
-	first      bool
+	limit      int
 	countOnly  bool
 	matched    []bool // the canned Elements the query's match accepted
 	region     uia.Added
@@ -41,9 +41,9 @@ var cannedFindElements = []wstate.Element{
 	{Depth: 2, Role: "text", Name: "Status"},
 }
 
-func (f *findTrees) Find(ctx context.Context, hwnd uint64, budget time.Duration, match func(wstate.Element) bool, first, countOnly bool) (uia.FindResult, error) {
+func (f *findTrees) Find(ctx context.Context, hwnd uint64, budget time.Duration, match func(wstate.Element) bool, limit int, countOnly bool) (uia.FindResult, error) {
 	f.findCalls++
-	f.first, f.countOnly = first, countOnly
+	f.limit, f.countOnly = limit, countOnly
 	f.matched = nil
 	for _, e := range cannedFindElements {
 		f.matched = append(f.matched, match(e))
@@ -94,7 +94,7 @@ func TestFindCountFirstAndMisses(t *testing.T) {
 		t.Errorf("count: %q, %+v", out, e)
 	}
 	trees.found = uia.FindResult{Count: 1, Added: uia.Added{Indexes: []int{3}, Elements: cannedFindElements[1:2]}}
-	if _, e := runCommand(t, cmds, "find", protocol.FindArgs{Window: "101", Name: "save", First: true}); e != nil || !trees.first {
+	if _, e := runCommand(t, cmds, "find", protocol.FindArgs{Window: "101", Name: "save", First: true}); e != nil || trees.limit != 1 {
 		t.Errorf("first: %+v", e)
 	}
 
@@ -157,8 +157,12 @@ func TestSkeletonAndRefusedShapes(t *testing.T) {
 	}
 	for _, a := range []windowRef{
 		{Window: "101", Skeleton: true, Root: "1"},
-		{Window: "101", Depth: 2},
-		{Window: "101", Interactive: true},
+		{Window: "101", Skeleton: true, Depth: 2},
+		{Window: "101", Root: "1", Compact: true},
+		{Window: "101", Root: "1", MaxChars: 500},
+		{Window: "101", Root: "1", Out: `C:\x.txt`},
+		{Window: "101", MaxChars: 500, Out: `C:\x.txt`},
+		{Window: "101", MaxChars: -1},
 		{Window: "101", Root: "1", Screenshot: true},
 		{Window: "101", Root: "-1"},
 		{Window: "101", Root: "Save"},

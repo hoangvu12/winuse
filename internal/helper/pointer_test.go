@@ -143,9 +143,10 @@ func TestScrollMapsPointAndKeepsCodexSigns(t *testing.T) {
 func TestScrollHalfScaleFootprintCentre(t *testing.T) {
 	s := newPointerSpy(t)
 	// Set before CommandsWith (the services are copied by value): a
-	// 3136×1960 window over the cap, so the scale is exactly 0.5.
+	// 2184×2184 window over the image budget, so the scale is exactly 0.5
+	// (1092×1092 is the largest square within it).
 	fakeCapture(&s.svc, func(hwnd uint64) (shot.Frame, error) {
-		return syntheticFrame(3136, 1960, 100, 200), nil
+		return syntheticFrame(2184, 2184, 100, 200), nil
 	})
 	cmds := CommandsWith(s.svc)
 	_, cmdErr := runJSON(t, cmds, "get-window-state", windowRef{Window: "101", Screenshot: true})

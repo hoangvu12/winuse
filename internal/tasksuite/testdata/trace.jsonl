@@ -1,0 +1,14 @@
+{"time":"2026-11-05T10:00:00.000+07:00","command":"skill","agent":"claude-1","ok":true,"exit":0,"out_len":5000,"duration_ms":40}
+{"time":"2026-11-05T10:00:03.000+07:00","command":"list-windows","agent":"claude-1","ok":true,"exit":0,"out_len":300,"duration_ms":180}
+{"time":"2026-11-05T10:00:06.000+07:00","command":"launch-app","agent":"claude-1","args":{"app":"notepad"},"ok":true,"exit":0,"duration_ms":1400}
+{"time":"2026-11-05T10:00:09.000+07:00","command":"get-window-state","agent":"claude-1","window":{"id":101,"app":"Notepad","title":"Untitled - Notepad"},"ok":true,"exit":0,"out_len":2400,"out_lines":60,"duration_ms":650}
+{"time":"2026-11-05T10:00:12.000+07:00","command":"click","agent":"claude-1","window":{"id":101,"app":"Notepad","title":"Untitled - Notepad"},"args":{"element":"7"},"routes":["Headless"],"ok":false,"exit":1,"error":"element 7 is stale","code":"STALE_REF","delivery":"not delivered","duration_ms":120}
+{"time":"2026-11-05T10:00:15.000+07:00","command":"get-window-state","agent":"claude-1","window":{"id":101,"app":"Notepad","title":"Untitled - Notepad"},"ok":true,"exit":0,"out_len":2400,"out_lines":60,"duration_ms":610}
+{"time":"2026-11-05T10:00:18.000+07:00","command":"batch","agent":"claude-1","window":{"id":101,"app":"Notepad","title":"Untitled - Notepad"},"args":{"window":"101","steps":[{"kind":"click","args":{"element":"4"}},{"kind":"type-text","args":{"text":{"redacted":true,"len":42}}},{"kind":"press-key","args":{"key":"ctrl+s"}}]},"routes":["Headless","Headed"],"ok":true,"exit":0,"out":"Action 1 (click): ok\n","duration_ms":2600}
+{"time":"2026-11-05T10:00:22.000+07:00","command":"wait","agent":"claude-1","args":{"for":"window","title":"Save As"},"ok":true,"exit":0,"duration_ms":900}
+{"time":"2026-11-05T10:00:24.000+07:00","command":"set-value","agent":"claude-1","window":{"id":202,"app":"Notepad","title":"Save As"},"args":{"element":"name:File name","value":{"redacted":true,"len":12}},"routes":["Headless"],"ok":true,"exit":0,"duration_ms":850}
+{"time":"2026-11-05T10:00:26.000+07:00","command":"press-key","agent":"claude-1","window":{"id":202,"app":"Notepad","title":"Save As"},"args":{"key":"Return"},"routes":["Headless"],"ok":true,"exit":0,"duration_ms":700}
+{"time":"2026-11-05T10:00:28.000+07:00","command":"screenshot","agent":"claude-1","ok":true,"exit":0,"refs":["C:\\x\\shot.png"],"duration_ms":300}
+{"time":"2026-11-05T10:00:30.000+07:00","command":"close-window","agent":"claude-1","window":{"id":101,"app":"Notepad","title":"note.txt - Notepad"},"routes":["Headless"],"ok":true,"exit":0,"duration_ms":400}
+not a trace line
+{"time":"2026-11-05T10:00:31.000+07:00","command":"list-win

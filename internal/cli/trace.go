@@ -134,7 +134,7 @@ func startTrace(args []string, getenv func(string) string) (rest []string, run *
 				}
 			}
 			if strings.TrimSpace(p) == "" {
-				fmt.Fprintf(os.Stderr, "winuse: --trace takes a file\n%s", Usage)
+				fmt.Fprintln(os.Stderr, "winuse: --trace takes a file\nusage: winuse --trace <file> <command> [arguments]")
 				return nil, nil, false
 			}
 			path, set = p, true
@@ -160,7 +160,7 @@ func startTrace(args []string, getenv func(string) string) (rest []string, run *
 			break
 		}
 	}
-	if command == "" || command == "trace" {
+	if command == "" || command == "trace" || isHelpRequest(command) {
 		return rest, nil, true
 	}
 	if abs, err := filepath.Abs(path); err == nil {

@@ -2,8 +2,9 @@ package uia
 
 // Point forms resolved inside the target Window (headless-max ticket 11,
 // ADR 0013's reversal of ADR 0010 Decision 1). An @x,y point is matched
-// against the live bounds of the Elements behind the Window's latest
-// Window State, never against the desktop: a point over a covering Window
+// against the bounds of the Elements behind the Window's latest Window
+// State, the read's own checked live where they decide the hit
+// (pointBounds), never against the desktop: a point over a covering Window
 // still names the target's own Element underneath. The smallest Element
 // that contains the point wins, then the nearest Element up its ancestor
 // chain that can take the Action. The Window's root never counts: a point
@@ -187,10 +188,10 @@ const pointBatch = 32
 
 // ElementAtPoint resolves a screen point (physical pixels) to the Element
 // of hwnd's latest Window State that an Action with need acts on (action:
-// the canonical Secondary Action for NeedAction). It reads each stored
-// Element's live bounds on the UIA worker, bounded by ctx, and for a click
-// probes the live patterns of the Element under the point and its
-// ancestors. Nothing is sent to the Window.
+// the canonical Secondary Action for NeedAction). It matches the stored
+// Elements' bounds on the UIA worker (pointBounds), bounded by ctx, and
+// for a click probes the live patterns of the Element under the point and
+// its ancestors. Nothing is sent to the Window.
 func (c *Client) ElementAtPoint(ctx context.Context, hwnd uint64, x, y int32, need PointNeed, action string) (PointHit, error) {
 	var hit PointHit
 	var jobErr error
@@ -214,20 +215,16 @@ func (c *Client) ElementAtPoint(ctx context.Context, hwnd uint64, x, y int32, ne
 		}
 		cands := make([]pointCand, len(elements))
 		for i, e := range elements {
-			if i%pointBatch == 0 {
-				if err := ctx.Err(); err != nil {
-					jobErr = err
-					return
-				}
-			}
 			cands[i] = pointCand{depth: e.Depth, sig: pointSig(e), route: metaRoute(e, need, action)}
-			if i >= len(elems) || elems[i] == nil {
-				continue // a Page Element, or one the walk could not keep
-			}
-			var r rect
-			if hr := call(elems[i], elCurrentBoundingRect, uintptr(unsafe.Pointer(&r))); !hr.Failed() {
-				cands[i].bounds, cands[i].readable = r, true
-			}
+		}
+		kept := func(i int) bool { return i < len(elems) && elems[i] != nil } // not a Page Element, nor one the walk could not keep
+		if err := pointBounds(ctx, cands, kept, func(i int) (rect, bool) {
+			return elementRect(elems[i], elCachedBoundingRect)
+		}, func(i int) (rect, bool) {
+			return elementRect(elems[i], elCurrentBoundingRect)
+		}, x, y); err != nil {
+			jobErr = err
+			return
 		}
 		if need == NeedClick {
 			// The click route is read live, only along the chain that can
@@ -260,6 +257,77 @@ func (c *Client) ElementAtPoint(ctx context.Context, hwnd uint64, x, y int32, ne
 		return PointHit{}, err
 	}
 	return hit, jobErr
+}
+
+// elementRect reads an Element's bounds through a get_*BoundingRectangle
+// slot: the cached one is an in-process read of the walk's cache, the
+// current one a round trip to the App.
+func elementRect(el comPtr, slot uintptr) (rect, bool) {
+	var r rect
+	if hr := call(el, slot, uintptr(unsafe.Pointer(&r))); hr.Failed() {
+		return rect{}, false
+	}
+	return r, true
+}
+
+// pointBounds fills the candidates' bounds for hitTest (speed ticket 03).
+// It takes them from the read that produced the Window State (cached),
+// then reads live the ones that decide the hit: every Element they put
+// under the point, the chain from the smallest of them up to the root,
+// and the root. When all of those are where the read saw them, the hit is
+// the one the live bounds give, unless an Element moved onto the point
+// since the read; when one moved, or an Element has no cached bounds,
+// every Element is read live, one round trip each, as before. kept says
+// which candidates have a live Element. It returns ctx's error when the
+// request ends meanwhile.
+func pointBounds(ctx context.Context, cands []pointCand, kept func(int) bool, cached, live func(int) (rect, bool), x, y int32) error {
+	allLive := func() error {
+		for i := range cands {
+			if i%pointBatch == 0 {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+			}
+			cands[i].bounds, cands[i].readable = rect{}, false
+			if kept(i) {
+				cands[i].bounds, cands[i].readable = live(i)
+			}
+		}
+		return nil
+	}
+	for i := range cands {
+		if !kept(i) {
+			continue
+		}
+		r, ok := cached(i)
+		if !ok {
+			return allLive()
+		}
+		cands[i].bounds, cands[i].readable = r, true
+	}
+	check := []int{0}
+	for i := 1; i < len(cands); i++ {
+		if cands[i].readable && cands[i].bounds.contains(x, y) {
+			check = append(check, i)
+		}
+	}
+	if under, _, _ := hitTest(cands, x, y); under > 0 {
+		parent := parents(cands)
+		for i := parent[under]; i > 0; i = parent[i] {
+			if !cands[i].bounds.contains(x, y) {
+				check = append(check, i)
+			}
+		}
+	}
+	for _, i := range check {
+		if !kept(i) {
+			continue
+		}
+		if r, ok := live(i); !ok || r != cands[i].bounds {
+			return allLive()
+		}
+	}
+	return ctx.Err()
 }
 
 // hasClickRoute reports whether the Element offers the Headless click

@@ -12,479 +12,17 @@ import (
 
 	"github.com/hoangvu12/winuse/internal/apps"
 	"github.com/hoangvu12/winuse/internal/protocol"
-	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/version"
 	"github.com/hoangvu12/winuse/internal/win"
 )
 
-// usageHead and usageTail sandwich the Secondary Actions list in Usage
-// below (from uia's canonical table, finding 18: this text, the Window
-// State's listing and the Action validation share one source).
-const usageHead = `usage: winuse [--headed] <command> [arguments]
-
-global options:
-  --headed                    run an Action the v1 way: bring the Window to the
-                               foreground, use the real pointer and keyboard,
-                               and show the in-control banner. Accepted before
-                               or after the command; inside type-text's text,
-                               set-value's value or clipboard-set's text it is
-                               literal text
-  --trace <file>              before the command (or WINUSE_TRACE=<file>):
-                               append one JSON line per command to the file:
-                               time, command, Agent, Window, arguments, routes
-                               (Headless, Posted, Headed, CDP), outcome,
-                               output (4 KiB; a Window State only by its line
-                               count), screenshot paths and duration. Typed
-                               text, values, clipboard content and eval are
-                               redacted; past 32 MiB the file is renamed
-                               <name>.1 and a new one started
-  --trace-unredacted          keep the redacted values, for local debugging only
-  --json                      before the command: print one JSON line instead
-                               of the text: {"ok","command","out"} and, on a
-                               failure, "error" with its code, message, hint,
-                               delivery and retry. Exit codes are unchanged
-
-headless (the default; your foreground, pointer and keyboard stay untouched):
-  click (left, single), set-value, perform-secondary-action (except Raise)
-  and scroll on an element index, name: or id:, or at an @x,y point, which
-  acts on the Window's own Element under it (refused when none can take
-  the Action) and names it in the ok; select-text and
-  invoke-menu, which have no headed form; press-key Return or Escape
-  on a classic dialog; type-text into a focused classic edit control, or
-  with --into into a classic edit control or Page field it names, for
-  text with no newline, tab or other control character; screenshots from
-  get-window-state --screenshot and zoom (--headed activates the Window
-  first); and the Window Actions restore-, minimize-, move-, resize- and
-  close-window, which have no headed form (maximize-window is headed
-  only). tab new, tab close and tab switch are headless (on a launched or
-  cloned browser, tab switch selects the Tab in the Window's tab strip;
-  --headed switches with real keys in the foreground instead). In a
-  browser Window with a Browser Connection, every Action on its Page is
-  headless, and so are navigate, back, forward, reload, upload, dialog,
-  wait and eval, which have no headed form. The clipboard commands,
-  list-displays and screenshot --display are headless Desktop commands:
-  they name no Window and have no headed form, and so are the
-  notification commands, which press a toast's own buttons.
-
-headed only with --headed: every other Action (double, right and middle
-  clicks, drag, hover, Raise, maximize-window, open-shell, press-key and
-  type-text with no headless route, and a point with no usable Element) is refused
-  with "nothing was sent" and the exact --headed retry. activate-window always takes the foreground: that is
-  what it is for.
-
-commands:
-  list-windows [--details] [--app <name>] [--shell]
-                               list visible Windows: Window ID, App and title;
-                               --details adds a column before the title with the
-                               visible frame "x,y WxH" (what move-window and
-                               resize-window take), "pid N" and the flags focused,
-                               minimized, maximized and admin; --app lists one
-                               App's Windows (App name or executable name);
-                               --shell adds the shell surfaces: the taskbar, and
-                               the tray overflow, Start and the Action Center
-                               while open, read and acted on by Window ID
-  get-window <window>         print one Window's line (Window ID, App and title),
-                               resolved by Window ID or an unambiguous App name
-  list-apps                   list running and recently used Apps, with their Windows
-  launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <seconds>]
-                               start an App by name or executable path, report
-                               its Window; waits 15 s, --timeout up to 120 for
-                               a slow App. The App starts without taking the
-                               foreground (--minimized: minimized); one that
-                               takes it anyway, as a packaged App does, gets
-                               a "Note: the App took the foreground" line.
-                               --arg (one per argument, quoted for you),
-                               --cwd and --env (over the helper's
-                               environment) need an executable. --cdp starts
-                               an Electron or WebView2 executable with a
-                               loopback debugging port, so its pages are read
-                               and acted on like a browser's, headless
-  close-app <app> [--force]   ask every Window of an App to close, headless,
-                               and wait up to 5 s for it to exit; one that
-                               keeps running (it may ask to save) gets an ok
-                               that says so. --force then ends the App's
-                               processes, unsaved work included: the only
-                               command that ends a process. Windows' own
-                               processes (explorer, dwm, csrss, ...) and
-                               administrator Apps are refused, nothing sent
-  get-window-state <window> [--screenshot] [--skeleton | --root <element> [--depth N] [--interactive]] [--timeout <seconds>]
-                               print a Window's State: its Element tree as text,
-                               and with --screenshot a screenshot saved to a file
-                               whose path is printed; a Chromium or Electron
-                               Window without a Browser Connection whose web
-                               content reads thin is read again for up to 5 s
-                               while it builds (once per Window; later reads
-                               of a Window that stayed thin retry once). The
-                               read has 10 s; --timeout up to 60 gives a slow
-                               Electron, Office or cold Chromium tree more,
-                               and the extra time goes to that 5 s wait too.
-                               --skeleton reads three levels with each deeper
-                               part's child count; --root <element> reads one
-                               Element's subtree (--depth N levels,
-                               --interactive Elements only) and adds its
-                               Elements after the Window State's indexes
-  find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --count]
-                               search the Window's whole live tree, past the
-                               Window State's caps: print the matching
-                               Elements, added after its Element Indexes
-                               (the earlier ones still work); --count prints
-                               how many; a role that matches nothing lists
-                               the roles present
-  record-tree <window> <file> record a Window's real tree to a fixture file
-  zoom <window> <x>,<y>,<w>,<h>
-                               save a full-resolution crop of a region of the
-                               Window's latest screenshot and print its path
-  click <window> <element index | name: | id: | @x,y> [options]
-                               click an Element of a Window by Element Index,
-                               name: or id: reference, or at @x,y
-                               coordinates from the Window's latest
-                               screenshot; options: --count 1|2|3 (default 1),
-                               --button left|middle|right (default left),
-                               --post (post the click to the classic
-                               control there without the foreground: best
-                               effort, the app may ignore it),
-                               --modifiers ctrl,shift,alt (held during the
-                               click: headless on a Page and for ctrl or
-                               shift on a multi-select list item, as MK
-                               flags with --post, else --headed)
-  type-text <window> [--post | --into <element index | name: | id:>] [--interval-ms <n>] <text>
-                               type Unicode text into the Window's focused
-                               Element (headless into a classic edit control
-                               such as Notepad's or a Win32 dialog's).
-                               --post, right after the Window, posts the text
-                               to the focused control without the foreground
-                               instead: best effort, as for press-key.
-                               --into, right after the Window, types into
-                               that Element instead, whatever has the focus:
-                               headless into a classic edit control (a
-                               covered Notepad's editor too) or a Page
-                               field; any other Element only with --headed
-                               (click it, then type), otherwise refused with
-                               nothing sent. --interval-ms, also right after
-                               the Window, pauses that many milliseconds
-                               (0 to 1000) between characters when the text
-                               is typed key by key (--headed, --post), for
-                               Apps that drop fast input
-  press-key <window> <key> [--post] [--force]
-                               press a key or key combination by Codex's key
-                               names, e.g. Return, Tab, Control_L+a, Numpad_0
-                               (Return or Escape on a classic dialog presses
-                               its default or Cancel button headless).
-                               --post posts the key to the focused control
-                               without the foreground instead: best effort,
-                               and the app may ignore it (the output says
-                               posted; read the Window State to check); a
-                               chord with Control, Shift or Alt (not Control
-                               and Alt together) is posted with the
-                               modifiers held for the Window's thread
-                               only. --post and --headed do not combine.
-                               Alt+F4, Alt+Tab, Ctrl+Shift+Escape and any
-                               chord holding one of them are refused with
-                               nothing sent unless --force (also per batch
-                               step); the Windows key is never sent
-  set-value <window> <element index | name: | id: | @x,y> <value>
-                               set an Element's value directly (a settable
-                               edit, a numeric range, on|off for a check
-                               box or other toggle, an item's name for a
-                               combo box or list, or an option's label or
-                               value for a Page's list); @x,y sets the Element
-                               under a point of the latest screenshot
-  perform-secondary-action <window> <element index | name: | id: | @x,y> <action>
-                               perform one of the Element's Secondary Actions
-                               (`
-
-const usageTail = `);
-                               @x,y acts on the Element under a point of the
-                               latest screenshot
-  batch <window> [--timeout <seconds>] [--stop-on-error] <action> [arguments] [then <action> [arguments]] ...
-                               run several Actions on one Window in order and
-                               print each one's output as Action N (<action>):
-                               ...; e.g.
-                               winuse batch 101 click name:File then type-text hello then press-key Return
-                               A failed Action does not stop the Batch: the
-                               rest run, and the Batch then fails (exit 1)
-                               naming every failed Action, uncertain ones
-                               marked; --stop-on-error stops at the first.
-                               A Batch has 60 s; --timeout before the first
-                               Action gives it up to 300. An Action starting
-                               in <window> acts in that Window, and in new in
-                               the Window the Action before it opened
-  batch -                    the same Batch read from stdin: the Window and
-                               the Batch flags on the first line, then one
-                               Action per line with no then; double quotes
-                               group words (\" is a quote inside them), and
-                               blank lines and lines starting with # are
-                               skipped
-  scroll <window> <element index | name: | id:> <up|down|left|right> [steps]
-                               scroll the list or page holding an Element by
-                               steps (1 to 50, default 3)
-  scroll <window> <element index | name: | id:> into-view
-                               scroll an Element into view
-  scroll <window> @x,y <dx> <dy> [--post] [--modifiers ctrl,shift,alt]
-                               scroll the Window at a point of its latest
-                               screenshot: positive dy scrolls down, positive
-                               dx right; one wheel notch is 120 (three
-                               steps of the list or page under the point,
-                               up to 16 notches; --headed turns the real
-                               wheel; --post posts the wheel to the classic
-                               control there, best effort)
-  select-text <window> <element index | name: | id:> <start> <length> | all
-                               select text in a field without keys or the
-                               mouse: length characters (UTF-16 units) from
-                               start, counting from 0, or all of it; a
-                               type-text afterwards replaces the selection
-  invoke-menu <window> "<menu> > <item>"
-                               run a command of a classic (Win32) menu bar
-                               without opening the menu, such as
-                               "File > Save As..."; names match without case,
-                               & and the shortcut; a greyed item is refused
-                               with nothing sent
-  drag <window> @x,y @x,y     drag the pointer from one point to another,
-                               both in the Window's latest screenshot's pixels;
-                               drag <window> <element> <element | @x,y> drags
-                               a Page Element headless, and any other Element
-                               from its clickable point with --headed;
-                               --drop-delay <ms> holds at the end before the
-                               drop
-  hover <window> @x,y         move the pointer to a point of the Window's
-                               latest screenshot and leave it there (reveals
-                               hover-only UI and tooltips); hover <window>
-                               <element> hovers a Page Element headless, and
-                               any other Element at its clickable point with
-                               --headed
-  activate-window <window>    bring a Window to the foreground
-  restore-window <window>     restore a minimized or maximized Window to its
-                               normal size without activating it (the output
-                               says when the App brings itself to the front)
-  minimize-window <window>    minimize a Window without activating another
-  maximize-window <window>    maximize a Window for real; headed only: Windows
-                               cannot maximize without bringing the Window to
-                               the foreground, so without --headed nothing is
-                               sent
-  move-window <window> <x> <y>
-                               move the Window's visible frame top-left to a
-                               screen point, in physical pixels
-  resize-window <window> <width> <height>
-                               set the Window's visible frame size, in physical
-                               pixels (both use the screenshot line's window
-                               at X,Y WxH; they refuse a maximized or
-                               minimized Window: restore it first)
-  close-window <window>       ask a Window to close, as its close button does;
-                               an app may keep it open to ask about saving
-  browser status [browser]    connect to a Chromium browser (the pinned or
-                               only debuggable one) and say how, or say in
-                               one sentence what is wrong and what to run
-  browser use [browser|auto]  pin the browser the browser commands use (it
-                               persists); auto removes the pin, no argument
-                               prints it
-  browser launch [browser]    start the browser with winuse's own profile and
-                               connect (a normal browser window opens; it
-                               keeps rendering while covered)
-  browser clone [browser] [--profile <folder>] [--fresh] [--close-source]
-                               copy your real profile (your logins) to
-                               winuse's clone, keep it synced, launch it and
-                               connect; --close-source first closes the
-                               running browser cleanly so logins copy, and
-                               reopens its tabs in the clone
-  browser connect [browser]   use your running browser through its inspect
-                               toggle: you turn on remote debugging, and
-                               Chrome asks once to allow the connection
-  browser stop [browser]      close a browser winuse launched or cloned,
-                               keeping its profile
-  browser ext install [browser|all] [--open]
-                               set up the winuse extension, which drives your
-                               running browser with your logins and no
-                               prompts, and print the one step the user does
-                               (Developer mode, Load unpacked); --open also
-                               opens the extensions page and the folder
-  browser ext status [browser] [--wait <seconds>]
-                               say whether the extension is connected, or in
-                               one sentence what is missing and what to run;
-                               --wait polls until it connects (up to 600 s)
-  browser attach <window>     give a running Electron App's Window a Browser
-                               Connection: opens the App's Node.js inspector
-                               and runs winuse's code inside the App, so ask
-                               the user first; refused when the App turned
-                               its inspector off (nodeCliInspect fuse)
-  browser detach <window>     end the attach and close the App's inspector
-  tab list <window>           list the Tabs of a browser Window with a Browser
-                               Connection, one per line: * for the active
-                               Tab, its id, title and URL
-  tab new <window> [url]      open a Tab in the background of that Window and
-                               print its id; work in it as <window>:<tab>
-  tab close <window> <tab>    close a Tab by its id from tab list (4 or more
-                               characters of it); the last Tab is refused,
-                               run close-window to close the Window
-  tab switch <window> <tab>   make a Tab the active one in its Window (the
-                               Page commands act on the active Tab); headless,
-                               --headed switches with real keys
-  navigate <window> <url> [--wait load|domcontentloaded|none]
-                               open a URL in the Window's active Tab, wait for
-                               it to load (default load), and print the URL it
-                               ended on; never type into the address bar
-  back <window> [--wait ...]  go one page back in the Tab's history
-  forward <window> [--wait ...]
-                               go one page forward in the Tab's history
-  reload <window> [--wait ...]
-                               reload the Tab's page
-  upload <window> [<element>] <file>...
-                               give files to a file input of the Page, or
-                               without an element to the file chooser a click
-                               opened (winuse holds it back, so no file dialog
-                               shows)
-  dialog <window> accept|dismiss [text]
-                               answer the JavaScript dialog the Page shows
-                               (alert, confirm, prompt, or leave the page);
-                               text answers a prompt. While one shows, every
-                               other Page Action fails and says so
-  wait <window> selector <css> | text <text> | url <url or pattern> | load [domcontentloaded] | download
-                               wait until an element shows, the text appears,
-                               the URL matches (* is a wildcard), or the page
-                               loads (10 s by default, --timeout <seconds> up
-                               to 300; in a batch, the Batch's budget bounds
-                               it); wait download prints the path of the
-                               file a click downloaded, on a browser winuse
-                               launched or cloned
-  wait <window> <element index | name: | id:> enabled | disabled | gone | value <value> | checked | unchecked | expanded | collapsed
-                               wait until an Element of the Window's latest
-                               Window State reaches that state (gone: the
-                               Element is gone, its Window closed too); text
-                               on a Window that is no browser waits in its
-                               UI Automation tree. Both read the Window
-                               without changing its Element Indexes, and fail
-                               when it closes
-  wait window <app or title> [--gone]
-                               wait until a Window of that App, or whose title
-                               holds the text, shows, and print its line;
-                               --gone: until none is left. Desktop waits only
-                               read and poll, take --timeout like the Page's,
-                               and never hold up an Action
-  wait <milliseconds>         pause, up to 300000 (300 s)
-  eval <window> <expression> | --file <path or -> [--max <n>]
-                               run a JavaScript expression in the Page and
-                               print its value (JSON for objects, cut at 4000
-                               characters or --max, up to 100000); --file
-                               reads it from a file or stdin, past any shell
-                               quoting
-  clipboard-get [--format text|image|files] [--out <path>]
-                               print the clipboard's text exactly as it is
-                               (the default), its files one path per line, or
-                               write its image to a PNG (--out, or a new file
-                               in %TEMP%\winuse) and print the path and size;
-                               a clipboard without that format fails and says
-                               what it holds
-  clipboard-set <text> | --image <png> | --file <path>...
-                               replace the clipboard's content with the text
-                               (literal, like type-text's), a PNG image or a
-                               list of existing files
-  clipboard-clear             empty the clipboard
-  list-displays               list the displays, one per line: its number (0
-                               is the primary display), its rectangle "x,y WxH"
-                               in physical pixels, its scale, and primary
-  screenshot --display <n>    save a screenshot of display n from list-displays
-                               and print its path, like get-window-state
-                               --screenshot's line; it has no @x,y points or
-                               zoom, which belong to a Window's screenshot;
-                               --screen <n> is the same (agent-desktop's
-                               spelling)
-  list-notifications [--app <name>] [--text <text>]
-                               list the notifications the toast banners show
-                               now, one per line: its number, App, title,
-                               text and buttons; --app and --text keep the
-                               ones whose App, or title or text, hold that
-                               text. A banner shows about 5 s; older ones
-                               are in the Notification Center (open-shell
-                               notifications)
-  notification-action <n> <button>
-                               press a button of notification n from your
-                               latest list-notifications or wait
-                               notification, headless; refused with nothing
-                               sent when that notification no longer shows
-                               with the App, title and text it was listed
-                               with. The output says when the foreground
-                               moved (an App that is not running hands it
-                               to the shell)
-  notification-dismiss <n>    close notification n's banner the same way;
-                               Windows keeps it in the Notification Center
-  wait notification [--app <name>] [--text <text>]
-                               wait until a banner shows a matching
-                               notification and list it, numbered; takes
-                               --timeout like the other waits
-  open-shell start|notifications|quick-settings|overflow
-                               headed only: open Start (Control_L+Escape),
-                               the notification panel (Win+N), quick
-                               settings (Win+A) or the tray overflow (a
-                               click on the hidden-icons chevron) and print
-                               its line; read it with get-window-state.
-                               Without --headed nothing is sent; one open
-                               already is printed with nothing sent
-  skill                       print the agent skill (SKILL.md) this binary
-                               was built with; read it again after an upgrade
-  skill install <dir>         write that SKILL.md to <dir>\winuse\SKILL.md, for
-                               a skills folder such as ~\.agents\skills
-  status                      print one line each: the winuse and helper
-                               versions and the helper's uptime, whether the
-                               desktop is locked, the integrity level, DPI
-                               awareness, the Browser Connections the helper
-                               holds and the Windows build. Read-only: it
-                               never starts the helper (it says "not
-                               running") and never connects a browser
-  trace show <file>           print a trace file readably: per command its
-                               time, Agent, Window, routes, outcome and
-                               duration, then its arguments, error and files
-  version                     print the winuse version
-
-a <window> is a Window ID, or an App name when that App has exactly one Window;
-an element index, name:<text>, id:<AutomationId> or @x,y (the latest
-screenshot's pixels) name an Element of the Window's latest Window State.
-A Tab target, <window>:<tab> (a tab id from tab list or tab new), names a Tab
-of that browser shown or not: get-window-state, click, set-value, scroll,
-hover, drag, select-text, type-text, press-key, upload, navigate, back,
-forward, reload, dialog, wait, eval and batch read and act on that Tab
-through its Browser Connection, headless, without switching the Tab the
-user sees; its Element Indexes are its own, and --headed, --post and @x,y
-are refused
-`
-
-// Usage is the short command surface (grows as tickets land). The
-// perform-secondary-action line lists the Secondary Actions from uia's
-// canonical table, so this text, the Window State's listing and the
-// Action validation share one source (finding 18).
-var Usage = usageHead + secondaryActionsPhrase() + usageTail
-
-// secondaryActionsPhrase renders the canonical Secondary Actions for the
-// usage text, comma-joined and wrapped at the usage's column.
-func secondaryActionsPhrase() string {
-	const (
-		indent = "                               "
-		width  = 72
-	)
-	var lines []string
-	line := ""
-	for i, name := range uia.SecondaryActionNames {
-		item := name
-		if i > 0 {
-			item = ", " + name
-		}
-		if line != "" && len(indent)+len(line)+len(item) > width {
-			lines = append(lines, line+",")
-			line = name
-			continue
-		}
-		line += item
-	}
-	if line != "" {
-		lines = append(lines, line)
-	}
-	return strings.Join(lines, "\n"+indent)
-}
-
 // Main runs the CLI for args (without the program name) and returns the exit
-// code: 0 success, 1 command failure, 2 usage error. With --json among the
-// leading flags, the command's output becomes one JSON line (json.go,
-// desktop-parity ticket 07); runCommand runs it either way.
+// code: 0 success (help included), 1 command failure, 2 usage error. The
+// global flags after the command are moved before it first (headed.go).
+// With --json among them, the command's output becomes one JSON line
+// (json.go, desktop-parity ticket 07); runCommand runs it either way.
 func Main(args []string) int {
-	args, asJSON, command := extractJSON(args)
+	args, asJSON, command := extractJSON(hoistGlobalFlags(args))
 	if asJSON {
 		return runJSON(command, func() int { return runCommand(args) })
 	}
@@ -510,10 +48,11 @@ func runCommand(args []string) (code int) {
 	defer func() { trace.finish(code) }()
 	args, headed := extractHeaded(args)
 	if len(args) == 0 {
-		fmt.Fprint(os.Stderr, Usage)
-		return 2
+		return helpCmd(nil) // help.go: the command index
 	}
 	switch args[0] {
+	case "help", helpFlag, helpShortFlag:
+		return helpCmd(args[1:])
 	case "version":
 		fmt.Println(version.Version)
 		return 0
@@ -598,8 +137,7 @@ func runCommand(args []string) (code int) {
 	case "trace":
 		return traceCmd(args[1:]) // trace.go, desktop-parity ticket 19
 	default:
-		fmt.Fprintf(os.Stderr, "winuse: unknown command %q\n\n%s", args[0], Usage)
-		return 2
+		return unknownCommand(args[0]) // help.go: did you mean, and its usage line
 	}
 }
 
@@ -690,6 +228,11 @@ type windowArgs struct {
 	Depth       int    `json:"depth,omitempty"`
 	Interactive bool   `json:"interactive,omitempty"`
 	Skeleton    bool   `json:"skeleton,omitempty"`
+
+	// The output budgets of a read (speed 05, find.go).
+	Compact  bool   `json:"compact,omitempty"`
+	MaxChars int    `json:"max_chars,omitempty"`
+	Out      string `json:"out,omitempty"` // absolute
 }
 
 // recordArgs is record-tree's CLI→helper argument shape.
@@ -699,7 +242,7 @@ type recordArgs struct {
 }
 
 // windowStateUsage is get-window-state's usage line.
-const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element> [--depth N] [--interactive]] [--timeout <seconds>]"
+const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--timeout <seconds>]"
 
 // getWindowStateCmd prints the Window State: Codex's depth-first,
 // indented, numbered Element tree — with --screenshot, the screenshot line

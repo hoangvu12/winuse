@@ -604,6 +604,26 @@ func TestTabTargetRefusals(t *testing.T) {
 	r.noUserImpact(t)
 }
 
+// TestTabTargetTakesTheOutputBudgets: the views shape a Tab target's
+// read like a Window's (speed 05); only --root and --skeleton,
+// which read UI Automation, are refused.
+func TestTabTargetTakesTheOutputBudgets(t *testing.T) {
+	r := newBgRig(t)
+	whole, e := r.as(t, "claude", "get-window-state", protocol.GetWindowArgs{Window: "301:e200"})
+	if e != nil {
+		t.Fatal(e.Msg)
+	}
+	out, e := r.as(t, "claude", "get-window-state", map[string]any{"window": "301:e200", "interactive": true})
+	if e != nil || out != whole {
+		t.Errorf("--interactive leaves nothing out of an all-interactive Page: %+v\n%s\nwhole:\n%s", e, out, whole)
+	}
+	out, e = r.as(t, "claude", "get-window-state", map[string]any{"window": "301:e200", "max_chars": 560})
+	if e != nil || len(out) > 560 || !strings.Contains(out, "\t\t1 button Sign in\n") ||
+		!strings.Contains(out, "are not printed; their Element Indexes still work. Narrow the read with --interactive, --compact or --depth, or write it all with --out <file>\n") {
+		t.Errorf("--max-chars 560 (%d characters), with no --root hint: %+v\n%s", len(out), e, out)
+	}
+}
+
 // TestTabTargetsTakeALaneEach: two Agents in two background Tabs of one
 // window run at once; each Tab has its own lane.
 func TestTabTargetsTakeALaneEach(t *testing.T) {

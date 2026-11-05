@@ -122,3 +122,31 @@ snapshot-qualified refs with re-identification; or added indexes).
   it already has instead of a duplicate. The full read's own Elements are
   not keyed (reading every RuntimeId would cost a round trip each).
 
+
+## Amendment: output budgets are views of a whole read (speed 05, 2026-11-05)
+
+- A full read takes `--interactive`, `--depth N`, `--compact`,
+  `--max-chars N` and `--out <file>` (`internal/wstate/view.go`). They
+  shape the printed text only. The walk, its caps and the stored Window
+  State are the same as a plain read's, so every printed line keeps the
+  full read's Element Index and an Element left out still resolves.
+- The grammar is unchanged. A view prints each Element one level below its
+  nearest printed ancestor and ends the tail with one `Note:` saying how
+  many Elements it left out. The root and any line with a cut mark
+  (`(truncated: ...)`, `(+N children)`) always print. `--depth` adds
+  `(+N children)` where it stops, as the skeleton does.
+- `--compact` folds only an Element whose line would carry nothing but its
+  index and role, and drops only the `ID:`s that several Elements share,
+  which an `id:` reference refuses as ambiguous anyway. An unnamed
+  container with a unique ID keeps its line: `--root id:<ID>` may need it.
+- `--max-chars` cuts whole lines and never the header or the tail (the
+  focused Element and the walk's notes). `--out` writes the view to the
+  file and prints the header, a `Window State: <path> (...)` line and the
+  tail.
+- `find --limit N` keeps the first N matches and notes how many matched.
+  `--first` is `--limit 1`.
+- The defaults stay Codex's text. Measured on 14 real Window States from
+  transcripts (o200k as a proxy; the notes cost included): `--interactive`
+  −36.5%, `--compact` −11.4%, both −38.1%, `--depth 3` −67.5%. Folding
+  bare lines alone is −5.8% and dropping shared IDs alone −5.3%. Changing
+  a default is left to the user (`.scratch/speed/issues/05-output-budgets.md`).

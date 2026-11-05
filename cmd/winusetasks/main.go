@@ -26,12 +26,27 @@ commands:
   validate                   parse every task and report problems (no desktop access)
   run [options] [task ids]   run tasks unattended through a Harness
                              (takes over the screen; user-started only)
+  report <results.json>      print a run's speed summary (and A/B comparison)
+                             again from its results file (no desktop access)
 
 run options:
   --harness <claude|pi>      claude (default): every task, Opus 5.5;
                              pi: the text-only subset, glm-5.3
   --time-limit <duration>    per-task wall-clock limit (default: 15m claude, 12m pi)
   --max-turns <n>            claude only (default 40)
+  --repeats <n>              runs per task (and per arm); the summary gives
+                             medians and ranges (default 1)
+  --winuse <exe|tree>        the winuse the run measures: a winuse.exe (copied
+                             into the run directory) or a source tree (built
+                             there); default: built from this tree
+  --skill <file|dir|tree>    the SKILL.md the agent loads; default: this tree's
+  --label <name>             arm A's name in an A/B run (default A)
+  --b-winuse <exe|tree>      an A/B run: arm B's winuse (default: arm A's)
+  --b-skill <file|dir|tree>  an A/B run: arm B's skill (default: arm A's)
+  --b-label <name>           arm B's name (default B)
+                             Any --b-* option makes the run A/B: every task runs
+                             in both arms, interleaved ABBA, and a comparison
+                             table follows the summary.
   --i-am-the-user            the explicit user start: you are the human at the
                              machine, starting the run yourself. Agents never
                              pass this. See tasksuite/README.md first.
@@ -41,6 +56,9 @@ examples:
   winusetasks run --i-am-the-user
   winusetasks run --i-am-the-user --harness pi
   winusetasks run --i-am-the-user paint-draw
+  winusetasks run --i-am-the-user --repeats 3
+  winusetasks run --i-am-the-user --repeats 3 --b-winuse ..\winuse-wt\speed-waits --b-label waits
+  winusetasks report <run directory>\results.json
 `
 
 func main() {
@@ -59,6 +77,8 @@ func run(args []string) int {
 		return validateCmd()
 	case "run":
 		return runCmd(args[1:])
+	case "report":
+		return reportCmd(args[1:])
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 		return 0
@@ -135,6 +155,7 @@ func runCmd(args []string) int {
 	opts := tasksuite.RunOptions{Harness: "claude"}
 	iAmTheUser := false
 	var ids []string
+	armFlags := map[string]string{}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		var value string
@@ -186,6 +207,25 @@ func runCmd(args []string) int {
 				return 2
 			}
 			opts.MaxTurns = n
+		case "--repeats":
+			v, ok := need("repeats")
+			if !ok {
+				fmt.Fprintf(os.Stderr, "winusetasks: --repeats needs a number\n\n%s", usage)
+				return 2
+			}
+			n, err := strconv.Atoi(v)
+			if err != nil || n <= 0 || n > 20 {
+				fmt.Fprintf(os.Stderr, "winusetasks: --repeats %q is not a number from 1 to 20\n", v)
+				return 2
+			}
+			opts.Repeats = n
+		case "--winuse", "--skill", "--label", "--b-winuse", "--b-skill", "--b-label":
+			v, ok := need(a)
+			if !ok || strings.TrimSpace(v) == "" {
+				fmt.Fprintf(os.Stderr, "winusetasks: %s needs a value\n\n%s", a, usage)
+				return 2
+			}
+			armFlags[a] = v
 		default:
 			if strings.HasPrefix(a, "-") {
 				fmt.Fprintf(os.Stderr, "winusetasks: unknown option %q\n\n%s", a, usage)
@@ -193,6 +233,11 @@ func runCmd(args []string) int {
 			}
 			ids = append(ids, a)
 		}
+	}
+	opts.Arms = armsOf(armFlags)
+	if err := tasksuite.CheckArms(opts.Arms); err != nil {
+		fmt.Fprintf(os.Stderr, "winusetasks: %v\n", err)
+		return 2
 	}
 	if err := tasksuite.CheckUserStarted(iAmTheUser); err != nil {
 		fmt.Fprintf(os.Stderr, "winusetasks: %v\n", err)
@@ -213,6 +258,68 @@ func runCmd(args []string) int {
 	if err := tasksuite.Run(opts); err != nil {
 		fmt.Fprintf(os.Stderr, "\nwinusetasks: %v\n", err)
 		return 1
+	}
+	return 0
+}
+
+// armsOf turns the arm options into the run's arms: none for a plain run
+// from this tree, one when --winuse, --skill or --label is given, two
+// when any --b-* option is (arm B inherits what it does not override).
+func armsOf(flags map[string]string) []tasksuite.ArmOptions {
+	a := tasksuite.ArmOptions{Label: flags["--label"], Winuse: flags["--winuse"], Skill: flags["--skill"]}
+	_, bw := flags["--b-winuse"]
+	_, bs := flags["--b-skill"]
+	_, bl := flags["--b-label"]
+	if !bw && !bs && !bl {
+		if a == (tasksuite.ArmOptions{}) {
+			return nil
+		}
+		return []tasksuite.ArmOptions{a}
+	}
+	if a.Label == "" {
+		a.Label = "A"
+	}
+	b := a
+	b.Label = "B"
+	if v, ok := flags["--b-label"]; ok {
+		b.Label = v
+	}
+	if v, ok := flags["--b-winuse"]; ok {
+		b.Winuse = v
+	}
+	if v, ok := flags["--b-skill"]; ok {
+		b.Skill = v
+	}
+	return []tasksuite.ArmOptions{a, b}
+}
+
+// reportCmd prints a results file's speed summary again, and the A/B
+// comparison when the run had two arms (safe: it reads the file only).
+func reportCmd(args []string) int {
+	if len(args) != 1 {
+		fmt.Fprintf(os.Stderr, "winusetasks: report takes one results.json\n\n%s", usage)
+		return 2
+	}
+	rec, err := tasksuite.LoadRunRecord(args[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "winusetasks: %v\n", err)
+		return 1
+	}
+	fmt.Printf("Task Suite run %s — harness %s (%s), %d repeat(s)\n", rec.Started.Local().Format("2006-01-02 15:04"), rec.Harness, rec.Model, rec.Repeats)
+	for _, a := range rec.Arms {
+		name := a.Label
+		if name == "" {
+			name = "winuse"
+		}
+		fmt.Printf("  %s: winuse %s (build %.12s), skill %s (sha256 %.12s)\n", name, a.WinuseSource, a.WinuseBuild, a.SkillSource, a.SkillSHA256)
+	}
+	fmt.Println()
+	fmt.Print(tasksuite.FormatTable(rec.Results))
+	fmt.Println()
+	fmt.Print(tasksuite.FormatSummary(rec.Results))
+	if arms := tasksuite.Arms(rec.Results); len(arms) == 2 {
+		fmt.Println()
+		fmt.Print(tasksuite.FormatComparison(rec.Results, arms[0], arms[1]))
 	}
 	return 0
 }

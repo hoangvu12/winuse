@@ -2,12 +2,16 @@ package tasksuite
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -25,13 +29,101 @@ type RunOptions struct {
 	RepoRoot  string        // the winuse repository root; found from the cwd when empty
 	RunRoot   string        // the run directory; %TEMP%\winuse-tasks-<stamp> when empty
 	Out       io.Writer     // progress output; os.Stdout when nil
+	Repeats   int           // runs per task and arm (1 when 0)
+	// Arms are what the run measures: one arm (a plain run) or two (an
+	// A/B run, its arms interleaved per task). None means one arm built
+	// from RepoRoot with its SKILL.md.
+	Arms []ArmOptions
+}
+
+// ArmOptions are one arm of a run: the winuse it exercises and the skill
+// its agent loads.
+type ArmOptions struct {
+	Label  string // names the arm in the tables and its directories ("" in a plain run)
+	Winuse string // "": built from RepoRoot; a directory holding go.mod: built from that tree; else a winuse.exe to copy
+	Skill  string // "": RepoRoot's skills/winuse/SKILL.md; a SKILL.md, a directory holding one, or a tree
+}
+
+// CheckArms validates a run's arms before anything is built: at most two,
+// labelled uniquely with names fit for directories (both, in an A/B
+// run), and every path they name existing.
+func CheckArms(arms []ArmOptions) error {
+	if len(arms) > 2 {
+		return fmt.Errorf("a run has at most two arms (A and B), not %d", len(arms))
+	}
+	seen := map[string]bool{}
+	for _, a := range arms {
+		if len(arms) == 2 || a.Label != "" {
+			if !armLabelOK(a.Label) {
+				return fmt.Errorf("arm label %q: use 1-32 letters, digits, '-', '_' or '.'", a.Label)
+			}
+			if seen[strings.ToLower(a.Label)] {
+				return fmt.Errorf("arm label %q is used twice", a.Label)
+			}
+			seen[strings.ToLower(a.Label)] = true
+		}
+		if a.Winuse != "" {
+			if _, err := os.Stat(a.Winuse); err != nil {
+				return fmt.Errorf("arm %s: winuse %s: %w", a.Label, a.Winuse, err)
+			}
+		}
+		if a.Skill != "" {
+			if _, err := resolveSkillPath(a.Skill); err != nil {
+				return fmt.Errorf("arm %s: skill: %w", a.Label, err)
+			}
+		}
+	}
+	return nil
+}
+
+// armLabelOK is what an arm label may hold: it names directories.
+func armLabelOK(label string) bool {
+	if label == "" || len(label) > 32 {
+		return false
+	}
+	for _, r := range label {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.') {
+			return false
+		}
+	}
+	return true
+}
+
+// resolveSkillPath finds the SKILL.md a skill option names: the file
+// itself, a directory holding SKILL.md, or a tree's
+// skills/winuse/SKILL.md.
+func resolveSkillPath(p string) (string, error) {
+	st, err := os.Stat(p)
+	if err != nil {
+		return "", err
+	}
+	if !st.IsDir() {
+		return p, nil
+	}
+	for _, c := range []string{filepath.Join(p, "SKILL.md"), filepath.Join(p, "skills", "winuse", "SKILL.md")} {
+		if st, err := os.Stat(c); err == nil && !st.IsDir() {
+			return c, nil
+		}
+	}
+	return "", fmt.Errorf("%s holds no SKILL.md (nor skills\\winuse\\SKILL.md)", p)
+}
+
+// armState is one arm as the run uses it.
+type armState struct {
+	ArmRecord
+	binDir string
+	skill  map[string][]byte // the skill folder: SKILL.md, references\<topic>.md
 }
 
 // Run executes the Task Suite: every (selected) task, unattended, through
 // the pinned Harness, each in its own scratch folder, each judged by its
-// Check script, then the pass/fail table. It is user-started only — the
-// caller must have passed CheckUserStarted (cmd/winusetasks enforces it).
+// Check script, then the pass/fail table and the speed summary. With
+// repeats, every task runs that many times per arm; with two arms (A/B),
+// the arms alternate per task (ABBA), and a comparison table follows.
+// It is user-started only — the caller must have passed
+// CheckUserStarted (cmd/winusetasks enforces it).
 func Run(opts RunOptions) error {
+	started := time.Now()
 	spec, err := SpecFor(opts.Harness)
 	if err != nil {
 		return err
@@ -42,6 +134,17 @@ func Run(opts RunOptions) error {
 	out := opts.Out
 	if out == nil {
 		out = os.Stdout
+	}
+	repeats := opts.Repeats
+	if repeats <= 0 {
+		repeats = 1
+	}
+	armOpts := opts.Arms
+	if len(armOpts) == 0 {
+		armOpts = []ArmOptions{{}}
+	}
+	if err := CheckArms(armOpts); err != nil {
+		return err
 	}
 
 	repoRoot := opts.RepoRoot
@@ -78,7 +181,7 @@ func Run(opts RunOptions) error {
 
 	runRoot := opts.RunRoot
 	if runRoot == "" {
-		runRoot = filepath.Join(os.TempDir(), fmt.Sprintf("winuse-tasks-%s", time.Now().Format("20060102-150405")))
+		runRoot = filepath.Join(os.TempDir(), fmt.Sprintf("winuse-tasks-%s", started.Format("20060102-150405")))
 	}
 	if err := os.MkdirAll(runRoot, 0o755); err != nil {
 		return fmt.Errorf("creating the run directory: %w", err)
@@ -95,21 +198,35 @@ func Run(opts RunOptions) error {
 		repoRoot:  repoRoot,
 		runRoot:   runRoot,
 		timeLimit: opts.TimeLimit,
+		split:     repeats > 1 || len(armOpts) > 1,
 		out:       out,
 	}
 	rs.edgePath = resolveEdgePath()
 	logf := func(msg string) { fmt.Fprintln(out, msg) }
 
-	fmt.Fprintf(out, "winuse Task Suite %s — harness %s (%s), %d task(s)\n", version.Version, spec.Name, spec.ModelID, len(tasks))
-	fmt.Fprintf(out, "Run directory: %s\n\n", runRoot)
+	fmt.Fprintf(out, "winuse Task Suite %s — harness %s (%s), %d task(s) × %d repeat(s) × %d arm(s)\n",
+		version.Version, spec.Name, spec.ModelID, len(tasks), repeats, len(armOpts))
+	fmt.Fprintf(out, "Run directory: %s\n", runRoot)
 
-	// Build the winuse binary the tasks will exercise, from this source
-	// tree, into the run's bin directory (prepended to the Harness's
-	// PATH): a run always measures the tree it was started from.
-	rs.binDir = filepath.Join(runRoot, "bin")
-	if err := buildWinuse(repoRoot, rs.binDir); err != nil {
-		return err
+	// Each arm's winuse binary goes into its own bin directory (prepended
+	// to the Harness's PATH): built from this source tree unless the arm
+	// names another tree or an exe, so a plain run always measures the
+	// tree it was started from.
+	var arms []*armState
+	for _, ao := range armOpts {
+		arm, err := prepareArm(repoRoot, runRoot, ao, len(armOpts) > 1)
+		if err != nil {
+			return err
+		}
+		arms = append(arms, arm)
+		name := arm.Label
+		if name == "" {
+			name = "winuse"
+		}
+		fmt.Fprintf(out, "  %s: winuse %s (build %s), skill %s (sha256 %.12s)\n",
+			name, arm.WinuseSource, shortBuild(arm.WinuseBuild), arm.SkillSource, arm.SkillSHA256)
 	}
+	fmt.Fprintln(out)
 
 	// Fail fast, before taking over the screen: the Harness must be
 	// logged in and the model must exist.
@@ -118,31 +235,184 @@ func Run(opts RunOptions) error {
 	}
 
 	var results []TaskResult
-	for i, t := range tasks {
-		res := rs.runTask(t)
-		results = append(results, res)
-		steps, dur := "-", formatSeconds(res.Seconds)
-		if res.Steps >= 0 {
-			steps = fmt.Sprintf("%d", res.Steps)
+	total := len(tasks) * repeats * len(arms)
+	n := 0
+	for _, t := range tasks {
+		// A missing app skips the task in every arm, once.
+		if reason := rs.skipReason(t); reason != "" {
+			for _, arm := range arms {
+				n += repeats
+				res := TaskResult{Task: t, Status: Skip, Reason: reason, Steps: -1, Arm: arm.Label, Repeat: 1, Usage: Usage{Turns: -1, CostUSD: -1}}
+				results = append(results, res)
+				logf(fmt.Sprintf("[%d/%d] %s", n, total, progressLine(res)))
+				logf("        " + reason)
+			}
+			continue
 		}
-		logf(fmt.Sprintf("[%d/%d] %-22s %s  %s steps, %s", i+1, len(tasks), t.ID, res.Status, steps, dur))
-		if res.Reason != "" && res.Status != Pass {
-			for _, line := range strings.Split(strings.TrimRight(res.Reason, "\n"), "\n") {
-				if line != "" {
-					logf("        " + line)
+		for rep := 1; rep <= repeats; rep++ {
+			// The arms interleave, ABBA, so drift on the machine (an
+			// update, a warm cache) hits both.
+			order := arms
+			if rep%2 == 0 && len(arms) == 2 {
+				order = []*armState{arms[1], arms[0]}
+			}
+			for _, arm := range order {
+				n++
+				res := rs.runTask(t, arm, rep)
+				results = append(results, res)
+				logf(fmt.Sprintf("[%d/%d] %s", n, total, progressLine(res)))
+				if res.Reason != "" && res.Status != Pass {
+					for _, line := range strings.Split(strings.TrimRight(res.Reason, "\n"), "\n") {
+						if line != "" {
+							logf("        " + line)
+						}
+					}
 				}
 			}
 		}
 	}
 
 	table := FormatTable(results)
+	summary := FormatSummary(results)
+	if len(arms) == 2 {
+		summary += "\n" + FormatComparison(results, arms[0].Label, arms[1].Label)
+	}
 	fmt.Fprintln(out)
 	fmt.Fprint(out, table)
+	fmt.Fprintln(out)
+	fmt.Fprint(out, summary)
 
-	if err := writeRunFiles(runRoot, spec, results, table); err != nil {
+	rec := RunRecord{
+		Schema:  RecordSchema,
+		Started: started.UTC(),
+		Harness: spec.Name,
+		Model:   spec.ModelID,
+		Winuse:  version.Version,
+		Repeats: repeats,
+		Results: results,
+	}
+	for _, a := range arms {
+		rec.Arms = append(rec.Arms, a.ArmRecord)
+	}
+	if err := writeRunFiles(runRoot, rec, table, summary); err != nil {
 		logf(fmt.Sprintf("writing the run's result files: %v", err))
 	}
+	fmt.Fprintf(out, "\nResults: %s\n", filepath.Join(runRoot, "results.json"))
 	return nil
+}
+
+// progressLine is a finished run's line in the progress output.
+func progressLine(r TaskResult) string {
+	name := r.Task.ID
+	if r.Arm != "" || r.Repeat > 1 {
+		name += " " + runName(r)
+	}
+	turns := "-"
+	if r.Usage.Turns >= 0 {
+		turns = fmt.Sprintf("%d", r.Usage.Turns)
+	} else if r.Steps >= 0 {
+		turns = fmt.Sprintf("%d", r.Steps)
+	}
+	line := fmt.Sprintf("%-28s %s  %s turns, %s", name, r.Status, turns, formatSeconds(r.Seconds))
+	if r.measured() {
+		line += fmt.Sprintf(" (agent %s, winuse %s in %d commands", fmtSecs(r.HarnessSeconds), fmtSecs(float64(r.Trace.MS)/1000), r.Trace.Commands)
+		if r.Usage.Known && r.Usage.CostUSD >= 0 {
+			line += ", " + fmtCost(r.Usage.CostUSD)
+		}
+		line += ")"
+	}
+	return line
+}
+
+func shortBuild(id string) string {
+	if id == "" {
+		return "unknown"
+	}
+	if len(id) > 12 {
+		return id[:12]
+	}
+	return id
+}
+
+// prepareArm puts an arm's winuse.exe into its bin directory and reads
+// its skill. A tree is built with `go build` into the run directory; an
+// exe is copied, so the run's cleanup, which kills the run's own winuse
+// processes by their path, never touches an installed winuse.
+func prepareArm(repoRoot, runRoot string, ao ArmOptions, named bool) (*armState, error) {
+	arm := &armState{ArmRecord: ArmRecord{Label: ao.Label}}
+	if named && arm.Label == "" {
+		return nil, fmt.Errorf("an A/B run's arms need labels")
+	}
+	arm.binDir = filepath.Join(runRoot, "bin")
+	if named {
+		arm.binDir = filepath.Join(runRoot, "bin-"+ao.Label)
+	}
+	exe := filepath.Join(arm.binDir, "winuse.exe")
+	switch src := ao.Winuse; {
+	case src == "":
+		arm.WinuseSource = "tree"
+		if err := buildWinuse(repoRoot, arm.binDir); err != nil {
+			return nil, err
+		}
+	case isTree(src):
+		abs, _ := filepath.Abs(src)
+		arm.WinuseSource = abs
+		if err := buildWinuse(abs, arm.binDir); err != nil {
+			return nil, fmt.Errorf("arm %s: %w", ao.Label, err)
+		}
+	default:
+		abs, _ := filepath.Abs(src)
+		arm.WinuseSource = abs
+		if err := copyFile(abs, exe); err != nil {
+			return nil, fmt.Errorf("arm %s: copying %s: %w", ao.Label, abs, err)
+		}
+	}
+	arm.WinuseBuild = version.ExeBuild(exe)
+
+	skillPath := filepath.Join(repoRoot, "skills", "winuse", "SKILL.md")
+	arm.SkillSource = "tree"
+	if ao.Skill != "" {
+		p, err := resolveSkillPath(ao.Skill)
+		if err != nil {
+			return nil, fmt.Errorf("arm %s: skill: %w", ao.Label, err)
+		}
+		skillPath, _ = filepath.Abs(p)
+		arm.SkillSource = skillPath
+	}
+	files, err := readSkillFolder(skillPath)
+	if err != nil {
+		return nil, fmt.Errorf("arm %s: reading the skill: %w", ao.Label, err)
+	}
+	arm.skill = files
+	arm.SkillSHA256 = skillHash(files)
+	return arm, nil
+}
+
+// isTree reports whether a winuse option names a source tree (a
+// directory holding go.mod) rather than an exe.
+func isTree(p string) bool {
+	st, err := os.Stat(filepath.Join(p, "go.mod"))
+	return err == nil && !st.IsDir()
+}
+
+func copyFile(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // selectTasks narrows the suite: explicit IDs win; the pi harness
@@ -179,9 +449,9 @@ type runState struct {
 	inv       HarnessInvocation
 	repoRoot  string
 	runRoot   string
-	binDir    string
 	edgePath  string        // empty: Edge not installed; msedge tasks skip
 	timeLimit time.Duration // > 0: overrides every task's limit
+	split     bool          // repeats or arms: each run gets <task>\<arm>-r<n>
 	out       io.Writer
 }
 
@@ -193,42 +463,59 @@ func specSelects(spec HarnessSpec) string {
 	return "every task"
 }
 
-// runTask runs one task end to end: scratch folder, setup, Harness under
-// its time limit, Check, cleanup. A task's outcome is always a result —
-// only the run's plumbing above can fail hard.
-func (rs *runState) runTask(t Task) TaskResult {
-	started := time.Now()
-	taskDir := filepath.Join(rs.runRoot, t.ID)
-	scratch := filepath.Join(taskDir, "scratch")
-	res := TaskResult{Task: t, Status: TaskError, Steps: -1, ScratchDir: scratch}
-
-	// Requirement check first: a missing app is a skip, not a failure.
+// skipReason is why a task cannot run on this machine ("" when it can):
+// an app it requires is missing.
+func (rs *runState) skipReason(t Task) string {
 	for _, app := range t.Apps {
 		if strings.EqualFold(app, "msedge") {
 			if rs.edgePath == "" {
-				res.Status, res.Reason = Skip, "requires Microsoft Edge (msedge.exe was not found)"
-				res.Seconds = time.Since(started).Seconds()
-				return res
+				return "requires Microsoft Edge (msedge.exe was not found)"
 			}
 			continue
 		}
 		if findOnPath(app) == "" {
-			res.Status = Skip
-			res.Reason = fmt.Sprintf("requires %s, which was not found on PATH", app)
-			res.Seconds = time.Since(started).Seconds()
-			return res
+			return fmt.Sprintf("requires %s, which was not found on PATH", app)
 		}
 	}
+	return ""
+}
+
+// taskDir is one run's directory: <task> in a plain run, or
+// <task>\<arm>-r<n> with repeats or arms.
+func (rs *runState) taskDir(t Task, arm *armState, rep int) string {
+	if !rs.split {
+		return filepath.Join(rs.runRoot, t.ID)
+	}
+	label := arm.Label
+	if label == "" {
+		label = "run"
+	}
+	return filepath.Join(rs.runRoot, t.ID, fmt.Sprintf("%s-r%d", label, rep))
+}
+
+// TraceFileName is the winuse trace a task run's Harness writes
+// (WINUSE_TRACE), in the run's directory: redacted by default, so it is
+// safe to keep with the results.
+const TraceFileName = "trace.jsonl"
+
+// runTask runs one task end to end: scratch folder, setup, Harness under
+// its time limit, Check, cleanup. A task's outcome is always a result —
+// only the run's plumbing above can fail hard.
+func (rs *runState) runTask(t Task, arm *armState, rep int) TaskResult {
+	started := time.Now()
+	taskDir := rs.taskDir(t, arm, rep)
+	scratch := filepath.Join(taskDir, "scratch")
+	res := TaskResult{Task: t, Status: TaskError, Steps: -1, ScratchDir: scratch, Arm: arm.Label, Repeat: rep, Usage: Usage{Turns: -1, CostUSD: -1}}
 
 	if err := os.MkdirAll(scratch, 0o755); err != nil {
 		res.Reason = fmt.Sprintf("creating the scratch folder: %v", err)
 		res.Seconds = time.Since(started).Seconds()
 		return res
 	}
-	// The skill the driven agent loads: copied from this source tree into
-	// the scratch folder, so every run starts from the same guidance,
+	// The skill the driven agent loads: the arm's, copied into the
+	// scratch folder, so every run starts from the same guidance,
 	// independent of what is installed user-wide.
-	if err := copySkill(rs.repoRoot, scratch); err != nil {
+	if err := installSkill(arm.skill, scratch); err != nil {
 		res.Reason = fmt.Sprintf("installing the skill into the scratch folder: %v", err)
 		res.Seconds = time.Since(started).Seconds()
 		return res
@@ -246,7 +533,7 @@ func (rs *runState) runTask(t Task) TaskResult {
 		}
 		baseURL = server.BaseURL()
 	}
-	env := rs.taskEnv(scratch, baseURL)
+	env := rs.taskEnv(arm, scratch, baseURL)
 
 	// The prompt: the fixed preamble plus the task body, with this run's
 	// paths templated in. A body that cannot render is a task definition
@@ -264,7 +551,9 @@ func (rs *runState) runTask(t Task) TaskResult {
 
 	// Setup: prepare the scratch folder. The Check may not exist without
 	// it, so a setup failure is an error, never a failed task.
+	setupStarted := time.Now()
 	setupOut, setupErr, setupExit, setupTimedOut, setupRunErr := runScript(t.SetupScript(), scratch, env, time.Minute)
+	res.SetupSeconds = time.Since(setupStarted).Seconds()
 	rs.writeTaskFile(taskDir, "setup-output.txt", setupOut, setupErr)
 	if setupRunErr == nil && setupTimedOut {
 		setupRunErr = fmt.Errorf("setup timed out")
@@ -299,15 +588,22 @@ func (rs *runState) runTask(t Task) TaskResult {
 		res.Seconds = time.Since(started).Seconds()
 		return res
 	}
+	// Only the Harness (and the winuse commands its agent runs) is
+	// traced: the setup and Check scripts are the runner's, not the
+	// agent's.
+	tracePath := filepath.Join(taskDir, TraceFileName)
+	harnessEnv := append([]string{}, env...)
+	setEnv(&harnessEnv, "WINUSE_TRACE", tracePath)
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd := win.NoConsoleWindow(exec.Command(rs.inv.Argv[0], rs.inv.Argv[1:]...))
 	cmd.Dir = scratch
-	cmd.Env = env
+	cmd.Env = harnessEnv
 	cmd.Stdin = strings.NewReader(prompt)
 	cmd.Stdout = io.MultiWriter(stdoutF, &stdoutBuf)
 	cmd.Stderr = io.MultiWriter(stderrF, &stderrBuf)
 	var timedOut bool
 	var tracker *procTracker
+	harnessStarted := time.Now()
 	runErr := cmd.Start()
 	if runErr == nil {
 		// Record the Harness's descendants while it runs: only they (and
@@ -327,6 +623,7 @@ func (rs *runState) runTask(t Task) TaskResult {
 			timedOut = true
 		}
 	}
+	res.HarnessSeconds = time.Since(harnessStarted).Seconds()
 	stdoutF.Close()
 	stderrF.Close()
 	if server != nil {
@@ -339,12 +636,21 @@ func (rs *runState) runTask(t Task) TaskResult {
 	} else {
 		outcome, err = ParsePiEvents(stdoutBuf.String())
 	}
+	res.Usage = outcome.Usage
+	if sum, found, terr := ReadTraceFiles(tracePath); terr == nil {
+		res.Trace, res.TraceFound = sum, found
+	} else {
+		fmt.Fprintf(rs.out, "        reading the winuse trace: %v\n", terr)
+	}
 
 	switch {
 	case timedOut:
 		res.Status = Fail
 		res.Reason = fmt.Sprintf("time limit exceeded (%s)", limit)
 		res.Steps = outcome.Steps // pi streams events live; claude has no result yet
+		if res.Steps < 0 && outcome.Usage.Partial {
+			res.Steps = outcome.Usage.Turns // claude's streamed messages so far
+		}
 	case runErr != nil && !isExitStatus(runErr):
 		res.Reason = fmt.Sprintf("running %s: %v", rs.spec.Name, runErr)
 	case err != nil:
@@ -353,7 +659,9 @@ func (rs *runState) runTask(t Task) TaskResult {
 	default:
 		res.Steps = outcome.Steps
 		res.Status = Fail // until the Check says otherwise
+		checkStarted := time.Now()
 		res.Reason = rs.runCheck(t, scratch, env, taskDir)
+		res.CheckSeconds = time.Since(checkStarted).Seconds()
 		if res.Reason == "" {
 			res.Status = Pass
 			res.Reason = ""
@@ -371,7 +679,7 @@ func (rs *runState) runTask(t Task) TaskResult {
 			tracker.observe(after)
 			owned = tracker.Owned()
 		}
-		runBin := strings.ToLower(filepath.Join(rs.binDir, "winuse.exe"))
+		runBin := strings.ToLower(filepath.Join(arm.binDir, "winuse.exe"))
 		isRunBinary := func(pid uint32) bool {
 			p, ok := processPath(pid)
 			return ok && strings.HasSuffix(p, runBin)
@@ -405,15 +713,17 @@ func (rs *runState) runCheck(t Task, scratch string, env []string, taskDir strin
 	return fmt.Sprintf("check exited %d", exit)
 }
 
-// taskEnv is the environment every child of the task gets: the run's
+// taskEnv is the environment every child of the task gets: the arm's
 // winuse binary first on PATH, a helper that outlives slow agent
 // thinking, and the task's paths.
-func (rs *runState) taskEnv(scratch, baseURL string) []string {
+func (rs *runState) taskEnv(arm *armState, scratch, baseURL string) []string {
 	env := append([]string{}, os.Environ()...)
-	setEnv(&env, "PATH", rs.binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	setEnv(&env, "PATH", arm.binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	setEnv(&env, "WINUSE_HELPER_IDLE", "10m")
 	setEnv(&env, "WINUSE_TASK_SCRATCH", scratch)
 	setEnv(&env, "WINUSE_TASK_URL", baseURL)
+	// A trace the user set for their own winuse is not the run's.
+	unsetEnv(&env, "WINUSE_TRACE")
 	return env
 }
 
@@ -479,61 +789,86 @@ func runScript(script, dir string, env []string, timeout time.Duration) (stdout,
 	}
 }
 
-// buildWinuse compiles the winuse binary the run measures.
-func buildWinuse(repoRoot, binDir string) error {
+// buildWinuse compiles the winuse binary an arm measures, from a source
+// tree, into the run's bin directory.
+func buildWinuse(srcRoot, binDir string) error {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		return err
 	}
 	exe := filepath.Join(binDir, "winuse.exe")
 	cmd := win.NoConsoleWindow(exec.Command("go", "build", "-o", exe, "./cmd/winuse"))
-	cmd.Dir = repoRoot
+	cmd.Dir = srcRoot
 	cmd.Env = append(append([]string{}, os.Environ()...), "CGO_ENABLED=0")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("building winuse: %v: %s", err, firstLine(string(out), ""))
+		return fmt.Errorf("building winuse in %s: %v: %s", srcRoot, err, firstLine(string(out), ""))
 	}
 	return nil
 }
 
-// copySkill writes skills/winuse/SKILL.md into both harnesses'
-// project-skill locations inside the scratch folder.
-func copySkill(repoRoot, scratch string) error {
-	raw, err := os.ReadFile(filepath.Join(repoRoot, "skills", "winuse", "SKILL.md"))
+// readSkillFolder reads the skill folder that holds skillPath: that
+// SKILL.md and the topics in references\ beside it, keyed by their path
+// relative to the folder (SKILL.md, references\<topic>.md).
+func readSkillFolder(skillPath string) (map[string][]byte, error) {
+	raw, err := os.ReadFile(skillPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	for _, dest := range []string{
-		filepath.Join(scratch, ".claude", "skills", "winuse", "SKILL.md"),
-		filepath.Join(scratch, ".agents", "skills", "winuse", "SKILL.md"),
-	} {
-		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-			return err
+	files := map[string][]byte{"SKILL.md": raw}
+	topics, err := filepath.Glob(filepath.Join(filepath.Dir(skillPath), "references", "*.md"))
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range topics {
+		raw, err := os.ReadFile(t)
+		if err != nil {
+			return nil, err
 		}
-		if err := os.WriteFile(dest, raw, 0o644); err != nil {
-			return err
+		files[filepath.Join("references", filepath.Base(t))] = raw
+	}
+	return files, nil
+}
+
+// skillHash is a skill folder's SHA-256: over each file's relative path
+// and contents, in path order, so a changed topic changes it too.
+func skillHash(files map[string][]byte) string {
+	h := sha256.New()
+	for _, rel := range slices.Sorted(maps.Keys(files)) {
+		fmt.Fprintf(h, "%s\x00%d\x00", filepath.ToSlash(rel), len(files[rel]))
+		h.Write(files[rel])
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// installSkill writes an arm's skill folder, SKILL.md and its topics in
+// references\, into both harnesses' project-skill locations inside the
+// scratch folder.
+func installSkill(files map[string][]byte, scratch string) error {
+	for rel, raw := range files {
+		for _, dest := range []string{
+			filepath.Join(scratch, ".claude", "skills", "winuse", rel),
+			filepath.Join(scratch, ".agents", "skills", "winuse", rel),
+		} {
+			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(dest, raw, 0o644); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-// writeRunFiles records the run: the table and a machine-readable
-// results file, for comparing runs across winuse versions.
-func writeRunFiles(runRoot string, spec HarnessSpec, results []TaskResult, table string) error {
+// writeRunFiles records the run: the per-run table, the speed summary
+// (and the A/B comparison) and the machine-readable results file, for
+// comparing runs across winuse versions and skills.
+func writeRunFiles(runRoot string, rec RunRecord, table, summary string) error {
 	if err := os.WriteFile(filepath.Join(runRoot, "table.txt"), []byte(table), 0o644); err != nil {
 		return err
 	}
-	rec := struct {
-		Started time.Time    `json:"started"`
-		Harness string       `json:"harness"`
-		Model   string       `json:"model"`
-		Winuse  string       `json:"winuse"`
-		Results []TaskResult `json:"results"`
-	}{
-		Started: time.Now().UTC(),
-		Harness: spec.Name,
-		Model:   spec.ModelID,
-		Winuse:  version.Version,
-		Results: results,
+	if err := os.WriteFile(filepath.Join(runRoot, "summary.txt"), []byte(summary), 0o644); err != nil {
+		return err
 	}
 	raw, err := json.MarshalIndent(rec, "", "  ")
 	if err != nil {
@@ -608,12 +943,22 @@ func TasksDir(root string) string {
 
 func setEnv(env *[]string, key, value string) {
 	for i, e := range *env {
-		if strings.HasPrefix(e, key+"=") {
+		if strings.HasPrefix(strings.ToUpper(e), strings.ToUpper(key)+"=") {
 			(*env)[i] = key + "=" + value
 			return
 		}
 	}
 	*env = append(*env, key+"="+value)
+}
+
+func unsetEnv(env *[]string, key string) {
+	out := (*env)[:0]
+	for _, e := range *env {
+		if !strings.HasPrefix(strings.ToUpper(e), strings.ToUpper(key)+"=") {
+			out = append(out, e)
+		}
+	}
+	*env = out
 }
 
 // firstLine returns the first non-empty, trimmed line of the outputs —

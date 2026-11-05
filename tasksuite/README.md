@@ -103,11 +103,74 @@ Other commands, safe to run any time (no desktop access):
 ```
 .\winusetasks.exe list          # the tasks, their categories, text-only flags
 .\winusetasks.exe validate      # parse every task, render every prompt
+.\winusetasks.exe report <run directory>\results.json   # a run's summary again
 ```
 
 Options: `--time-limit 20m` (per task), `--max-turns 30` (claude),
 `--harness pi`, and task ids to select tasks. Defaults are the fixed
-method: 15m/40 turns (claude), 12m (pi).
+method: 15m/40 turns (claude), 12m (pi). The speed options are below.
+
+## Measuring speed
+
+Every task run records how fast it was, not only whether it passed:
+
+- **the agent's wall time** (the Harness process, start to exit), and
+  the setup and Check times beside it;
+- **the model's turns, input and output tokens, cost and time in model
+  calls**, from Claude Code's result (`num_turns`, `usage`,
+  `total_cost_usd`, `duration_api_ms`). The runner reads Claude's
+  `--output-format stream-json`, so a run killed at its time limit
+  still has the turns and tokens it used (marked partial; the cost is
+  then unknown). Pi's per-message usage is summed when Pi sends it;
+- **winuse's own time**: the runner sets `WINUSE_TRACE` for the Harness
+  (never for the setup or Check scripts), so every winuse command the
+  agent runs appends a line to `trace.jsonl` in the run's directory.
+  The durations are summed by kind: **observe** (`get-window-state`,
+  `find`, `list-windows`, `screenshot`, ...), **act** (every Action,
+  Batch, Window Action, launch, navigation, ...), **wait** (`wait`),
+  and other (`status`, `skill`, the browser plumbing). Also counted:
+  commands, Actions (a Batch counts its steps), failed commands and
+  their codes (`STALE_REF`, ...), and commands that went Headed. The
+  trace is redacted by default (typed text and values are kept as
+  lengths only), so it is safe to keep with the results.
+
+Turn counts vary 2–3× between runs of the same task, so one run says
+little. **`--repeats N`** runs every task N times; the summary gives
+the median of each metric, with the min–max range for wall time and
+turns.
+
+**A/B runs** compare two winuse builds, two skills, or both:
+
+- `--winuse <exe|tree>` and `--skill <file|dir|tree>` set arm A (by
+  default this tree's build and skill). A winuse.exe is copied into
+  the run directory, and a source tree (a directory holding `go.mod`,
+  such as a branch's worktree) is built there; nothing else is written.
+  A skill is the folder that holds the SKILL.md named (a file, a folder
+  holding it, or a tree's `skills\winuse\`): that SKILL.md and the
+  topics in `references\` beside it, read once when the run starts and
+  hashed together.
+- `--b-winuse`, `--b-skill` and `--b-label` set arm B, which takes arm
+  A's value for whatever it does not override. Any `--b-*` option makes
+  the run A/B. `--label` names arm A (default `A`).
+- Each task runs in both arms, interleaved ABBA across the repeats, so
+  drift on the machine hits both arms. After the summary comes the
+  comparison: per task, A's and B's medians and B's change, with a `*`
+  where B's median falls outside A's min–max range (anything inside is
+  as likely noise), then the totals over the tasks both arms ran.
+- An A/B run with nothing different in arm B (`--b-label again`) is an
+  A/A run: it shows how much a task moves by chance.
+
+```
+.\winusetasks.exe run --i-am-the-user --repeats 3
+.\winusetasks.exe run --i-am-the-user --repeats 3 --label main --b-winuse ..\winuse-wt\speed-waits --b-label waits
+.\winusetasks.exe run --i-am-the-user --repeats 3 --b-skill C:\path\to\lean\SKILL.md --b-label lean-skill
+```
+
+The winuse helper is one per user session, whichever winuse.exe
+started it: a run's first command restarts a helper of another build,
+and an arm whose exe is the installed winuse.exe's build uses that
+helper if it is running. Quit other winuse users before a run, as for
+any run.
 
 ## What a run does
 
@@ -119,17 +182,20 @@ For each task, in a fixed order:
    expectations live. Nothing outside it is touched (apps keep their
    own MRUs and caches, as any interactive use does; no real file or
    setting is the task's to change).
-2. Copies this repo's `skills/winuse/SKILL.md` into the scratch folder (`.claude/skills/`
-   and `.agents/skills/`), so every run starts from the same guidance.
+2. Copies this repo's skill, `skills/winuse/SKILL.md` and its topics in
+   `references/` (or the arm's `--skill` folder), into the scratch folder
+   (`.claude/skills/` and `.agents/skills/`), so every run starts from
+   the same guidance.
 3. Runs the task's `setup.ps1` in the scratch folder.
 4. Starts the local task server (127.0.0.1, rooted at the scratch
    folder) for tasks marked `http:` — browser pages are served from it,
    and a web form's submitted values are logged to it, so browser tasks
    leave a Check-readable end state.
 5. Runs the Harness (`claude -p` or `pi --mode json`) with the task's
-   prompt on stdin, the scratch folder as its working directory, and
-   the freshly built `winuse.exe` first on its PATH — under the time
-   limit, killing the process tree if it runs out.
+   prompt on stdin, the scratch folder as its working directory, the
+   run's `winuse.exe` first on its PATH and `WINUSE_TRACE` pointing at
+   the run's `trace.jsonl` — under the time limit, killing the process
+   tree if it runs out.
 6. Runs the task's `check.ps1`. Exit 0 = the task passed; anything else
    = failed, and the script's first output line is the reason.
 7. Cleans up: the processes the task started are killed one by one —
@@ -160,14 +226,25 @@ could not be measured — setup failed, the Harness crashed), **SKIP**
 (a requirement was missing, e.g. no VS Code).
 
 Steps are what each Harness reports: Claude Code's `num_turns`, Pi's
-tool executions. Time is wall clock per task.
+tool executions. Time is wall clock per task. With repeats or arms the
+table has a row per run, named by its arm and repeat (`A r2`).
+
+After the table comes the speed summary (see Measuring speed), one row
+per task: pass count, wall time and turns as `median [min-max]`, then
+the medians of input and output tokens, cost, API time, winuse's time
+and its observe/act/wait split, commands/Actions, failed commands and
+Headed commands. An A/B run adds the comparison table.
 
 Everything a run produces is kept in the run directory (printed at the
 start, e.g. `C:\Users\you\AppData\Local\Temp\winuse-tasks-20260118-093015`):
-per task, the prompt, the Harness's stdout/stderr (the full JSONL event
-stream for Pi), the setup and Check output, and the scratch folder with
-the task's end state; at the root, `table.txt` and `results.json`
-(machine-readable, for comparing runs across winuse versions).
+per task (per `<task>\<arm>-r<n>` with repeats or arms), the prompt,
+the Harness's stdout/stderr (the JSONL event stream), the winuse trace
+(`trace.jsonl`), the setup and Check output, and the scratch folder
+with the task's end state; at the root, `table.txt`, `summary.txt` and
+`results.json` (machine-readable, schema 2: every run's metrics, and
+each arm's winuse source, Go build id, skill source and SHA-256).
+`winusetasks report <results.json>` prints the summary again, older
+schema-1 files included.
 
 ## The tasks
 
@@ -212,7 +289,7 @@ files, settings, app state — never anything a model said.
   apps.
 - The skill the agent loads is copied from this source tree into the
   scratch folder, so runs do not depend on what is installed
-  user-wide, and a run always tests the SKILL.md of the tree it is in.
+  user-wide, and a run always tests the skill of the tree it is in.
 - Claude runs use `--dangerously-skip-permissions` because an
   unattended run cannot answer permission prompts; the scratch folder
   is the blast radius. That flag is the Task Suite's choice, not the

@@ -4,6 +4,7 @@ package cli
 // (desktop-parity 04).
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
@@ -18,6 +19,9 @@ func TestParseFindArgs(t *testing.T) {
 	if a, err := parseFindArgs([]string{"101", "--count"}); err != nil || !a.Count {
 		t.Errorf("--count: %+v, %v", a, err)
 	}
+	if a, err := parseFindArgs([]string{"101", "--limit", "20", "--max-chars=4000"}); err != nil || a.Limit != 20 || a.MaxChars != 4000 {
+		t.Errorf("--limit, --max-chars: %+v, %v", a, err)
+	}
 	for _, bad := range [][]string{
 		{},
 		{"101", "102"},
@@ -26,6 +30,10 @@ func TestParseFindArgs(t *testing.T) {
 		{"101", "--first", "--count"},
 		{"101", "--first=yes"},
 		{"101", "--depth", "2"},
+		{"101", "--limit", "0"},
+		{"101", "--limit", "3", "--first"},
+		{"101", "--limit", "3", "--count"},
+		{"101", "--max-chars", "x"},
 	} {
 		if _, err := parseFindArgs(bad); err == nil {
 			t.Errorf("%q parsed", bad)
@@ -45,7 +53,21 @@ func TestWindowStateShapeFlags(t *testing.T) {
 	if err != nil || !req.Skeleton || req.Root != "" {
 		t.Errorf("--skeleton: %+v, %v", req, err)
 	}
+	// The output budgets of a full read (speed 05).
+	req, err = windowStateRequest([]string{"101", "--interactive", "--depth", "4", "--compact", "--max-chars", "8000", "--screenshot"}, false)
+	if err != nil || !req.Interactive || req.Depth != 4 || !req.Compact || req.MaxChars != 8000 || !req.Screenshot || req.Root != "" {
+		t.Errorf("budgets: %+v, %v", req, err)
+	}
+	req, err = windowStateRequest([]string{"101", "--out", "state.txt"}, false)
+	if err != nil || !filepath.IsAbs(req.Out) || filepath.Base(req.Out) != "state.txt" {
+		t.Errorf("--out resolves to an absolute path: %+v, %v", req, err)
+	}
 	for _, bad := range [][]string{
+		{"101", "--out"},
+		{"101", "--out", " "},
+		{"101", "--out", "a.txt", "--max-chars", "100"},
+		{"101", "--max-chars", "0"},
+		{"101", "--compact=1"},
 		{"101", "--root"},
 		{"101", "--depth", "0"},
 		{"101", "--depth", "x"},

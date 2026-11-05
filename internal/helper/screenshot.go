@@ -45,22 +45,65 @@ const jpegQuality = 80
 const zoomUsage = "usage: winuse zoom <window> <x>,<y>,<w>,<h>   (the region, in the latest screenshot's pixels)"
 
 // windowStateScreenshot is get-window-state's --screenshot path: refuse a
-// locked desktop, capture (headless, or activated under --headed: see
-// captureObserved), save the scaled image, record the Mapping, then read
-// the tree, so the tree and the screenshot describe the same moment. Any
+// locked desktop, get the Window ready (headless, or activated under
+// --headed: see prepareObserved), then capture and save the scaled image
+// while the tree is read alongside (speed 08: the screenshot costs
+// the slower of the two, not their sum), so the tree and the screenshot
+// describe the same moment. The Mapping is recorded once both are in. Any
 // failure fails the whole command (Codex's fail-loudly behaviour): the
 // agent re-observes.
 //
 // The Screenshot line ends with the frame's screen rectangle in physical
 // px (ticket 01): the agent reads the Window's bounds there, for the
 // Window Actions that move or resize it.
-func windowStateScreenshot(s Services, ctx context.Context, w win.WindowInfo, headed bool) (string, *Error) {
+func windowStateScreenshot(s Services, ctx context.Context, w win.WindowInfo, a windowRef) (string, *Error) {
 	if locked, desktop := s.Locked(); locked {
 		return "", lockedDesktopFailure(desktop)
 	}
-	frame, cerr := captureObserved(s, w, headed)
-	if cerr != nil {
-		return "", cerr
+	capture, perr := prepareObserved(s, w, a.Headed)
+	if perr != nil {
+		return "", perr
+	}
+	type read struct {
+		tree *wstate.Tree
+		err  *Error
+	}
+	tctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	trees := make(chan read, 1)
+	go func() {
+		tree, terr := readWindowTree(s, tctx, w)
+		trees <- read{tree, terr}
+	}()
+	frame, m, path, serr := captureAndSave(capture, w)
+	if serr != nil {
+		cancel()
+		<-trees
+		return "", serr
+	}
+	t := <-trees
+	if t.err != nil {
+		return "", t.err
+	}
+	// Recorded only on full success: the agent's @x,y references mean the
+	// screenshot it actually saw (the tree is part of the same answer).
+	s.Shots.Record(AgentOf(ctx).ID, w.ID, m)
+	r := frame.Rect
+	out, rerr := renderState(t.tree, a, strconv.FormatUint(w.ID, 10))
+	if rerr != nil {
+		return "", rerr
+	}
+	return out + fmt.Sprintf("Screenshot: %s (%dx%d px, scale %s, window at %d,%d %dx%d)\n",
+		path, m.Width, m.Height, formatScale(m.Scale), r.Min.X, r.Min.Y, r.Dx(), r.Dy()), nil
+}
+
+// captureAndSave captures w, scales the frame to fit the model's image
+// budget (shot.FitScale) and saves it as JPEG, returning the frame, the
+// saved image's Mapping and its path.
+func captureAndSave(capture func(uint64) (shot.Frame, error), w win.WindowInfo) (shot.Frame, shot.Mapping, string, *Error) {
+	frame, err := capture(w.ID)
+	if err != nil {
+		return shot.Frame{}, shot.Mapping{}, "", captureError(err)
 	}
 	scale := shot.FitScale(frame.Rect.Dx(), frame.Rect.Dy())
 	img := shot.ScaleImage(frame.Image, scale)
@@ -69,42 +112,43 @@ func windowStateScreenshot(s Services, ctx context.Context, w win.WindowInfo, he
 		return jpeg.Encode(wtr, img, &jpeg.Options{Quality: jpegQuality})
 	})
 	if err != nil {
-		return "", Fail("saving the screenshot failed: "+err.Error(), "")
+		return shot.Frame{}, shot.Mapping{}, "", Fail("saving the screenshot failed: "+err.Error(), "")
 	}
-	tree, terr := readWindowTree(s, ctx, w)
-	if terr != nil {
-		return "", terr
-	}
-	// Recorded only on full success: the agent's @x,y references mean the
-	// screenshot it actually saw (the tree is part of the same answer).
-	s.Shots.Record(AgentOf(ctx).ID, w.ID, m)
-	r := frame.Rect
-	return wstate.Render(tree) +
-		fmt.Sprintf("Screenshot: %s (%dx%d px, scale %s, window at %d,%d %dx%d)\n",
-			path, m.Width, m.Height, formatScale(m.Scale), r.Min.X, r.Min.Y, r.Dx(), r.Dy()), nil
+	return frame, m, path, nil
 }
 
-// captureObserved captures w for an observation. By default it is
-// headless (ADR 0011): a minimized Window is refused before any capture
-// (it has nothing on screen, and restoring it is the agent's call), then
-// the headless chain runs without touching the foreground. With headed it
-// is today's v1 path: activate (which restores a minimized Window), then
-// the full chain, whose screen region method needs the foreground.
+// captureObserved captures w for an observation (prepareObserved, then the
+// chain it picks).
 func captureObserved(s Services, w win.WindowInfo, headed bool) (shot.Frame, *Error) {
-	capture := s.CaptureHeadless
-	if headed {
-		if err := s.Activate(w.ID); err != nil {
-			return shot.Frame{}, activationError(err)
-		}
-		capture = s.Capture
-	} else if s.Minimized(w.ID) {
-		return shot.Frame{}, minimizedShotError(w)
+	capture, perr := prepareObserved(s, w, headed)
+	if perr != nil {
+		return shot.Frame{}, perr
 	}
 	frame, err := capture(w.ID)
 	if err != nil {
 		return shot.Frame{}, captureError(err)
 	}
 	return frame, nil
+}
+
+// prepareObserved gets w ready for an observation's capture and returns
+// the capture chain to run. By default it is headless (ADR 0011): a
+// minimized Window is refused before any capture (it has nothing on
+// screen, and restoring it is the agent's call), then the headless chain
+// runs without touching the foreground. With headed it is today's v1
+// path: activate (which restores a minimized Window), then the full
+// chain, whose screen region method needs the foreground.
+func prepareObserved(s Services, w win.WindowInfo, headed bool) (func(uint64) (shot.Frame, error), *Error) {
+	if headed {
+		if err := s.Activate(w.ID); err != nil {
+			return nil, activationError(err)
+		}
+		return s.Capture, nil
+	}
+	if s.Minimized(w.ID) {
+		return nil, minimizedShotError(w)
+	}
+	return s.CaptureHeadless, nil
 }
 
 // minimizedShotError refuses a headless capture of a minimized Window.

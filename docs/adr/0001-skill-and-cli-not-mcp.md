@@ -11,3 +11,5 @@ winuse is delivered as an Agent Skill (SKILL.md) plus a command-line tool, with 
 
 - Screenshots are delivered as image files the agent opens with its Harness's own file-reading tool, not as inline tool results.
 - Each CLI call is a separate process, so keeping Element Indexes valid between calls needs an explicit design (it cannot rely on a long-lived MCP connection).
+- The token edge over MCP holds only while the skill and the help stay small (amended 2026-11, speed issue 04). The skill is a core SKILL.md that holds what an agent must never lose (safety, the Esc stop, recovery, the loop; under 300 lines and 16 KiB, so Claude Code's 5,000-token re-attach after compaction keeps all of it) plus topics in `references/`, which the binary also serves as `winuse skill <topic>` so they always match its version. `winuse`, `winuse help` and `--help` print a short command index and exit 0, `winuse help <command>` one command's examples and usage, and `winuse help all` the full reference.
+- A skill folder is not read by every Harness from the same place: Claude Code reads `~/.claude/skills` only, the others `~/.agents/skills`, so the installer writes both.
