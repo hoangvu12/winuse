@@ -5,6 +5,8 @@ import (
 	"time"
 	"unsafe"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/hoangvu12/winuse/internal/wstate"
 )
 
@@ -148,10 +150,45 @@ func (s *comSource) Root() (comPtr, NodeData, error) {
 		return el, s.data(el), nil
 	}
 	if hr := call(s.th.auto, uiaElementFromHandleBuildCache, s.hwnd, uintptr(s.req), uintptr(unsafe.Pointer(&el))); hr.Failed() || el == nil {
-		return nil, NodeData{}, fmt.Errorf("%w: reading the Window's tree failed (HRESULT %s)", ErrWindowGone, hr)
+		return nil, NodeData{}, rootReadErr(s.hwnd, hr)
 	}
 	s.rootClass = cachedBSTR(el, elCachedClassName)
 	return el, s.data(el), nil
+}
+
+// isWindow reports whether hwnd still names a Window (user32 IsWindow);
+// tests replace it so they never touch a real Window.
+var isWindow = func(hwnd uintptr) bool {
+	return windows.IsWindow(windows.HWND(hwnd))
+}
+
+// rootReadErr classifies a failed root read (ElementFromHandleBuildCache):
+// ErrWindowGone only when the Window no longer exists, else a
+// TreeReadError with the HRESULT (reliability-council 04: a provider
+// rebuilding its tree fails for a moment while the Window stays).
+func rootReadErr(hwnd uintptr, hr HRESULT) error {
+	if !isWindow(hwnd) {
+		return fmt.Errorf("%w: reading the Window's tree failed (HRESULT %s)", ErrWindowGone, hr)
+	}
+	return &TreeReadError{HR: hr}
+}
+
+// chunkRetryDelay is the pause before a chunk that failed with E_FAIL is
+// read once more (reliability-council 04, cua's 40 ms): a provider
+// rebuilding the subtree answers again by then.
+const chunkRetryDelay = 40 * time.Millisecond
+
+// chunkTimeout is a chunk's UIA transaction timeout:
+// min(remaining, maxTransactionTimeout), at least 1 ms.
+func chunkTimeout(remaining time.Duration) time.Duration {
+	tx := remaining
+	if tx > maxTransactionTimeout {
+		tx = maxTransactionTimeout
+	}
+	if tx < time.Millisecond {
+		tx = time.Millisecond
+	}
+	return tx
 }
 
 // Children fetches node's control-view children (with cached properties) in
@@ -162,20 +199,23 @@ func (s *comSource) Root() (comPtr, NodeData, error) {
 // min(remaining, maxTransactionTimeout), so a provider that does not answer
 // in time fails with UIA_E_TIMEOUT, mapped to ErrChunkTimedOut (the walk
 // then returns the partial tree with the time-limit note). The worker's
-// timeout (workerTransactionTimeout) is put back when the chunk ends.
+// timeout (workerTransactionTimeout) is put back when the chunk ends. A
+// cache build that fails with E_FAIL is tried once more after
+// chunkRetryDelay when the time allows; a second failure is the chunk's
+// error, which the walk marks unreadable.
 func (s *comSource) Children(node comPtr, remaining time.Duration) ([]comPtr, []NodeData, error) {
-	tx := remaining
-	if tx > maxTransactionTimeout {
-		tx = maxTransactionTimeout
-	}
-	if tx < time.Millisecond {
-		tx = time.Millisecond
-	}
-	putTransactionTimeout(s.th.auto, tx)
+	putTransactionTimeout(s.th.auto, chunkTimeout(remaining))
 	defer putTransactionTimeout(s.th.auto, workerTransactionTimeout)
 
 	var fresh comPtr
-	if hr := call(node, elBuildUpdatedCache, uintptr(s.req), uintptr(unsafe.Pointer(&fresh))); hr.Failed() || fresh == nil {
+	hr := call(node, elBuildUpdatedCache, uintptr(s.req), uintptr(unsafe.Pointer(&fresh)))
+	if hr == eFail && remaining > 2*chunkRetryDelay {
+		time.Sleep(chunkRetryDelay)
+		putTransactionTimeout(s.th.auto, chunkTimeout(remaining-chunkRetryDelay))
+		fresh = nil
+		hr = call(node, elBuildUpdatedCache, uintptr(s.req), uintptr(unsafe.Pointer(&fresh)))
+	}
+	if hr.Failed() || fresh == nil {
 		if hr == uiaErrTimeout {
 			return nil, nil, fmt.Errorf("%w (HRESULT %s)", ErrChunkTimedOut, hr)
 		}

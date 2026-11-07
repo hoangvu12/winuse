@@ -1105,6 +1105,14 @@ func resolveWindow(s Services, ref string) (win.WindowInfo, *Error) {
 	return w, nil
 }
 
+// transientTreeRead reports a tree read that failed on a Window that is
+// still open and was not refused (uia.TreeReadError): a poll reads again,
+// and a scan over several Windows skips it (reliability-council 04).
+func transientTreeRead(err error) bool {
+	var tre *uia.TreeReadError
+	return errors.As(err, &tre) && !tre.Refused()
+}
+
 // treeReadError maps a capture failure to a user-facing error. Context
 // deadlines stay plain: the server's central timeout policy answers those.
 func treeReadError(err error) *Error {
@@ -1112,9 +1120,14 @@ func treeReadError(err error) *Error {
 		return Fail("the tree read did not complete in time", "retry; if it keeps failing, the app's accessibility tree is slow")
 	}
 	hint := ""
+	var unread *uia.TreeReadError
 	switch {
 	case errors.Is(err, uia.ErrWindowGone):
 		hint = "the Window may have closed; run winuse list-windows"
+	case errors.As(err, &unread) && unread.Refused():
+		hint = "the Window is open but refuses UI Automation reads; start winuse from an elevated terminal to read administrator Windows, or request a screenshot"
+	case errors.As(err, &unread):
+		hint = "the Window is still open but its app did not answer the read; run the command again, or request a screenshot if it keeps failing"
 	case errors.Is(err, uia.ErrInit):
 		hint = "UI Automation could not start in the helper; report this if it persists"
 	}

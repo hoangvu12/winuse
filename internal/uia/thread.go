@@ -19,6 +19,25 @@ var ErrInit = errors.New("UI Automation is unavailable")
 // Window closed or exposes no accessibility tree.
 var ErrWindowGone = errors.New("window is gone")
 
+// TreeReadError reports that a Window's root element could not be read
+// while the Window still exists (IsWindow): its provider failed, or is
+// rebuilding its tree (reliability-council 04). It is not ErrWindowGone;
+// a read that hit E_FAIL or a transport error has already been retried.
+type TreeReadError struct {
+	HR HRESULT
+}
+
+// Refused reports an access-denied read (an administrator Window, read
+// from a lower integrity), which no retry fixes.
+func (e *TreeReadError) Refused() bool { return e.HR == eAccessDenied }
+
+func (e *TreeReadError) Error() string {
+	if e.Refused() {
+		return fmt.Sprintf("reading the Window's tree was refused (HRESULT %s)", e.HR)
+	}
+	return fmt.Sprintf("reading the Window's tree failed (HRESULT %s); retry", e.HR)
+}
+
 // thread owns the COM state of one worker: created on the worker's locked
 // OS thread, used only from that thread.
 type thread struct {
@@ -203,7 +222,8 @@ func (w *worker) close() {
 // carries a note saying so (a Window that already stayed thin once gets one
 // short retry instead, until a read finds it built); any other nearly empty first read is retried
 // once after a short delay, and a tree that stays nearly empty carries a
-// note pointing the agent at a screenshot.
+// note pointing the agent at a screenshot. A root read that fails while
+// the Window still exists is read again first (retryRoot).
 //
 // Replacement is generation-aware (ticket 14's finding): the read takes a
 // sequence number when it starts, and its Elements are installed only if
@@ -252,7 +272,7 @@ func (c *Client) CaptureFrame(ctx context.Context, hwnd uint64, title, app strin
 		at = res.cut
 		return &readResult{tree: res.tree, rootClass: res.rootClass, paged: res.cut >= 0}, nil
 	}
-	tree, err = readTree(ctx, app, budget, SettleOf(ctx), c.thin.window(hwnd), read, sleepCtx)
+	tree, err = readTree(ctx, app, budget, SettleOf(ctx), c.thin.window(hwnd), retryRoot(ctx, read, sleepCtx), sleepCtx)
 	if err != nil {
 		return nil, -1, err
 	}
