@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -73,11 +74,15 @@ func parseBatchArgs(args []string) (window string, steps []protocol.Step, err er
 	}
 	window, rest := args[0], args[1:]
 	var tokens []string
-	flush := func() error {
+	flush := func(end int) error { // end: the step's end in rest
 		if len(tokens) == 0 {
 			return errors.New("a batch Action is empty; write `then` only between two Actions")
 		}
 		step, serr := parseBatchStep(tokens)
+		var vf *valueFlagsError
+		if errors.As(serr, &vf) {
+			vf.fillBatch(window, rest[:end], rest[end:]) // setvalue.go
+		}
 		if serr != nil {
 			return serr
 		}
@@ -85,16 +90,16 @@ func parseBatchArgs(args []string) (window string, steps []protocol.Step, err er
 		tokens = nil
 		return nil
 	}
-	for _, tok := range rest {
+	for i, tok := range rest {
 		if strings.EqualFold(tok, "then") {
-			if ferr := flush(); ferr != nil {
+			if ferr := flush(i); ferr != nil {
 				return "", nil, ferr
 			}
 			continue
 		}
 		tokens = append(tokens, tok)
 	}
-	if ferr := flush(); ferr != nil {
+	if ferr := flush(len(rest)); ferr != nil {
 		return "", nil, ferr
 	}
 	return window, steps, nil
@@ -185,7 +190,11 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 		if err != nil {
 			return protocol.Step{}, err
 		}
-		args = protocol.SetValueArgs{ElementIndex: index, Ref: ref, Value: strings.Join(rest[1:], " ")}
+		value, err := setValueText(rest[1:], true) // setvalue.go: refused when it ends with winuse flags
+		if err != nil {
+			return protocol.Step{}, err
+		}
+		args = protocol.SetValueArgs{ElementIndex: index, Ref: ref, Value: value}
 	case "perform-secondary-action":
 		if len(rest) < 2 {
 			return protocol.Step{}, errors.New("a batch perform-secondary-action Action takes an element index, name:/id: reference or @x,y, and an action")
@@ -389,8 +398,14 @@ func batchCmd(args []string, headed bool) int {
 		err = errors.New("the first batch Action cannot be `in new`: no Action before it opened a Window")
 	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, batchUsage)
-		return 2
+		var vf *valueFlagsError
+		if errors.As(err, &vf) && stopOnError {
+			vf.afterWindow(stopOnErrorFlag)
+		}
+		if errors.As(err, &vf) && timeout > 0 {
+			vf.afterWindow("--timeout", strconv.FormatFloat(timeout.Seconds(), 'f', -1, 64))
+		}
+		return usageRefusal(err, batchUsage, headed)
 	}
 	if err := runWithTimeout("batch", protocol.BatchArgs{Window: window, Steps: steps, Headed: headed, StopOnError: stopOnError}, timeout); err != nil {
 		reportError(os.Stderr, err)

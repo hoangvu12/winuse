@@ -63,7 +63,7 @@ func parseBatchScript(script string) (window string, steps []protocol.Step, time
 		}
 		step, serr := parseBatchStep(words)
 		if serr != nil {
-			return "", nil, 0, false, fmt.Errorf("batch stdin line %d: %v", n, serr)
+			return "", nil, 0, false, fmt.Errorf("batch stdin line %d: %w", n, serr) // %w: a set-value value ending with flags keeps its hint
 		}
 		steps = append(steps, step)
 	}

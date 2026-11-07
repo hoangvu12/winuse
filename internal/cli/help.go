@@ -30,8 +30,9 @@ const usageHead = `usage: winuse [--headed] <command> [arguments]
 global options:
   each goes before the command or anywhere after it, except inside
   type-text's text, set-value's value and clipboard-set's text, where it is
-  literal text
-  --headed                    run an Action the v1 way: bring the Window to the
+  literal text; set-value refuses a value that ends with winuse flags,
+  with nothing sent (-- before the value sets it as written)
+  --headed                   run an Action the v1 way: bring the Window to the
                                foreground, use the real pointer and keyboard,
                                and show the in-control banner
   --no-wait                   fail at once when an Action is refused for a
@@ -243,7 +244,12 @@ commands:
                                box or other toggle, an item's name for a
                                combo box or list, or an option's label or
                                value for a Page's list); @x,y sets the Element
-                               under a point of the latest screenshot
+                               under a point of the latest screenshot. The
+                               value is everything after the Element: one
+                               ending with winuse flags (--observe, --headed,
+                               --no-wait, --timeout ...) is refused, nothing
+                               sent; put flags before the Element, or -- before
+                               a value that really ends so
   perform-secondary-action <window> <element index | name: | id: | @x,y> <action>
                                perform one of the Element's Secondary Actions
                                (`

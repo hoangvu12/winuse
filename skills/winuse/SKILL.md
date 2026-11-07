@@ -161,7 +161,7 @@ act on again. In full: topic `reading`.
 
 | Need | Command |
 |---|---|
-| Fill a field, tick a box, pick a combo or list item | `set-value <window> <ref> <text\|on\|off\|item>` (Headless, read back) |
+| Fill a field, tick a box, pick a combo or list item | `set-value <window> <ref> <text\|on\|off\|item>` (Headless, read back; flags such as `--observe` go before `<ref>`) |
 | Press a button, open a menu or tree item | `click <window> <ref>` |
 | Type into a named field | `type-text <window> --into <ref> <text>` |
 | Send a key or chord | `press-key <window> Return`, `Control_L+s`, `Escape` |

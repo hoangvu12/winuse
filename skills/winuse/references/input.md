@@ -11,6 +11,15 @@ value back; sliders take numbers. A toggle without a value takes `on` or
 `off` (also `true`, `false`, `checked`, `unchecked`): winuse toggles only
 when the state differs, so the box ends where you asked.
 
+The value is everything after the Element, so put flags before the
+Element: `set-value 101 --observe id:name Ada`. A value whose last
+arguments are winuse flags (`--observe`, `--headed`, `--no-wait`,
+`--timeout 5`, ...) is refused with nothing sent, and the hint shows the
+line with them moved. A flag word in the middle of the value, or inside
+one quoted argument (`"Ada --observe"`), is text; for a value that really
+ends with one, put `--` before the value: `set-value 101 id:name -- Ada
+--observe`.
+
 On a combo box or list, `set-value` picks the item you name, Headless, by
 its exact name, else the same name in any case and spacing, and reads the
 selection back. winuse opens a closed combo only when it shows no items

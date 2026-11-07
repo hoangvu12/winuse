@@ -8,6 +8,8 @@ package cli
 // Batch step, and clipboard-set's text — the token is text like any
 // other, so an agent typing the literal "--headed" never has it silently
 // eaten. Put the flag before the command (or before the text) there.
+// set-value refuses a value that ends with winuse flags instead of
+// setting it (setvalue.go); type-text and clipboard-set do not.
 // Commands that are always Headed, and the Desktop commands, accept the
 // flag and ignore it.
 //
