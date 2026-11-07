@@ -291,6 +291,44 @@ func TestCapsAndPartialNotes(t *testing.T) {
 	}
 }
 
+// TestResultPartial: every cap makes the Page read partial (reliability
+// council 03), the children cap with no reason too; a read within them is
+// whole.
+func TestResultPartial(t *testing.T) {
+	raw := &Raw{Title: "Ten", Main: Doc{Marks: &Marks{}}}
+	root := AXNode{NodeID: "r", Role: &AXValue{Value: json.RawMessage(`"RootWebArea"`)}}
+	var nodes []AXNode
+	for i := 0; i < 10; i++ {
+		id := "b" + string(rune('0'+i))
+		root.ChildIDs = append(root.ChildIDs, id)
+		nodes = append(nodes, AXNode{NodeID: id, ParentID: "r", Role: &AXValue{Value: json.RawMessage(`"button"`)},
+			Name: &AXValue{Value: json.RawMessage(`"B` + string(rune('0'+i)) + `"`)}, BackendDOMNodeID: int64(10 + i)})
+	}
+	nodes[0].ChildIDs = []string{"l"}
+	nodes = append(nodes, AXNode{NodeID: "l", ParentID: "b0", Role: &AXValue{Value: json.RawMessage(`"link"`)},
+		Name: &AXValue{Value: json.RawMessage(`"x"`)}, BackendDOMNodeID: 30})
+	raw.Main.Nodes = append([]AXNode{root}, nodes...)
+	for _, c := range []struct {
+		name    string
+		lim     Limits
+		partial bool
+	}{
+		{"whole", Limits{MaxNodes: 100, MaxDepth: 10, MaxChildren: 100}, false},
+		{"element cap", Limits{MaxNodes: 4, MaxDepth: 10, MaxChildren: 100}, true},
+		{"children cap", Limits{MaxNodes: 100, MaxDepth: 10, MaxChildren: 3}, true},
+		{"depth cap", Limits{MaxNodes: 100, MaxDepth: 0, MaxChildren: 100}, true},
+	} {
+		c.lim.NodeLabel, c.lim.DepthLabel = 3000, 48
+		if res := Build(raw, c.lim); res.Partial() != c.partial {
+			t.Errorf("%s: Partial %v, want %v (%d Elements, reasons %q)", c.name, res.Partial(), c.partial, len(res.Elements), res.Reasons)
+		}
+	}
+	nested := Result{Elements: []wstate.Element{{Role: "list", Truncated: &wstate.Truncation{Limit: "1000", OmittedChildren: 5}}}}
+	if !nested.Partial() {
+		t.Error("a nested children-cap marker must make the read partial")
+	}
+}
+
 // TestMergeKeepsTheFrameAroundTheDocument: everything outside the
 // document's UIA descendants is the frame read, in place.
 func TestMergeKeepsTheFrameAroundTheDocument(t *testing.T) {

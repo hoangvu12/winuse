@@ -49,8 +49,8 @@ func TestEachAgentKeepsItsOwnWindowState(t *testing.T) {
 	f := newFakeStore()
 	c := &Client{store: f.store}
 	a, b := ptrs(2), ptrs(2)
-	f.install("A", 101, f.beginRead(), a, []wstate.Element{{Name: "Save"}, {Name: "Open"}})
-	f.install("B", 101, f.beginRead(), b, []wstate.Element{{Name: "Open"}, {Name: "Save"}})
+	f.install("A", 101, f.beginRead(), a, []wstate.Element{{Name: "Save"}, {Name: "Open"}}, false)
+	f.install("B", 101, f.beginRead(), b, []wstate.Element{{Name: "Open"}, {Name: "Save"}}, false)
 
 	// A reads, B reads, A clicks 1: A's Element, not B's.
 	if el, err := c.lookup(agentCtx("A"), 101, 1); err != nil || el != a[1] {
@@ -67,7 +67,7 @@ func TestEachAgentKeepsItsOwnWindowState(t *testing.T) {
 	}
 
 	// B reading again releases only B's previous Elements.
-	f.install("B", 101, f.beginRead(), ptrs(1), []wstate.Element{{Name: "New"}})
+	f.install("B", 101, f.beginRead(), ptrs(1), []wstate.Element{{Name: "New"}}, false)
 	if f.released[a[0]] != 0 || f.released[a[1]] != 0 || f.released[b[0]] != 1 || f.released[b[1]] != 1 {
 		t.Errorf("released = %v, want B's old Elements only", f.released)
 	}
@@ -81,7 +81,7 @@ func TestTheDefaultAgentIsTheOneStoreOfBefore(t *testing.T) {
 	c := &Client{store: f.store}
 	p := ptrs(1)
 	// A request with no Agent on its context is the default Agent.
-	f.install(defaultAgent, 101, f.beginRead(), p, []wstate.Element{{Name: "OK"}})
+	f.install(defaultAgent, 101, f.beginRead(), p, []wstate.Element{{Name: "OK"}}, false)
 	if el, err := c.lookup(context.Background(), 101, 0); err != nil || el != p[0] {
 		t.Errorf("lookup without an Agent = %v, %v, want the default Agent's Element", el, err)
 	}
@@ -96,7 +96,7 @@ func TestAnAgentThatHasNotReadTheWindowIsToldSo(t *testing.T) {
 		t.Errorf("nobody read the Window: err = %v, want plain ErrNoState", err)
 	}
 
-	f.install("A", 101, f.beginRead(), ptrs(1), []wstate.Element{{Name: "OK"}})
+	f.install("A", 101, f.beginRead(), ptrs(1), []wstate.Element{{Name: "OK"}}, false)
 	for name, err := range map[string]error{
 		"lookup":  func() error { _, err := c.lookup(agentCtx("B"), 101, 0); return err }(),
 		"ref":     func() error { _, err := c.ResolveElementRef(agentCtx("B"), 101, "name:OK"); return err }(),
@@ -113,11 +113,11 @@ func TestIdleAgentsLoseTheirWindowStates(t *testing.T) {
 	f := newFakeStore()
 	f.idle = 5 * time.Minute
 	a, d := ptrs(1), ptrs(1)
-	f.install("A", 101, f.beginRead(), a, []wstate.Element{{}})
-	f.install(defaultAgent, 101, f.beginRead(), d, []wstate.Element{{}})
+	f.install("A", 101, f.beginRead(), a, []wstate.Element{{}}, false)
+	f.install(defaultAgent, 101, f.beginRead(), d, []wstate.Element{{}}, false)
 
 	f.clock = f.clock.Add(6 * time.Minute)
-	f.install("B", 202, f.beginRead(), ptrs(1), []wstate.Element{{}})
+	f.install("B", 202, f.beginRead(), ptrs(1), []wstate.Element{{}}, false)
 	if f.has("A", 101) || f.released[a[0]] != 1 {
 		t.Errorf("A, idle 6 minutes, kept its Window State (released %d)", f.released[a[0]])
 	}
@@ -129,7 +129,7 @@ func TestIdleAgentsLoseTheirWindowStates(t *testing.T) {
 	f.clock = f.clock.Add(4 * time.Minute)
 	f.element("B", 202, 0)
 	f.clock = f.clock.Add(4 * time.Minute)
-	f.install("C", 303, f.beginRead(), ptrs(1), []wstate.Element{{}})
+	f.install("C", 303, f.beginRead(), ptrs(1), []wstate.Element{{}}, false)
 	if !f.has("B", 202) {
 		t.Error("B used its state 4 minutes ago and lost it")
 	}
@@ -139,11 +139,11 @@ func TestTheStoreKeepsAtMostMaxStates(t *testing.T) {
 	f := newFakeStore()
 	f.maxStates = 2
 	first := ptrs(1)
-	f.install("A", 1, f.beginRead(), first, []wstate.Element{{}})
+	f.install("A", 1, f.beginRead(), first, []wstate.Element{{}}, false)
 	f.clock = f.clock.Add(time.Second)
-	f.install("B", 2, f.beginRead(), ptrs(1), []wstate.Element{{}})
+	f.install("B", 2, f.beginRead(), ptrs(1), []wstate.Element{{}}, false)
 	f.clock = f.clock.Add(time.Second)
-	f.install("A", 3, f.beginRead(), ptrs(1), []wstate.Element{{}})
+	f.install("A", 3, f.beginRead(), ptrs(1), []wstate.Element{{}}, false)
 	if f.has("A", 1) || f.released[first[0]] != 1 {
 		t.Error("the least recently used Window State was kept past the cap")
 	}

@@ -29,7 +29,7 @@ func TestElementPointIndexNotInCachedState(t *testing.T) {
 	// Fake element pointers: distinct real addresses; seeded through the
 	// real beginRead/install path.
 	a, b := 1, 2
-	c.store.install(defaultAgent, 101, c.store.beginRead(), []comPtr{comPtr(&a), comPtr(&b)}, nil)
+	c.store.install(defaultAgent, 101, c.store.beginRead(), []comPtr{comPtr(&a), comPtr(&b)}, nil, false)
 
 	for _, index := range []int{2, 100, -1} {
 		_, err := c.ElementPoint(context.Background(), 101, index)

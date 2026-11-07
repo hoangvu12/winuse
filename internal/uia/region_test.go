@@ -75,7 +75,7 @@ func TestStoreAddsAfterTheWindowState(t *testing.T) {
 	f := newFakeStore()
 	c := &Client{store: f.store}
 	read := ptrs(3)
-	f.install("A", 101, f.beginRead(), read, []wstate.Element{{Name: "Window"}, {Name: "Save", AutomationId: "save"}, {Name: "Open"}})
+	f.install("A", 101, f.beginRead(), read, []wstate.Element{{Name: "Window"}, {Name: "Save", AutomationId: "save"}, {Name: "Open"}}, false)
 
 	found := ptrs(2)
 	idx := f.add("A", 101, found, []wstate.Element{{Name: "Save", AutomationId: "save"}, {Name: "Deep", AutomationId: "deep"}}, nil)
@@ -103,7 +103,7 @@ func TestStoreAddsAfterTheWindowState(t *testing.T) {
 		t.Error("B sees A's added Elements")
 	}
 	// A full read replaces everything, the added Elements too.
-	f.install("A", 101, f.beginRead(), ptrs(1), []wstate.Element{{Name: "Window"}})
+	f.install("A", 101, f.beginRead(), ptrs(1), []wstate.Element{{Name: "Window"}}, false)
 	if f.released[found[0]] != 1 || f.released[found[1]] != 1 {
 		t.Errorf("the added Elements were not released: %v", f.released)
 	}

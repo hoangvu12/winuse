@@ -11,6 +11,12 @@ package uia
 // Ambiguity still refuses: the candidates a fresh read found are added too
 // and listed with their indexes.
 //
+// A one-match answer needs a whole read (reliability council 03): a
+// partial cached Window State (a skeleton, or a read cut by time, a cap or
+// an unreadable chunk) answers only with ambiguity and otherwise goes
+// live, and a partial fresh read refuses its one match, adding it so the
+// refusal can name its index, and reports a miss as incomplete.
+//
 // Element Indexes stay strict: they are valid only for the Window State
 // that printed them. Another Agent's Window State is never a reason to walk:
 // an Agent that has not read a Window is told so (ADR 0014 Decision 2).
@@ -48,12 +54,11 @@ func (c *Client) ResolveElementRefLive(ctx context.Context, hwnd uint64, ref str
 		return LiveResolution{}, err
 	}
 	who := storeAgent(ctx)
-	els, base, ok := c.store.refState(who, hwnd)
-	var noState error
+	cv, ok := c.store.refState(who, hwnd)
 	if !ok {
-		noState = c.store.noState(who, hwnd)
+		cv.noState = c.store.noState(who, hwnd)
 	}
-	return resolveCacheFirst(cacheView{els: els, base: base, ok: ok, noState: noState}, ref,
+	return resolveCacheFirst(cv, ref,
 		func(i int) bool { return c.alive(ctx, hwnd, i) },
 		func() (LiveResolution, error) { return c.resolveLive(ctx, hwnd, ref, budget) })
 }
@@ -62,14 +67,22 @@ func (c *Client) ResolveElementRefLive(ctx context.Context, hwnd uint64, ref str
 type cacheView struct {
 	els     []wstate.Element
 	base    int
-	ok      bool  // the Agent has a Window State of the Window
-	noState error // without one, why (ErrNoState, or NotReadByAgentError)
+	partial bool         // the read behind it did not see the whole Window
+	doubted map[int]bool // added Elements a partial fresh read found (store.doubt)
+	ok      bool         // the Agent has a Window State of the Window
+	noState error        // without one, why (ErrNoState, or NotReadByAgentError)
 }
 
-// resolveCacheFirst is the decision: the cache's answer when it has one
-// and its Element is alive; its ambiguity as is; another Agent's read as a
-// refusal; the live walk for everything else (no Window State, no match, a
-// gone Element).
+// answers reports whether the cache may answer with its one match at
+// index: the read was whole, and no partial fresh read added it.
+func (cv cacheView) answers(index int) bool {
+	return !cv.partial && !cv.doubted[index]
+}
+
+// resolveCacheFirst is the decision: the cache's answer when it has one,
+// its read was whole and its Element is alive; its ambiguity as is;
+// another Agent's read as a refusal; the live walk for everything else (no
+// Window State, no match, a gone Element, a partial read's one match).
 func resolveCacheFirst(cv cacheView, ref string, alive func(int) bool, live func() (LiveResolution, error)) (LiveResolution, error) {
 	if !cv.ok {
 		var other *NotReadByAgentError
@@ -81,7 +94,7 @@ func resolveCacheFirst(cv cacheView, ref string, alive func(int) bool, live func
 	i, err := resolveBaseFirst(cv.els, cv.base, ref)
 	var none *wstate.NoMatchRefError
 	switch {
-	case err == nil && alive(i):
+	case err == nil && cv.answers(i) && alive(i):
 		return LiveResolution{Index: i}, nil
 	case err != nil && !errors.As(err, &none):
 		return LiveResolution{}, err // several Elements match: never a guess
@@ -135,6 +148,9 @@ func (c *Client) resolveLive(ctx context.Context, hwnd uint64, ref string, budge
 			return
 		}
 		keep, rerr := liveMatches(res.Elements, ref)
+		if res.Partial {
+			rerr = partialRead(ref, rerr)
+		}
 		var live []comPtr
 		var elements []wstate.Element
 		for i := range res.Elements {
@@ -147,6 +163,10 @@ func (c *Client) resolveLive(ctx context.Context, hwnd uint64, ref string, budge
 		}
 		indexes := c.addRead(who, hwnd, live, elements, r)
 		out, jobErr = liveAnswer(rerr, indexes, elements)
+		var one *wstate.PartialRefError
+		if errors.As(jobErr, &one) {
+			c.store.doubt(who, hwnd, one.Match)
+		}
 	})
 	if err != nil {
 		return LiveResolution{}, err
@@ -172,13 +192,34 @@ func liveMatches(els []wstate.Element, ref string) ([]bool, error) {
 	return keep, err
 }
 
+// partialRead turns a partial fresh read's resolution of ref into its
+// answer there: one match (err nil) a *wstate.PartialRefError, whose
+// Match and Candidate liveAnswer fills in once the match is added; none a
+// *wstate.NoMatchRefError marked Partial; ambiguity as is.
+func partialRead(ref string, err error) error {
+	if err == nil {
+		kind, text, _ := wstate.ParseElementRef(ref)
+		return &wstate.PartialRefError{Kind: kind, Text: wstate.Collapse(text)}
+	}
+	var none *wstate.NoMatchRefError
+	if errors.As(err, &none) {
+		none.Partial = true
+	}
+	return err
+}
+
 // liveAnswer turns a fresh read's resolution into the answer, with the
 // Element Indexes its matches were added under.
 func liveAnswer(err error, indexes []int, elements []wstate.Element) (LiveResolution, error) {
 	var several *wstate.AmbiguousRefError
+	var one *wstate.PartialRefError
 	switch {
 	case err == nil && len(indexes) == 1:
 		return LiveResolution{Index: indexes[0], Fresh: true}, nil
+	case errors.As(err, &one) && len(indexes) == 1 && len(elements) == 1:
+		one.Match = indexes[0]
+		one.Candidate = wstate.Line(indexes[0], &elements[0])
+		return LiveResolution{}, &LiveRefError{Err: one}
 	case errors.As(err, &several) && len(indexes) == len(elements):
 		several.Matches = indexes
 		several.Candidates = nil

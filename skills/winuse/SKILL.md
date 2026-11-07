@@ -143,7 +143,12 @@ share, which `id:` cannot name (topic `reading`).
   Element under it and name it in a `Note:`.
 
 Matching is exact and case-sensitive; a name or ID that matches several
-Elements fails and lists them. An index or point is valid only for the read
+Elements fails and lists them. One match counts only in a read that saw the
+whole Window: when your read and winuse's fresh one are both partial (a
+partial note, `--skeleton`, a `(truncated: ...)` line) it fails with `1
+match in the part read; the read was partial` and that match's index; narrow
+with `find` or `--root`, or act by the index. A miss there is incomplete,
+not absent. An index or point is valid only for the read
 that printed it; a stale one fails and asks for a fresh read. `name:` and
 `id:` outlast it: winuse finds them in a fresh read and says so in a
 `Note:`, and your indexes still work. Prefer them for an Element you will
