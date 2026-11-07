@@ -26,7 +26,7 @@ func TestObserveOnTheFixture(t *testing.T) {
 		t.Helper()
 		out, stderr, exit := runWinuse(t, args, "WINUSE_HELPER_IDLE="+e2eIdle)
 		if exit != 0 {
-			t.Fatalf("winuse %s: exit %d, stderr:\n%s", strings.Join(args, " "), exit, stderr)
+			t.Fatalf("winuse %s: exit %d, stdout:\n%s\nstderr:\n%s", strings.Join(args, " "), exit, out, stderr)
 		}
 		return out
 	}
