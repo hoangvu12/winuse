@@ -1,6 +1,6 @@
 # 08: No CI runs tests; live claims are tracked in free text
 
-Status: ready-for-agent (user, 2026-11-07: implement all 13; ask the user at the decision points in 08, 09, 12 and 13)
+Status: ready-for-human (part 1 done 2026-11-07; parts 2-3 wait on the user's decision about e2e in CI)
 
 **What's wrong:**
 
@@ -18,10 +18,20 @@ Status: ready-for-agent (user, 2026-11-07: implement all 13; ask the user at the
 
 **Blocked by:** none
 
-- [ ] `ci.yml` with vet and test on windows-latest
+- [x] `ci.yml` with vet and test on windows-latest
 - [ ] e2e lane on the runner (fixture only); amend `test/e2e/doc.go`'s rule to "the user, or CI on a hosted runner"
 - [ ] Ledger file and the skip-fails check
 
 **Verified by the orchestrator:** the single workflow, `doc.go`'s wording, agent-desktop's `windows-latest` lanes. Not opened by the orchestrator: cua's workflow.
 
 **Conflicts:** `test/e2e/doc.go` says agents must never enable the opt-in. The runner is not the user's PC, but this is the user's call. ADR 0008 (task suite, user-started) stays.
+
+## Comments
+
+### 2026-11-07: part 1 landed
+
+- Workflow (`.github/workflows/ci.yml`, name `ci`): runs on every push and pull request, one job on `windows-latest` with `CGO_ENABLED=0` for every step and `permissions: contents: read`. Steps: `actions/checkout@v4`, `actions/setup-go@v5` with `go-version-file: go.mod` (the same action pins as `release.yml`; the version comes from go.mod's `go 1.27.1`, while release.yml hard-codes `"1.27"`), then `go vet ./...`, `go test ./...` and `go build ./...`.
+- No e2e: `WINUSE_E2E` is set nowhere, the `e2e` build tag is not passed, and `test/e2e/doc.go` is unchanged. Without the tag, `./test/e2e` compiles only `parsing_test.go` (`TestAppBlock`, offline). Unit tests that could reach the desktop sit behind `win.LiveDesktopGuard`, which refuses under `go test` unless `WINUSE_E2E=1`.
+- Local check (this laptop, Go 1.27.1): with `CGO_ENABLED=0`, `go vet ./...`, `go test -count=1 ./...` and `go build ./...` all pass. Nothing needs a C compiler. The YAML parses.
+- Not run on GitHub yet: nothing was pushed. Things that could fail on the hosted runner: `internal/win/windowtitle_test.go` creates a real message-only window on a busy thread (no visible UI, but it needs a window station); `internal/helper` takes about 32 s and has timing-based waits that a slower runner could make flaky; `internal/version/build_test.go` shells out to `go tool buildid` (it skips if that fails). `internal/cli/dispatch_test.go` skips one case in session 0, and `skilllink_test.go` skips when it cannot create junctions or symlinks.
+- Open: parts 2 (the e2e lane on the runner, fixture only, and the change to doc.go's rule) and 3 (the ledger and the skip-fails check) wait on the user's decision about e2e in CI.
