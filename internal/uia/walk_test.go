@@ -25,6 +25,7 @@ type fakeSource struct {
 	root          *fakeNode
 	rootErr       error
 	childrenErr   func(n *fakeNode) error
+	errKeepsKids  bool // a childrenErr comes with the node's children (the ones that did read)
 	elapsed       time.Duration
 	step          time.Duration
 	base          time.Time
@@ -53,8 +54,9 @@ func (s *fakeSource) Children(n *fakeNode, remaining time.Duration) ([]*fakeNode
 	if s.onChildren != nil {
 		s.onChildren(n)
 	}
+	var err error
 	if s.childrenErr != nil {
-		if err := s.childrenErr(n); err != nil {
+		if err = s.childrenErr(n); err != nil && !s.errKeepsKids {
 			return nil, nil, err
 		}
 	}
@@ -64,7 +66,7 @@ func (s *fakeSource) Children(n *fakeNode, remaining time.Duration) ([]*fakeNode
 		kids[i] = k
 		data[i] = k.data
 	}
-	return kids, data, nil
+	return kids, data, err
 }
 
 // A three-level tree: root is index 0, children follow depth-first.
@@ -324,6 +326,34 @@ func TestWalkChildrenErrorBecomesLeafWithNote(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("Notes = %v, want the unreadable-children note", res.Notes)
+	}
+}
+
+// A chunk that read some children and failed on others (reliability-council
+// 05): the children that did read render and are expanded, and the read
+// carries the partial note, never the nearly-empty one.
+func TestWalkChildrenErrorKeepsTheChildrenThatRead(t *testing.T) {
+	tree := node(wstate.ControlTypeWindow, "W",
+		node(wstate.ControlTypePane, "Panel", node(wstate.ControlTypeButton, "OK")),
+	)
+	src := newFakeSource(tree)
+	src.errKeepsKids = true
+	src.childrenErr = func(n *fakeNode) error {
+		if n == tree {
+			return errors.New("reading cached child 1 of 2 failed")
+		}
+		return nil
+	}
+	res, err := Walk[*fakeNode](src, fullConfig())
+	if err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	if len(res.Elements) != 3 || res.Elements[1].Name != "Panel" || res.Elements[2].Name != "OK" {
+		t.Fatalf("Elements = %+v, want the window, the panel and its button", res.Elements)
+	}
+	if len(res.Notes) != 1 || !strings.HasPrefix(res.Notes[0], partialNotePrefix) ||
+		!strings.Contains(res.Notes[0], "not every Element's children could be read") {
+		t.Errorf("Notes = %v, want only the unreadable-children partial note", res.Notes)
 	}
 }
 
