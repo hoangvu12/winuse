@@ -1,6 +1,6 @@
 # 09: Window identity: re-check at the write; the shared-record gap
 
-Status: ready-for-human (part 1 done 2026-11-07; part 2, per-agent records, waits on the user's decision: it reverses ADR 0014)
+Status: done (part 1 landed 2026-11-07; part 2, per-agent records, wontfix: user, 2026-11-07)
 
 **What's wrong:**
 
@@ -17,7 +17,7 @@ Status: ready-for-human (part 1 done 2026-11-07; part 2, per-agent records, wait
 **Blocked by:** none
 
 - [x] Re-check before HWND writes, with an injected handle reuse test
-- [ ] Decision: per-agent records or not (ADR 0014)
+- [x] Decision: per-agent records or not (ADR 0014): not; the shared records stay
 
 **Verified by the orchestrator:** `identity.go` as cited; ADR 0014's note.
 
@@ -37,3 +37,7 @@ Status: ready-for-human (part 1 done 2026-11-07; part 2, per-agent records, wait
 - Docs: `skills/winuse/SKILL.md` (the Recover row names both texts), `references/windows.md`; ADR 0014's note on the shared records gains a sentence: the re-check narrows the gap, it does not close it.
 - Green: `go vet ./...`, `CGO_ENABLED=0 go build ./...`, `CGO_ENABLED=0 go test ./...`.
 - Open: part 2 (per-agent records next to each Agent's Window State) waits on the user: it reverses ADR 0014. The records still vanish when the helper exits idle, and the first Action then records what is there. Between the re-check and the write there is still a window of microseconds (a Headed Action's input after the verified activation, a pattern call's own round trip). Live: not run (offline only).
+
+### 2026-11-07: part 2 wontfix (user)
+
+- Decision: no per-agent records. The shared records stay, as ADR 0014 chose. Reason: part 1's re-check at the write covers the common case (a Window that closes and hands its handle on while the command waits or reads), and the gap left needs two agents plus a handle reuse in between, one agent listing the new Window before the other's command starts. ADR 0014 already says the re-check narrows the gap and does not close it.
