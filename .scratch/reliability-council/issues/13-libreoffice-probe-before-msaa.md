@@ -1,6 +1,6 @@
 # 13: LibreOffice and other SAL windows: probe before building an MSAA walker
 
-Status: ready-for-human (2026-11-07: waits on the user: LibreOffice is not installed on this PC, and the probe needs a live read)
+Status: wontfix (user, 2026-11-07: LibreOffice not installed; skip for now)
 
 **What's unknown:** winuse reads every Window's root with one combined call, ElementFromHandleBuildCache (`wm:internal/uia/capture.go:136`). Nobody has tried it on LibreOffice.
 
@@ -29,3 +29,7 @@ Status: ready-for-human (2026-11-07: waits on the user: LibreOffice is not insta
 - Nothing built: every step depends on the probe. LibreOffice is not installed on this PC (no swriter.exe, checked 2026-11-07), and the probe needs a live read on the user's desktop.
 - Ticket 08's hosted-runner e2e lane, if the user approves it, could run the probe there instead.
 - Asked the user: install LibreOffice and allow the probe, or skip the ticket.
+
+### 2026-11-07: wontfix (user)
+
+- user, 2026-11-07: LibreOffice not installed; skip for now. Nothing was built or probed. If LibreOffice is installed later, the ticket's step 1 (a probe of one Writer window) is still the way in; the hosted-runner e2e lane from ticket 08 could also run it there.
