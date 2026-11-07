@@ -32,7 +32,8 @@ func TestObserveOnTheFixture(t *testing.T) {
 	}
 
 	// A set-value with --observe: ok, then the field's line as changed.
-	out := run("set-value", window, "id:"+string(fixture.ElemTextField), "observed", "--observe")
+	// The flag goes before the value: everything after the value is text.
+	out := run("set-value", window, "--observe", "id:"+string(fixture.ElemTextField), "observed")
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.Text == "observed" })
 	if !strings.HasPrefix(out, "ok\n") || !strings.Contains(out, "Changed since this agent's last read of window "+window) ||
 		!regexp.MustCompile(`(?m)^\t+~\d+ edit .*Value: observed`).MatchString(out) {
