@@ -1,6 +1,6 @@
 # 08: No CI runs tests; live claims are tracked in free text
 
-Status: ready-for-human (parts 1-3 built 2026-11-07; the e2e lane's trial runs on GitHub are pending)
+Status: done (part 1 landed 2026-11-07; parts 2-3 landed 2026-11-07 after the lane's trial runs on GitHub; user, 2026-11-07: build parts 2 and 3)
 
 **What's wrong:**
 
@@ -48,3 +48,14 @@ User's decisions (2026-11-07): an e2e lane on GitHub's hosted `windows-latest` r
 - Docs: `test/e2e/doc.go`, `README.md` (opt-in section, a new "The e2e lane and the ledger" section, step 5 of writing a test) and `runner_test.go`'s comment and skip message now say "the user, or CI on a hosted runner"; agents still never enable the opt-in on the user's PC. ADR 0008 (the Task Suite stays user-run) is unchanged.
 - Local check (this PC, offline only; no e2e test was run here and `WINUSE_E2E` was never set): `go vet ./...`, `go vet -tags e2e ./test/e2e`, `go test -tags e2e -c` (compile only), `CGO_ENABLED=0 go test ./...` and `CGO_ENABLED=0 go build ./...` pass; both workflows parse as YAML; `e2eledger check` on a hand-written two-event file reports 1 passed, 1 skipped, 152 did not run and exits 1.
 - Trial pending: nothing was pushed. Expected first-run trouble on the runner: the WGC tests may skip (WGC unsupported) and so fail the lane by design; `TestListWindowsOutput` and `TestGetWindowPrintsTheResovedLine` need at least one visible Window outside the fixture (the latter indexes the App field of an empty listing and would panic); Headed tests depend on the runner session granting the foreground and moving the real cursor; screenshot sizes depend on the runner's display and DPI; `TestClipboard` skips if the clipboard holds a non-text format; `internal/helper`-style timing waits may be flaky on a slower machine. A runner row that cannot work there moves to `user` with the reason, after the trial says so.
+
+### 2026-11-07: the lane's trial runs on GitHub (orchestrator)
+
+The branch was pushed to GitHub so the lane ran on the hosted `windows-latest` runner only; nothing ran on the user's PC. Every run selected the ledger's 154 runner rows and took about 4 minutes (the tests about 200 s).
+
+- Run 42366078064: 127 passed, 27 failed, 0 skipped. Two stale tests, not the runner: 26 failures came from `expectedLines` (`get_window_state_test.go`), which still printed `ID: solo` on Solo One and Solo Two, an ID the two share, which a default read has dropped since speed-defaults. `TestObserveOnTheFixture` put `--observe` after set-value's value, where it is text (the same in release 0.3.0), so the field read "observed --observe".
+- Run 42366605784, after fixing both: 153 passed, 1 failed. `TestObserveOnTheFixture`'s Batch failed at `press-key Tab`; its run helper printed only stderr, so it now prints stdout too.
+- Run 42367002707: the same failure, now with its cause: an unheaded `press-key Tab` has no background route outside a classic dialog since headless-max 21 (`--post` or `--headed`). The test predates that; its Batch now posts the Tab.
+- Run 42367421412 (push) and run 42367782401 (manual re-run of the same commit): 154 passed, 0 failed, 0 skipped, and the ledger check passed. The ledger's runner rows record both.
+- None of the 27 failures came from the runner itself: WGC, screenshots, coordinate clicks, Headed Actions with the real cursor, the clipboard, the overlay and the multi-agent tests all passed there. The 41 user rows stay user-only (other Apps, browsers, the shell, toasts, a person's Esc).
+- The lane runs on every push and pull request (about 5 minutes). The `ci` workflow passed on each of these pushes too.
