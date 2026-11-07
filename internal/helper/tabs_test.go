@@ -102,7 +102,7 @@ func (a *stripActions) ElementBounds(ctx context.Context, hwnd uint64, index int
 	}
 	return r.Left, r.Top, r.Right, r.Bottom, "", nil
 }
-func (a *stripActions) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any) error {
+func (a *stripActions) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any, pagePartial bool) error {
 	return nil
 }
 func (a *stripActions) ElementOrigin(ctx context.Context, hwnd uint64, index int) (any, error) {

@@ -149,12 +149,12 @@ func (w *walkTrees) walk(hwnd uint64, cut uia.DocumentCut) (*wstate.Tree, int, e
 	return tree, res.Cut, nil
 }
 
-func (w *walkTrees) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any) error {
+func (w *walkTrees) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any, pagePartial bool) error {
 	if w.supersede {
 		w.supersede = false
 		return uia.ErrSuperseded
 	}
-	return w.pageTrees.SplicePage(ctx, hwnd, base, merged, from, origins)
+	return w.pageTrees.SplicePage(ctx, hwnd, base, merged, from, origins, pagePartial)
 }
 
 // readUnder reports whether read r read the children of an Element under

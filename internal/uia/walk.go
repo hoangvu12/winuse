@@ -153,6 +153,12 @@ type WalkResult[T any] struct {
 	// Cut is the Element Index of the Document Element whose descendants
 	// were left out (WalkConfig.Cut), or -1.
 	Cut int
+	// Partial says the walk did not see the whole Window (reliability
+	// council 03): a partial-tree note (time, node cap, depth cap,
+	// unreadable children), a truncation marker (the children cap), or a
+	// skeleton node whose children were counted, or could not be. A cut
+	// Document is not a loss: its content is read elsewhere.
+	Partial bool
 }
 
 // walk reasons, in the order the partial-tree note lists them.
@@ -194,7 +200,9 @@ func Walk[T any](src TreeSource[T], cfg WalkConfig) (WalkResult[T], error) {
 		return res, err
 	}
 	w.visit(root, data, 0)
-	if reason, ok := w.reasonNote(); ok {
+	reason, ok := w.reasonNote()
+	res.Partial = ok || w.truncated || w.hidden
+	if ok {
 		res.Notes = append(res.Notes, reason)
 	} else if !w.truncated && res.Cut < 0 && len(res.Elements) <= nearEmptyNodes {
 		// Only an uncut tree this small is "nearly empty": a tree cut by a
@@ -216,6 +224,7 @@ type walker[T any] struct {
 	res       *WalkResult[T]
 	stopped   bool
 	truncated bool // any element carries a truncation marker
+	hidden    bool // a skeleton node has children left unread, or uncounted
 	reasons   [reasonCount]bool
 
 	// The pending Document cut (WalkConfig.Cut).
@@ -237,6 +246,7 @@ type docMark struct {
 	open      bool // its descendants are being read
 	reasons   [reasonCount]bool
 	truncated bool
+	hidden    bool
 }
 
 func (w *walker[T]) visit(node T, data NodeData, depth int) {
@@ -251,7 +261,7 @@ func (w *walker[T]) visit(node T, data NodeData, depth int) {
 		if data.HasValue {
 			value = data.ValueValue
 		}
-		w.docs = append(w.docs, docMark{index: index, name: data.Name, value: value, open: true, reasons: w.reasons, truncated: w.truncated})
+		w.docs = append(w.docs, docMark{index: index, name: data.Name, value: value, open: true, reasons: w.reasons, truncated: w.truncated, hidden: w.hidden})
 		w.openDocs++
 		w.expand(node, depth, index)
 		w.openDocs--
@@ -358,6 +368,7 @@ func (w *walker[T]) countHidden(node T, index int) {
 	kids, _, err := w.src.Children(node, remaining)
 	w.drop(kids)
 	if err != nil {
+		w.hidden = true
 		if errors.Is(err, ErrChunkTimedOut) {
 			w.reasons[reasonTime] = true
 			w.stopped = true
@@ -365,6 +376,9 @@ func (w *walker[T]) countHidden(node T, index int) {
 		return
 	}
 	w.res.Elements[index].MoreChildren = len(kids)
+	if len(kids) > 0 {
+		w.hidden = true
+	}
 }
 
 // cutPending reports whether the walk still has a Document cut to place.
@@ -406,7 +420,7 @@ func (w *walker[T]) cutAt(index int) {
 	w.res.Live = w.res.Live[:index+1]
 	w.res.Elements = w.res.Elements[:index+1]
 	w.res.Elements[index].Truncated = nil
-	w.reasons, w.truncated = w.mark.reasons, w.mark.truncated
+	w.reasons, w.truncated, w.hidden = w.mark.reasons, w.mark.truncated, w.mark.hidden
 	if w.res.FocusedIndex > index {
 		w.res.FocusedIndex = index
 	}

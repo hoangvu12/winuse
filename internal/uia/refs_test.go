@@ -17,7 +17,7 @@ import (
 // elements back the given live pointers, through the real
 // beginRead/install path.
 func installState(c *Client, hwnd uint64, elems []comPtr, elements []wstate.Element) {
-	c.store.install(defaultAgent, hwnd, c.store.beginRead(), elems, elements)
+	c.store.install(defaultAgent, hwnd, c.store.beginRead(), elems, elements, false)
 }
 
 // refState is the reference test tree: two Elements share a Name, one

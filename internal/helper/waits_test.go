@@ -135,7 +135,7 @@ func (d *waitDesk) ResolveElementRef(ctx context.Context, hwnd uint64, ref strin
 	return d.refIndex, nil
 }
 
-func (d *waitDesk) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any) error {
+func (d *waitDesk) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any, pagePartial bool) error {
 	return nil
 }
 

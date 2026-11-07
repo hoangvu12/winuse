@@ -38,8 +38,8 @@ type pageActor struct {
 	trees *pageTrees
 }
 
-func (a pageActor) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any) error {
-	return a.trees.SplicePage(ctx, hwnd, base, merged, from, origins)
+func (a pageActor) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any, pagePartial bool) error {
+	return a.trees.SplicePage(ctx, hwnd, base, merged, from, origins, pagePartial)
 }
 
 func (a pageActor) ElementOrigin(ctx context.Context, hwnd uint64, index int) (any, error) {

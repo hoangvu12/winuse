@@ -34,10 +34,12 @@ var ErrSuperseded = errors.New("the Window was read again meanwhile")
 // Index. base must be the Elements the latest Capture of hwnd returned,
 // still stored: otherwise ErrSuperseded and nothing changes. The UIA
 // Elements merged leaves out are released on the worker thread.
-func (c *Client) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any) error {
+// pagePartial says the Page read was cut: the merged Window State is
+// partial when it or the frame read was.
+func (c *Client) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any, pagePartial bool) error {
 	var jobErr error
 	err := c.RunFor(ctx, hwnd, func(w *worker, r *run) {
-		jobErr = c.store.splice(storeAgent(ctx), hwnd, base, merged, from, origins)
+		jobErr = c.store.splice(storeAgent(ctx), hwnd, base, merged, from, origins, pagePartial)
 	})
 	if err != nil {
 		return err
@@ -54,7 +56,7 @@ func (c *Client) ElementOrigin(ctx context.Context, hwnd uint64, index int) (any
 }
 
 // splice is SplicePage's store half; it runs on a COM thread.
-func (s *store) splice(agent string, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any) error {
+func (s *store) splice(agent string, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any, pagePartial bool) error {
 	s.mu.Lock()
 	st := s.lookupState(agent, hwnd)
 	if st == nil || !sameElements(st.elements, base) || len(st.elems) != len(base) {
@@ -88,7 +90,8 @@ func (s *store) splice(agent string, hwnd uint64, base, merged []wstate.Element,
 	st.elements = merged
 	st.origins = origins
 	st.base = len(merged)
-	st.added = nil // the added Elements were not in the merge: released above
+	st.added, st.doubted = nil, nil // the added Elements were not in the merge: released above
+	st.partial = st.partial || pagePartial
 	s.mu.Unlock()
 	for _, p := range removed {
 		s.release(p)

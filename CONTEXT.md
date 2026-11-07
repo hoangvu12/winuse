@@ -75,7 +75,7 @@ An operation an Element offers besides a plain click, such as Expand, Collapse, 
 _Avoid_: Pattern, verb, default action
 
 **Element Reference**:
-How an Action names its target: an Element Index, an Element's name, an Element's ID, or screen coordinates. A name or ID that matches more than one Element is an error, never a guess.
+How an Action names its target: an Element Index, an Element's name, an Element's ID, or screen coordinates. A name or ID that matches more than one Element is an error, never a guess, and so is one match in a read that did not see the whole Window (a partial or skeleton Window State): another may sit in the part not read.
 _Avoid_: Selector, locator
 
 **Batch**:
