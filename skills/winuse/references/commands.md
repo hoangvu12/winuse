@@ -20,7 +20,7 @@ find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--firs
 zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right] [--post] [--modifiers ctrl,shift,alt]
 # --modifiers: Headless on a Page and for ctrl or shift on a multi-select list item; else --post or --headed
-set-value <window> <ref> <value|on|off|item name>
+set-value <window> <ref> <value|on|off|item name>   # flags before <ref>: a value ending with winuse flags is refused; -- <value> sets it as written
 perform-secondary-action <window> <ref> <action>   # Raise, Scroll Up/Down/Left/Right, Expand, Collapse, Toggle, Select, ContextMenu
 type-text <window> [--post | --into <ref>] [--interval-ms <n>] <text>
 press-key <window> <key> [--post] [--force]

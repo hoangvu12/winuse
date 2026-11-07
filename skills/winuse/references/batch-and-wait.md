@@ -72,6 +72,8 @@ Changed since this agent's last read of window 101 (~ changed, * new, - gone); E
   and `--full` for Codex's text, every ID, uncut.
   They go before the command or anywhere after it, but not inside type-text's
   text or set-value's value, where they would be text (as `--headed`).
+  `set-value 101 id:qty 3 --observe` is refused with nothing sent: write
+  `set-value 101 --observe id:qty 3`.
 - A failed Action prints no observation. A Batch observes after its last
   step, failed steps included. A read that fails is a `Note:`; the Action's
   own result stands.
