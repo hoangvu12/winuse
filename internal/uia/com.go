@@ -189,7 +189,29 @@ const (
 	uiaErrNoClickablePoint = HRESULT(-0x7FFBFDFE) // 0x80040202 UIA_E_NOCLICKABLEPOINT
 	uiaErrElementDisabled  = HRESULT(-0x7FFBFE00) // 0x80040200 UIA_E_ELEMENTNOTENABLED
 	uiaErrElementGone      = HRESULT(-0x7FFBFDFF) // 0x80040201 UIA_E_ELEMENTNOTAVAILABLE
+	eFail                  = HRESULT(-0x7FFFBFFB) // 0x80004005 E_FAIL: a provider rebuilding its tree answers this for a moment
+	eAccessDenied          = HRESULT(-0x7FF8FFFB) // 0x80070005 E_ACCESSDENIED
 )
+
+// hrTransient reports whether a failed tree read is worth reading again
+// while its Window still exists (reliability-council 04): E_FAIL from a
+// provider rebuilding its tree (cua's retry, its issue #1881) and the
+// transport errors of a provider connection that dropped. Access denied
+// and UIA_E_TIMEOUT stay failures: a second try meets the same wall, or
+// spends the budget again.
+func hrTransient(hr HRESULT) bool {
+	switch uint32(hr) {
+	case 0x80004005, // E_FAIL
+		0x80010108, // RPC_E_DISCONNECTED
+		0x800401FD, // CO_E_OBJNOTCONNECTED
+		0x80010105, // RPC_E_SERVERFAULT
+		0x800706BA, // RPC_S_SERVER_UNAVAILABLE
+		0x800706BE, // RPC_S_CALL_FAILED
+		0x800706BF: // RPC_S_CALL_FAILED_DNE
+		return true
+	}
+	return false
+}
 
 // hrStale reports whether hr means the Element behind a stored Element
 // Index is gone: the documented "stale" HRESULTs (uia-go.md §2 —

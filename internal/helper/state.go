@@ -1112,9 +1112,14 @@ func treeReadError(err error) *Error {
 		return Fail("the tree read did not complete in time", "retry; if it keeps failing, the app's accessibility tree is slow")
 	}
 	hint := ""
+	var unread *uia.TreeReadError
 	switch {
 	case errors.Is(err, uia.ErrWindowGone):
 		hint = "the Window may have closed; run winuse list-windows"
+	case errors.As(err, &unread) && unread.Refused():
+		hint = "the Window is open but refuses UI Automation reads; start winuse from an elevated terminal to read administrator Windows, or request a screenshot"
+	case errors.As(err, &unread):
+		hint = "the Window is still open but its app did not answer the read; run the command again, or request a screenshot if it keeps failing"
 	case errors.Is(err, uia.ErrInit):
 		hint = "UI Automation could not start in the helper; report this if it persists"
 	}
