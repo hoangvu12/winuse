@@ -199,6 +199,7 @@ func (s *comSource) Children(node comPtr, remaining time.Duration) ([]comPtr, []
 // cache; no provider round trip). The pattern properties come through
 // GetCachedPropertyValue as VARIANTs (value.go's prop* readers).
 func (s *comSource) data(el comPtr) NodeData {
+	password, read := propBoolRead(el, propIsPassword)
 	return NodeData{
 		ControlType:  cachedInt32(el, elCachedControlType),
 		Name:         cachedBSTR(el, elCachedName),
@@ -206,6 +207,9 @@ func (s *comSource) data(el comPtr) NodeData {
 		HelpText:     cachedBSTR(el, elCachedHelpText),
 		Enabled:      cachedBool(el, elCachedIsEnabled),
 		Focused:      cachedBool(el, elCachedHasKeyboardFocus),
+
+		IsPassword:     password,
+		PasswordUnread: !read,
 
 		HasWindow:        propBool(el, propIsWindowAvailable),
 		HasScroll:        propBool(el, propIsScrollAvailable),

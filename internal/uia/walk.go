@@ -25,6 +25,11 @@ type NodeData struct {
 	Enabled      bool
 	Focused      bool
 
+	// IsPassword is the cached IsPassword; PasswordUnread says it did not
+	// read. Either on an Edit withholds the Value (secret).
+	IsPassword     bool
+	PasswordUnread bool
+
 	// Pattern facts (ticket 07), from cached pattern properties.
 	HasWindow bool
 	HasScroll bool
@@ -481,7 +486,11 @@ func elementFrom(d NodeData, depth int) wstate.Element {
 	} else if d.HasValue && !d.ValueReadOnly {
 		e.Settable = "string"
 	}
-	if d.HasValue {
+	if d.secret() {
+		// The Value never reaches the line, the diff or the store; role,
+		// name and index stay (reliability-council 07).
+		e.Password = true
+	} else if d.HasValue {
 		e.Value = d.ValueValue
 	}
 	if d.HasToggle {
@@ -496,4 +505,11 @@ func elementFrom(d NodeData, depth int) wstate.Element {
 	}
 	e.SecondaryActions = d.patternFacts().secondaryActions()
 	return e
+}
+
+// secret reports whether a node's Value is withheld: IsPassword reads
+// true, or an Edit's IsPassword did not read (agent-desktop withholds an
+// unreadable answer too).
+func (d NodeData) secret() bool {
+	return d.IsPassword || (d.PasswordUnread && d.ControlType == wstate.ControlTypeEdit)
 }

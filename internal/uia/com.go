@@ -155,6 +155,7 @@ var treeProperties = []uint32{
 	30011, // AutomationId
 	30012, // ClassName (the root's, for Chromium/Electron detection; ticket 14)
 	30013, // HelpText
+	30019, // IsPassword (a secret's Value never reaches the Window State; reliability-council 07)
 
 	30028, // IsExpandCollapsePatternAvailable
 	30033, // IsRangeValuePatternAvailable

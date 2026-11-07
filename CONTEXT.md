@@ -44,6 +44,7 @@ _Avoid_: CDP session, debug port, endpoint
 What the agent observes about one Window at one moment: its accessibility tree of Elements as text and, when requested, a screenshot.
 Each Agent keeps its own Window State per Window (ADR 0014), so another Agent's read never replaces it.
 An Action or Batch sent with `--observe` reads its Window afterwards and prints the new Window State, whole or as the Element Indexes whose line changed since that Agent's latest Window State of the Window (ADR 0021).
+A secret field (UI Automation's IsPassword, or an Edit whose IsPassword cannot be read) keeps its role, name and Element Index, but its Value never enters the Window State; its line says `password` instead.
 _Avoid_: App state, snapshot, skyshot
 
 **Element**:
