@@ -179,8 +179,11 @@ func launchApp(s Services, store *apps.StoreSource) Command {
 		if oerr != nil {
 			return "", oerr
 		}
-		esc.Arm()
-		defer esc.Disarm()
+		// A passive scope, as a Headless Action's (headless.go): launch-app
+		// takes no foreground and sends no input, so only the user's Esc
+		// stops it. A full Arm is the Headed scope, where any physical key,
+		// button or wheel stops it, and the stop is reported as an Esc.
+		defer armPassive(esc)()
 		// The Window snapshot taken for resolution doubles as the
 		// before-start snapshot for recognizing the opened Window.
 		before, err := s.Windows()

@@ -903,3 +903,30 @@ func TestSettleOf(t *testing.T) {
 		t.Errorf("a narrower settle: %s, want the default", got)
 	}
 }
+
+func TestReadTreeSkeletonIsNotSettled(t *testing.T) {
+	// A skeleton of a built Chromium window: its three levels stop above
+	// the Document's content, so the tree looks thin. One read, no settle,
+	// no thin note, and the thin mark untouched either way (perf ticket 03).
+	for _, marked := range []bool{false, true} {
+		mark := newThinWindows().window(7)
+		if marked {
+			mark.remember()
+		}
+		r := &fakeReader{t: t, results: chromeReads(0)}
+		s := &fakeSleep{}
+		tree, err := readTree(WithSkeleton(context.Background()), "chrome.exe", time.Minute, DefaultChromiumSettle, mark, r.read, s.sleep)
+		if err != nil {
+			t.Fatalf("readTree: %v", err)
+		}
+		if r.calls != 1 || len(s.delays) != 0 {
+			t.Errorf("marked=%v: reads = %d, sleeps = %v; want one read and no sleep", marked, r.calls, s.delays)
+		}
+		if rendered := wstate.Render(tree); strings.Contains(rendered, thinPageNote) {
+			t.Errorf("marked=%v: a skeleton must not carry the thin-page note:\n%s", marked, rendered)
+		}
+		if mark.marked() != marked {
+			t.Errorf("marked=%v: the skeleton changed the thin mark", marked)
+		}
+	}
+}
