@@ -39,6 +39,10 @@ type Error struct {
 	// nothingSent, mayHaveActed, wasDelivered or actionDelivered); "" lets
 	// Stamp read it from the text (delivery.go, reliability-council 02).
 	Delivery string
+	// wait is what a refusal that sent nothing and may pass on its own
+	// waits for (briefwait.go, reliability-council 06); nil for any other
+	// failure.
+	wait *refusalWait
 }
 
 func (e *Error) Error() string { return e.Msg }
@@ -239,6 +243,9 @@ func (s *Server) handle(req *protocol.Request) (resp protocol.Response) {
 	ctx = withAgent(ctx, requestAgent(req))
 	if req.Observe != nil {
 		ctx = withObserve(ctx, req.Observe) // observe.go: the registry's wrapper reads it
+	}
+	if req.NoWait {
+		ctx = withNoWait(ctx) // briefwait.go: a refusal fails at once
 	}
 	// A traced request gets what its command noted (trace.go,
 	// desktop-parity ticket 19), whatever the outcome.

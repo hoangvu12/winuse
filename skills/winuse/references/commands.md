@@ -9,7 +9,7 @@ This is one topic of the winuse skill. `winuse skill commands` prints it, and `w
 Run `winuse` with no arguments for the full usage text.
 
 ```
-winuse [--headed] <command> [arguments]
+winuse [--headed] [--no-wait] <command> [arguments]
 
 list-windows [--details] [--app <name>] [--shell]
 list-apps | get-window <window>

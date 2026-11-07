@@ -114,7 +114,7 @@ func resolveElementRef(ctx context.Context, s Services, w win.WindowInfo, ref st
 	if live, ok := s.Actions.(LiveResolver); ok && !isCacheOnly(ctx) {
 		res, err := live.ResolveElementRefLive(ctx, w.ID, ref, liveBudget(ctx))
 		if err != nil {
-			return 0, refError(err, w)
+			return 0, refMissing(refError(err, w), err, w, ref)
 		}
 		if res.Fresh {
 			noteFreshRef(ctx, w, ref, res.Index)
@@ -127,9 +127,23 @@ func resolveElementRef(ctx context.Context, s Services, w win.WindowInfo, ref st
 	}
 	index, err := resolver.ResolveElementRef(ctx, w.ID, ref)
 	if err != nil {
-		return 0, refError(err, w)
+		return 0, refMissing(refError(err, w), err, w, ref)
 	}
 	return index, nil
+}
+
+// refMissing marks a reference that matches nothing, in the cached Window
+// State or a fresh read, as a refusal that may pass: the Element may be
+// about to appear (briefwait.go). It waits only where the Action says
+// nothing was sent. A miss in a partial read does not wait: the Element
+// may sit in the part not read, which waiting does not change
+// (reliability-council 03).
+func refMissing(e *Error, err error, w win.WindowInfo, ref string) *Error {
+	var missing *wstate.NoMatchRefError
+	if errors.As(err, &missing) && !missing.Partial {
+		return waitsFor(e, refusalWait{kind: waitAppear, window: w, ref: ref})
+	}
+	return e
 }
 
 // refError maps a reference-resolution failure to the user-facing line

@@ -475,7 +475,7 @@ func TestHeadlessRefusalsBeforeAnyPatternCall(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			spy := newHeadlessSpy()
 			tc.setup(spy)
-			_, cmdErr := runCommand(t, CommandsWith(spy.svc), "click", clickArgs("101", 2, 1, "left"))
+			_, cmdErr := runCommandNoWait(t, CommandsWith(spy.svc), "click", clickArgs("101", 2, 1, "left"))
 			if cmdErr == nil || cmdErr.Msg != tc.wantMsg {
 				t.Fatalf("message = %v, want %q", cmdErr, tc.wantMsg)
 			}

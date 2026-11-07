@@ -578,7 +578,7 @@ func escStopBeforeActError() *Error {
 func readyError(err error, w win.WindowInfo) *Error {
 	var modal *win.ModalDialogError
 	if errors.As(err, &modal) {
-		return nothingSent(activationError(err))
+		return waitsFor(nothingSent(activationError(err)), refusalWait{kind: waitDialog, window: w}) // briefwait.go: it may be closing
 	}
 	var minimized *win.MinimizedError
 	if errors.As(err, &minimized) {
@@ -622,6 +622,9 @@ func headlessFailure(err error, w win.WindowInfo, index int, run headlessRun) *E
 	e := run.refusal(err, w, index)
 	if refusedBeforeCall(err) {
 		e = nothingSent(e)
+	}
+	if errors.Is(err, uia.ErrDisabled) && index >= 0 {
+		e = waitsFor(e, refusalWait{kind: waitEnable, window: w, index: index}) // briefwait.go: it may enable
 	}
 	return e
 }

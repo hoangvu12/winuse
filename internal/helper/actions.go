@@ -336,6 +336,12 @@ func (s Services) runAction(ctx context.Context, ref string, act func(ctx contex
 	defer s.Esc.Disarm()
 	markHeaded(ctx) // selfactivation.go: this foreground is winuse's own doing
 	if err := s.Activate(w.ID); err != nil {
+		var modal *win.ModalDialogError
+		if errors.As(err, &modal) {
+			// Refused before the foreground moved: nothing was sent, and the
+			// dialog may be closing (briefwait.go).
+			return "", waitsFor(nothingSent(activationError(err)), refusalWait{kind: waitDialog, window: w})
+		}
 		return "", activationError(err)
 	}
 	// Confirm the Window's thread took the activation before any input

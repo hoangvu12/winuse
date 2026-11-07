@@ -342,7 +342,7 @@ func TestPressKeyDialogRefusalsSayNothingWasSent(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			spy := newKeyRouteSpy(dialogTarget())
 			tc.setup(spy)
-			_, cmdErr := runCommand(t, CommandsWith(spy.svc), "press-key", pressKeyArgs("101", "Return"))
+			_, cmdErr := runCommandNoWait(t, CommandsWith(spy.svc), "press-key", pressKeyArgs("101", "Return"))
 			if cmdErr == nil {
 				t.Fatal("press-key succeeded, want a refusal")
 			}
