@@ -1,6 +1,6 @@
 # 12: Chromium wrappers spend the depth and the character cap (measure first)
 
-Status: ready-for-agent (user, 2026-11-07: implement all 13; ask the user at the decision points in 08, 09, 12 and 13)
+Status: ready-for-human (2026-11-07: waits on the user: the measurement needs a live read)
 
 **What's wrong (likely):** on a Chromium or Electron Window without a Browser Connection, depth counts every level, anonymous wrappers included: the walk (`wm:internal/uia/walk.go:279-286,327`), the skeleton's 3 levels (`wm:internal/uia/region.go:19-21`) and `--depth`. In the perf benchmark Discord's skeleton was 0.3 KB in winuse against 1.8 KB in agent-desktop, so the skeleton is probably all shell, and the full read hit the 28,000-character default cap (`.scratch/perf/r3.log`, `wm:internal/helper/views.go:30`). `--compact` exists but is opt-in.
 
@@ -20,3 +20,11 @@ Status: ready-for-agent (user, 2026-11-07: implement all 13; ask the user at the
 **Verified by the orchestrator:** the depth counting and agent-desktop's predicate. Inferred: the gain. Reviewer 2 rates it a limited win (it saves logical depth, not traversal), and winuse noted the research already (`wm:.scratch/browser-merge/agent-desktop-research.md:92`).
 
 **Conflicts:** the skeleton definition (desktop-parity 04) and ADR 0004's default-budgets addendum.
+
+## Comments
+
+### 2026-11-07: not started (orchestrator)
+
+- Nothing built: step 1 is a measurement, and no stored read has the trees it needs (`.scratch/perf/` keeps sizes only: `r2-baseline.json`, `r3-fixed.json`, `r3.log`). It needs live reads on the user's desktop, which agents don't start on their own.
+- This PC has Discord but no VS Code (checked 2026-11-07), so only one of the ticket's two Electron apps can be measured here.
+- Asked the user: run the Discord measurement (read-only), and when, or skip the ticket.

@@ -1,6 +1,6 @@
 # 13: LibreOffice and other SAL windows: probe before building an MSAA walker
 
-Status: ready-for-agent (user, 2026-11-07: implement all 13; ask the user at the decision points in 08, 09, 12 and 13)
+Status: ready-for-human (2026-11-07: waits on the user: LibreOffice is not installed on this PC, and the probe needs a live read)
 
 **What's unknown:** winuse reads every Window's root with one combined call, ElementFromHandleBuildCache (`wm:internal/uia/capture.go:136`). Nobody has tried it on LibreOffice.
 
@@ -21,3 +21,11 @@ Status: ready-for-agent (user, 2026-11-07: implement all 13; ask the user at the
 **Verified by the orchestrator:** cua's routing and its incomplete mark. Inferred: everything about LibreOffice under winuse.
 
 **Conflicts:** ADR 0002 (own native layer: write it, don't import cua's). ADR 0010/0013 (Headless stays Headless).
+
+## Comments
+
+### 2026-11-07: not started (orchestrator)
+
+- Nothing built: every step depends on the probe. LibreOffice is not installed on this PC (no swriter.exe, checked 2026-11-07), and the probe needs a live read on the user's desktop.
+- Ticket 08's hosted-runner e2e lane, if the user approves it, could run the probe there instead.
+- Asked the user: install LibreOffice and allow the probe, or skip the ticket.
