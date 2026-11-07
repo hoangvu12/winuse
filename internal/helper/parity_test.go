@@ -19,7 +19,7 @@ import (
 )
 
 // cliOnlyCommands run in the CLI and never reach the helper.
-var cliOnlyCommands = map[string]bool{"version": true, "skill": true, "trace": true, "help": true}
+var cliOnlyCommands = map[string]bool{"version": true, "skill": true, "trace": true, "help": true, "update": true}
 
 // groupCommands take a subcommand: "browser status" is the wire command
 // browser-status, "browser ext install" browser-ext-install.

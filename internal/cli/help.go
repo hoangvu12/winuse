@@ -502,6 +502,17 @@ const usageTail = `);
   trace show <file>           print a trace file readably: per command its
                                time, Agent, Window, routes, outcome and
                                duration, then its arguments, error and files
+  update [--to <version>] [--no-skill]
+                               replace this winuse.exe with the latest
+                               release, or the one --to names (older ones
+                               too), checked against its SHA256SUMS, and
+                               rewrite the skill copies in ~\.agents\skills
+                               and ~\.claude\skills; a copy that links
+                               elsewhere (Fleet) is left alone, and
+                               --no-skill skips them all. A running helper
+                               finishes its requests and restarts at the
+                               next command; nothing changes when the
+                               download fails
   version                     print the winuse version
   help [<command> | global | all]
                                print the command index, a command's examples
@@ -719,6 +730,9 @@ var commandGroups = []struct {
 		{"trace", "summarize a --trace file", []string{
 			"winuse --trace run.jsonl click 4242 3",
 			"winuse trace show run.jsonl"}},
+		{"update", "install the latest or a given release", []string{
+			"winuse update",
+			"winuse update --to 0.4.0"}},
 		{"version", "the winuse version", []string{
 			"winuse version"}},
 		{"help", "this index, or one command's help", []string{

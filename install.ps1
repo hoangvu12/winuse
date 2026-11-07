@@ -1,13 +1,20 @@
 # winuse installer for Windows: the binary and the agent skill, in one
 # command.
 #   irm https://raw.githubusercontent.com/hoangvu12/winuse/main/install.ps1 | iex
-# Set WINUSE_NO_SKILL=1 to install only the binary.
+# Set WINUSE_NO_SKILL=1 to install only the binary, and WINUSE_VERSION=0.4.0
+# to install that release instead of the latest (Fleet pins winuse so).
+# Once installed, `winuse update` does the same from winuse itself.
 $ErrorActionPreference = "Stop"
 
 $repo = "hoangvu12/winuse"
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "amd64" }
 $asset = "winuse_windows_$arch.exe"
-$url = "https://github.com/$repo/releases/latest/download/$asset"
+if ($env:WINUSE_VERSION) {
+    $pin = $env:WINUSE_VERSION.Trim().TrimStart("v")
+    $url = "https://github.com/$repo/releases/download/v$pin/$asset"
+} else {
+    $url = "https://github.com/$repo/releases/latest/download/$asset"
+}
 
 $dir = Join-Path $env:LOCALAPPDATA "winuse"
 New-Item -ItemType Directory -Force $dir | Out-Null
@@ -34,23 +41,37 @@ try {
         exit 1
     }
 
-    # Stop a running winuse helper so the old binary can be replaced: a
-    # Windows process locks its own executable file. The next winuse
-    # command starts a fresh helper automatically.
-    $running = Get-Process -Name winuse -ErrorAction SilentlyContinue
-    if ($running) {
-        Write-Host "stopping the running winuse helper (the next winuse command restarts it)"
-        $running | Stop-Process -Force
-        # give the OS a moment to release the file locks
-        Start-Sleep -Milliseconds 500
+    # A running exe cannot be overwritten, but it can be renamed: the old
+    # winuse.exe steps aside and the new one takes its name, so a running
+    # helper is never stopped. It keeps running from the renamed file,
+    # finishes the requests in flight (other agents' too), and exits at the
+    # next command, which starts the new one. Renamed files no helper runs
+    # from any more are removed here and by `winuse update`.
+    Get-ChildItem -Path "$exe.old-*" -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+    $old = $null
+    if (Test-Path $exe) {
+        $old = "$exe.old-$([System.IO.Path]::GetRandomFileName())"
+        try {
+            Move-Item -Force -Path $exe -Destination $old
+        } catch {
+            Write-Host "error: moving the old $exe aside failed: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "the existing install was left unchanged"
+            exit 1
+        }
     }
-
     try {
         Move-Item -Force -Path $tmp -Destination $exe
     } catch {
         Write-Host "error: replacing $exe failed: $($_.Exception.Message)" -ForegroundColor Red
-        Write-Host "a winuse process may still hold the file; close it and rerun the installer"
+        if ($old) {
+            Move-Item -Force -Path $old -Destination $exe -ErrorAction SilentlyContinue
+            Write-Host "the existing install was left unchanged"
+        }
         exit 1
+    }
+    if ($old) {
+        Remove-Item -Force $old -ErrorAction SilentlyContinue
     }
 } finally {
     if (Test-Path $tmp) {
@@ -90,9 +111,17 @@ $skillDirs = @(
     (Join-Path $env:USERPROFILE ".agents\skills"),
     (Join-Path $claudeHome "skills")
 )
+# A ~\.agents\skills\winuse that is a link was made by something that
+# manages the skill (Fleet links it into its repo): writing through it, or
+# letting npx skills replace it, would change that copy behind its back.
+$agentsSkill = Join-Path $skillDirs[0] "winuse"
+$linkedSkill = Get-Item -Force -Path $agentsSkill -ErrorAction SilentlyContinue |
+    Where-Object { $_.LinkType }
 if ($env:WINUSE_NO_SKILL -eq "1") {
     Write-Host "skipped the agent skill (WINUSE_NO_SKILL=1); install it later with:"
     foreach ($dir in $skillDirs) { Write-Host "  winuse skill install `"$dir`"" }
+} elseif ($linkedSkill) {
+    Write-Host "left the agent skill alone: $agentsSkill links to $($linkedSkill.Target -join ', '), which manages it (Fleet, say)"
 } else {
     if (Get-Command npx.cmd -ErrorAction SilentlyContinue) {
         Write-Host "linking the agent skill into your agents: npx skills add $repo -g -y"
