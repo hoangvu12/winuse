@@ -263,8 +263,8 @@ func TestClickActivationFailure(t *testing.T) {
 
 func TestClickModalDialogPointsAtTheDialog(t *testing.T) {
 	spy := &actionSpy{activateErr: &win.ModalDialogError{WindowID: 101, DialogID: 202}}
-	_, cmdErr := runCommand(t, CommandsWith(spy.services()), "click", headedArgs(clickArgs("101", 2, 1, "left")))
-	if cmdErr == nil || cmdErr.Msg != "window 101 has a modal dialog open (window 202); act on the dialog instead" {
+	_, cmdErr := runCommandNoWait(t, CommandsWith(spy.services()), "click", headedArgs(clickArgs("101", 2, 1, "left")))
+	if cmdErr == nil || cmdErr.Msg != "window 101 has a modal dialog open (window 202); act on the dialog instead; nothing was sent" {
 		t.Fatalf("message = %v", cmdErr)
 	}
 	if !strings.Contains(cmdErr.Hint, "get-window-state 202") {

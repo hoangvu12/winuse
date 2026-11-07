@@ -64,7 +64,8 @@ ordinary Escape; only the physical key stops winuse.
 |---|---|
 | A stale index or point, shifted UI, a moved Window | A fresh `get-window-state` (and screenshot), then one retry |
 | `window <id> closed; a new window reused its ID; nothing was sent` | `list-windows`, and read the new Window before you act on it |
-| A modal dialog blocks the target (named, with its Window ID) | Handle that dialog's Window, then return to the owner |
+| A modal dialog blocks the target (named, with its Window ID) | winuse already waited for it to close: handle that dialog's Window, then return to the owner |
+| `the Element is disabled; nothing was sent` | winuse already waited 1.8 s: read the Window State for what it needs first (a required field), or `wait <window> <ref> enabled --timeout <s>` for something slow |
 | `is minimized` | `restore-window <window>` (no foreground), read, retry once |
 | An administrator (`admin`) Window | Not reachable in any mode: tell the user it needs winuse started from an elevated terminal; report the Action as not done |
 | The desktop is locked | Stop, ask the user to unlock it; leave the lock screen alone |
@@ -168,7 +169,13 @@ act on again. In full: topic `reading`.
 
 Prefer `set-value` over clicking and typing. A dialog (Save As, a message
 box, a file picker) is its own Window, named by the Action's `Note:`; act
-on that id. Every command: `winuse help`; one command's usage and
+on that id. An Action on a disabled Element, on a Window behind a modal
+dialog, or on a `name:`/`id:` that matches nothing yet waits up to 1.8 s
+for that to pass, then runs, with a `Note: waited 0.4 s for element 14 to
+enable`: no `wait ... enabled` is needed before a button that enables right
+after your last Action, only before something slower. Only a refusal that
+sent nothing waits; `--no-wait` fails at once, and a Batch's steps never
+wait. Every command: `winuse help`; one command's usage and
 examples: `winuse <command> --help`.
 
 ## Headless first; Headed only by your choice

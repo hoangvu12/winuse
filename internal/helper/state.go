@@ -471,6 +471,10 @@ func CommandsWith(s Services) map[string]Command {
 			// A hung App is refused next (hung.go), before anything is sent;
 			// then the menu the Agent left open closes (contextmenu.go).
 			cmd = s.laned(name, s.checkWindow(s.refuseHung(s.closeLeftMenu(name, s.reportAfter(name, cmd)))))
+			// A refusal that may pass on its own (a disabled Element, a modal
+			// dialog, a reference not found yet) waits briefly outside the
+			// lanes, then the command runs again on them (briefwait.go).
+			cmd = s.briefWaited(name, cmd)
 		default:
 			cmd = s.recordReads(name, cmd) // identity.go: what a read Window ID names
 		}

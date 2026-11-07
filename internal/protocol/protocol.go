@@ -243,6 +243,12 @@ type Request struct {
 	// Observe asks for the Window State after the command (--observe,
 	// speed observe, ADR 0021); only the ObservableCommands take it.
 	Observe *Observe `json:"observe,omitempty"`
+
+	// NoWait turns off the brief wait of an Action refused for a reason
+	// that may pass on its own, a disabled Element, a modal dialog or a
+	// reference not found yet (--no-wait, reliability-council 06): it
+	// fails at once, as before.
+	NoWait bool `json:"no_wait,omitempty"`
 }
 
 // ListWindowsArgs are list-windows's optional arguments (desktop-parity

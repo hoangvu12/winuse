@@ -255,7 +255,7 @@ func TestInvokeMenuRefusalsSayNothingWasSent(t *testing.T) {
 			if tc.setup != nil {
 				tc.setup(spy)
 			}
-			_, cmdErr := runCommand(t, CommandsWith(spy.svc), "invoke-menu", invokeMenuArgs("101", tc.path...))
+			_, cmdErr := runCommandNoWait(t, CommandsWith(spy.svc), "invoke-menu", invokeMenuArgs("101", tc.path...))
 			if cmdErr == nil {
 				t.Fatal("invoke-menu succeeded, want a refusal")
 			}

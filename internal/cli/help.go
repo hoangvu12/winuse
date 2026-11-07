@@ -34,6 +34,15 @@ global options:
   --headed                    run an Action the v1 way: bring the Window to the
                                foreground, use the real pointer and keyboard,
                                and show the in-control banner
+  --no-wait                   fail at once when an Action is refused for a
+                               reason that may pass on its own: without it, a
+                               disabled Element, a modal dialog over the
+                               Window or a name:/id: reference that matches
+                               nothing waits up to 1.8 s (holding up no other
+                               Action; Esc stops it) and the Action runs
+                               again, with a Note: waited 0.4 s for element
+                               14 to enable. Only a refusal that sent nothing
+                               waits; a batch's steps never do
   --trace <file>              (or WINUSE_TRACE=<file>): append one JSON line
                                per command to the file: time, command, Agent,
                                Window, arguments, routes (Headless, Posted,
@@ -743,7 +752,7 @@ func commandIndex() string {
 	b.WriteString(`
 <window> is a Window ID from list-windows; <ref> an Element Index, name:<text>,
 id:<AutomationId> or @x,y from your latest get-window-state.
-global options: --headed, --json, --trace <file>, --help (winuse help global).
+global options: --headed, --no-wait, --json, --trace <file>, --help (winuse help global).
 winuse help <command>: its examples and usage. winuse help all: everything.
 winuse skill: the agent guide.
 `)

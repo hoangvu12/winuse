@@ -104,6 +104,15 @@ winuse wait 500                                # a plain pause, in milliseconds 
   the Element cannot show, such as `value` without `Value:`, fails at once.
 - A wait only reads: it does not renumber your indexes, and an Action can
   run meanwhile.
+- You need no wait for a short one. An Action refused because its Element
+  is disabled, a modal dialog blocks its Window, or its `name:`/`id:`
+  matches nothing yet waits up to 1.8 s on its own, without holding up
+  other Actions, and then runs once more: `Note: waited 0.4 s for element
+  14 to enable`. Past that it fails as before, with a hint that says how long
+  it waited. Only a refusal that sent nothing waits, never a write that may
+  have acted; `--no-wait` fails at once, and Esc stops it. A Batch's steps
+  do not wait (the Batch holds its Window for all its steps): put a
+  `wait <ref> enabled` step before one that may find its Element disabled.
 - With a Browser Connection, `text` waits in the Page (see "Act on a Page"
   in `winuse skill browser` for the other Page waits), and an element wait takes the frame's
   Elements, not the Page's.

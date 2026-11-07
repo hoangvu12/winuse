@@ -46,6 +46,7 @@ func runCommand(args []string) (code int) {
 	}
 	activeTrace = trace
 	defer func() { trace.finish(code) }()
+	args, activeNoWait = extractNoWait(args) // nowait.go
 	args, headed := extractHeaded(args)
 	if len(args) == 0 {
 		return helpCmd(nil) // help.go: the command index
@@ -462,6 +463,7 @@ func runRequest(cmd string, args any, edit func(*protocol.Request)) error {
 	if activeObserve != nil && protocol.Observable(cmd) {
 		req.Observe = activeObserve // observe.go
 	}
+	req.NoWait = activeNoWait // nowait.go
 	req.Trace = tracing()
 	resp, err := client.Call(context.Background(), req)
 	activeTrace.observe(req, resp, err) // trace.go
