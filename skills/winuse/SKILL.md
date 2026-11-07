@@ -95,7 +95,9 @@ send them as one `winuse batch` rather than a command per turn: each turn
 costs seconds. Add `--observe` to an Action or Batch to get steps 2 and 3
 in one call: it prints only the Element Indexes whose line changed since
 your last read (`~` changed, `*` new, `-` gone; the rest are unchanged), or
-the whole State when that is shorter (topic `batch-and-wait`).
+the whole State when that is shorter (topic `batch-and-wait`). To read a
+Window again after a `wait` or the user's input, `get-window-state <window>
+--diff` prints the same diff.
 
 ```
 winuse list-windows                     # <Window ID>  <App>  <title>

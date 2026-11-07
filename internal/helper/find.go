@@ -264,7 +264,7 @@ func windowStateShape(s Services, ctx context.Context, w win.WindowInfo, a windo
 			return "", treeReadError(err), true
 		}
 		tree.Notes = append(tree.Notes, fmt.Sprintf("this is a skeleton: %d levels below the Window, with each deeper part's child count; read a part whole with winuse get-window-state %d --root <element>", uia.SkeletonDepth, w.ID))
-		out, rerr := renderState(tree, a, strconv.FormatUint(w.ID, 10))
+		out, rerr := renderState(tree, a, strconv.FormatUint(w.ID, 10), nil, "")
 		return out, rerr, true
 	case a.Root != "":
 		out, rerr := readRegion(s, ctx, w, a)
@@ -274,7 +274,7 @@ func windowStateShape(s Services, ctx context.Context, w win.WindowInfo, a windo
 }
 
 // windowStateUsage is get-window-state's usage line.
-const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--full] [--timeout <seconds>]"
+const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]"
 
 // readRegion is get-window-state --root: the Element's subtree, read
 // afresh and added after the Window State's indexes; a Page Element's from

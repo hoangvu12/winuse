@@ -84,17 +84,23 @@ func budgetError(a windowRef) *Error {
 // flags ask for or, with --out, writes it to that file, uncut, and prints
 // its header, the file's line and the tail (the focused Element and the
 // notes), which carry what the agent must not miss: a partial read, a
-// thin tree.
-func renderState(tree *wstate.Tree, a windowRef, ref string) (string, *Error) {
+// thin tree. With --diff it prints what changed since before, the Agent's
+// earlier Window State of what (nil: none), as --observe=diff does.
+func renderState(tree *wstate.Tree, a windowRef, ref string, before []wstate.Element, what string) (string, *Error) {
 	if e := budgetError(a); e != nil {
 		return "", e
 	}
+	render, title := func(v wstate.View) string { return wstate.RenderView(tree, v) }, "Window State"
+	if a.Diff {
+		render = func(v wstate.View) string { return wstate.RenderChanges(before, tree, v, what).Text }
+		title = "Window State diff"
+	}
 	v := a.view(ref)
 	if a.Out == "" {
-		return wstate.RenderView(tree, v), nil
+		return render(v), nil
 	}
 	v.MaxChars = 0
-	return writeStateOut(wstate.RenderView(tree, v), tree, a.Out, "Window State")
+	return writeStateOut(render(v), tree, a.Out, title)
 }
 
 // writeStateOut writes a printed Window State (or --observe's diff of one)

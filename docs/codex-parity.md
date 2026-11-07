@@ -275,7 +275,9 @@ An Action or Batch sent with `--observe` echoes the Window State after it:
 whole (`--observe=full`) or the Element Indexes whose line changed since
 the Agent's last read (`--observe`, diff), with the whole State past 60%
 changed (speed observe, ADR 0021). It is opt-in: without it the output is
-the `ok` above. **extension**.
+the `ok` above. `get-window-state <window> --diff` prints the same diff on a
+plain read, after a `wait` or the user's input (reliability-council 10);
+cua's `get_window_state` takes `since: <snapshot_id>` for that. **extension**.
 
 ### timeouts
 
@@ -494,7 +496,8 @@ Codex's surface has no hover, no zoom, no Batch, no `name:`/`id:`
 references, no `record-tree`, no `find`, no partial tree reads; winuse has
 all of them (`find` with role, name, text and state filters,
 `get-window-state --root`, `--depth`, `--interactive` and `--skeleton`,
-desktop-parity 04, from agent-desktop), keeping Codex's
+desktop-parity 04, from agent-desktop, and `--diff`, what changed since
+the last read, reliability-council 10), keeping Codex's
 parameter names where a parameter exists. A Batch works like
 agent-desktop's (desktop-parity 20): each step's output on its own
 numbered line (`Action N (<action>): ...`), a failed step does not stop

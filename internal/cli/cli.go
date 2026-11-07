@@ -243,6 +243,8 @@ type windowArgs struct {
 	MaxChars *int   `json:"max_chars,omitempty"` // nil: the helper's default cap
 	Full     bool   `json:"full,omitempty"`
 	Out      string `json:"out,omitempty"` // absolute
+
+	Diff bool `json:"diff,omitempty"` // what changed since the Agent's last read (reliability-council 10)
 }
 
 // recordArgs is record-tree's CLI→helper argument shape.
@@ -252,7 +254,7 @@ type recordArgs struct {
 }
 
 // windowStateUsage is get-window-state's usage line.
-const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--timeout <seconds>]"
+const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]"
 
 // getWindowStateCmd prints the Window State: Codex's depth-first,
 // indented, numbered Element tree — with --screenshot, the screenshot line

@@ -38,7 +38,12 @@ reads no RuntimeIds (ADR 0004 addendum: a round trip each).
    on `batch`** (`protocol.ObservableCommands`). The request carries it
    (`protocol.Request.Observe`), and its budget grows by `ObserveTimeout`
    (10 s, a plain read's); the Action itself keeps its own budget. Default
-   output stays `ok`, so Codex parity holds.
+   output stays `ok`, so Codex parity holds. **Extended to the plain read**
+   (reliability-council 10, 2026-11-07): `get-window-state <window> --diff`,
+   on a Window or Tab target and as a Batch step, prints the diff of
+   Decisions 3–6 with no Action before it (after a `wait`, the user's input
+   or a poll), under the same budgets; not with `--root` or `--skeleton`,
+   which read part of the Window.
 2. **The observation is a full `get-window-state` of the Action's Window**
    (or Tab target), read after the Action and its opened-Window settle,
    once the Action released its lanes (a read takes none). Like any full

@@ -302,3 +302,64 @@ func TestObserveTakesTheReadDefaults(t *testing.T) {
 		t.Errorf("the default cap is %d, want %d", v.MaxChars, defaultMaxChars)
 	}
 }
+
+// get-window-state --diff (reliability-council 10) prints what --observe=diff
+// prints, against the Agent's latest Window State of the Window.
+func TestWindowStateDiff(t *testing.T) {
+	before, after := observeFixture(t)
+	read := func(trees *observeTrees, a windowRef) (string, *Error) {
+		a.Window = "101"
+		return runCommand(t, CommandsWith(testServices(trees)), "get-window-state", a)
+	}
+
+	// No earlier read: the whole Window State, with the note.
+	trees := &observeTrees{next: after}
+	out, err := read(trees, windowRef{Diff: true})
+	if err != nil || !strings.Contains(out, "\t\t26 text Saved\n") || !strings.Contains(out, "had no earlier read of window 101") {
+		t.Errorf("no earlier read: %v\n%s", err, out)
+	}
+
+	// A small change: only the changed and new indexes.
+	trees = &observeTrees{stored: before.Elements, next: after}
+	out, err = read(trees, windowRef{Diff: true})
+	want := `Window: "winuse fixture app", App: winusefixture.exe.
+Changed since this agent's last read of window 101 (~ changed, * new, - gone); Element Indexes not listed are unchanged:
+		~13 check box Notify me on Secondary Actions: Toggle ID: checkbox-notify (was: check box Notify me off Secondary Actions: Toggle ID: checkbox-notify)
+		*26 text Saved
+`
+	if err != nil || out != want {
+		t.Errorf("a small change: %v\ngot:\n%s\nwant:\n%s", err, out, want)
+	}
+	// The read replaced the baseline: reading again finds no change.
+	if out, _ = read(trees, windowRef{Diff: true}); !strings.Contains(out, "No change since this agent's last read of window 101.") {
+		t.Errorf("a second read:\n%s", out)
+	}
+
+	// A large change (an Element inserted near the top moves every index
+	// after it): the whole Window State, under the read's view.
+	moved := *before
+	moved.Elements = append([]wstate.Element{before.Elements[0], {Depth: 1, Role: "text", Name: "Banner"}}, before.Elements[1:]...)
+	trees = &observeTrees{stored: before.Elements, next: &moved}
+	out, err = read(trees, windowRef{Diff: true, Interactive: true})
+	if err != nil || !strings.Contains(out, "Note: the whole Window State: 26 Element Indexes changed, so a diff would not be shorter\n") ||
+		strings.Contains(out, "Changed since") || !strings.Contains(out, "\t\t14 check box Notify me off") || !strings.Contains(out, "--interactive left out 5 of the 27 Elements") {
+		t.Errorf("a large change: %v\n%s", err, out)
+	}
+
+	// --out writes the diff and names the file.
+	file := filepath.Join(t.TempDir(), "diff.txt")
+	trees = &observeTrees{stored: before.Elements, next: after}
+	out, err = read(trees, windowRef{Diff: true, Out: file})
+	data, rerr := os.ReadFile(file)
+	if err != nil || rerr != nil || !strings.Contains(string(data), "*26 text Saved") || !strings.Contains(out, "Window State diff: "+file+" (27 Elements") {
+		t.Errorf("--out: %v %v\n%s\n%s", err, rerr, out, data)
+	}
+
+	// The partial reads do not diff, and nothing is read.
+	for _, a := range []windowRef{{Diff: true, Root: "3"}, {Diff: true, Skeleton: true}} {
+		trees = &observeTrees{stored: before.Elements, next: after}
+		if _, err := read(trees, a); err == nil || !strings.Contains(err.Msg, "--diff compares a full read") || trees.reads != 0 {
+			t.Errorf("%+v: %+v, %d reads", a, err, trees.reads)
+		}
+	}
+}

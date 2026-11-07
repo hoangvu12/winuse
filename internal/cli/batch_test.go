@@ -213,6 +213,8 @@ func TestParseBatchStepRemainingActions(t *testing.T) {
 			wantErr: `a batch get-window-state step takes the Batch's Window and get-window-state's flags; "101" is neither`},
 		{name: "a read step", tokens: []string{"get-window-state", "--interactive", "--max-chars", "4000"},
 			want: windowArgs{Interactive: true, MaxChars: charsOf(4000)}},
+		{name: "a read step with --diff", tokens: []string{"get-window-state", "--diff", "--interactive"},
+			want: windowArgs{Interactive: true, Diff: true}},
 		{name: "a find step", tokens: []string{"find", "--role", "button", "--limit", "5"},
 			want: protocol.FindArgs{Role: "button", Limit: 5}},
 		{name: "a find step takes no Window", tokens: []string{"find", "101", "--role", "button"},

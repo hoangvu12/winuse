@@ -651,11 +651,19 @@ func (s Services) tabWindowState(ctx context.Context, bt *bgTab, args json.RawMe
 	if e := budgetError(a); e != nil {
 		return "", e
 	}
+	var before []wstate.Element
+	var what string
+	if a.Diff {
+		what = fmt.Sprintf("tab %s of window %d", bt.short(), bt.w.ID)
+		if st, ok := s.tabStates.get(AgentOf(ctx).ID, tabKeyOf(bt)); ok {
+			before = st.elements // taken before the read replaces it
+		}
+	}
 	tree, rerr := s.readTabTree(ctx, bt)
 	if rerr != nil {
 		return "", rerr
 	}
-	out, rerr := renderState(tree, a, "") // no --root hint: a Tab target takes none
+	out, rerr := renderState(tree, a, "", before, what) // no --root hint: a Tab target takes none
 	if rerr != nil {
 		return "", rerr
 	}

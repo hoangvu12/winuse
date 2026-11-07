@@ -309,6 +309,10 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 		// A read as a step (speed observe): get-window-state's flags, without
 		// the Window or --timeout (the Batch's budget covers it).
 		shapeRest, sh, err := takeShapeFlags(rest)
+		diff := false
+		if err == nil {
+			shapeRest, diff, err = takeDiff(shapeRest)
+		}
 		if err != nil {
 			return protocol.Step{}, fmt.Errorf("a batch get-window-state step: %v", err)
 		}
@@ -320,7 +324,7 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 			shot = true
 		}
 		args = windowArgs{Screenshot: shot, Root: sh.Root, Depth: sh.Depth, Interactive: sh.Interactive, Skeleton: sh.Skeleton,
-			Compact: sh.Compact, MaxChars: sh.MaxChars, Out: sh.Out, Full: sh.Full}
+			Compact: sh.Compact, MaxChars: sh.MaxChars, Out: sh.Out, Full: sh.Full, Diff: diff}
 	case "find":
 		fa, pos, err := parseFindTokens(rest)
 		if err == nil && len(pos) > 0 {
