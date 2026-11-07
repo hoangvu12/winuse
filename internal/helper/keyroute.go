@@ -146,6 +146,11 @@ func (s Services) runKeyHeadless(ctx context.Context, w win.WindowInfo, run keyR
 		return "", rerr
 	}
 	if run.prepare != nil {
+		// The identity re-check (identity.go) runs before the prepare step
+		// too: invoke-menu's sends WM_INITMENUPOPUP to the Window.
+		if rerr := s.sameWindow(ctx, w.ID); rerr != nil {
+			return "", rerr
+		}
 		if perr := run.prepare(&run); perr != nil {
 			return "", perr
 		}
@@ -159,6 +164,9 @@ func (s Services) runKeyHeadless(ctx context.Context, w win.WindowInfo, run keyR
 	rect, shown := s.cursorTravelRect(ctx, w, run.target, run.label)
 	if esc.Stopped() {
 		return "", escStopBeforeActError()
+	}
+	if rerr := s.sameWindow(ctx, w.ID); rerr != nil {
+		return "", rerr // the identity re-check (identity.go)
 	}
 	err := run.act()
 	var notSent *notSentError

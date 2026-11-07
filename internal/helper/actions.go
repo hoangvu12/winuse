@@ -334,6 +334,13 @@ func (s Services) runAction(ctx context.Context, ref string, act func(ctx contex
 	// Disarm, the physical Esc key stops this Action.
 	s.Esc.Arm()
 	defer s.Esc.Disarm()
+	// The identity re-check (identity.go): the Window the command started
+	// on still owns the handle, after the lane, the read and the quiet
+	// wait. The activation is the first write; it verifies the foreground
+	// is this handle, which the input then goes to.
+	if rerr := s.sameWindow(ctx, w.ID); rerr != nil {
+		return "", rerr
+	}
 	markHeaded(ctx) // selfactivation.go: this foreground is winuse's own doing
 	if err := s.Activate(w.ID); err != nil {
 		var modal *win.ModalDialogError

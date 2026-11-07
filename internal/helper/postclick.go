@@ -101,6 +101,9 @@ func (s Services) runPosted(ctx context.Context, ref string, run postedRun) (str
 	if esc.Stopped() {
 		return "", escStopBeforeActError()
 	}
+	if rerr := s.sameWindow(ctx, w.ID); rerr != nil {
+		return "", rerr // the identity re-check (identity.go)
+	}
 	n, err := run.post(target, cx, cy, sx, sy)
 	if shown && n > 0 {
 		s.cursorClick(ctx, w, rect)

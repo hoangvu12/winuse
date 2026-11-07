@@ -393,6 +393,13 @@ func (s Services) runHeadless(ctx context.Context, ref string, actor HeadlessAct
 		// pattern call.
 		return "", escStopBeforeActError()
 	}
+	// The identity re-check (identity.go). A pattern call is bound to its
+	// Element, which a reused handle does not inherit, but some acts post
+	// to the Window's controls (select-text's EM_SETSEL, the ContextMenu
+	// Secondary Action), and the refusal names the reuse either way.
+	if rerr := s.sameWindow(ctx, w.ID); rerr != nil {
+		return "", rerr
+	}
 	err := run.act(ctx, w, index)
 	cursorTrace(ctx, "acted")
 	var verify *uia.VerifyError
