@@ -132,7 +132,8 @@ canvases, visual questions or a sparse tree, and open the printed
 less of a full read, `--interactive --compact` (`--interactive` keeps
 every Element you act on, a disabled one with `disabled`, while `find
 --state interactive` matches enabled ones only). A read stops before 28000
-characters with a note on what it left out (`--max-chars N` sets the cap,
+characters with a note on what it left out, folding unnamed containers
+first as `--compact` does when that makes it fit (`--max-chars N` sets the cap,
 `--out <file>` writes it all to a file) and drops IDs several Elements
 share, which `id:` cannot name (topic `reading`).
 

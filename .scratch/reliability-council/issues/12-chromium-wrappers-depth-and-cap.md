@@ -1,6 +1,6 @@
 # 12: Chromium wrappers spend the depth and the character cap (measure first)
 
-Status: ready-for-human (measured 2026-11-07 on Discord; recommendation: fold before the cut, skip logical depth; waits on the user's go)
+Status: done (fold before the cut landed 2026-11-07, user's go; logical depth skipped on the measurement)
 
 **What's wrong (likely):** on a Chromium or Electron Window without a Browser Connection, depth counts every level, anonymous wrappers included: the walk (`wm:internal/uia/walk.go:279-286,327`), the skeleton's 3 levels (`wm:internal/uia/region.go:19-21`) and `--depth`. In the perf benchmark Discord's skeleton was 0.3 KB in winuse against 1.8 KB in agent-desktop, so the skeleton is probably all shell, and the full read hit the 28,000-character default cap (`.scratch/perf/r3.log`, `wm:internal/helper/views.go:30`). `--compact` exists but is opt-in.
 
@@ -44,3 +44,11 @@ Decision (recommended, waits on the user's go):
 - Fold before the cut: when a default read would pass `--max-chars`, fold bare containers as `--compact` does before cutting lines, saying so in the note. On Discord the capped read would show about 1.5x as many useful Elements (458 lines against 306 non-wrappers), and small Windows that fit the cap print as today. Folded Elements' indexes keep working, as with `--compact`. `--full` stays Codex's text byte for byte.
 - Skip logical depth for the skeleton and `--depth`: at 3 levels it moves the skeleton from the frame to the app's root group, which still shows nothing to act on; a useful skeleton needs about 5 logical levels, a separate change to the skeleton's definition (desktop-parity 04).
 - One app, one channel view, one moment: VS Code is not installed, so the ticket's second Electron app was not measured.
+
+### 2026-11-07: landed (fold before the cut)
+
+- `internal/wstate/view.go`: `RenderView` renders once; when `--max-chars` would cut the Element lines (`cutLines` now reports it) and the view is not already `--compact`, it renders again with the bare containers folded, as `--compact` does, and cuts only what still does not fit. The left-out note says why: `Note: folding unnamed containers to fit --max-chars 28000 (as --compact does) left out N of the M Elements; their Element Indexes still work`. A read that fits prints exactly as before; `--out`, `--max-chars 0` and `--full` never fold. `find` and `--root` keep their own cut (unchanged).
+- Test: `TestRenderViewFoldsBeforeTheCut` (folds and fits; folds, then cuts when still too long; a read that fits and an uncapped read print as before). `TestRenderViewMaxChars` unchanged and passing.
+- Docs: SKILL.md (the 28000-character sentence), `references/reading.md`, ADR 0004's cap bullet (with the Discord numbers).
+- Live check (read-only, the user's Discord, winuse built from this change): the default read now folds 290 of 831 Elements and prints through Element 706 before the cap, where the unfolded read stopped at Element 533 (of 784, earlier). No input sent.
+- Not done: logical depth for the skeleton and `--depth` (the measurement showed it barely helps at the skeleton's 3 levels).
