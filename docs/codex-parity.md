@@ -399,8 +399,12 @@ output stops before 28000 characters with a `Note:` naming the first
 Element not printed (Codex prints the whole tree, which a Harness's
 ~30k-character cap on a command's output then cuts in the middle).
 `get-window-state --full` (and `find --full`) prints Codex's text byte
-for byte. **matched (grammar; byte for byte under `--full`) /
-intentionally different (roles, bounds, shared IDs, the default cap)**.
+for byte, save one more state word: an Element whose IsPassword reads
+true (or, on an Edit, does not read) has its `Value:` withheld and
+`password` last in its states (reliability-council 07); Codex prints the
+Value. **matched (grammar; byte for byte under `--full`) /
+intentionally different (roles, bounds, shared IDs, the default cap,
+the `password` state)**.
 
 ### secondary actions
 

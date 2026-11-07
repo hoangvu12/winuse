@@ -120,7 +120,8 @@ The focused UI element is 1 edit (settable, string) Search ID: searchBox.
 ```
 
 One line per Element: index, role, name, state (`disabled`, `settable`,
-`on`/`off`, `Value:`...), `ID:` and Secondary Actions; the last line is
+`on`/`off`, `Value:`...; `password` means a secret field whose Value is
+never shown), `ID:` and Secondary Actions; the last line is
 where typed text lands. Trust the tree first; add `--screenshot` for
 canvases, visual questions or a sparse tree, and open the printed
 `Screenshot: <path>` with your file tool. A big Window: `winuse find

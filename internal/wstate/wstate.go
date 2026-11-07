@@ -80,6 +80,9 @@ type Element struct {
 	Settable    string `json:"settable,omitempty"`    // "string" (ValuePattern) | "float" (RangeValue)
 	Value       string `json:"value,omitempty"`
 	Toggle      string `json:"toggle,omitempty"` // "on" | "off" | "indeterminate"
+	// Password marks a secret field (UIA IsPassword, or unreadable on an
+	// Edit): its Value is withheld, and the line says "password".
+	Password bool `json:"password,omitempty"`
 
 	// SecondaryActions are the Element's Secondary Actions (Raise, Scroll
 	// Down, Expand, ...), rendered as "Secondary Actions: A, B".

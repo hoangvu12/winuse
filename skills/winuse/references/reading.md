@@ -27,7 +27,8 @@ The focused UI element is 1 edit (settable, string) Search ID: searchBox.
 ```
 
 Each line gives the Element's role, name and state (`disabled`, `selected`,
-`expanded`, `settable`, a toggle's `on` or `off`, its `Value:`), its `ID:`,
+`expanded`, `settable`, a toggle's `on` or `off`, its `Value:`, and
+`password` for a secret field, whose Value is never printed), its `ID:`,
 and the Secondary Actions it offers besides a click. The last line names the
 focused Element, where typed text lands. The tree includes the web content
 of Electron apps and browser Windows (see `winuse skill browser`).

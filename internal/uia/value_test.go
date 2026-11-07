@@ -231,6 +231,63 @@ func TestWalkRichStateAndActions(t *testing.T) {
 	}
 }
 
+// TestWalkWithholdsPasswordValues checks IsPassword on the walk
+// (reliability-council 07): true withholds the Value, false keeps it, and
+// an unreadable answer withholds on an Edit only. Role, name and index
+// stay; the line says "password"; the secret reaches neither the stored
+// Element, the rendered Window State nor the diff.
+func TestWalkWithholdsPasswordValues(t *testing.T) {
+	src := newFakeSource(&fakeNode{data: NodeData{
+		ControlType: wstate.ControlTypeWindow, Name: "Sign in", Enabled: true,
+	}, kids: []*fakeNode{
+		{data: NodeData{ControlType: wstate.ControlTypeEdit, Name: "Password", Enabled: true,
+			IsPassword: true, HasValue: true, ValueValue: "hunter2"}},
+		{data: NodeData{ControlType: wstate.ControlTypeEdit, Name: "User", Enabled: true,
+			HasValue: true, ValueValue: "alice"}},
+		{data: NodeData{ControlType: wstate.ControlTypeEdit, Name: "PIN", Enabled: true,
+			PasswordUnread: true, HasValue: true, ValueValue: "4242"}},
+		{data: NodeData{ControlType: wstate.ControlTypeComboBox, Name: "Domain", Enabled: true,
+			PasswordUnread: true, HasValue: true, ValueReadOnly: true, ValueValue: "corp"}},
+	}})
+	res, err := Walk[*fakeNode](src, fullConfig())
+	if err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	tree := &wstate.Tree{Title: "Sign in", App: "a.exe", Elements: res.Elements, FocusedIndex: -1}
+	want := "Window: \"Sign in\", App: a.exe.\n" +
+		"\t0 window Sign in\n" +
+		"\t\t1 edit (settable, string, password) Password\n" +
+		"\t\t2 edit (settable, string) User Value: alice\n" +
+		"\t\t3 edit (settable, string, password) PIN\n" +
+		"\t\t4 combo box Domain Value: corp\n"
+	if got := wstate.Render(tree); got != want {
+		t.Errorf("render:\n got %q\nwant %q", got, want)
+	}
+	for _, i := range []int{1, 3} {
+		if e := res.Elements[i]; e.Value != "" || !e.Password || e.Role != "edit" || e.Name == "" {
+			t.Errorf("element %d = %+v, want a named edit with Password and no Value", i, e)
+		}
+	}
+	if e := res.Elements[2]; e.Password || e.Value != "alice" {
+		t.Errorf("element 2 = %+v, want its Value and no Password", e)
+	}
+
+	// The secret changes between reads: the diff sees no change.
+	src2 := newFakeSource(&fakeNode{data: NodeData{
+		ControlType: wstate.ControlTypeWindow, Name: "Sign in", Enabled: true,
+	}, kids: []*fakeNode{
+		{data: NodeData{ControlType: wstate.ControlTypeEdit, Name: "Password", Enabled: true,
+			IsPassword: true, HasValue: true, ValueValue: "hunter3"}},
+	}})
+	after, err := Walk[*fakeNode](src2, fullConfig())
+	if err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	if changes := wstate.Diff(res.Elements[:2], after.Elements); len(changes) != 0 {
+		t.Errorf("diff = %v, want none", changes)
+	}
+}
+
 // statesOf mirrors wstate's parenthesised state list for the walk test.
 func statesOf(e wstate.Element) string {
 	var parts []string

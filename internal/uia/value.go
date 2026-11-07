@@ -442,6 +442,14 @@ func propBool(el comPtr, prop uint32) bool {
 	return v.has(vtBool) && v.boolean()
 }
 
+// propBoolRead reads a VT_BOOL property and whether it read at all: ok is
+// false when the answer is not a VT_BOOL (unsupported or failed).
+func propBoolRead(el comPtr, prop uint32) (value, ok bool) {
+	v := cachedProp(el, prop)
+	defer clearVariant(&v)
+	return v.has(vtBool) && v.boolean(), v.has(vtBool)
+}
+
 // propState reads a pattern-state VT_I4 property; -1 (unknown) when the
 // element does not support it. ExpandState and ToggleState use -1 for
 // "pattern present but state unreadable" (both actions offered then).
