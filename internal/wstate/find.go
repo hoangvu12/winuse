@@ -109,14 +109,18 @@ var interactiveRoles = map[string]bool{
 	"data item": true, "header item": true,
 }
 
-// Interactive reports whether an Element is one an agent can act on: it is
-// enabled, and it has a role it is acted on through, a value it can be
-// set to, a toggle, a selection or expansion state, or a Secondary Action
-// besides Raise.
+// Interactive reports whether an Element is one an agent can act on now:
+// it is enabled, and ActedOn.
 func (e Element) Interactive() bool {
-	if e.Disabled {
-		return false
-	}
+	return !e.Disabled && e.ActedOn()
+}
+
+// ActedOn reports whether an Element is one an agent acts on, enabled or
+// not: it has a role it is acted on through, a value it can be set to, a
+// toggle, a selection or expansion state, or a Secondary Action besides
+// Raise. The --interactive views keep these, so a disabled Submit button
+// still prints, with its disabled state.
+func (e Element) ActedOn() bool {
 	if interactiveRoles[e.Role] || e.Settable != "" || e.Toggle != "" || e.Selectable || e.ExpandState != "" {
 		return true
 	}

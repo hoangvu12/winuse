@@ -29,9 +29,9 @@ func TestFullReadViews(t *testing.T) {
 	want := "Window: \"title\", App: app.exe.\n" +
 		"\t0 window title ID: w\n" +
 		"\t\t1 button OK ID: ok\n" +
+		"\t\t2 button (disabled) Cancel ID: cancel\n" +
 		"\n" +
-		"Note: this Window State is partial: the tree read exceeded the 8s time limit.\n" +
-		"Note: --interactive left out 1 of the 3 Elements; their Element Indexes still work\n"
+		"Note: this Window State is partial: the tree read exceeded the 8s time limit.\n"
 	if out != want {
 		t.Errorf("--interactive:\n%q\nwant:\n%q", out, want)
 	}

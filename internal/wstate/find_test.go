@@ -62,6 +62,17 @@ func TestInteractive(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Errorf("interactive: %v, want %v (not the window with only Raise, the disabled button, the canvas or the status text)", got, want)
 	}
+	// The --interactive views keep the disabled button: ActedOn ignores
+	// the disabled state.
+	var acted []int
+	for i, e := range tree.Elements {
+		if e.ActedOn() {
+			acted = append(acted, i)
+		}
+	}
+	if want = slices.Insert(want, 6, 8); !slices.Equal(acted, want) {
+		t.Errorf("ActedOn: %v, want %v", acted, want)
+	}
 	if !ValidState("Interactive") || ValidState("pressed") {
 		t.Error("ValidState")
 	}
