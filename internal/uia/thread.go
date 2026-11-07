@@ -77,9 +77,11 @@ func startWorker() (*worker, error) {
 			close(w.exited)
 			return
 		}
-		// Provider-connection setup is bounded to 1s; per-chunk transaction
-		// timeouts are re-put before every cache chunk by the walk.
+		// Provider-connection setup is bounded to 1s. Transactions get a
+		// fixed timeout; the walk re-puts it before every cache chunk and
+		// restores it after (capture.go, Children).
 		call(auto, uia2PutConnectionTimeout, 1000)
+		putTransactionTimeout(auto, workerTransactionTimeout)
 		// AutoSetFocus defaults to TRUE: UIA then focuses the target Element
 		// before every control pattern call (Invoke, Toggle, SetValue, ...),
 		// and focusing moves the desktop foreground (agent-desktop A3-4) —

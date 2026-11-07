@@ -14,6 +14,18 @@ import (
 // (uia-go notes §5).
 const maxTransactionTimeout = 2 * time.Second
 
+// workerTransactionTimeout is the worker's UIA transaction timeout outside
+// a cache chunk: put at worker start and restored after every chunk, so a
+// root read, Invoke or SetValue never runs under UIA's 20 s default or
+// under the few milliseconds a chunk near its time limit left behind
+// (reliability-council 01).
+const workerTransactionTimeout = maxTransactionTimeout
+
+// putTransactionTimeout puts auto's (IUIAutomation2) transaction timeout.
+func putTransactionTimeout(auto comPtr, tx time.Duration) {
+	call(auto, uia2PutTransactionTimeout, uintptr(uint32(tx.Milliseconds())))
+}
+
 // captureResult is one completed tree read on the worker thread: the
 // Window State, the live elements behind it (the caller moves them into
 // the live-Element store), and the root element's ClassName.
@@ -147,7 +159,8 @@ func (s *comSource) Root() (comPtr, NodeData, error) {
 // remaining bounds the chunk: the UIA transaction timeout is set to
 // min(remaining, maxTransactionTimeout), so a provider that does not answer
 // in time fails with UIA_E_TIMEOUT, mapped to ErrChunkTimedOut (the walk
-// then returns the partial tree with the time-limit note).
+// then returns the partial tree with the time-limit note). The worker's
+// timeout (workerTransactionTimeout) is put back when the chunk ends.
 func (s *comSource) Children(node comPtr, remaining time.Duration) ([]comPtr, []NodeData, error) {
 	tx := remaining
 	if tx > maxTransactionTimeout {
@@ -156,7 +169,8 @@ func (s *comSource) Children(node comPtr, remaining time.Duration) ([]comPtr, []
 	if tx < time.Millisecond {
 		tx = time.Millisecond
 	}
-	call(s.th.auto, uia2PutTransactionTimeout, uintptr(uint32(tx.Milliseconds())))
+	putTransactionTimeout(s.th.auto, tx)
+	defer putTransactionTimeout(s.th.auto, workerTransactionTimeout)
 
 	var fresh comPtr
 	if hr := call(node, elBuildUpdatedCache, uintptr(s.req), uintptr(unsafe.Pointer(&fresh))); hr.Failed() || fresh == nil {
