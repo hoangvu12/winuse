@@ -124,7 +124,8 @@ func pickMatches(els []wstate.Element, match func(wstate.Element) bool, limit in
 // latest Window State of hwnd, depth levels deep (0: the full read's depth
 // cap), and adds its Elements to the Agent's live store, the region's root
 // first. With interactive only the region's root and the Elements an agent
-// acts on (wstate.Element.ActedOn, disabled ones included) are kept. Depths are relative to the region's root.
+// acts on (wstate.Element.ActedOn, disabled ones included) are kept.
+// Depths are relative to the region's root.
 func (c *Client) ReadRegion(ctx context.Context, hwnd uint64, index, depth int, interactive bool, budget time.Duration) (Added, error) {
 	var out Added
 	var jobErr error
