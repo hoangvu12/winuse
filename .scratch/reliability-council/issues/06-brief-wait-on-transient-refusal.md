@@ -39,3 +39,7 @@ Status: done
 - Docs: CLI help (`--no-wait` among the global options and the index line); `skills/winuse/SKILL.md` (the Recover rows for a modal dialog and a disabled Element, and a paragraph after the commands table); `references/batch-and-wait.md` (a bullet under "Wait for a change", with the Batch advice), `references/troubleshooting.md`, `references/commands.md` (the usage line). CONTEXT.md and ADR 0014 unchanged: no sentence became wrong (the poll holds no lane).
 - Green: `go vet ./...`, `CGO_ENABLED=0 go build ./...`, `CGO_ENABLED=0 go test ./...`.
 - Open: Live: not run (offline only); the 1.8 s and the poll intervals are not measured on a real App. A Headed Action's disabled Element and missing reference do not wait (the Headed pipeline resolves after the activation and does not type those refusals not delivered). The menu-item click (`menuitem.go`) maps a disabled Element outside `headlessFailure` and does not wait. A Batch step fails at once as before. For ticket 09: the identity re-check belongs inside `laned` (`checkWindow`), so every try, the one after the wait included, re-checks it.
+
+### 2026-11-07: after merging ticket 03 (orchestrator)
+
+- `refMissing` (`internal/helper/refs.go`) no longer waits on a miss in a partial read (`NoMatchRefError.Partial`, ticket 03): the Element may sit in the part not read, which waiting does not change, so it fails at once with 03's refusal. A one-match refusal in a partial read (`PartialRefError`) never waited. Test: the partial case in `TestBriefWaitForANameToAppear`.

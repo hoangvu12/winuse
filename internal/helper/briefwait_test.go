@@ -294,6 +294,15 @@ func TestBriefWaitForANameToAppear(t *testing.T) {
 	if !strings.Contains(cmdErr.Hint, "winuse waited 1.8 s for name:Next to appear in window 101") {
 		t.Errorf("hint = %q, want the wait", cmdErr.Hint)
 	}
+
+	// A miss in a partial read fails at once: the Element may sit in the
+	// part not read, which waiting does not change (reliability-council 03).
+	spy = newBriefSpy()
+	spy.refErr = &wstate.NoMatchRefError{Kind: wstate.RefName, Text: "Next", Partial: true}
+	_, cmdErr = runCommand(t, CommandsWith(spy.svc), "click", protocol.ClickArgs{Window: "101", Ref: "name:Next"})
+	if cmdErr == nil || !strings.Contains(cmdErr.Msg, "the read was partial") || strings.Contains(cmdErr.Hint, "winuse waited") {
+		t.Errorf("click = %v, want the partial-read refusal with no wait", cmdErr)
+	}
 }
 
 func TestBriefWaitNoWaitFailsAtOnce(t *testing.T) {
