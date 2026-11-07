@@ -1,6 +1,6 @@
 # 04: launch-app stops only on Esc, with the right message
 
-Status: done (branch perf-catch-up)
+Status: done (ported to main, branch skeleton-launch-fixes)
 
 **What to build:** `launch-app` arms the Esc hook fully (`internal/helper/commands.go:182`). A full arm is the Headed scope (ADR 0007 as amended by ADR 0014): any physical key, mouse button or wheel latches the stop. launch-app takes no foreground and sends no input, so it should be Headless: a passive arm, where only a physical Esc stops it. It also reports any stop with `escStopError()` ("stopped by the user with the physical Escape key") instead of `stopErrorFor`, which names a yield correctly.
 

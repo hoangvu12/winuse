@@ -1,6 +1,6 @@
 # 03: A skeleton read skips the Chromium settle
 
-Status: done (branch perf-catch-up)
+Status: done (ported to main, branch skeleton-launch-fixes)
 
 **What to build:** `get-window-state <w> --skeleton` on Discord takes 5.0 s every time (16 of 16 runs; agent-desktop's skeleton: 784 ms). `readTree` treats a Chromium/Electron tree whose Documents hold fewer than `thinDocumentNodes` Elements as thin and settles it for `DefaultChromiumSettle` (`internal/uia/retry.go:145,183`). A skeleton reads three levels, so the Document's content is never in it: the tree always looks thin, never grows, and the whole 5 s budget is spent. A full read in between finds the page built and clears the thin mark, so the next skeleton pays again.
 

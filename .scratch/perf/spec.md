@@ -31,11 +31,15 @@ Ticket 04 is a correctness bug found during the run: `launch-app` stops on any p
 
 | # | Title | Status |
 |---|---|---|
-| 01 | Report opened Windows without the 300 ms wait | done |
+| 01 | Report opened Windows without the 300 ms wait | wontfix (superseded by ADR 0019 on main) |
 | 02 | The Agent Cursor never holds an Action back | wontfix (user: keep the cursor as it is) |
-| 03 | A skeleton read skips the Chromium settle | done |
-| 04 | launch-app stops only on Esc, with the right message | done |
+| 03 | A skeleton read skips the Chromium settle | done (ported to main) |
+| 04 | launch-app stops only on Esc, with the right message | done (ported to main) |
 
 ## Not in scope
 
 What agent-desktop does that the benchmark says not to copy: a process per command, refs re-identified by a whole-window walk before every action (its click cost grows with the window: 178 ms on Calculator, 455 ms on Explorer), JSON as the default output.
+
+## Note (2026-11-07)
+
+The benchmark and tickets were made against a local 0.2.0, 57 commits behind GitHub `main` (0.3.0). Tickets 03 and 04 were still open on 0.3.0 and are ported; ticket 01 was superseded by ADR 0019. The numbers in this spec describe 0.2.0; re-run `bench2.py` on 0.3.0 before relying on them.

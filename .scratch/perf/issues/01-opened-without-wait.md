@@ -1,6 +1,6 @@
 # 01: Report opened Windows without the 300 ms wait
 
-Status: done (branch perf-catch-up; live benchmark in r3-fixed.json)
+Status: wontfix (superseded by ADR 0019 on main)
 
 **What to build:** after a reported Action (`click`, `press-key`, `set-value`, `invoke-menu`, `batch`, Expand/Select), winuse waits up to `openedSettle` (300 ms, six 50 ms polls of `Surfaces`) for a Window the Action opened (`internal/helper/opened.go:51,225`). When nothing opens, the usual case, the whole 300 ms is spent: a Headless click is 375 ms instead of about 55 ms (`../spec.md`).
 
@@ -32,3 +32,7 @@ winuse keeps the report and drops the wait:
 - `in new` in a Batch keeps its own wait (`batch.go:515`).
 - Tests: `TestOpenedLateWindowWithinTheSettle` (late note on the next command), `TestOpenedLateNotesStayWithTheirAgent`, `TestLateNotesStopAndWording`, `TestOpenedNothingNew` (whole settle in the background, nothing delivered). SKILL.md describes the late notes.
 - Not exercised live: a dialog that opens after the first look (offline tests only).
+
+### 2026-11-07: superseded
+
+This branch was built on a local `main` 57 commits behind GitHub. GitHub `main` (release 0.3.0) already solved the same wait its own way: ADR 0019 watches the settle with a WinEvent hook and ends it when the App goes quiet (`speed-waits`, bca130b), and `--observe` prints what changed in the same call (ADR 0021). The late-notes version stays on the unmerged `perf-catch-up` branch only. Re-measure 0.3.0's clicks before reopening anything here.
