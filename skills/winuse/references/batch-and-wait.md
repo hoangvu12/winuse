@@ -77,6 +77,10 @@ Changed since this agent's last read of window 101 (~ changed, * new, - gone); E
   own result stands.
 - On a Page, the read comes right after the Action: a page that reacts late
   may not show it yet.
+- To read again with no Action, after a `wait` or something the user did,
+  `winuse get-window-state <window> --diff` prints the same diff, under the
+  same rules and budgets (not with `--root` or `--skeleton`, which read part
+  of the Window). It is a Batch step too: `... then get-window-state --diff`.
 
 ## Wait for a change
 

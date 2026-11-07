@@ -129,7 +129,7 @@ commands:
                                command that ends a process. Windows' own
                                processes (explorer, dwm, csrss, ...) and
                                administrator Apps are refused, nothing sent
-  get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--full] [--timeout <seconds>]
+  get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]
                                print a Window's State: its Element tree as text,
                                and with --screenshot a screenshot saved to a file
                                whose path is printed (sized to the model's
@@ -158,7 +158,14 @@ commands:
                                rest still work. --out <file> writes the
                                Window State to the file, uncut, and prints
                                its header, path and notes. --full prints
-                               Codex's text byte for byte: every ID, no cap
+                               Codex's text byte for byte: every ID, no cap.
+                               --diff prints only the Element Indexes whose
+                               line changed since your last read of the
+                               Window (~ changed, * new, - gone), as
+                               --observe=diff does after an Action; with no
+                               earlier read, or past 60% changed, the whole
+                               Window State prints with a note. It takes the
+                               budgets above, not --root or --skeleton
   find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N | --full]
                                search the Window's whole live tree, past the
                                Window State's caps: print the matching
@@ -566,7 +573,8 @@ var commandGroups = []struct {
 			"winuse get-window-state 4242 --root 42 --depth 2 --interactive",
 			"winuse get-window-state 4242 --interactive --compact --max-chars 20000",
 			"winuse get-window-state 4242 --out state.txt",
-			"winuse get-window-state 4242 --full"}},
+			"winuse get-window-state 4242 --full",
+			"winuse get-window-state 4242 --diff"}},
 		{"find", "search the whole live tree: role, name, text", []string{
 			"winuse find 4242 --role button --name save",
 			`winuse find 4242 --text "invoice" --first`,

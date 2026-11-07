@@ -44,7 +44,7 @@ func TestExtractObserve(t *testing.T) {
 		{name: "get-window-state keeps its budgets", args: []string{"get-window-state", "101", "--interactive"},
 			rest: []string{"get-window-state", "101", "--interactive"}},
 		{name: "a read refuses --observe", args: []string{"get-window-state", "101", "--observe"},
-			wantErr: "get-window-state does not take --observe"},
+			wantErr: "get-window-state does not take --observe: it goes with an Action or batch; pass --diff"},
 		{name: "budgets need --observe", args: []string{"click", "101", "5", "--interactive"},
 			wantErr: "--interactive shapes the observation and goes with --observe"},
 		{name: "not a mode", args: []string{"click", "101", "5", "--observe=changes"},

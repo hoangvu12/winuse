@@ -943,6 +943,11 @@ type windowRef struct {
 	MaxChars *int   `json:"max_chars,omitempty"`
 	Out      string `json:"out,omitempty"`
 	Full     bool   `json:"full,omitempty"`
+
+	// Diff prints what changed since the Agent's latest Window State of
+	// the Window, as --observe=diff does (reliability-council 10, ADR
+	// 0021): a full read only, under the same budgets.
+	Diff bool `json:"diff,omitempty"`
 }
 
 // getWindowState answers `winuse get-window-state <window>`: the resolved
@@ -952,7 +957,8 @@ type windowRef struct {
 // (activated first under --headed), the image saved scaled (to the
 // model's image budget, shot.FitScale; JPEG q80) with its path printed and
 // its mapping recorded for `@x,y` references and zoom regions. The output
-// budgets (views.go) shape what is printed of the tree.
+// budgets (views.go) shape what is printed of the tree; --diff prints what
+// changed since the Agent's latest Window State of the Window instead.
 func getWindowState(s Services, ctx context.Context, args json.RawMessage) (string, *Error) {
 	var a windowRef
 	if err := parseArgs(args, &a); err != nil {
@@ -966,6 +972,10 @@ func getWindowState(s Services, ctx context.Context, args json.RawMessage) (stri
 	if a.Screenshot && (a.Root != "" || a.Skeleton) {
 		return "", Fail("get-window-state: --screenshot goes with a full read, not --root or --skeleton", windowStateUsage)
 	}
+	if a.Diff && (a.Root != "" || a.Skeleton) {
+		return "", Fail("get-window-state: --diff compares a full read with your last one; --root and --skeleton read part of the Window",
+			"drop --diff to read the part, or --root/--skeleton to diff the whole Window")
+	}
 	if out, serr, ok := windowStateShape(s, ctx, w, a); ok {
 		return out, serr
 	}
@@ -977,11 +987,22 @@ func getWindowState(s Services, ctx context.Context, args json.RawMessage) (stri
 			return windowStateScreenshot(s, ctx, w, a)
 		})(ctx, args)
 	}
+	before, what := s.baselineOf(ctx, w, a)
 	tree, terr := readWindowTree(s, ctx, w)
 	if terr != nil {
 		return "", terr
 	}
-	return renderState(tree, a, strconv.FormatUint(w.ID, 10))
+	return renderState(tree, a, strconv.FormatUint(w.ID, 10), before, what)
+}
+
+// baselineOf is what a --diff read of w compares with: the Agent's latest
+// Window State of w, taken before the read replaces it (nil: none), and
+// the Window's name in the diff's text. Nothing without --diff.
+func (s Services) baselineOf(ctx context.Context, w win.WindowInfo, a windowRef) ([]wstate.Element, string) {
+	if !a.Diff {
+		return nil, ""
+	}
+	return s.storedState(ctx, w.ID), "window " + strconv.FormatUint(w.ID, 10)
 }
 
 // stateSettle is the Chromium settle budget of a get-window-state under

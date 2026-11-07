@@ -117,13 +117,33 @@ func windowStateRequest(args []string, headed bool) (windowArgs, error) {
 	if err != nil {
 		return windowArgs{}, err
 	}
+	args, diff, err := takeDiff(args)
+	if err != nil {
+		return windowArgs{}, err
+	}
 	window, screenshot, err := parseWindowStateArgs(args)
 	if err != nil {
 		return windowArgs{}, err
 	}
 	return windowArgs{Window: window, Screenshot: screenshot, Headed: headed,
 		Root: sh.Root, Depth: sh.Depth, Interactive: sh.Interactive, Skeleton: sh.Skeleton,
-		Compact: sh.Compact, MaxChars: sh.MaxChars, Out: sh.Out, Full: sh.Full}, nil
+		Compact: sh.Compact, MaxChars: sh.MaxChars, Out: sh.Out, Full: sh.Full, Diff: diff}, nil
+}
+
+// takeDiff takes get-window-state's --diff (reliability-council 10) out of
+// its arguments: the helper refuses it with --root or --skeleton.
+func takeDiff(args []string) (rest []string, diff bool, err error) {
+	for _, tok := range args {
+		switch {
+		case tok == "--diff":
+			diff = true
+		case strings.HasPrefix(tok, "--diff="):
+			return nil, false, errors.New("--diff is a flag (no value)")
+		default:
+			rest = append(rest, tok)
+		}
+	}
+	return rest, diff, nil
 }
 
 // errZoomArgs is zoom's argument-count failure: the usage line alone says

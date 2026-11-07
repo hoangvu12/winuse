@@ -88,6 +88,9 @@ func extractObserve(args []string) ([]string, *protocol.Observe, error) {
 			}
 			return 0
 		})
+		if len(seen) > 0 && cmd == "get-window-state" {
+			return nil, nil, errors.New("get-window-state does not take --observe: it goes with an Action or batch; pass --diff to print what changed since your last read")
+		}
 		if len(seen) > 0 {
 			return nil, nil, fmt.Errorf("%s does not take --observe: it goes with an Action or batch", cmd)
 		}

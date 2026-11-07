@@ -81,7 +81,12 @@ func TestWindowStateShapeFlags(t *testing.T) {
 	if err != nil || !filepath.IsAbs(req.Out) || filepath.Base(req.Out) != "state.txt" {
 		t.Errorf("--out resolves to an absolute path: %+v, %v", req, err)
 	}
+	req, err = windowStateRequest([]string{"--diff", "101", "--interactive"}, false)
+	if err != nil || req.Window != "101" || !req.Diff || !req.Interactive {
+		t.Errorf("--diff: %+v, %v", req, err)
+	}
 	for _, bad := range [][]string{
+		{"101", "--diff=1"},
 		{"101", "--out"},
 		{"101", "--out", " "},
 		{"101", "--out", "a.txt", "--max-chars", "100"},
