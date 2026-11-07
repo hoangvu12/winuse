@@ -17,7 +17,9 @@ run `winuse skill <topic>`. Check that table before you decide winuse
 cannot do something. If `winuse version` is not found, install it with
 `irm https://raw.githubusercontent.com/hoangvu12/winuse/main/install.ps1 | iex`
 and call `$env:LOCALAPPDATA\winuse\winuse.exe` until the terminal restarts
-(topic `setup`).
+(topic `setup`). If a command or flag here does not exist, the installed
+winuse is older than this skill: tell the user, and upgrade with
+`winuse update` when they agree.
 
 ## Safety
 

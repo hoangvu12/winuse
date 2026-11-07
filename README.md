@@ -31,7 +31,16 @@ binary, to the two user-level skills folders agents read:
 when that is set) and `~\.agents\skills\winuse` for Codex, Copilot, Cursor,
 Gemini CLI and most others. With Node.js it also runs `npx skills` first,
 which links the skill into every agent it finds. Set `WINUSE_NO_SKILL=1` to
-skip the skill.
+skip the skill, or `WINUSE_VERSION=0.4.0` to install that release instead
+of the latest.
+
+To upgrade later, run `winuse update` (or `winuse update --to <version>`
+for a given release, older ones too). It checks the download against the
+release's `SHA256SUMS`, swaps `winuse.exe` without stopping a running
+helper (the helper finishes its requests and restarts at the next command),
+and rewrites the skill copies it finds. A skill folder that links somewhere
+else, as [Fleet](https://github.com/hoangvu12/fleet) links
+`~\.agents\skills\winuse` into its repo, is left to whatever made the link.
 
 Then ask your agent something like "open Calculator and work out 7 + 2
 using winuse".

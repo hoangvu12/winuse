@@ -144,6 +144,8 @@ func runCommand(args []string) (code int) {
 		return skillCmd(args[1:])
 	case "status":
 		return statusCmd(args[1:])
+	case "update":
+		return updateCmd(args[1:]) // update.go
 	case "trace":
 		return traceCmd(args[1:]) // trace.go, desktop-parity ticket 19
 	default:

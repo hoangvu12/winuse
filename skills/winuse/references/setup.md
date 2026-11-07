@@ -1,6 +1,6 @@
 # Installing winuse
 
-Read when: `winuse version` fails (winuse is missing), SmartScreen blocks the first run, or you need to build winuse or install the skill.
+Read when: `winuse version` fails (winuse is missing), SmartScreen blocks the first run, a command or flag from the skill does not exist (upgrade), or you need to build winuse or install the skill.
 
 This is one topic of the winuse skill. `winuse skill setup` prints it, and `winuse skill` prints the core, SKILL.md, which holds the safety rules, the Esc stop and recovery.
 
@@ -26,6 +26,22 @@ antivirus settings to the user. To build from source instead, clone
 `https://github.com/hoangvu12/winuse` and run
 `$env:CGO_ENABLED=0; go build -o winuse.exe ./cmd/winuse` with Go 1.27 or
 newer.
+
+## Upgrading
+
+Upgrade only when the user asks, or when a command or flag from this skill
+does not exist in the installed winuse (`winuse version` shows which you
+have). `winuse update` installs the latest release, and
+`winuse update --to 0.4.0` installs a given one. It never stops a running
+helper: the helper finishes the requests in flight, other agents' too, and
+restarts at the next command. A failed download leaves winuse as it was.
+It rewrites the skill copies in `~\.agents\skills` and `~\.claude\skills`.
+A copy that links elsewhere is left alone (Fleet keeps
+`~\.agents\skills\winuse` as a link into its repo, and `fleet sync`
+installs the version Fleet pins). After an upgrade, read the skill again
+with `winuse skill`.
+
+## The skill
 
 `winuse skill` prints the skill's core, SKILL.md, as the installed binary
 has it, `winuse skill <topic>` one topic, `winuse skill list` the topics
