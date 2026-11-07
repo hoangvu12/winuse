@@ -1,0 +1,292 @@
+[
+ {
+  "window": "Calculator",
+  "case": "read (full)",
+  "tool": "agent-desktop",
+  "min_ms": 201,
+  "p50_ms": 282,
+  "ok": "16/16",
+  "kb": 14.1,
+  "nodes": 89
+ },
+ {
+  "window": "Calculator",
+  "case": "read (ad -i --compact)",
+  "tool": "agent-desktop",
+  "min_ms": 210,
+  "p50_ms": 282,
+  "ok": "16/16",
+  "kb": 9.7,
+  "nodes": 50
+ },
+ {
+  "window": "Calculator",
+  "case": "skeleton",
+  "tool": "agent-desktop",
+  "min_ms": 209,
+  "p50_ms": 287,
+  "ok": "16/16",
+  "kb": 2.7,
+  "nodes": 16
+ },
+ {
+  "window": "Calculator",
+  "case": "find button --first",
+  "tool": "agent-desktop",
+  "min_ms": 203,
+  "p50_ms": 284,
+  "ok": "16/16",
+  "kb": 0.3,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "click",
+  "tool": "agent-desktop",
+  "min_ms": 194,
+  "p50_ms": 253,
+  "ok": "16/16",
+  "kb": 0.4,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "read then click",
+  "tool": "agent-desktop",
+  "min_ms": 378,
+  "p50_ms": 558,
+  "ok": "16/16",
+  "kb": 10.1,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "read (full)",
+  "tool": "agent-desktop",
+  "min_ms": 392,
+  "p50_ms": 765,
+  "ok": "16/16",
+  "kb": 51.8,
+  "nodes": 266
+ },
+ {
+  "window": "Explorer System32",
+  "case": "read (ad -i --compact)",
+  "tool": "agent-desktop",
+  "min_ms": 388,
+  "p50_ms": 701,
+  "ok": "16/16",
+  "kb": 45.0,
+  "nodes": 208
+ },
+ {
+  "window": "Explorer System32",
+  "case": "skeleton",
+  "tool": "agent-desktop",
+  "min_ms": 399,
+  "p50_ms": 855,
+  "ok": "16/16",
+  "kb": 4.1,
+  "nodes": 24
+ },
+ {
+  "window": "Explorer System32",
+  "case": "find button --first",
+  "tool": "agent-desktop",
+  "min_ms": 479,
+  "p50_ms": 807,
+  "ok": "16/16",
+  "kb": 0.4,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "click",
+  "tool": "agent-desktop",
+  "min_ms": 517,
+  "p50_ms": 1165,
+  "ok": "16/16",
+  "kb": 0.6,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "read then click",
+  "tool": "agent-desktop",
+  "min_ms": 813,
+  "p50_ms": 1719,
+  "ok": "16/16",
+  "kb": 45.6,
+  "nodes": null
+ },
+ {
+  "window": "Discord",
+  "case": "read (full)",
+  "tool": "agent-desktop",
+  "min_ms": 829,
+  "p50_ms": 1356,
+  "ok": "16/16",
+  "kb": 200.6,
+  "nodes": 1351
+ },
+ {
+  "window": "Discord",
+  "case": "read (ad -i --compact)",
+  "tool": "agent-desktop",
+  "min_ms": 884,
+  "p50_ms": 1093,
+  "ok": "16/16",
+  "kb": 83.4,
+  "nodes": 507
+ },
+ {
+  "window": "Discord",
+  "case": "skeleton",
+  "tool": "agent-desktop",
+  "min_ms": 864,
+  "p50_ms": 1242,
+  "ok": "16/16",
+  "kb": 1.8,
+  "nodes": 12
+ },
+ {
+  "window": "Discord",
+  "case": "find button --first",
+  "tool": "agent-desktop",
+  "min_ms": 843,
+  "p50_ms": 1368,
+  "ok": "16/16",
+  "kb": 0.4,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "read (full)",
+  "tool": "winuse",
+  "min_ms": 63,
+  "p50_ms": 94,
+  "ok": "16/16",
+  "kb": 2.3,
+  "nodes": 53
+ },
+ {
+  "window": "Calculator",
+  "case": "click",
+  "tool": "winuse",
+  "min_ms": 81,
+  "p50_ms": 255,
+  "ok": "16/16",
+  "kb": 0.0,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "read then click",
+  "tool": "winuse",
+  "min_ms": 151,
+  "p50_ms": 854,
+  "ok": "16/16",
+  "kb": 2.3,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "skeleton",
+  "tool": "winuse",
+  "min_ms": 48,
+  "p50_ms": 109,
+  "ok": "16/16",
+  "kb": 0.8,
+  "nodes": 15
+ },
+ {
+  "window": "Calculator",
+  "case": "find button --first",
+  "tool": "winuse",
+  "min_ms": 61,
+  "p50_ms": 122,
+  "ok": "16/16",
+  "kb": 0.3,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "read (full)",
+  "tool": "winuse",
+  "min_ms": 155,
+  "p50_ms": 184,
+  "ok": "16/16",
+  "kb": 14.7,
+  "nodes": 212
+ },
+ {
+  "window": "Explorer System32",
+  "case": "click",
+  "tool": "winuse",
+  "min_ms": 71,
+  "p50_ms": 108,
+  "ok": "16/16",
+  "kb": 0.0,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "read then click",
+  "tool": "winuse",
+  "min_ms": 314,
+  "p50_ms": 621,
+  "ok": "16/16",
+  "kb": 14.7,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "skeleton",
+  "tool": "winuse",
+  "min_ms": 103,
+  "p50_ms": 161,
+  "ok": "16/16",
+  "kb": 1.5,
+  "nodes": 25
+ },
+ {
+  "window": "Explorer System32",
+  "case": "find button --first",
+  "tool": "winuse",
+  "min_ms": 160,
+  "p50_ms": 251,
+  "ok": "16/16",
+  "kb": 0.2,
+  "nodes": null
+ },
+ {
+  "window": "Discord",
+  "case": "read (full)",
+  "tool": "winuse",
+  "min_ms": 188,
+  "p50_ms": 799,
+  "ok": "16/16",
+  "kb": 26.5,
+  "nodes": 621
+ },
+ {
+  "window": "Discord",
+  "case": "skeleton",
+  "tool": "winuse",
+  "min_ms": 44,
+  "p50_ms": 525,
+  "ok": "16/16",
+  "kb": 0.3,
+  "nodes": 5
+ },
+ {
+  "window": "Discord",
+  "case": "find button --first",
+  "tool": "winuse",
+  "min_ms": 190,
+  "p50_ms": 583,
+  "ok": "16/16",
+  "kb": 0.2,
+  "nodes": null
+ }
+]

@@ -238,3 +238,20 @@ func TestLaunchAppNoWindowFailsBeforeTheDeadline(t *testing.T) {
 		t.Errorf("the failure came after the request's deadline: the server would report its generic timeout")
 	}
 }
+
+// TestLaunchAppArmsPassively: launch-app is Headless, so its Esc scope is
+// the passive one (only the user's Esc stops it), never the full Headed
+// arm, where any physical key, button or wheel stops it and the stop is
+// reported as an Esc (perf ticket 04).
+func TestLaunchAppArmsPassively(t *testing.T) {
+	l := newLaunchSpy()
+	esc := &scopeEsc{}
+	svc := l.services()
+	svc.Esc = esc
+	if _, cmdErr := CommandsWith(svc)["launch-app"](context.Background(), json.RawMessage(`{"app":`+jsonString(fakeAppPath)+`}`)); cmdErr != nil {
+		t.Fatalf("launch-app: %+v", cmdErr)
+	}
+	if want := []string{"arm-passive", "disarm-passive"}; !slices.Equal(esc.log, want) {
+		t.Errorf("Esc scopes = %v, want %v", esc.log, want)
+	}
+}

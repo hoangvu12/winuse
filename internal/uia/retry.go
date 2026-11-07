@@ -142,13 +142,20 @@ func readTree(ctx context.Context, app string, budget, settle time.Duration, mar
 	if err != nil {
 		return nil, err
 	}
-	if worthSettle(first, app) {
+	// A skeleton leaves the Documents' content out by design, so it always
+	// looks thin: settling it would spend the whole budget waiting for
+	// content it never reads (perf ticket 03), and it says nothing about
+	// whether the page has built, so it leaves the mark as it is.
+	if skeleton(ctx) {
+		if !treeIsSparse(first.tree) {
+			return first.tree, nil
+		}
+	} else if worthSettle(first, app) {
 		if mark.marked() {
 			return retryThin(ctx, first, budget, mark, read, sleep)
 		}
 		return settleTree(ctx, first, budget, settle, mark, read, sleep)
-	}
-	if !first.paged {
+	} else if !first.paged {
 		mark.forget()
 	}
 	if !treeIsSparse(first.tree) {
