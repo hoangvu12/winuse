@@ -33,7 +33,8 @@ type waitDesk struct {
 	trees    func(peek int) *wstate.Tree // the Window's tree at each peek
 	peeks    int
 	peekErr  error
-	captures int // Capture calls: a wait must never replace the stored Window State
+	peekErrs func(peek int) error // per peek, after peekErr
+	captures int                  // Capture calls: a wait must never replace the stored Window State
 
 	states  func(read int) (uia.ElementState, error) // the held Element at each read
 	reads   int
@@ -120,6 +121,11 @@ func (d *waitDesk) PeekTree(ctx context.Context, hwnd uint64, title, app string,
 	d.peeks++
 	if d.peekErr != nil {
 		return nil, d.peekErr
+	}
+	if d.peekErrs != nil {
+		if err := d.peekErrs(d.peeks); err != nil {
+			return nil, err
+		}
 	}
 	return d.trees(d.peeks), nil
 }
@@ -322,6 +328,30 @@ func TestWaitTreeTextWindowClosed(t *testing.T) {
 	}
 }
 
+// A read that fails on a Window that is still open (reliability-council
+// 04's TreeReadError) is polled again, not the wait's end; one refused
+// (access denied) ends it.
+func TestWaitTreeTextPollsAgainAfterAFailedRead(t *testing.T) {
+	d := newWaitDesk()
+	d.trees = func(int) *wstate.Tree {
+		return &wstate.Tree{Elements: []wstate.Element{{Name: "Done"}}, FocusedIndex: -1}
+	}
+	d.peekErrs = func(n int) error {
+		if n < 3 {
+			return &uia.TreeReadError{HR: uia.HRESULT(-0x7FFFBFFB)} // E_FAIL
+		}
+		return nil
+	}
+	if _, e := runWait(t, d, protocol.WaitArgs{Window: "101", For: "text", Value: "Done"}); e != nil {
+		t.Fatalf("after two failed reads = %v, want the text found", e)
+	}
+	d = newWaitDesk()
+	d.peekErr = &uia.TreeReadError{HR: uia.HRESULT(-0x7FF8FFFB)} // E_ACCESSDENIED
+	if _, e := runWait(t, d, protocol.WaitArgs{Window: "101", For: "text", Value: "Done"}); e == nil || !strings.Contains(e.Msg, "was refused") {
+		t.Fatalf("a refused read = %v, want the refusal", e)
+	}
+}
+
 func TestWaitTextOnABrowserWindowKeepsThePageRoute(t *testing.T) {
 	d := newWaitDesk()
 	svc := d.services()
@@ -423,7 +453,7 @@ func TestWaitElementGone(t *testing.T) {
 // same.
 func TestWaitElementGoneWithItsWindowWhateverTheReadSays(t *testing.T) {
 	for name, err := range map[string]error{
-		"a failed read": errors.New("reading the Element's state failed (HRESULT 0x80070578)"),
+		"a failed read":              errors.New("reading the Element's state failed (HRESULT 0x80070578)"),
 		"a read that still succeeds": nil,
 		"a replaced worker":          uia.ErrWorkerGone,
 	} {

@@ -257,8 +257,8 @@ func (s Services) readNotifications(ctx context.Context, store bool) ([]notifica
 			tree, err = peeker.PeekTree(ctx, w.ID, w.Title, win.AppExeName(w), s.Budget)
 		}
 		switch {
-		case errors.Is(err, uia.ErrWindowGone):
-			continue // it timed out while being read
+		case errors.Is(err, uia.ErrWindowGone), transientTreeRead(err):
+			continue // it timed out while being read, or did not answer the read
 		case err != nil:
 			return nil, treeReadError(err)
 		}

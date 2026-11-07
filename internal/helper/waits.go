@@ -325,8 +325,8 @@ func (s Services) waitTreeText(ctx context.Context, a protocol.WaitArgs, want ti
 			return struct{}{}, treeHasText(tree, a.Value), nil
 		case errors.Is(err, uia.ErrWindowGone):
 			return struct{}{}, false, waitWindowClosed(what)
-		case ctx.Err() != nil, errors.Is(err, uia.ErrWorkerGone):
-			return struct{}{}, false, nil // the wait's end, or a replaced worker: the next poll says
+		case ctx.Err() != nil, errors.Is(err, uia.ErrWorkerGone), transientTreeRead(err):
+			return struct{}{}, false, nil // the wait's end, a replaced worker or a read that failed on an open Window: the next poll says
 		}
 		return struct{}{}, false, treeReadError(err)
 	})

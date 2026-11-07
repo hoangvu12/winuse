@@ -37,3 +37,7 @@ Status: done
 - `go vet ./...`, `CGO_ENABLED=0 go test ./...` and `CGO_ENABLED=0 go build ./...` pass.
 - Open: the other root reads that still call any failure `ErrWindowGone` (`accelerators.go`, `tabstrip.go`) and a region read's root are unchanged. PeekTree, Find and the live resolve classify but do not retry. How often E_FAIL is transient on the apps winuse meets is not measured.
 - Live: not run (offline only).
+
+### 2026-11-07: review fix (orchestrator)
+
+- `wait <window> text` and `list-notifications` used to read any failed root read as a closed Window: the wait failed with "the Window closed", and the scan skipped the banner. With the new `TreeReadError` they would have failed the whole command on a Window that is still open. Now `transientTreeRead` (`internal/helper/state.go`: a `TreeReadError` that was not refused) makes the text wait poll again (`waits.go`) and the notification scan skip that banner as before (`notifications.go`); an access-denied read still ends the wait. Test: `TestWaitTreeTextPollsAgainAfterAFailedRead`. `waits_test.go` is now gofmt-clean.
