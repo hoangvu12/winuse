@@ -190,14 +190,25 @@ func (s *comSource) Children(node comPtr, remaining time.Duration) ([]comPtr, []
 	}
 	defer release(arr)
 
+	// A failed or negative length, or a child that did not read, is an
+	// error with the children that did read: the walk keeps them and marks
+	// the read partial (reliability-council 05), so a node is never passed
+	// off as a leaf or a complete list.
 	var n int32
-	if hr := call(arr, arrGetLength, uintptr(unsafe.Pointer(&n))); hr.Failed() || n < 0 {
-		return nil, nil, nil
+	if hr := call(arr, arrGetLength, uintptr(unsafe.Pointer(&n))); hr.Failed() {
+		return nil, nil, fmt.Errorf("reading the cached children's count failed (HRESULT %s)", hr)
+	}
+	if n < 0 {
+		return nil, nil, fmt.Errorf("the cached children's count is %d", n)
 	}
 	kids := make([]comPtr, 0, n)
+	var err error
 	for i := int32(0); i < n; i++ {
 		var el comPtr
 		if hr := call(arr, arrGetElement, uintptr(i), uintptr(unsafe.Pointer(&el))); hr.Failed() || el == nil {
+			if err == nil {
+				err = fmt.Errorf("reading cached child %d of %d failed (HRESULT %s)", i, n, hr)
+			}
 			continue
 		}
 		kids = append(kids, el)
@@ -206,7 +217,7 @@ func (s *comSource) Children(node comPtr, remaining time.Duration) ([]comPtr, []
 	for i, k := range kids {
 		data[i] = s.data(k)
 	}
-	return kids, data, nil
+	return kids, data, err
 }
 
 // data reads an element's cached properties (in-process reads from the

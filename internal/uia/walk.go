@@ -65,8 +65,9 @@ var ErrChunkTimedOut = errors.New("ui automation chunk timed out")
 // Children receives the walk's remaining budget so the implementation can
 // bound the cross-process call (the UIA transaction timeout). It returns the
 // node's control-view children together with their cached data, in order.
-// A nil slice without error means a leaf; an error means the children could
-// not be read and the node is treated as a childless element.
+// A nil slice without error means a leaf; an error means not every child
+// could be read: the walk keeps the children returned with it (the ones that
+// did read; none when the list itself failed) and marks the tree partial.
 type TreeSource[T any] interface {
 	Root() (T, NodeData, error)
 	Children(node T, remaining time.Duration) ([]T, []NodeData, error)
@@ -300,10 +301,11 @@ func (w *walker[T]) expand(node T, depth, index int) {
 		if errors.Is(err, ErrChunkTimedOut) {
 			w.reasons[reasonTime] = true
 			w.stopped = true
-		} else {
-			w.reasons[reasonUnreadable] = true
+			w.drop(kids)
+			return
 		}
-		return
+		// The children that did read stay; the note names the rest.
+		w.reasons[reasonUnreadable] = true
 	}
 
 	limit := len(kids)
