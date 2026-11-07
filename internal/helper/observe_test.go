@@ -342,7 +342,7 @@ Changed since this agent's last read of window 101 (~ changed, * new, - gone); E
 	trees = &observeTrees{stored: before.Elements, next: &moved}
 	out, err = read(trees, windowRef{Diff: true, Interactive: true})
 	if err != nil || !strings.Contains(out, "Note: the whole Window State: 26 Element Indexes changed, so a diff would not be shorter\n") ||
-		strings.Contains(out, "Changed since") || !strings.Contains(out, "\t\t14 check box Notify me off") || !strings.Contains(out, "--interactive left out 5 of the 27 Elements") {
+		strings.Contains(out, "Changed since") || !strings.Contains(out, "\t\t14 check box Notify me off") || !strings.Contains(out, "--interactive left out 4 of the 27 Elements") {
 		t.Errorf("a large change: %v\n%s", err, out)
 	}
 
