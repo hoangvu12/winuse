@@ -22,7 +22,8 @@ import (
 // This file holds the runner's shared plumbing: the opt-in gate, the winuse
 // binary build and the run helpers. The rules that matter are in the
 // package comment and test/e2e/README.md: these tests drive the real
-// desktop and are started only by the user, never by an agent.
+// desktop and are started only by the user or by the e2e lane on a hosted
+// runner, never by an agent on the user's PC.
 
 // e2eIdle is the helper idle timeout used by these tests so nothing lingers
 // on the user's machine after the suite ends.
@@ -40,7 +41,7 @@ var (
 func optIn(t *testing.T) {
 	t.Helper()
 	if os.Getenv("WINUSE_E2E") != "1" {
-		t.Skip("end-to-end tests are opt-in only: the user must set WINUSE_E2E=1 (see test/e2e docs; agents must not enable this)")
+		t.Skip("end-to-end tests are opt-in only: the user, or the e2e lane on a hosted runner, sets WINUSE_E2E=1 (see test/e2e docs; agents must not enable this on the user's PC)")
 	}
 }
 
