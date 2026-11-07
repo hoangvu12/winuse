@@ -55,7 +55,9 @@ func TestObserveOnTheFixture(t *testing.T) {
 	}
 
 	// A Batch acts, reads and acts: its read step prints under its number.
-	out = run("batch", window, "set-value", "id:"+string(fixture.ElemTextField), "batched", "then", "find", "--role", "edit", "then", "press-key", "Tab")
+	// Tab is posted: an unheaded key without --post has no background
+	// route outside a classic dialog (headless-max 21).
+	out = run("batch", window, "set-value", "id:"+string(fixture.ElemTextField), "batched", "then", "find", "--role", "edit", "then", "press-key", "Tab", "--post")
 	if !regexp.MustCompile(`(?m)^Action 2 \(find\): `).MatchString(out) || !strings.Contains(out, "Value: batched") {
 		t.Errorf("a Batch with a find step:\n%s", out)
 	}
