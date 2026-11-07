@@ -111,7 +111,7 @@ The user pressing the physical Escape key while winuse is acting: the running co
 _Avoid_: Interrupt, cancel, kill switch
 
 **Delivery**:
-What a failure says about its Action reaching the app: not delivered ("nothing was sent", a retry is safe), delivered but unverified ("the Action was delivered; do not repeat it"), or uncertain ("may have taken effect"). Under `--json` it is a field beside the failure's code (desktop-parity 07); in the text it is the phrase.
+What a failure says about its Action reaching the app: not delivered ("nothing was sent", a retry is safe), delivered but unverified ("the Action was delivered; do not repeat it"), or uncertain ("may have taken effect"). The failure sets it where it happens, from what the native error proves: a refusal raised before the write sent nothing, a write that failed (a provider fault or disconnect included) may have taken effect; an Action's failure that cannot say is uncertain (reliability-council 02). Under `--json` it is a field beside the failure's code (desktop-parity 07); in the text it is the phrase.
 _Avoid_: Sent state, side effect
 
 **Harness**:

@@ -482,6 +482,9 @@ func CommandsWith(s Services) map[string]Command {
 		}
 		cmd = s.tracedWindow(cmd)      // a traced run names its Window (trace.go, desktop-parity ticket 19)
 		cmd = s.tabTargeted(name, cmd) // a <window>:<tab> target runs on its Tab (tabtarget.go, ADR 0017)
+		if name != "wait" && !observationOnlyCommand(name) {
+			cmd = actionDelivered(cmd) // delivery.go: an Action's failure says whether it was sent
+		}
 		out[name] = cmd
 	}
 	return out

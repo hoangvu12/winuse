@@ -125,7 +125,7 @@ func jsonLineFor(command string, code int, stdout, stderr string, resp *protocol
 		}
 	}
 	if r.Code == "" { // the CLI's own failure, or a helper of an older build
-		r.Stamp("")
+		r.Stamp("", "")
 	}
 	line.Error = &jsonError{Code: r.Code, Message: r.Err, Hint: r.Hint, Delivery: r.Delivery, Retry: r.Retry}
 	return line

@@ -549,6 +549,7 @@ const nothingSentNote = "; nothing was sent"
 // nothingSent marks a refusal as raised before anything reached the app.
 func nothingSent(e *Error) *Error {
 	out := *e
+	out.Delivery = protocol.DeliveryNotDelivered
 	if strings.HasSuffix(out.Msg, nothingSentNote) {
 		return &out // already said
 	}
@@ -561,9 +562,10 @@ func nothingSent(e *Error) *Error {
 // with a hint that says nothing was sent.
 func escStopBeforeActError() *Error {
 	return &Error{
-		Msg:  escStopMessage,
-		Hint: "stop your current task and ask the user how to proceed before sending more winuse commands; nothing was sent, so the stopped Action did not take effect",
-		Exit: protocol.ExitEsc,
+		Msg:      escStopMessage,
+		Hint:     "stop your current task and ask the user how to proceed before sending more winuse commands; nothing was sent, so the stopped Action did not take effect",
+		Exit:     protocol.ExitEsc,
+		Delivery: protocol.DeliveryNotDelivered,
 	}
 }
 
@@ -611,11 +613,11 @@ func headlessFailure(err error, w win.WindowInfo, index int, run headlessRun) *E
 	}
 	var verify *uia.VerifyError
 	if errors.As(err, &verify) {
-		return Fail(err.Error(), "the Action was delivered; do not repeat it, read the Window State: winuse get-window-state "+id)
+		return wasDelivered(Fail(err.Error(), "the Action was delivered; do not repeat it, read the Window State: winuse get-window-state "+id))
 	}
 	var write *uia.WriteError
 	if errors.As(err, &write) {
-		return Fail(err.Error(), "the Action may have taken effect; read the Window State (winuse get-window-state "+id+") before repeating it")
+		return mayHaveActed(Fail(err.Error(), "the Action may have taken effect; read the Window State (winuse get-window-state "+id+") before repeating it"))
 	}
 	e := run.refusal(err, w, index)
 	if refusedBeforeCall(err) {

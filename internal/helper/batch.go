@@ -302,10 +302,11 @@ func batch(commands map[string]Command, s Services) Command {
 			}
 			if err != nil && (a.StopOnError || err.Exit == protocol.ExitEsc) {
 				return stop(&Error{
-					Msg:  fmt.Sprintf("batch stopped at Action %d (%s): %s", i+1, st.kind, err.Msg),
-					Hint: err.Hint,
-					Exit: err.Exit,
-					Code: err.Code,
+					Msg:      fmt.Sprintf("batch stopped at Action %d (%s): %s", i+1, st.kind, err.Msg),
+					Hint:     err.Hint,
+					Exit:     err.Exit,
+					Code:     err.Code,
+					Delivery: err.Delivery,
 				})
 			}
 			if err != nil {
@@ -367,9 +368,13 @@ type batchFailure struct {
 }
 
 // uncertainFailure reports whether a failed step may have acted: its
-// message or hint says the Action may have taken effect, or was delivered
-// and must not be repeated (SKILL.md's result phrases).
+// delivery is uncertain or delivered, or, when it set none, its message
+// or hint says the Action may have taken effect, or was delivered and
+// must not be repeated (SKILL.md's result phrases).
 func uncertainFailure(e *Error) bool {
+	if e.Delivery != "" {
+		return e.Delivery != protocol.DeliveryNotDelivered
+	}
 	text := e.Msg + " " + e.Hint
 	return strings.Contains(text, "may have taken effect") || strings.Contains(text, "do not repeat")
 }

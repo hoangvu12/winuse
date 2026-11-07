@@ -35,6 +35,10 @@ type Error struct {
 	Exit int
 	Out  string
 	Code string
+	// Delivery is the failure's own delivery (protocol.Delivery*, set by
+	// nothingSent, mayHaveActed, wasDelivered or actionDelivered); "" lets
+	// Stamp read it from the text (delivery.go, reliability-council 02).
+	Delivery string
 }
 
 func (e *Error) Error() string { return e.Msg }
@@ -205,8 +209,8 @@ func (s *Server) serveConn(conn net.Conn) {
 // handle dispatches one request to its command. Every failure leaves
 // with its code and delivery (protocol codes.go, desktop-parity ticket 07).
 func (s *Server) handle(req *protocol.Request) (resp protocol.Response) {
-	var code string // the failing command's own code, if it set one
-	defer func() { resp.Stamp(code) }()
+	var code, delivery string // the failing command's own code and delivery, if it set them
+	defer func() { resp.Stamp(code, delivery) }()
 	if req.V != protocol.Version {
 		return protocol.Errorf(1, "wire protocol version %d not supported (helper speaks %d); upgrade winuse", req.V, protocol.Version)
 	}
@@ -254,7 +258,7 @@ func (s *Server) handle(req *protocol.Request) (resp protocol.Response) {
 	// instead of a timeout the user did not cause.
 	// A failure's Out (the steps a Batch ran) travels with it either way.
 	if cmdErr != nil && cmdErr.Exit == protocol.ExitEsc {
-		code = protocol.CodeStopped
+		code, delivery = protocol.CodeStopped, cmdErr.Delivery
 		resp := protocol.Errorf(cmdErr.Exit, "%s", cmdErr.Msg)
 		resp.Hint, resp.Out = cmdErr.Hint, cmdErr.Out
 		return resp
@@ -268,6 +272,7 @@ func (s *Server) handle(req *protocol.Request) (resp protocol.Response) {
 		return resp
 	}
 	if cmdErr != nil {
+		delivery = cmdErr.Delivery
 		resp := protocol.Errorf(cmdErr.Exit, "%s", cmdErr.Msg)
 		resp.Hint, resp.Out = cmdErr.Hint, cmdErr.Out
 		if resp.Exit == 0 {

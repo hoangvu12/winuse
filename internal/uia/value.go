@@ -879,10 +879,13 @@ func patternState(pat comPtr, slot uintptr) int32 {
 // fail as stale (the read-the-state-again contract), disabled elements say
 // so — both refusals, nothing happened — and anything else is a
 // *WriteError naming the operation and the HRESULT, which may have taken
-// effect.
+// effect. Only UIA_E_ELEMENTNOTAVAILABLE is stale here, not hrStale's RPC
+// and CO codes: a provider that faults or disconnects in the middle of
+// the call may have acted before failing (reliability-council 02;
+// agent-desktop's Mutation Classifier calls them uncertain).
 func callErr(hr HRESULT, what string) error {
 	switch {
-	case hrStale(hr):
+	case hr == uiaErrElementGone:
 		return staleErr(hr)
 	case hr == uiaErrElementDisabled:
 		return ErrDisabled

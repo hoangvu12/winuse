@@ -424,6 +424,8 @@ func (s Services) laneBusyError(key string) *Error {
 // queuedOutError is the failure a command reports when its request's
 // budget expired while it waited for its lanes.
 func queuedOutError() *Error {
-	return Fail("another winuse Action was still running when this request's budget expired",
+	e := Fail("another winuse Action was still running when this request's budget expired",
 		"retry once the other Action finishes")
+	e.Delivery = protocol.DeliveryNotDelivered // it never ran (delivery.go)
+	return e
 }

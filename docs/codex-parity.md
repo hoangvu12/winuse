@@ -568,7 +568,9 @@ agent-desktop's envelope: `ok`, `command`, `out` (a Window State stays its
 text tree), and on a failure `error` with a code (`STALE_REF`,
 `NO_HEADLESS_ROUTE`, `TIMEOUT`, ...), the message, the hint, and the
 delivery and retry its text states ("nothing was sent" is
-`not_delivered`, safe to retry). Codes come from the failure's text in one
+`not_delivered`, safe to retry; the failure site sets the delivery where it
+knows it, and an Action's failure that says nothing is
+`delivery_uncertain`, reliability-council 02). Codes come from the failure's text in one
 table (`internal/protocol/codes.go`). Exit codes are unchanged, and
 without the flag the output is byte-for-byte the text. Codex has no JSON
 output. **extension**.
