@@ -275,7 +275,7 @@ func (c *Client) installRead(agent string, hwnd uint64, seq uint64, res *capture
 		}
 		return
 	}
-	c.store.install(agent, hwnd, seq, res.live, res.tree.Elements)
+	c.store.install(agent, hwnd, seq, res.live, res.tree.Elements, res.partial)
 }
 
 // responseMargin is kept between the walk's budget and the request deadline

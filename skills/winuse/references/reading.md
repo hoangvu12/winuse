@@ -142,6 +142,19 @@ your Window State's indexes still work. Prefer `name:` and `id:` for an
 Element you will act on again. A fresh read that finds the name twice
 refuses, with the candidates under new indexes.
 
+One match counts only in a read that saw the whole Window. When the Window
+State you read is partial (a `this Window State is partial` note, a
+`--skeleton` read, a `(truncated: ...)` line), winuse looks in a fresh read
+instead; when that one is partial too, it refuses:
+`name "Delete": 1 match in the part read; the read was partial (a fresh read of window 101)`,
+with the match under a new index in the hint, since another may sit in the
+part not read. Narrow the read (`winuse find 101 --role button --name
+Delete`, or `get-window-state 101 --root <element>`), or act by that index
+if it is the one you mean. A name it does not find in a partial read is
+reported as `... in the part read; the read was partial ..., so it may be
+in the part not read`, never as absent. An Element Index is never
+re-resolved, so this does not touch it.
+
 An Action's `--observe` is a full read too, so it renumbers the same way;
 its diff lists every index whose line changed, and an index it does not
 list names an Element with the same line as before, so you can keep using

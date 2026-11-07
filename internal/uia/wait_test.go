@@ -20,7 +20,7 @@ func TestHoldElementHoldsUntilReleased(t *testing.T) {
 	addRefs, releases := 0, 0
 	c.store.addRef = func(comPtr) { mu.Lock(); addRefs++; mu.Unlock() }
 	c.store.release = func(comPtr) { mu.Lock(); releases++; mu.Unlock() }
-	c.store.install(defaultAgent, 101, c.store.beginRead(), []comPtr{comPtr(&a)}, nil)
+	c.store.install(defaultAgent, 101, c.store.beginRead(), []comPtr{comPtr(&a)}, nil, false)
 
 	held, err := c.HoldElement(context.Background(), 101, 0)
 	if err != nil {
@@ -61,7 +61,7 @@ func TestHoldElementMisses(t *testing.T) {
 		t.Errorf("no Window State: %v", err)
 	}
 	a := 1
-	c.store.install(defaultAgent, 101, c.store.beginRead(), []comPtr{comPtr(&a)}, nil)
+	c.store.install(defaultAgent, 101, c.store.beginRead(), []comPtr{comPtr(&a)}, nil, false)
 	if _, err := c.HoldElement(context.Background(), 101, 3); !errors.Is(err, ErrStale) {
 		t.Errorf("an index past the Window State: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestHeldElementOutlivesItsWaitSafely(t *testing.T) {
 	var mu sync.Mutex
 	releases := 0
 	c.store.release = func(comPtr) { mu.Lock(); releases++; mu.Unlock() }
-	c.store.install(defaultAgent, 101, c.store.beginRead(), []comPtr{comPtr(&a)}, nil)
+	c.store.install(defaultAgent, 101, c.store.beginRead(), []comPtr{comPtr(&a)}, nil, false)
 	held, err := c.HoldElement(context.Background(), 101, 0)
 	if err != nil {
 		t.Fatalf("hold: %v", err)

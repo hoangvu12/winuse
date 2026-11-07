@@ -94,7 +94,7 @@ func TestLiveMatchesAndAnswer(t *testing.T) {
 // resolution gets the index it already has, and its new handle is released.
 func TestStoreAddsAnElementOnce(t *testing.T) {
 	f := newFakeStore()
-	f.install("A", 101, f.beginRead(), ptrs(2), []wstate.Element{{Name: "Window"}, {Name: "Pane"}})
+	f.install("A", 101, f.beginRead(), ptrs(2), []wstate.Element{{Name: "Window"}, {Name: "Pane"}}, false)
 	first := ptrs(2)
 	if idx := f.add("A", 101, first, []wstate.Element{{Name: "Save"}, {Name: "Open"}}, []string{"42.1", "42.2"}); !slices.Equal(idx, []int{2, 3}) {
 		t.Fatalf("first add: %v", idx)
@@ -107,12 +107,13 @@ func TestStoreAddsAnElementOnce(t *testing.T) {
 	if f.released[again[0]] != 1 || f.released[again[1]] != 0 {
 		t.Errorf("released %v: the repeated handle is released, the new ones kept", f.released)
 	}
-	els, base, _ := f.refState("A", 101)
+	cv, _ := f.refState("A", 101)
+	els, base := cv.els, cv.base
 	if base != 2 || len(els) != 6 {
 		t.Errorf("state: base %d, %d Elements", base, len(els))
 	}
 	// A full read starts the added set over.
-	f.install("A", 101, f.beginRead(), ptrs(1), []wstate.Element{{Name: "Window"}})
+	f.install("A", 101, f.beginRead(), ptrs(1), []wstate.Element{{Name: "Window"}}, false)
 	if idx := f.add("A", 101, ptrs(1), []wstate.Element{{Name: "Save"}}, []string{"42.1"}); !slices.Equal(idx, []int{1}) {
 		t.Errorf("after a full read: %v", idx)
 	}

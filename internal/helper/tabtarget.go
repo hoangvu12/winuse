@@ -539,9 +539,11 @@ func (h *tabHolds) heldTabs() []string {
 
 // tabState is one Agent's Window State of one Tab: its Elements and, per
 // Element Index, the Page node behind it (nil for the document Element 0).
+// partial says the Page read was cut by its caps (page.Result.Partial).
 type tabState struct {
 	elements []wstate.Element
 	origins  []*page.Origin
+	partial  bool
 	used     time.Time
 }
 
@@ -613,8 +615,13 @@ func (s Services) tabResolve(ctx context.Context, bt *bgTab, t elementTarget) (w
 	switch {
 	case t.ref != "":
 		i, err := wstate.ResolveElementRef(st.elements, t.ref)
+		if st.partial {
+			// No fresh read here: a Tab read cut by its caps refuses its one
+			// match (reliability council 03).
+			i, err = wstate.InPartialRead(st.elements, t.ref, i, err)
+		}
 		if err != nil {
-			return w, 0, nil, nothingSent(refError(err, w))
+			return w, 0, nil, nothingSent(tabTargetRefError(err, bt))
 		}
 		index = i
 	case t.index != nil:
@@ -629,6 +636,22 @@ func (s Services) tabResolve(ctx context.Context, bt *bgTab, t elementTarget) (w
 			"act on an Element inside it; keys and typing go to the Tab's focused element: winuse press-key "+bt.ref()+" <key>"))
 	}
 	return w, index, o, nil
+}
+
+// tabTargetRefError is refError for a Tab target: a partial Tab read's one
+// match or miss is refused with what the Tab itself takes (no find, no
+// --root); everything else as for a Window.
+func tabTargetRefError(err error, bt *bgTab) *Error {
+	where := fmt.Sprintf("the Window State of tab %s of window %d", bt.short(), bt.w.ID)
+	if perr := partialRefError(err, where, func(candidate string) string {
+		if candidate != "" {
+			return "if this is the Element you mean, act on it by its Element Index:\n" + candidate
+		}
+		return "the Tab's read stopped at its caps; act on an Element Index it printed"
+	}); perr != nil {
+		return perr
+	}
+	return refError(err, bt.w)
 }
 
 // tabElementName is an Element's name in the Tab's Window State.
@@ -713,7 +736,7 @@ func (s Services) readTabTree(ctx context.Context, bt *bgTab) (*wstate.Tree, *Er
 		tree.Notes = append(tree.Notes, "this Window State is partial: "+strings.Join(res.Reasons, "; "))
 	}
 	tree.Notes = append(tree.Notes, bt.stateNote())
-	s.tabStates.put(AgentOf(ctx).ID, tabKeyOf(bt), &tabState{elements: els, origins: origins})
+	s.tabStates.put(AgentOf(ctx).ID, tabKeyOf(bt), &tabState{elements: els, origins: origins, partial: res.Partial()})
 	return tree, nil
 }
 

@@ -86,7 +86,7 @@ func (p *pageTrees) Capture(ctx context.Context, hwnd uint64, title, app string,
 	return tree, nil
 }
 
-func (p *pageTrees) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any) error {
+func (p *pageTrees) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any, pagePartial bool) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	st := p.state[hwnd]

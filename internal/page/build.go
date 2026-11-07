@@ -38,6 +38,20 @@ type Result struct {
 	Reasons []string
 }
 
+// Partial says the read did not see the whole Page: a cut reason, or a
+// truncation marker the children cap left (reliability council 03).
+func (r *Result) Partial() bool {
+	if len(r.Reasons) > 0 || r.DocTruncated != nil {
+		return true
+	}
+	for i := range r.Elements {
+		if r.Elements[i].Truncated != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // Build renders a Raw read into Window State Elements: CDP roles mapped to
 // the UIA role words (roles.go), ignored and wrapper nodes left out with
 // their children taking their place, text that repeats its parent's name
