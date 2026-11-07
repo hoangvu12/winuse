@@ -63,7 +63,7 @@ ordinary Escape; only the physical key stops winuse.
 | Symptom | Next step |
 |---|---|
 | A stale index or point, shifted UI, a moved Window | A fresh `get-window-state` (and screenshot), then one retry |
-| `window <id> closed; a new window reused its ID; nothing was sent` | `list-windows`, and read the new Window before you act on it |
+| `window <id> closed` (`during this command`); `a new window reused its ID; nothing was sent` | `list-windows`, and read the new Window before you act on it |
 | A modal dialog blocks the target (named, with its Window ID) | winuse already waited for it to close: handle that dialog's Window, then return to the owner |
 | `the Element is disabled; nothing was sent` | winuse already waited 1.8 s: read the Window State for what it needs first (a required field), or `wait <window> <ref> enabled --timeout <s>` for something slow |
 | `is minimized` | `restore-window <window>` (no foreground), read, retry once |

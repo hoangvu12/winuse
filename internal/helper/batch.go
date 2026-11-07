@@ -188,7 +188,11 @@ func batch(commands map[string]Command, s Services) Command {
 			}
 			sw, serr := resolveWindow(s, st.own)
 			if serr == nil {
-				serr = s.reusedID(sw.ID)
+				var now win.WindowOwner
+				var seen bool
+				if now, seen, serr = s.reusedID(sw.ID); seen {
+					ctx = withStartIdentity(ctx, sw.ID, now) // re-checked at its step's write (identity.go)
+				}
 			}
 			if serr != nil {
 				return "", &Error{Msg: fmt.Sprintf("batch: Action %d (%s): %s", i+1, st.kind, serr.Msg), Hint: serr.Hint, Exit: serr.Exit}

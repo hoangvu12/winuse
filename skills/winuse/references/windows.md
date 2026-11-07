@@ -23,7 +23,9 @@ check that a Window still exists, for example after a helper restart.
 
 Windows hands a closed Window's ID to a new Window. An Action on an ID a
 new Window took is refused with
-`window <id> closed; a new window reused its ID; nothing was sent`. Run
+`window <id> closed; a new window reused its ID; nothing was sent`, or
+`window <id> closed during this command; ...` when it happened while the
+Action waited or read, just before it would have sent anything. Run
 `list-windows` again, and read the new Window before you act on it.
 
 `--details` adds the visible frame (the numbers `move-window` and
