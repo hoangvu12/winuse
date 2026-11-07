@@ -188,12 +188,15 @@ const (
 	uiaErrTimeout          = HRESULT(-0x7FECEAFB) // 0x80131505 UIA_E_TIMEOUT: a provider did not answer in time
 	uiaErrNoClickablePoint = HRESULT(-0x7FFBFDFE) // 0x80040202 UIA_E_NOCLICKABLEPOINT
 	uiaErrElementDisabled  = HRESULT(-0x7FFBFE00) // 0x80040200 UIA_E_ELEMENTNOTENABLED
+	uiaErrElementGone      = HRESULT(-0x7FFBFDFF) // 0x80040201 UIA_E_ELEMENTNOTAVAILABLE
 )
 
 // hrStale reports whether hr means the Element behind a stored Element
 // Index is gone: the documented "stale" HRESULTs (uia-go.md §2 —
 // UIA_E_ELEMENTNOTAVAILABLE plus the "target process gone" RPC errors,
-// which a disconnected provider also surfaces).
+// which a disconnected provider also surfaces). It classifies reads, and
+// the reads before a write; a failed write itself is stale only on
+// UIA_E_ELEMENTNOTAVAILABLE (callErr).
 func hrStale(hr HRESULT) bool {
 	switch uint32(hr) {
 	case 0x80040201, // UIA_E_ELEMENTNOTAVAILABLE

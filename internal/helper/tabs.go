@@ -378,7 +378,7 @@ func (s Services) tabSwitchStrip(ctx context.Context, tw tabWindow, tab page.Tab
 		case errors.As(err, &verify):
 			return "", tabNotActive(tw, tab, "the switch was delivered"), true
 		case errors.As(err, &write):
-			return "", Fail(err.Error(), "the switch may have taken effect; read winuse tab list "+tw.id()+" before repeating it"), true
+			return "", mayHaveActed(Fail(err.Error(), "the switch may have taken effect; read winuse tab list "+tw.id()+" before repeating it")), true
 		}
 		return "", nothingSent(Fail(fmt.Sprintf("reading the tab strip of window %d failed: %v", tw.w.ID, err), tabStripRetry(tw, tab))), false
 	})

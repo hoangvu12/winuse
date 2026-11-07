@@ -190,9 +190,9 @@ func keyFailure(err error, w win.WindowInfo) *Error {
 	}
 	var verify *uia.VerifyError
 	if errors.As(err, &verify) {
-		return Fail(err.Error(), "the Action was delivered; do not repeat it, read the Window State: winuse get-window-state "+id)
+		return wasDelivered(Fail(err.Error(), "the Action was delivered; do not repeat it, read the Window State: winuse get-window-state "+id))
 	}
-	return Fail(err.Error(), "the Action may have taken effect; read the Window State (winuse get-window-state "+id+") before repeating it")
+	return mayHaveActed(Fail(err.Error(), "the Action may have taken effect; read the Window State (winuse get-window-state "+id+") before repeating it"))
 }
 
 // pressDialogKey runs a Headless Return or Escape on a classic dialog:

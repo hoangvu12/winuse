@@ -1,8 +1,9 @@
 package protocol
 
 // Failure codes and delivery (desktop-parity ticket 07): every failed
-// Response carries a code, and a delivery and retry when its text says
-// whether the Action reached the app. The CLI prints them only under the
+// Response carries a code, and a delivery and retry when its failure site
+// or its text says whether the Action reached the app (a failed Action
+// always does, reliability-council 02). The CLI prints them only under the
 // opt-in --json flag; the plain text output is unchanged (ADR 0004).
 //
 // The helper's failure sites keep building their messages as before: a
@@ -34,8 +35,8 @@ const (
 	CodeInternal        = "INTERNAL"          // anything else: a call that failed
 )
 
-// The deliveries a failure reports, from its text (deliveryOf), and the
-// retry each one allows.
+// The deliveries a failure reports, set by its failure site or else read
+// from its text (DeliveryOf), and the retry each one allows (RetryOf).
 const (
 	DeliveryNotDelivered        = "not_delivered"        // "nothing was sent": a retry is safe
 	DeliveryDeliveredUnverified = "delivered_unverified" // "was delivered; do not repeat it"
@@ -173,10 +174,29 @@ var (
 	delivered    = regexp.MustCompile(`was delivered|do not repeat`)
 )
 
-// Stamp fills a failed Response's code, delivery and retry: code is the
-// failure site's own (empty for CodeFor's), and a usage error (exit 2)
-// was never sent. A successful Response is left alone.
-func (r *Response) Stamp(code string) {
+// RetryOf returns the retry a delivery allows: safe only when nothing was
+// sent; "" for an empty delivery.
+func RetryOf(delivery string) string {
+	switch delivery {
+	case "":
+		return ""
+	case DeliveryNotDelivered:
+		return RetrySafe
+	}
+	return RetryUnsafe
+}
+
+// SentNothing reports whether a delivery proves the Action never reached
+// the app, the one failure a caller may repeat without reading the Window
+// first. Delivered, uncertain and unknown ("") all say no.
+func SentNothing(delivery string) bool { return delivery == DeliveryNotDelivered }
+
+// Stamp fills a failed Response's code, delivery and retry: code and
+// delivery are the failure site's own (empty for CodeFor's and
+// DeliveryOf's; the text is the fallback, reliability-council 02), and a
+// usage error (exit 2) was never sent. A successful Response is left
+// alone.
+func (r *Response) Stamp(code, delivery string) {
 	if r.OK {
 		return
 	}
@@ -184,8 +204,11 @@ func (r *Response) Stamp(code string) {
 		code, _ = CodeFor(r.Err, r.Hint, r.Exit)
 	}
 	r.Code = code
-	r.Delivery, r.Retry = DeliveryOf(r.Err, r.Hint)
-	if r.Delivery == "" && code == CodeUsage {
-		r.Delivery, r.Retry = DeliveryNotDelivered, RetrySafe
+	if delivery == "" {
+		delivery, _ = DeliveryOf(r.Err, r.Hint)
 	}
+	if delivery == "" && code == CodeUsage {
+		delivery = DeliveryNotDelivered
+	}
+	r.Delivery, r.Retry = delivery, RetryOf(delivery)
 }

@@ -441,8 +441,8 @@ func (s Services) pressNotification(ctx context.Context, cmd string, n int, pick
 			return "", nothingSent(Fail(fmt.Sprintf("%s on notification %d: %v", cmd, n, err),
 				"run winuse list-notifications again; the banner may have changed"))
 		}
-		return "", Fail(fmt.Sprintf("%s on notification %d: %v", cmd, n, err),
-			"the button may have been pressed; run winuse list-notifications before pressing it again")
+		return "", mayHaveActed(Fail(fmt.Sprintf("%s on notification %d: %v", cmd, n, err),
+			"the button may have been pressed; run winuse list-notifications before pressing it again"))
 	}
 	if !s.notificationLeft(ctx, want) {
 		return "", &Error{Msg: fmt.Sprintf("%s pressed the button of notification %d and it still shows", cmd, n),
