@@ -173,6 +173,49 @@ func TestRenderViewMaxChars(t *testing.T) {
 	}
 }
 
+// A read that does not fit --max-chars folds its bare containers first,
+// as --compact does, and says so; one that fits prints as before
+// (reliability-council 12).
+func TestRenderViewFoldsBeforeTheCut(t *testing.T) {
+	tree := viewTree()
+	for i := 0; i < 40; i++ { // unnamed wrappers around one more named button each
+		tree.Elements = append(tree.Elements, Element{Depth: 1, Role: "group"}, Element{Depth: 2, Role: "group"},
+			Element{Depth: 3, Role: "button", Name: "Item " + strconv.Itoa(i)})
+	}
+	whole := RenderView(tree, View{Ref: "7"})
+	compact := RenderView(tree, View{Compact: true, Ref: "7"})
+	cap := utf8.RuneCountInString(compact) + 500 // the cut keeps room for its own note
+	if cap >= utf8.RuneCountInString(whole) {
+		t.Fatalf("the test tree must fit the cap only when folded: whole %d, compact %d", utf8.RuneCountInString(whole), utf8.RuneCountInString(compact))
+	}
+	out := RenderView(tree, View{MaxChars: cap, Ref: "7"})
+	if strings.Contains(out, "stopped the output") {
+		t.Errorf("folding fits the read, so nothing is cut:\n%s", out)
+	}
+	got := lineIndexes(t, out)
+	if _, ok := got[1]; ok {
+		t.Errorf("the bare pane 1 still prints:\n%s", out)
+	}
+	if _, ok := got[len(tree.Elements)-1]; !ok {
+		t.Errorf("the last button is missing:\n%s", out)
+	}
+	if !strings.Contains(out, "Note: folding unnamed containers to fit --max-chars "+strconv.Itoa(cap)+" (as --compact does) left out 81 of the 129 Elements; their Element Indexes still work\n") {
+		t.Errorf("no note on the fold:\n%s", out)
+	}
+	// Still too long folded: folded, then cut.
+	out = RenderView(tree, View{MaxChars: 900, Ref: "7"})
+	if !strings.Contains(out, "folding unnamed containers") || !strings.Contains(out, "Note: --max-chars 900 stopped the output") {
+		t.Errorf("a read too long even folded folds, then cuts:\n%s", out)
+	}
+	// A read that fits, and --out (no cap), print every Element as before.
+	if out := RenderView(tree, View{MaxChars: utf8.RuneCountInString(whole) + 500, Ref: "7"}); out != whole {
+		t.Errorf("a read that fits must print as before:\n%s", out)
+	}
+	if out := RenderView(tree, View{Ref: "7"}); strings.Contains(out, "folding") {
+		t.Errorf("no cap, no fold:\n%s", out)
+	}
+}
+
 func TestCutTinyCapKeepsHeaderAndTail(t *testing.T) {
 	lines := []PrintedLine{{0, "\t0 window W\n"}, {1, "\t\t1 button B\n"}}
 	out := Cut("Window: \"W\", App: a.exe.\n", lines, "Note: tail\n", 10, "Narrow it")

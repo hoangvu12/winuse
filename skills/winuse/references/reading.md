@@ -89,7 +89,11 @@ By default a read, `find` and `--root` stop before 28000 characters
 (under the Harness's 30000-character cap on a command's output) with a
 note naming the first Element not printed, and leave out the IDs two or
 more Elements share, which `id:` refuses as ambiguous; a unique ID always
-prints. `--max-chars N` sets the cap, `--max-chars 0` lifts it, and
+prints. A full read that would pass the cap first folds its unnamed
+containers, as `--compact` does, and says so in a note; it cuts only what
+still does not fit (on Chromium and Electron Windows, where a third of the
+Elements can be such wrappers, that fits far more). A read that fits
+prints whole. `--max-chars N` sets the cap, `--max-chars 0` lifts it, and
 `--out <file>` writes the whole read to the file.
 
 On a full read, `--interactive`, `--depth N` and `--compact` (folds
