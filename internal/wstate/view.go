@@ -24,8 +24,9 @@ type View struct {
 	// text, shared IDs included, never cut. The other fields are ignored.
 	Full bool
 
-	// Interactive prints only the Elements an agent acts on (Interactive),
-	// plus the root and the Elements that carry a walk's cut marks.
+	// Interactive prints only the Elements an agent acts on (ActedOn),
+	// disabled ones included, plus the root and the Elements that carry a
+	// walk's cut marks.
 	Interactive bool
 
 	// Depth prints only the Elements at most Depth levels below the
@@ -212,7 +213,7 @@ func (v View) prints(i int, e *Element) bool {
 	if i == 0 || e.Truncated != nil || e.MoreChildren > 0 {
 		return true
 	}
-	if v.Interactive && !e.Interactive() {
+	if v.Interactive && !e.ActedOn() {
 		return false
 	}
 	if v.Compact && e.bare() {

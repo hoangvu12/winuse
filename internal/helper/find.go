@@ -360,7 +360,7 @@ func storedSubtree(ctx context.Context, s Services, w win.WindowInfo, index int,
 			break
 		}
 		rel := e.Depth - root
-		if a.Depth > 0 && rel > a.Depth || i > index && a.Interactive && !e.Interactive() {
+		if a.Depth > 0 && rel > a.Depth || i > index && a.Interactive && !e.ActedOn() {
 			continue
 		}
 		lines = append(lines, cut.line(rel+1, i, e))

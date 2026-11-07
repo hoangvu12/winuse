@@ -94,6 +94,9 @@ prints. `--max-chars N` sets the cap, `--max-chars 0` lifts it, and
 On a full read, `--interactive`, `--depth N` and `--compact` (folds
 unnamed containers) print less, but the Window State is kept whole:
 every index printed is its own, and the ones left out still work.
+`--interactive` keeps a disabled control with its `disabled` state, so a
+greyed-out Submit button still prints; `find --state interactive` matches
+enabled Elements only.
 
 `--role` takes the role as the tree prints it, and `--name` and `--text` a
 part of the name (or the value and description), ignoring case. A role

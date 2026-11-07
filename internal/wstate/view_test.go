@@ -67,10 +67,14 @@ func TestRenderViewDropsSharedIDs(t *testing.T) {
 	}
 }
 
+// TestRenderViewInteractive: --interactive keeps the Elements an agent
+// acts on, a disabled one with its state (reliability-council 11).
 func TestRenderViewInteractive(t *testing.T) {
+	tree := viewTree()
+	tree.Elements[3].Disabled = true
 	want := `Window: "Views", App: app.exe.
 	0 window Views Secondary Actions: Raise ID: w
-		3 button Open
+		3 button (disabled) Open
 		4 button Save
 		7 custom (truncated: 7, omitted 3 children)
 		8 edit (settable, string) Find
@@ -79,7 +83,7 @@ The focused UI element is 4 button Save.
 Note: a walk note
 Note: --interactive left out 4 of the 9 Elements; their Element Indexes still work
 `
-	if got := RenderView(viewTree(), View{Interactive: true, Ref: "7"}); got != want {
+	if got := RenderView(tree, View{Interactive: true, Ref: "7"}); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
 }
