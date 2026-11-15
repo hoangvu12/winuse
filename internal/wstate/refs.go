@@ -148,11 +148,12 @@ func ResolveElementRef(elements []Element, ref string) (int, error) {
 
 // candidateLines renders the matching Elements' tree lines, without their
 // indentation, in index order — the candidate list an ambiguous
-// reference reports.
+// reference reports — each control's hint after it (learn-from 04).
 func candidateLines(elements []Element, matches []int) []string {
+	hints := Hints(elements)
 	lines := make([]string, 0, len(matches))
 	for _, i := range matches {
-		lines = append(lines, Line(i, &elements[i]))
+		lines = append(lines, HintedLine(i, &elements[i], hintAt(hints, i)))
 	}
 	return lines
 }

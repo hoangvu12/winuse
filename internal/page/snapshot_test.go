@@ -30,7 +30,7 @@ func marksOfPage(t *testing.T, doc *tn) *Marks {
 	if d == nil {
 		t.Fatal("no document F1")
 	}
-	return marksOf(s, d)
+	return marksOf(s, d, nil)
 }
 
 var (
@@ -186,11 +186,26 @@ func TestSnapshotMarksNoBody(t *testing.T) {
 
 // TestReadSnapshotMatchesThePass: on the benchmark page (200 role-less
 // clickables, a password field, a cross-origin iframe) the snapshot read
-// and the clickables.js read give the same marks and the same Elements.
+// and the clickables.js read give the same marks and the same Elements,
+// but for the hints only the snapshot read has (learn-from 04): the
+// unnamed password field's id.
 func TestReadSnapshotMatchesThePass(t *testing.T) {
 	_, snapRead := benchRead(t, 0, 200, false)
 	_, jsRead := benchRead(t, 0, 200, true)
 	a, b := snapRead(), jsRead()
+	if pw := a.Main.Marks.Passwords[0]; !reflect.DeepEqual(a.Main.Marks.Hints, []NodeHint{{BackendNodeID: pw, Hint: "id pw"}}) || b.Main.Marks.Hints != nil {
+		t.Errorf("hints: snapshot %+v, pass %+v", a.Main.Marks.Hints, b.Main.Marks.Hints)
+	}
+	main := *a.Main.Marks
+	main.Hints = nil
+	a.Main.Marks = &main
+	for i := range a.Frames {
+		if a.Frames[i].Marks != nil {
+			m := *a.Frames[i].Marks
+			m.Hints = nil
+			a.Frames[i].Marks = &m
+		}
+	}
 	if !reflect.DeepEqual(a.Main.Marks, b.Main.Marks) {
 		t.Errorf("main marks differ:\nsnapshot %+v\n    pass %+v", a.Main.Marks, b.Main.Marks)
 	}
@@ -202,6 +217,9 @@ func TestReadSnapshotMatchesThePass(t *testing.T) {
 	}
 	lim := Limits{MaxNodes: 100000, MaxDepth: 48, MaxChildren: 1000, NodeLabel: 100000, DepthLabel: 48}
 	ra, rb := Build(a, lim), Build(b, lim)
+	for i := range ra.Elements {
+		ra.Elements[i].Hint, ra.Elements[i].RowText = "", ""
+	}
 	if !reflect.DeepEqual(ra.Elements, rb.Elements) {
 		t.Error("the Elements differ")
 	}

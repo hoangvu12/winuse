@@ -46,6 +46,21 @@ type Added struct {
 	Indexes  []int
 	Elements []wstate.Element
 	Notes    []string // the walk's partial-tree note, when it was cut
+	// Hints is parallel to Elements: each unnamed or duplicate control's
+	// hint, from the whole walk's tree (wstate.Hints, learn-from 04), so a
+	// find match keeps the row it sits in. Nil when none has one.
+	Hints []wstate.Hint
+}
+
+// keepHint appends hints[i] to a.Hints, parallel to a.Elements.
+func (a *Added) keepHint(hints []wstate.Hint, i int) {
+	if hints == nil {
+		return
+	}
+	if a.Hints == nil {
+		a.Hints = make([]wstate.Hint, len(a.Elements)-1, len(a.Elements))
+	}
+	a.Hints = append(a.Hints, hints[i])
 }
 
 // FindResult is find's answer: the matches it added, how many Elements
@@ -87,6 +102,10 @@ func (c *Client) Find(ctx context.Context, hwnd uint64, budget time.Duration, ma
 		out.RolesPresent = wstate.RolesPresent(res.Elements)
 		out.SharedIDs = wstate.SharedIDs(res.Elements)
 		keep := pickMatches(res.Elements, match, limit, countOnly, &out.Count)
+		var hints []wstate.Hint
+		if !countOnly {
+			hints = wstate.Hints(res.Elements)
+		}
 		var live []comPtr
 		var kept []int
 		for i := range res.Elements {
@@ -94,6 +113,7 @@ func (c *Client) Find(ctx context.Context, hwnd uint64, budget time.Duration, ma
 				live = append(live, res.Live[i])
 				out.Elements = append(out.Elements, res.Elements[i])
 				kept = append(kept, i)
+				out.keepHint(hints, i)
 				continue
 			}
 			release(res.Live[i])
@@ -156,6 +176,7 @@ func (c *Client) ReadRegion(ctx context.Context, hwnd uint64, index, depth int, 
 			jobErr = err
 			return
 		}
+		hints := wstate.Hints(res.Elements)
 		var live []comPtr
 		var kept []int
 		for i, e := range res.Elements {
@@ -163,6 +184,7 @@ func (c *Client) ReadRegion(ctx context.Context, hwnd uint64, index, depth int, 
 				live = append(live, res.Live[i])
 				out.Elements = append(out.Elements, e)
 				kept = append(kept, i)
+				out.keepHint(hints, i)
 				continue
 			}
 			release(res.Live[i])

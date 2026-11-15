@@ -119,10 +119,16 @@ func diffParts(before []Element, t *Tree, v View, changes []Change, what string)
 		fmt.Fprintf(&h, "Changed since this agent's last read of %s (~ changed, * new, - gone); Element Indexes not listed are unchanged:\n", what)
 	}
 	sharedBefore, sharedAfter := sharedOf(before, v), sharedOf(t.Elements, v)
+	var hintsBefore, hintsAfter []Hint // a diff line has no rows around it: the whole hint
+	if !v.Full {
+		hintsBefore, hintsAfter = Hints(before), Hints(t.Elements)
+	}
 	for _, c := range changes {
 		var e Element
+		hint := hintAt(hintsAfter, c.Index)
 		if c.Kind == Gone {
 			e = before[c.Index].WithoutSharedID(sharedBefore)
+			hint = hintAt(hintsBefore, c.Index)
 		} else {
 			e = t.Elements[c.Index].WithoutSharedID(sharedAfter)
 		}
@@ -134,6 +140,7 @@ func diffParts(before []Element, t *Tree, v View, changes []Change, what string)
 		b.WriteString(strings.Repeat("\t", e.Depth+1))
 		b.WriteByte(byte(c.Kind))
 		writeElement(&b, c.Index, &e, false)
+		writeHint(&b, hint.Text(true))
 		if c.Kind == Changed {
 			old := before[c.Index].WithoutSharedID(sharedBefore)
 			b.WriteString(" (was: " + clip(lineBody(c.Index, &old), wasLimit) + ")")

@@ -167,8 +167,15 @@ commands:
                                so the indexes printed are its own and the
                                rest still work. --out <file> writes the
                                Window State to the file, uncut, and prints
-                               its header, path and notes. --full prints
-                               Codex's text byte for byte: every ID, no cap
+                               its header, path and notes. An unnamed
+                               control, or one whose role and name another
+                               shares, ends its line with "Hint: icon trash,
+                               in Blue mug" (its icon, image, test id or
+                               field name; the row it sits in where the
+                               lines around it do not show it); a hint is
+                               not a name: name: never matches it. --full
+                               prints Codex's text byte for byte: every ID,
+                               no cap, no hint
   find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N | --full]
                                search the Window's whole live tree, past the
                                Window State's caps: print the matching
@@ -177,7 +184,8 @@ commands:
                                the first N and says how many matched;
                                --count prints how many; a role that matches
                                nothing lists the roles present. Like a read,
-                               it leaves out shared IDs and stops before
+                               it leaves out shared IDs, adds hints (with
+                               the row a duplicate sits in) and stops before
                                28000 characters (--max-chars, --full)
   record-tree <window> <file> record a Window's real tree to a fixture file
   zoom <window> <x>,<y>,<w>,<h>

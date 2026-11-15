@@ -401,9 +401,14 @@ Codex's budgets are unknown. Two defaults print less than Codex's text
 output stops before 28000 characters with a `Note:` naming the first
 Element not printed (Codex prints the whole tree, which a Harness's
 ~30k-character cap on a command's output then cuts in the middle).
+A third prints more (learn-from 04, ADR 0004): an unnamed control, or
+one whose role and name another shares, ends its line with
+` Hint: <icon, image, test id or field name>, in <its row's text>`
+where that tells it apart; Codex has no such field.
 `get-window-state --full` (and `find --full`) prints Codex's text byte
-for byte. **matched (grammar; byte for byte under `--full`) /
-intentionally different (roles, bounds, shared IDs, the default cap)**.
+for byte, with no hint. **matched (grammar; byte for byte under `--full`) /
+intentionally different (roles, bounds, shared IDs, the default cap,
+hints)**.
 
 ### secondary actions
 

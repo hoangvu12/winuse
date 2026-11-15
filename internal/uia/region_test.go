@@ -16,6 +16,38 @@ import (
 	"github.com/hoangvu12/winuse/internal/wstate"
 )
 
+// TestFindKeepsTheRowHints: find's matches keep the hints the whole walk
+// gives them (learn-from 04), parallel to the Elements it adds: the row a
+// "Delete" sits in is not among the matches.
+func TestFindKeepsTheRowHints(t *testing.T) {
+	tree := node(wstate.ControlTypeWindow, "W",
+		node(wstate.ControlTypeList, "Items",
+			node(wstate.ControlTypeListItem, "Blue mug", node(wstate.ControlTypeButton, "Delete")),
+			node(wstate.ControlTypeListItem, "Red mug", node(wstate.ControlTypeButton, "Delete"))),
+		node(wstate.ControlTypeButton, "Close"))
+	res, err := Walk[*fakeNode](newFakeSource(tree), fullConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	keep := pickMatches(res.Elements, func(e wstate.Element) bool { return e.Role == "button" }, 0, false, &count)
+	hints := wstate.Hints(res.Elements)
+	var a Added
+	for i := range res.Elements {
+		if keep[i] {
+			a.Elements = append(a.Elements, res.Elements[i])
+			a.keepHint(hints, i)
+		}
+	}
+	got := make([]string, len(a.Elements))
+	for k := range a.Elements {
+		got[k] = wstate.HintedLine(k, &a.Elements[k], a.Hints[k])
+	}
+	if want := []string{"0 button Delete Hint: in Blue mug", "1 button Delete Hint: in Red mug", "2 button Close"}; !slices.Equal(got, want) {
+		t.Errorf("find lines %q, want %q", got, want)
+	}
+}
+
 func TestWalkSkeletonCountsHiddenChildren(t *testing.T) {
 	tree := node(wstate.ControlTypeWindow, "W",
 		node(wstate.ControlTypePane, "A",
