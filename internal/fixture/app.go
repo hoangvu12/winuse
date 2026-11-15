@@ -86,6 +86,9 @@ type Options struct {
 	// starts from a posted message, so the Invoke that asked for it
 	// returns.
 	HangOnClick time.Duration
+	// HugeList, when above 0, opens the huge-list Window (hugelist.go)
+	// with that many list box items beside the main window.
+	HugeList int
 }
 
 // Main runs the fixture app: creates the windows, pumps messages until the
@@ -178,6 +181,13 @@ func (a *app) createWindows(origin Origin) error {
 	procShowWindow.Call(h, swShow)
 	procUpdateWindow.Call(h)
 	procSetTimer.Call(h, 1, 500, 0)
+	if a.opts.HugeList > 0 {
+		var r [4]int32
+		procGetWindowRect.Call(h, uintptr(unsafe.Pointer(&r)))
+		if err := a.openHugeList(a.opts.HugeList, uintptr(uint32(r[2]+8)), uintptr(uint32(r[1]))); err != nil {
+			return err
+		}
+	}
 	a.updateCanvasRect()
 	a.changed()
 	return nil

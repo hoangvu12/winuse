@@ -86,18 +86,20 @@ func (c *Client) Find(ctx context.Context, hwnd uint64, budget time.Duration, ma
 		}
 		out.RolesPresent = wstate.RolesPresent(res.Elements)
 		out.SharedIDs = wstate.SharedIDs(res.Elements)
-		out.Notes = partialOnly(res.Notes)
 		keep := pickMatches(res.Elements, match, limit, countOnly, &out.Count)
 		var live []comPtr
+		var kept []int
 		for i := range res.Elements {
 			if keep[i] {
 				live = append(live, res.Live[i])
 				out.Elements = append(out.Elements, res.Elements[i])
+				kept = append(kept, i)
 				continue
 			}
 			release(res.Live[i])
 		}
 		out.Indexes = c.addRead(who, hwnd, live, out.Elements, r)
+		out.Notes = partialOnly(res.NotesWith(addedLabel(res.Elements, kept, out.Indexes)))
 	})
 	if err != nil {
 		return FindResult{}, err
@@ -154,17 +156,19 @@ func (c *Client) ReadRegion(ctx context.Context, hwnd uint64, index, depth int, 
 			jobErr = err
 			return
 		}
-		out.Notes = partialOnly(res.Notes)
 		var live []comPtr
+		var kept []int
 		for i, e := range res.Elements {
 			if i == 0 || !interactive || e.Interactive() {
 				live = append(live, res.Live[i])
 				out.Elements = append(out.Elements, e)
+				kept = append(kept, i)
 				continue
 			}
 			release(res.Live[i])
 		}
 		out.Indexes = c.addRead(who, hwnd, live, out.Elements, r)
+		out.Notes = partialOnly(res.NotesWith(addedLabel(res.Elements, kept, out.Indexes)))
 	})
 	if err != nil {
 		return Added{}, err
@@ -192,6 +196,34 @@ func (c *Client) addRead(agent string, hwnd uint64, elems []comPtr, elements []w
 		return nil
 	}
 	return c.store.add(agent, hwnd, elems, elements, ids)
+}
+
+// addedLabel names a walk position in a find's or a region read's notes:
+// by the Element Index it was added as when it was kept (kept[k] was added
+// as indexes[k]), else by its role and name, since the agent has no index
+// for it.
+func addedLabel(els []wstate.Element, kept, indexes []int) func(int) string {
+	added := make(map[int]int, len(kept))
+	for k, i := range kept {
+		if k < len(indexes) {
+			added[i] = indexes[k]
+		}
+	}
+	return func(i int) string {
+		if idx, ok := added[i]; ok {
+			return elementLabel(idx)
+		}
+		if i < 0 || i >= len(els) {
+			return "an Element"
+		}
+		if name := []rune(wstate.Collapse(els[i].Name)); len(name) > 0 {
+			if len(name) > 60 {
+				name = append(name[:57:57], []rune("...")...)
+			}
+			return "the " + els[i].Role + ` "` + string(name) + `"`
+		}
+		return "an unnamed " + els[i].Role
+	}
 }
 
 // partialOnly keeps the walk's partial-tree note: a region or a find is

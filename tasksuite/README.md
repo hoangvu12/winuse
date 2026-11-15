@@ -172,6 +172,52 @@ and an arm whose exe is the installed winuse.exe's build uses that
 helper if it is running. Quit other winuse users before a run, as for
 any run.
 
+## The latency A/B
+
+A Task Suite A/B says whether agents finish faster; it takes hours and a
+model. **`winusetasks latency`** answers the narrower question in
+minutes: is each read-only winuse call itself faster or slower on build
+B than on build A (learn-from 07)? It needs no Harness and no model.
+
+- **The builds.** `--a` and `--b` each take a git ref, a source tree or
+  a winuse.exe. By default A is the merge-base of HEAD and `main` and B is
+  HEAD as committed (`--b .` is the working tree with its changes). A ref
+  is exported with `git archive` into a temp folder and built there, so
+  the repository and its worktrees are never touched. The fixture app is
+  built from this tree.
+- **The calls**, all reads: `list-windows`, then `get-window-state`,
+  `get-window-state --skeleton` and `find --role button --count` on the
+  fixture's main Window; with `--huge-list N` the first two on the
+  fixture's huge-list Window (a list box of N items, ADR 0004's slow-list
+  amendment); and the same three on each `--window <id|app>` you name
+  (Notepad, Settings, Explorer...). No click, key or screenshot, and no
+  App is launched: open the Windows you name first.
+- **The helper.** One helper serves the session, and a command of
+  another build makes it exit, so the builds cannot alternate call by
+  call. Each round runs one block per build, ABBA across rounds. A block
+  opens with an untimed `list-windows` that starts its build's helper,
+  then `--warmup` untimed passes (default 1), then `--per-block` timed
+  passes (default 5); `--rounds` defaults to 6, so each call is timed 30
+  times per build. The calls run as the Agent `latency-ab`.
+- **It says so before it starts**: the helper running now exits at the
+  first command, so agents using winuse lose their Window States and
+  must read again. At the end the A/B stops its own helper (only one
+  whose exe lies in its build folder), closes the fixture and removes
+  the builds; the installed winuse starts its own helper again on its
+  next command. Ctrl+C stops it the same way, with the samples so far.
+- **The report**: per call, p50 and p95 of the wall time on each build,
+  B's change in ms and %, and the failed calls. A `*` marks a call whose
+  p25–p75 ranges do not overlap. The time includes starting winuse.exe,
+  the same on both sides. `results.json` (every sample) and
+  `summary.txt` go to `--out`, by default a new temp folder;
+  `winusetasks latency-report <results.json>` prints the table again.
+
+```
+.\winusetasks.exe latency --i-am-the-user
+.\winusetasks.exe latency --i-am-the-user --huge-list 20000 --window notepad --window explorer
+.\winusetasks.exe latency --i-am-the-user --a main --b . --b-label wip
+```
+
 ## What a run does
 
 For each task, in a fixed order:

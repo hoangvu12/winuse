@@ -90,6 +90,7 @@ var (
 const (
 	uiaElementFromPoint            = 7  // ElementFromPoint(POINT, **el)
 	uiaElementFromHandleBuildCache = 10 // ElementFromHandleBuildCache(hwnd, req, **el)
+	uiaGetControlViewWalker        = 14 // get_ControlViewWalker(**walker)
 	uiaGetControlViewCondition     = 18 // get_ControlViewCondition(**cond)
 	uiaCreateCacheRequest          = 20 // CreateCacheRequest(**req)
 	uia2PutAutoSetFocus            = 59 // put_AutoSetFocus(BOOL) [IUIAutomation2]
@@ -125,6 +126,14 @@ const (
 	reqPutAutomationElementMode = 11 // put_AutomationElementMode(mode)
 	arrGetLength                = 3  // get_Length(*int32)
 	arrGetElement               = 4  // GetElement(index, **el)
+)
+
+// IUIAutomationTreeWalker vtable slots (SDK UIAutomationClient.h: the six
+// plain navigations at 3-8, their BuildCache forms at 9-14), for reading a
+// huge child list one Element at a time (learn-from 08).
+const (
+	walkerGetFirstChildBuildCache  = 10 // GetFirstChildElementBuildCache(el, req, **first)
+	walkerGetNextSiblingBuildCache = 12 // GetNextSiblingElementBuildCache(el, req, **next)
 )
 
 // IUIAutomationScrollItemPattern vtable slots and the pattern id used
@@ -174,10 +183,22 @@ var treeProperties = []uint32{
 
 // TreeScope_Element|Children: one cache chunk covers a node and its direct
 // (control-view) children. AutomationElementMode_Full keeps the returned
-// elements live, so later Actions can use them.
+// elements live, so later Actions can use them. A count asks for
+// AutomationElementMode_None (cached data only, no live references), and a
+// step of a slow list for TreeScope_Element (the child alone).
 const (
+	treeScopeElement          = 1
 	treeScopeElementChildren  = 3
+	automationElementModeNone = 0
 	automationElementModeFull = 1
+)
+
+// The set-position properties a cut slow list's note counts from
+// (UIA_PositionInSetPropertyId, UIA_SizeOfSetPropertyId), read live from the
+// last child read.
+const (
+	propPositionInSet = 30152
+	propSizeOfSet     = 30153
 )
 
 // UIA HRESULTs the walk and the actions treat specially. Signed constants

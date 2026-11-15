@@ -60,6 +60,10 @@ type State struct {
 	MessageBoxOpen   bool   `json:"messageBoxOpen"`
 	MessageBoxResult string `json:"messageBoxResult"`
 
+	// HugeListWindowID is the huge-list Window's Window ID (hugelist.go),
+	// 0 unless the fixture was started with -huge-list.
+	HugeListWindowID uint64 `json:"hugeListWindowId"`
+
 	// Text is the main window's Text Field content; Typed is the raw
 	// WM_CHAR stream (capped, last 200 runes, surrogate pairs recombined)
 	// so press-key/type tests can tell typed characters apart from focus
