@@ -81,7 +81,15 @@ Changed since this agent's last read of window 101 (~ changed, * new, - gone); E
 ## Wait for a change
 
 When an Action starts something slow, wait for its effect instead of
-reading the Window State over and over:
+reading the Window State over and over.
+
+You do not need a wait for an Element that is about to be ready. An Action
+on a disabled Element (native or Page), or on a `name:`/`id:` that matches
+nothing yet, tries again for up to 2 seconds before it refuses; the refusal
+then says `still after waiting 2s; nothing was sent`. So `click <window>
+name:Next` right after the step that enables Next is one call, not a wait
+and a click. An Element Index is never looked up again: a stale one fails at
+once. Wait first when the change takes longer than that:
 
 ```
 winuse wait window "Save As"                   # a Window of that App, or whose title holds the text, shows: prints its line

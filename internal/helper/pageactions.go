@@ -315,7 +315,8 @@ type pageRun struct {
 // runPage is the Headless Page Action pipeline: refuse a locked desktop;
 // then, inside the passive Esc scope, check the Element is fresh, run the
 // Action's own check, scroll it into view and run the actionability
-// checks (every refusal so far says "nothing was sent"), glide the Agent
+// checks (a disabled Element gets them again for up to 2 s, targetwait.go;
+// every refusal so far says "nothing was sent"), glide the Agent
 // Cursor to the Element's screen rectangle (the transform), send the
 // input with the Esc checkpoint before each event and the dialog race on
 // each, and ripple the cursor once something was delivered. No
@@ -338,18 +339,18 @@ func (s Services) runPage(ctx context.Context, run pageRun) (string, *Error) {
 	if rerr := s.pageFresh(ctx, w, run.index, o); rerr != nil {
 		return "", nothingSent(rerr)
 	}
-	if run.check != nil {
-		if err := run.check(ctx); err != nil {
-			return "", pageFailure(err, run, 0)
-		}
+	// The check and the aim, again for a short while when the Element is
+	// disabled (targetwait.go); neither sends input.
+	aim, waited, stop, err := s.pageAimWaiting(ctx, o, run.aim, run.check, esc.Stopped)
+	if stop {
+		return "", escStopBeforeActError()
 	}
-	aim, err := o.Aim(ctx, run.aim)
 	if err != nil {
 		var na *page.NotActionableError
 		if run.intoView && errors.As(err, &na) && na.Why == page.WhyOutside {
 			err = &page.VerifyError{Msg: fmt.Sprintf("the Page scrolled, but element %d is still outside its visible part", run.index)}
 		}
-		return "", pageFailure(err, run, 0)
+		return "", withWaited(pageFailure(err, run, 0), waited)
 	}
 	label := cursorLabel(run.verb, s.pageElementName(ctx, w, run.index, aim.Name))
 	// No origin, no cursor: gliding to the Window's centre and rippling
@@ -544,9 +545,12 @@ func (s Services) pageClick(ctx context.Context, w win.WindowInfo, index int, o 
 	if rerr := s.pageFresh(ctx, w, index, o); rerr != nil {
 		return "", nothingSent(rerr)
 	}
-	aim, err := o.Aim(ctx, opts)
+	aim, waited, stop, err := s.pageAimWaiting(ctx, o, opts, nil, s.escStopped)
+	if stop {
+		return "", escStopBeforeActError()
+	}
 	if err != nil {
-		return "", pageFailure(err, run, 0)
+		return "", withWaited(pageFailure(err, run, 0), waited)
 	}
 	return s.runAction(ctx, strconv.FormatUint(w.ID, 10), func(ctx context.Context, w win.WindowInfo) (string, *Error) {
 		x, y, rerr := s.pageScreenPoint(ctx, w, o, aim)
@@ -690,9 +694,12 @@ func (s Services) pageScroll(ctx context.Context, w win.WindowInfo, index int, o
 	if rerr := s.pageFresh(ctx, w, index, o); rerr != nil {
 		return "", nothingSent(rerr)
 	}
-	aim, err := o.Aim(ctx, run.aim)
+	aim, waited, stop, err := s.pageAimWaiting(ctx, o, run.aim, nil, s.escStopped)
+	if stop {
+		return "", escStopBeforeActError()
+	}
 	if err != nil {
-		return "", pageFailure(err, run, 0)
+		return "", withWaited(pageFailure(err, run, 0), waited)
 	}
 	ux, uy := wheelDelta(plan.dir, plan.steps)
 	return s.runAction(ctx, strconv.FormatUint(w.ID, 10), func(ctx context.Context, w win.WindowInfo) (string, *Error) {

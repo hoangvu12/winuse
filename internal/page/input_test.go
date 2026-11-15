@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"reflect"
 	"strconv"
@@ -269,6 +270,13 @@ type fakePage struct {
 	quads     []float64
 	inputs    []string
 	scrolled  []int64
+	// The click point's settle and re-centre (learn-from 02): moves logs
+	// them per node ("settle 7", "recentre 7"), awaited counts settles sent
+	// with awaitPromise, and recentred replaces a node's aim answer once
+	// it was re-centred.
+	moves     []string
+	awaited   int
+	recentred map[int64]map[string]any
 }
 
 func newFakePage(t *testing.T) (*fakePage, *cdp.Client) {
@@ -308,6 +316,7 @@ func newFakePage(t *testing.T) (*fakePage, *cdp.Client) {
 			Args     []struct {
 				Value any `json:"value"`
 			} `json:"arguments"`
+			Await bool `json:"awaitPromise"`
 		}
 		json.Unmarshal(m.Params, &p)
 		var node int64
@@ -316,6 +325,18 @@ func newFakePage(t *testing.T) (*fakePage, *cdp.Client) {
 		defer f.mu.Unlock()
 		var v any
 		switch {
+		case strings.Contains(p.Fn, "winuse:settle"):
+			f.moves = append(f.moves, fmt.Sprintf("settle %d", node))
+			if p.Await {
+				f.awaited++
+			}
+			v = 1
+		case strings.Contains(p.Fn, "winuse:recentre"):
+			f.moves = append(f.moves, fmt.Sprintf("recentre %d", node))
+			if st, ok := f.recentred[node]; ok {
+				f.aim[node] = st
+			}
+			v = true
 		case strings.Contains(p.Fn, "winuse:aim"):
 			st := map[string]any{"state": "ok", "l": 10.0, "t": 20.0, "w": 50.0, "h": 10.0, "x": 35.0, "y": 25.0, "ox": 0.0, "oy": 0.0, "chain": true, "dpr": 1.5, "name": "Save"}
 			for k, x := range f.aim[node] {
@@ -466,6 +487,122 @@ func TestAimInFrames(t *testing.T) {
 	}
 	if a.Point != (Point{X: 85, Y: 75}) || a.Rect.Left != 60 {
 		t.Errorf("same-process frame aim = %+v", a)
+	}
+}
+
+// TestAimSettlesAndRecentres (learn-from 02): after the scroll the aim
+// waits for the box to stop moving (an awaited settle), and a node still
+// outside the viewport or covered is scrolled to the centre once, settled
+// and measured again before the refusal. No scroll, no settle; a disabled
+// or hidden node is not re-centred.
+func TestAimSettlesAndRecentres(t *testing.T) {
+	all := AimOptions{Scroll: true, Enabled: true, Visible: true, HitTest: true}
+	moves := func(f *fakePage) []string {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		return append([]string(nil), f.moves...)
+	}
+
+	// In view and still: one settle, awaited, and no re-centre.
+	f, c := newFakePage(t)
+	o := Origin{Client: c, SessionID: "S", FrameID: "F1", LoaderID: "L1", BackendNodeID: 7}
+	if _, err := o.Aim(context.Background(), all); err != nil {
+		t.Fatal(err)
+	}
+	if got := moves(f); !reflect.DeepEqual(got, []string{"settle 7"}) || f.awaited != 1 {
+		t.Errorf("in view: moves %v, awaited %d", got, f.awaited)
+	}
+
+	// Straddling the edge, or under a sticky bar: the re-centre brings it in.
+	for _, st := range []map[string]any{{"state": "outside"}, {"state": "covered", "by": `<header class="sticky">`}} {
+		f, c = newFakePage(t)
+		o = Origin{Client: c, SessionID: "S", FrameID: "F1", LoaderID: "L1", BackendNodeID: 7}
+		f.aim[7] = st
+		f.recentred = map[int64]map[string]any{7: {"state": "ok", "x": 40.0, "y": 300.0}}
+		a, err := o.Aim(context.Background(), all)
+		if err != nil {
+			t.Fatalf("%v: %v", st["state"], err)
+		}
+		if a.Point != (Point{X: 40, Y: 300}) {
+			t.Errorf("%v: aimed at %+v, want the re-centred point", st["state"], a.Point)
+		}
+		if got := moves(f); !reflect.DeepEqual(got, []string{"settle 7", "recentre 7", "settle 7"}) {
+			t.Errorf("%v: moves %v", st["state"], got)
+		}
+		if len(f.scrolled) != 1 || len(f.log()) != 0 {
+			t.Errorf("%v: scrolled %v, sent %v", st["state"], f.scrolled, f.log())
+		}
+	}
+
+	// Still covered after the re-centre: the refusal, once.
+	f, c = newFakePage(t)
+	o = Origin{Client: c, SessionID: "S", FrameID: "F1", LoaderID: "L1", BackendNodeID: 7}
+	f.aim[7] = map[string]any{"state": "covered", "by": `<div class="cookie-banner">`}
+	var na *NotActionableError
+	if _, err := o.Aim(context.Background(), all); !errors.As(err, &na) || na.Why != WhyCovered {
+		t.Errorf("still covered: %v", err)
+	}
+	if got := moves(f); !reflect.DeepEqual(got, []string{"settle 7", "recentre 7", "settle 7"}) {
+		t.Errorf("still covered: moves %v", got)
+	}
+
+	// Disabled and hidden are not the click point's to fix.
+	for _, why := range []string{"disabled", "hidden"} {
+		f, c = newFakePage(t)
+		o = Origin{Client: c, SessionID: "S", FrameID: "F1", LoaderID: "L1", BackendNodeID: 7}
+		f.aim[7] = map[string]any{"state": why}
+		if _, err := o.Aim(context.Background(), all); !errors.As(err, &na) || na.Why != why {
+			t.Errorf("%s: %v", why, err)
+		}
+		if got := moves(f); !reflect.DeepEqual(got, []string{"settle 7"}) {
+			t.Errorf("%s: moves %v, want no re-centre", why, got)
+		}
+	}
+
+	// No scroll asked for: nothing moves, nothing settles.
+	f, c = newFakePage(t)
+	o = Origin{Client: c, SessionID: "S", FrameID: "F1", LoaderID: "L1", BackendNodeID: 7}
+	f.aim[7] = map[string]any{"state": "outside"}
+	if _, err := o.Aim(context.Background(), AimOptions{Visible: true}); !errors.As(err, &na) || na.Why != WhyOutside {
+		t.Errorf("no scroll: %v", err)
+	}
+	if got := moves(f); len(got) != 0 {
+		t.Errorf("no scroll: moves %v", got)
+	}
+
+	// A cross-origin iframe's node: its iframe element is re-centred too.
+	f, c = newFakePage(t)
+	o = Origin{Client: c, SessionID: "C", FrameID: "F2", BackendNodeID: 40, Owner: &Owner{SessionID: "S", BackendNodeID: 300}}
+	f.aim[40] = map[string]any{"state": "outside"}
+	f.Aim(t, o, all)
+	if got := moves(f); !reflect.DeepEqual(got, []string{"settle 40", "recentre 300", "recentre 40", "settle 40"}) {
+		t.Errorf("iframe: moves %v", got)
+	}
+}
+
+// Aim runs an aim whose refusal the test does not check.
+func (f *fakePage) Aim(t *testing.T, o Origin, opt AimOptions) {
+	t.Helper()
+	_, _ = o.Aim(context.Background(), opt)
+}
+
+// TestSettleIsBounded: a page whose settle never answers costs at most
+// settleTimeout, and the aim still measures.
+func TestSettleIsBounded(t *testing.T) {
+	f, c := newFakePage(t)
+	f.srv.Handle("Runtime.callFunctionOn", func(cn *cdptest.Conn, m cdptest.Message) (any, error) {
+		if strings.Contains(string(m.Params), "winuse:settle") {
+			return nil, cdptest.ErrNoReply
+		}
+		return map[string]any{"result": map[string]any{"type": "object", "value": map[string]any{"state": "ok", "w": 5.0, "h": 5.0, "dpr": 1.0, "chain": true}}}, nil
+	})
+	o := Origin{Client: c, SessionID: "S", FrameID: "F1", LoaderID: "L1", BackendNodeID: 7}
+	start := time.Now()
+	if _, err := o.Aim(context.Background(), AimOptions{Scroll: true, Visible: true}); err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(start); took > settleTimeout+time.Second {
+		t.Errorf("the aim took %s", took)
 	}
 }
 

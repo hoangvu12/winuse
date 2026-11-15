@@ -116,7 +116,11 @@ winuse drag <window> <element> <element|@x,y>
   and turns a check box, switch or radio button `on` or `off` (turn another
   radio button on to turn one off).
 - A covered, disabled, hidden or off-screen Page Element is refused with
-  nothing sent, naming any covering Element, such as a cookie banner.
+  nothing sent, naming any covering Element, such as a cookie banner. Before
+  that, a disabled one is checked again for up to 2 seconds (no `wait`
+  needed for a button that enables as you type), and one still moving after
+  the scroll is waited on; one off-screen or covered is scrolled to the
+  centre once.
 - A click or key that opens a JavaScript dialog (alert, confirm, prompt,
   leave-this-page) prints `ok` and a `Note:` line with its text; do not
   repeat it. Every Page Action then fails naming the dialog until you

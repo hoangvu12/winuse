@@ -146,6 +146,11 @@ that printed it; a stale one fails and asks for a fresh read. `name:` and
 `Note:`, and your indexes still work. Prefer them for an Element you will
 act on again. In full: topic `reading`.
 
+No `wait` before an Action on something about to be ready: an Action on a
+disabled Element, or on a `name:`/`id:` that matches nothing yet, tries
+again for up to 2 s before it refuses (`..., still after waiting 2s;
+nothing was sent`). Wait first only for longer: `wait <window> <ref> enabled`.
+
 ## The commands that matter
 
 | Need | Command |

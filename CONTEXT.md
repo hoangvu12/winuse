@@ -74,7 +74,7 @@ An operation an Element offers besides a plain click, such as Expand, Collapse, 
 _Avoid_: Pattern, verb, default action
 
 **Element Reference**:
-How an Action names its target: an Element Index, an Element's name, an Element's ID, or screen coordinates. A name or ID that matches more than one Element is an error, never a guess.
+How an Action names its target: an Element Index, an Element's name, an Element's ID, or screen coordinates. A name or ID that matches more than one Element is an error, never a guess. One that matches nothing yet, like a disabled target, is tried again for up to 2 seconds before the Action refuses with nothing sent (ADR 0022); an Element Index is never looked up again.
 _Avoid_: Selector, locator
 
 **Batch**:

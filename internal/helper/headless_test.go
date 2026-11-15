@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/shot"
@@ -468,8 +469,9 @@ func TestHeadlessRefusalsBeforeAnyPatternCall(t *testing.T) {
 		}, "element 2 is not available in the cached Window State for window 101; nothing was sent", "fresh Element Indexes", false},
 		{"no state", func(s *headlessSpy) { s.hClickErr = fmt.Errorf("%w: window 101", uia.ErrNoState) },
 			"no cached Window State is available for window 101; nothing was sent", "get-window-state 101", false},
-		{"disabled", func(s *headlessSpy) { s.hClickErr = uia.ErrDisabled },
-			"the Element is disabled; nothing was sent", "disabled", false},
+		// Tried again for 2 s first (targetwait.go), on a faked clock.
+		{"disabled", func(s *headlessSpy) { s.hClickErr = uia.ErrDisabled; s.svc.Sleep = func(time.Duration) {} },
+			"the Element is disabled, still after waiting 2s; nothing was sent", "disabled", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
