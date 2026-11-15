@@ -14,7 +14,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
@@ -309,7 +308,6 @@ func TestPageTypeTextInto(t *testing.T) {
 	}
 	for _, c := range refusals {
 		r := newPageRig(t)
-		r.svc.Sleep = func(time.Duration) {} // a disabled field is read again for 2 s (targetwait.go)
 		r.set(func() { r.field = c.field })
 		_, e := r.run(t, "type-text", protocol.TypeTextArgs{Window: "301", Text: "x", IntoIndex: idx(8)})
 		if e == nil || !strings.HasPrefix(e.Msg, c.want) || !strings.HasSuffix(e.Msg, nothingSentNote) || e.Hint == "" {

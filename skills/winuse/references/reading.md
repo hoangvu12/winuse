@@ -154,10 +154,7 @@ finds, saying
 `Note: found name:Save in a fresh read of window 101, as Element Index 245`;
 your Window State's indexes still work. Prefer `name:` and `id:` for an
 Element you will act on again. A fresh read that finds the name twice
-refuses, with the candidates under new indexes. One that finds nothing is
-read again for up to 2 seconds, so a reference to an Element about to
-appear (a dialog's button) needs no `wait` first; then it refuses with
-`still after waiting 2s; nothing was sent`.
+refuses, with the candidates under new indexes.
 
 An Action's `--observe` is a full read too, so it renumbers the same way;
 its diff lists every index whose line changed, and an index it does not

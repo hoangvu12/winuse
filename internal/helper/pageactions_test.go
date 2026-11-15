@@ -459,15 +459,13 @@ func TestPageClickRefusals(t *testing.T) {
 		want string
 	}{
 		{map[string]any{"state": "covered", "by": `<div class="cookie-banner">`}, `element 7 cannot be clicked: it is covered by <div class="cookie-banner"> at its centre; nothing was sent`},
-		// A disabled Element is aimed at again for 2 s first (targetwait.go).
-		{map[string]any{"state": "disabled"}, "element 7 cannot be clicked: it is disabled, still after waiting 2s; nothing was sent"},
+		{map[string]any{"state": "disabled"}, "element 7 cannot be clicked: it is disabled; nothing was sent"},
 		{map[string]any{"state": "hidden"}, "element 7 cannot be clicked: it is hidden or has no size; nothing was sent"},
 		{map[string]any{"state": "outside"}, "element 7 cannot be clicked: its centre is outside the visible part of the Page, even after scrolling it into view; nothing was sent"},
 	}
 	for _, c := range cases {
 		for _, headed := range []bool{false, true} {
 			r := newPageRig(t)
-			r.svc.Sleep = func(time.Duration) {}
 			r.set(func() { r.aim = c.aim })
 			_, e := r.run(t, "click", protocol.ClickArgs{Window: "301", ElementIndex: idx(7), Headed: headed})
 			if e == nil || e.Msg != c.want || e.Hint == "" || strings.ContainsAny(e.Msg+e.Hint, "–—") {

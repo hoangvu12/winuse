@@ -79,14 +79,6 @@ headed only with --headed: every other Action (double, right and middle
   with "nothing was sent" and the exact --headed retry. activate-window always takes the foreground: that is
   what it is for.
 
-an Element that is about to be ready needs no wait first: an Action on a
-  disabled Element (native or Page), or on a name: or id: that matches
-  nothing yet, tries again for up to 2 s before it refuses; the refusal says
-  how long it waited, and nothing was sent. An Element Index never
-  re-resolves to another Element. On a Page, a click point still moving
-  after the scroll is waited on, and one off-screen or covered is scrolled
-  to the centre once before the refusal.
-
 act and see the effect in one call: <action> ... --observe[=diff|full]
   [--interactive] [--depth N] [--compact] [--max-chars N | --out <file>] [--full]
   after any Action on a Window or Tab, or a batch (before its first Action),

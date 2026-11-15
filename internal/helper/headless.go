@@ -35,7 +35,6 @@ import (
 	"log"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/hoangvu12/winuse/internal/keys"
 	"github.com/hoangvu12/winuse/internal/protocol"
@@ -352,9 +351,6 @@ type headlessRun struct {
 // Window has no rectangle on screen, so the cursor stays hidden there. No
 // activation, no banner, no pointer, no keys.
 //
-// A name:/id: reference that matches nothing yet, and a pattern call UI
-// Automation refuses as disabled, are tried again for up to 2 s before the
-// refusal (targetwait.go, ADR 0022); an Element Index never re-resolves.
 // Every refusal before the pattern call says "nothing was sent", so the
 // agent knows a retry is safe; a failed write says it may have taken
 // effect, a failed read-back that the Action was delivered. The Esc
@@ -398,19 +394,6 @@ func (s Services) runHeadless(ctx context.Context, ref string, actor HeadlessAct
 		return "", escStopBeforeActError()
 	}
 	err := run.act(ctx, w, index)
-	var waited time.Duration
-	if disabledBeforeCall(err) {
-		// UI Automation refused the call as disabled, before anything
-		// reached the App: try it again for a short while (targetwait.go).
-		var stop bool
-		waited, stop = s.waitActionable(ctx, esc.Stopped, func() bool {
-			err = run.act(ctx, w, index)
-			return disabledBeforeCall(err)
-		})
-		if stop {
-			return "", escStopBeforeActError()
-		}
-	}
 	cursorTrace(ctx, "acted")
 	var verify *uia.VerifyError
 	if shown && (err == nil || errors.As(err, &verify)) {
@@ -424,7 +407,7 @@ func (s Services) runHeadless(ctx context.Context, ref string, actor HeadlessAct
 		return "", escStopError()
 	}
 	if err != nil {
-		return "", withWaited(headlessFailure(err, w, index, run), waited)
+		return "", headlessFailure(err, w, index, run)
 	}
 	return okOutput, nil
 }
@@ -566,8 +549,8 @@ const nothingSentNote = "; nothing was sent"
 // nothingSent marks a refusal as raised before anything reached the app.
 func nothingSent(e *Error) *Error {
 	out := *e
-	if strings.HasSuffix(out.Msg, nothingSentNote) || out.Exit == protocol.ExitEsc {
-		return &out // already said; an Esc stop says it in its hint
+	if strings.HasSuffix(out.Msg, nothingSentNote) {
+		return &out // already said
 	}
 	out.Msg += nothingSentNote
 	return &out

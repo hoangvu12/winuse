@@ -180,9 +180,7 @@ func TestChooserInterceptionOffAfterAFailedClick(t *testing.T) {
 		t.Error("interception left on after a failure")
 	}
 
-	// A refusal before any input never turns it on (after its 2 s of tries,
-	// targetwait.go, on a faked clock).
-	r.svc.Sleep = func(time.Duration) {}
+	// A refusal before any input never turns it on.
 	r.set(func() { r.inputs = nil; r.aim = map[string]any{"state": "disabled"} })
 	if _, e := r.run(t, "click", protocol.ClickArgs{Window: "301", ElementIndex: idx(7)}); e == nil {
 		t.Fatal("a disabled element was clicked")

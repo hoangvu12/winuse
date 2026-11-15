@@ -341,12 +341,6 @@ type Services struct {
 	WindowThread func(hwnd uint64) uint32
 	LaneWait     time.Duration
 
-	// TargetWait is how long an Action waits for a disabled target or a
-	// name:/id: reference that matches nothing yet before it refuses
-	// (targetwait.go, ADR 0022): 0 is 2 s, below 0 refuses at once. The
-	// wait is paced by Sleep and bounded by Now.
-	TargetWait time.Duration
-
 	// WindowHung tells that a Window's UI thread is not responding
 	// (multi-agent ticket 07, hung.go): an Action on it is refused with
 	// nothing sent. Nil checks nothing.

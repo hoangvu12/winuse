@@ -1,6 +1,6 @@
 # 02: Wait briefly before refusing
 
-Status: ready-for-human
+Status: wontfix (superseded in part)
 Type: task
 Branch: learn-wait-before-refusing (worktree `.claude/worktrees/agent-aab35627364444bcf`), off main 03fc3a4
 From: `.scratch/learn-from/README.md`, rank 2 (agent-desktop §2.2 bounded auto-wait, agent-browser §4.1 click point settle and re-centre)
@@ -53,3 +53,7 @@ These start the build's own helper, which makes an installed helper of another b
 - Page click point: a button straddling the bottom edge of the viewport, a button under a sticky header after scrolling, and a long list whose content above the target loads lazily: expect each click to land (check with `--observe` or a screenshot), and a cookie banner still to refuse as covered. Compare a plain Page click's latency with main (settle cost, expected a few tens of ms).
 
 ## Comments
+
+### Superseded by main's brief wait, 2026-11-16
+
+main shipped the same idea first and better while this branch was open: reliability-council 06's brief wait (`internal/helper/briefwait.go`, ADR on main) waits up to 1.8 s for a disabled Element, a closing modal dialog or a `name:`/`id:` that has not appeared, **outside the lanes** (this item waited while holding them), says how long in a `Note:`, and has `--no-wait`. So this item's helper side is reverted before merging main: `targetwait.go`, its refusal wording, ADR 0022 (the number went to main's update ADR) and its doc and skill lines. **Kept:** the Page click point's settle and one re-centre after scrolling (`internal/page/input.go`), which main does not have; it passed the e2e browser suite on Chrome and Edge (2026-11-15).
