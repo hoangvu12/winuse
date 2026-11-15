@@ -4,7 +4,7 @@ These are winuse's primary tests: the real `winuse` binary driven exactly as
 an agent would drive it, against the **fixture app**, asserting only on
 what `winuse` prints and on the fixture's end state — never on internals.
 
-## They are opt-in only, and agents must not run them
+## They are opt-in only, and agents must not run them on the user's PC
 
 These tests take over the screen: they start a GUI app, and winuse will
 click, activate windows, type and take screenshots while they run. The
@@ -12,9 +12,11 @@ user may be using the machine. So:
 
 - The tests compile only with the `-tags e2e` build tag.
 - They skip unless `WINUSE_E2E=1` is set in the environment.
-- **Only the user sets that variable and starts the run.** An agent must
-  never enable the opt-in, never run these tests, and never start the
-  fixture app by itself, without the user's explicit go-ahead.
+- **Only the user, or CI on a hosted runner, sets that variable and starts
+  the run.** An agent must still never enable the opt-in on the user's PC,
+  never run these tests there, and never start the fixture app by itself,
+  without the user's explicit go-ahead. Compiling them (`go vet -tags e2e
+  ./test/e2e`) is fine.
 
 How the user runs them:
 
@@ -26,6 +28,21 @@ go test -tags e2e -v ./test/e2e
 They never run as part of the default test command (`go test ./...` is
 offline and hermetic; it only unit-tests the fixture's element contract and
 the rest of the module).
+
+## The e2e lane and the ledger
+
+[`ledger.md`](ledger.md) has one row per test here: the claim it backs,
+and whether it runs on the **runner** (fixture only) or on the **user**'s
+PC only, with the reason (another App, a browser, the shell, toasts, a
+person at the keyboard). The e2e lane, `.github/workflows/e2e.yml`, sets
+`WINUSE_E2E=1` on GitHub's hosted `windows-latest` runner and nowhere
+else, runs exactly the runner rows (`go run ./cmd/e2eledger pattern`
+builds the `-run` pattern), and checks the `go test -json` output with
+`go run ./cmd/e2eledger check`: the lane fails when a runner test fails,
+skips or does not run, or when any test fails. The job summary lists each
+runner test's result, and the artifact holds `e2e.json` and winuse's
+screenshots. A new test needs a ledger row: `internal/e2eledger`'s offline
+test fails without one.
 
 ## The fixture app
 
@@ -92,6 +109,8 @@ foreground App.
    last request, so a read longer than `e2eIdle` (a cold Chromium) keeps
    the helper, and its cached Window State, for the next command.
 4. Assert on stdout/stderr/exit code and on the fixture's state file.
+5. Add the test's row to [`ledger.md`](ledger.md): `runner` if it needs
+   only the fixture, `user` with the reason otherwise.
 
 Current tests: the ticket-01 helper/list-windows contract tests
 (`list_windows_test.go`), `TestListWindowsShowsFixtureWindow`

@@ -29,7 +29,7 @@ func TestElementPointIndexNotInCachedState(t *testing.T) {
 	// Fake element pointers: distinct real addresses; seeded through the
 	// real beginRead/install path.
 	a, b := 1, 2
-	c.store.install(defaultAgent, 101, c.store.beginRead(), []comPtr{comPtr(&a), comPtr(&b)}, nil)
+	c.store.install(defaultAgent, 101, c.store.beginRead(), []comPtr{comPtr(&a), comPtr(&b)}, nil, false)
 
 	for _, index := range []int{2, 100, -1} {
 		_, err := c.ElementPoint(context.Background(), 101, index)
@@ -82,6 +82,40 @@ func TestStaleHRESULTs(t *testing.T) {
 	var noClickable = uiaErrNoClickablePoint
 	if uint32(noClickable) != 0x80040202 {
 		t.Errorf("uiaErrNoClickablePoint = 0x%08x, want 0x80040202", uint32(noClickable))
+	}
+}
+
+// TestWriteHRESULTs pins callErr's mapping of a failed pattern write
+// (reliability-council 02): only UIA_E_ELEMENTNOTAVAILABLE is a stale
+// refusal; the RPC and CO codes hrStale counts as gone on a read are a
+// WriteError on a write, since the provider may have acted before failing.
+func TestWriteHRESULTs(t *testing.T) {
+	for _, tc := range []struct {
+		hr    HRESULT
+		label string
+		stale bool
+	}{
+		{HRESULT(-0x7FFBFDFF), "UIA_E_ELEMENTNOTAVAILABLE", true},
+		{HRESULT(-0x7FFEFEF8), "RPC_E_DISCONNECTED", false},
+		{HRESULT(-0x7FFBFE03), "CO_E_OBJNOTCONNECTED", false},
+		{HRESULT(-0x7FFEFEFB), "RPC_E_SERVERFAULT", false},
+		{uiaErrTimeout, "UIA_E_TIMEOUT", false},
+		{HRESULT(-0x7FFFBFFB), "E_FAIL", false},
+	} {
+		err := callErr(tc.hr, "invoking the Element")
+		var write *WriteError
+		switch {
+		case tc.stale && !errors.Is(err, ErrStale):
+			t.Errorf("%s: %v, want ErrStale", tc.label, err)
+		case !tc.stale && (!errors.As(err, &write) || write.HR != tc.hr || errors.Is(err, ErrStale)):
+			t.Errorf("%s: %v, want a WriteError with its HRESULT", tc.label, err)
+		}
+	}
+	if err := callErr(uiaErrElementDisabled, "invoking the Element"); !errors.Is(err, ErrDisabled) {
+		t.Errorf("UIA_E_ELEMENTNOTENABLED: %v, want ErrDisabled", err)
+	}
+	if gone := uiaErrElementGone; uint32(gone) != 0x80040201 {
+		t.Errorf("uiaErrElementGone = %s, want 0x80040201", gone)
 	}
 }
 

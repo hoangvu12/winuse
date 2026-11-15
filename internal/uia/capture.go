@@ -5,6 +5,8 @@ import (
 	"time"
 	"unsafe"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/hoangvu12/winuse/internal/wstate"
 )
 
@@ -14,6 +16,18 @@ import (
 // (uia-go notes §5).
 const maxTransactionTimeout = 2 * time.Second
 
+// workerTransactionTimeout is the worker's UIA transaction timeout outside
+// a cache chunk: put at worker start and restored after every chunk, so a
+// root read, Invoke or SetValue never runs under UIA's 20 s default or
+// under the few milliseconds a chunk near its time limit left behind
+// (reliability-council 01).
+const workerTransactionTimeout = maxTransactionTimeout
+
+// putTransactionTimeout puts auto's (IUIAutomation2) transaction timeout.
+func putTransactionTimeout(auto comPtr, tx time.Duration) {
+	call(auto, uia2PutTransactionTimeout, uintptr(uint32(tx.Milliseconds())))
+}
+
 // captureResult is one completed tree read on the worker thread: the
 // Window State, the live elements behind it (the caller moves them into
 // the live-Element store), and the root element's ClassName.
@@ -22,6 +36,7 @@ type captureResult struct {
 	live      []comPtr
 	rootClass string // the root element's UIA ClassName, for Chromium/Electron detection
 	cut       int    // the Document Element whose descendants were left out (WalkConfig.Cut), or -1
+	partial   bool   // the walk did not see the whole Window (WalkResult.Partial)
 }
 
 // capture reads one Window's tree on the worker thread: it builds the cache
@@ -52,6 +67,7 @@ func (th *thread) capture(hwnd uintptr, title, app string, cfg WalkConfig) (*cap
 		live:      res.Live,
 		rootClass: src.rootClass,
 		cut:       res.Cut,
+		partial:   res.Partial,
 	}, nil
 }
 
@@ -131,14 +147,17 @@ func (s *comSource) dispose() {
 }
 
 // putTimeout bounds the next cross-process call: the UIA transaction
-// timeout is set to remaining, at most maxTransactionTimeout and at least
-// 1 ms.
+// timeout is set to chunkTimeout(remaining). The caller defers
+// restoreTimeout, which puts the worker's timeout back (reliability-council
+// 01), so a root read, Invoke or SetValue never runs under what a chunk or
+// a step near its time limit left behind.
 func (s *comSource) putTimeout(remaining time.Duration) {
-	tx := min(remaining, maxTransactionTimeout)
-	if tx < time.Millisecond {
-		tx = time.Millisecond
-	}
-	call(s.th.auto, uia2PutTransactionTimeout, uintptr(uint32(tx.Milliseconds())))
+	putTransactionTimeout(s.th.auto, chunkTimeout(remaining))
+}
+
+// restoreTimeout puts the worker's transaction timeout back.
+func (s *comSource) restoreTimeout() {
+	putTransactionTimeout(s.th.auto, workerTransactionTimeout)
 }
 
 // chunkErr maps a failed cache call's HRESULT: UIA_E_TIMEOUT is
@@ -171,10 +190,45 @@ func (s *comSource) Root() (comPtr, NodeData, error) {
 		return el, s.data(el), nil
 	}
 	if hr := call(s.th.auto, uiaElementFromHandleBuildCache, s.hwnd, uintptr(s.req), uintptr(unsafe.Pointer(&el))); hr.Failed() || el == nil {
-		return nil, NodeData{}, fmt.Errorf("%w: reading the Window's tree failed (HRESULT %s)", ErrWindowGone, hr)
+		return nil, NodeData{}, rootReadErr(s.hwnd, hr)
 	}
 	s.rootClass = cachedBSTR(el, elCachedClassName)
 	return el, s.data(el), nil
+}
+
+// isWindow reports whether hwnd still names a Window (user32 IsWindow);
+// tests replace it so they never touch a real Window.
+var isWindow = func(hwnd uintptr) bool {
+	return windows.IsWindow(windows.HWND(hwnd))
+}
+
+// rootReadErr classifies a failed root read (ElementFromHandleBuildCache):
+// ErrWindowGone only when the Window no longer exists, else a
+// TreeReadError with the HRESULT (reliability-council 04: a provider
+// rebuilding its tree fails for a moment while the Window stays).
+func rootReadErr(hwnd uintptr, hr HRESULT) error {
+	if !isWindow(hwnd) {
+		return fmt.Errorf("%w: reading the Window's tree failed (HRESULT %s)", ErrWindowGone, hr)
+	}
+	return &TreeReadError{HR: hr}
+}
+
+// chunkRetryDelay is the pause before a chunk that failed with E_FAIL is
+// read once more (reliability-council 04, cua's 40 ms): a provider
+// rebuilding the subtree answers again by then.
+const chunkRetryDelay = 40 * time.Millisecond
+
+// chunkTimeout is a chunk's UIA transaction timeout:
+// min(remaining, maxTransactionTimeout), at least 1 ms.
+func chunkTimeout(remaining time.Duration) time.Duration {
+	tx := remaining
+	if tx > maxTransactionTimeout {
+		tx = maxTransactionTimeout
+	}
+	if tx < time.Millisecond {
+		tx = time.Millisecond
+	}
+	return tx
 }
 
 // Children fetches node's control-view children (with cached properties) in
@@ -185,12 +239,23 @@ func (s *comSource) Root() (comPtr, NodeData, error) {
 // min(remaining, maxTransactionTimeout), so a provider that does not answer
 // in time fails with UIA_E_TIMEOUT, mapped to ErrChunkTimedOut (the walk
 // then reads the node's children one at a time through FirstChild and
-// NextSibling).
+// NextSibling). The worker's timeout (workerTransactionTimeout) is put back
+// when the chunk ends. A cache build that fails with E_FAIL is tried once
+// more after chunkRetryDelay when the time allows; a second failure is the
+// chunk's error, which the walk marks unreadable.
 func (s *comSource) Children(node comPtr, remaining time.Duration) ([]comPtr, []NodeData, error) {
 	s.putTimeout(remaining)
+	defer s.restoreTimeout()
 
 	var fresh comPtr
-	if hr := call(node, elBuildUpdatedCache, uintptr(s.req), uintptr(unsafe.Pointer(&fresh))); hr.Failed() || fresh == nil {
+	hr := call(node, elBuildUpdatedCache, uintptr(s.req), uintptr(unsafe.Pointer(&fresh)))
+	if hr == eFail && remaining > 2*chunkRetryDelay {
+		time.Sleep(chunkRetryDelay)
+		s.putTimeout(remaining - chunkRetryDelay)
+		fresh = nil
+		hr = call(node, elBuildUpdatedCache, uintptr(s.req), uintptr(unsafe.Pointer(&fresh)))
+	}
+	if hr.Failed() || fresh == nil {
 		return nil, nil, chunkErr("updating the element cache", hr)
 	}
 	defer release(fresh)
@@ -204,14 +269,25 @@ func (s *comSource) Children(node comPtr, remaining time.Duration) ([]comPtr, []
 	}
 	defer release(arr)
 
+	// A failed or negative length, or a child that did not read, is an
+	// error with the children that did read: the walk keeps them and marks
+	// the read partial (reliability-council 05), so a node is never passed
+	// off as a leaf or a complete list.
 	var n int32
-	if hr := call(arr, arrGetLength, uintptr(unsafe.Pointer(&n))); hr.Failed() || n < 0 {
-		return nil, nil, nil
+	if hr := call(arr, arrGetLength, uintptr(unsafe.Pointer(&n))); hr.Failed() {
+		return nil, nil, fmt.Errorf("reading the cached children's count failed (HRESULT %s)", hr)
+	}
+	if n < 0 {
+		return nil, nil, fmt.Errorf("the cached children's count is %d", n)
 	}
 	kids := make([]comPtr, 0, n)
+	var err error
 	for i := int32(0); i < n; i++ {
 		var el comPtr
 		if hr := call(arr, arrGetElement, uintptr(i), uintptr(unsafe.Pointer(&el))); hr.Failed() || el == nil {
+			if err == nil {
+				err = fmt.Errorf("reading cached child %d of %d failed (HRESULT %s)", i, n, hr)
+			}
 			continue
 		}
 		kids = append(kids, el)
@@ -220,7 +296,7 @@ func (s *comSource) Children(node comPtr, remaining time.Duration) ([]comPtr, []
 	for i, k := range kids {
 		data[i] = s.data(k)
 	}
-	return kids, data, nil
+	return kids, data, err
 }
 
 // The COM source reads a slow list one Element at a time and counts
@@ -264,6 +340,7 @@ func (s *comSource) step(slot uintptr, from comPtr, remaining time.Duration) (co
 		return nil, NodeData{}, false, err
 	}
 	s.putTimeout(remaining)
+	defer s.restoreTimeout()
 	var el comPtr
 	if hr := call(s.walker, slot, uintptr(from), uintptr(s.stepReq), uintptr(unsafe.Pointer(&el))); hr.Failed() {
 		return nil, NodeData{}, false, chunkErr("reading the next child", hr)
@@ -297,6 +374,7 @@ func (s *comSource) CountChildren(node comPtr, remaining time.Duration) (int, er
 		}
 	}
 	s.putTimeout(remaining)
+	defer s.restoreTimeout()
 	var fresh comPtr
 	if hr := call(node, elBuildUpdatedCache, uintptr(s.countReq), uintptr(unsafe.Pointer(&fresh))); hr.Failed() || fresh == nil {
 		return 0, chunkErr("counting the children", hr)
@@ -321,6 +399,7 @@ func (s *comSource) CountChildren(node comPtr, remaining time.Duration) (int, er
 // cache; no provider round trip). The pattern properties come through
 // GetCachedPropertyValue as VARIANTs (value.go's prop* readers).
 func (s *comSource) data(el comPtr) NodeData {
+	password, read := propBoolRead(el, propIsPassword)
 	return NodeData{
 		ControlType:  cachedInt32(el, elCachedControlType),
 		Name:         cachedBSTR(el, elCachedName),
@@ -328,6 +407,9 @@ func (s *comSource) data(el comPtr) NodeData {
 		HelpText:     cachedBSTR(el, elCachedHelpText),
 		Enabled:      cachedBool(el, elCachedIsEnabled),
 		Focused:      cachedBool(el, elCachedHasKeyboardFocus),
+
+		IsPassword:     password,
+		PasswordUnread: !read,
 
 		HasWindow:        propBool(el, propIsWindowAvailable),
 		HasScroll:        propBool(el, propIsScrollAvailable),

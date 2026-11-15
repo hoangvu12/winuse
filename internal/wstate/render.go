@@ -115,7 +115,8 @@ func writeElement(b *strings.Builder, index int, e *Element, indent bool) {
 // states renders the parenthesised state list, comma-separated in Codex's
 // order: selectable, selected, disabled, collapsed/expanded/partially
 // expanded, then "settable, string" (writable ValuePattern) or
-// "settable, float" (RangeValue).
+// "settable, float" (RangeValue), then "password" (a secret field whose
+// Value is withheld; winuse's one word beyond Codex's grammar).
 func (e *Element) states() string {
 	var parts []string
 	if e.Selectable {
@@ -132,6 +133,9 @@ func (e *Element) states() string {
 	}
 	if e.Settable != "" {
 		parts = append(parts, "settable, "+e.Settable)
+	}
+	if e.Password {
+		parts = append(parts, "password")
 	}
 	return strings.Join(parts, ", ")
 }

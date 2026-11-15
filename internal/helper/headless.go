@@ -393,6 +393,13 @@ func (s Services) runHeadless(ctx context.Context, ref string, actor HeadlessAct
 		// pattern call.
 		return "", escStopBeforeActError()
 	}
+	// The identity re-check (identity.go). A pattern call is bound to its
+	// Element, which a reused handle does not inherit, but some acts post
+	// to the Window's controls (select-text's EM_SETSEL, the ContextMenu
+	// Secondary Action), and the refusal names the reuse either way.
+	if rerr := s.sameWindow(ctx, w.ID); rerr != nil {
+		return "", rerr
+	}
 	err := run.act(ctx, w, index)
 	cursorTrace(ctx, "acted")
 	var verify *uia.VerifyError
@@ -549,6 +556,7 @@ const nothingSentNote = "; nothing was sent"
 // nothingSent marks a refusal as raised before anything reached the app.
 func nothingSent(e *Error) *Error {
 	out := *e
+	out.Delivery = protocol.DeliveryNotDelivered
 	if strings.HasSuffix(out.Msg, nothingSentNote) {
 		return &out // already said
 	}
@@ -561,9 +569,10 @@ func nothingSent(e *Error) *Error {
 // with a hint that says nothing was sent.
 func escStopBeforeActError() *Error {
 	return &Error{
-		Msg:  escStopMessage,
-		Hint: "stop your current task and ask the user how to proceed before sending more winuse commands; nothing was sent, so the stopped Action did not take effect",
-		Exit: protocol.ExitEsc,
+		Msg:      escStopMessage,
+		Hint:     "stop your current task and ask the user how to proceed before sending more winuse commands; nothing was sent, so the stopped Action did not take effect",
+		Exit:     protocol.ExitEsc,
+		Delivery: protocol.DeliveryNotDelivered,
 	}
 }
 
@@ -576,7 +585,7 @@ func escStopBeforeActError() *Error {
 func readyError(err error, w win.WindowInfo) *Error {
 	var modal *win.ModalDialogError
 	if errors.As(err, &modal) {
-		return nothingSent(activationError(err))
+		return waitsFor(nothingSent(activationError(err)), refusalWait{kind: waitDialog, window: w}) // briefwait.go: it may be closing
 	}
 	var minimized *win.MinimizedError
 	if errors.As(err, &minimized) {
@@ -611,15 +620,18 @@ func headlessFailure(err error, w win.WindowInfo, index int, run headlessRun) *E
 	}
 	var verify *uia.VerifyError
 	if errors.As(err, &verify) {
-		return Fail(err.Error(), "the Action was delivered; do not repeat it, read the Window State: winuse get-window-state "+id)
+		return wasDelivered(Fail(err.Error(), "the Action was delivered; do not repeat it, read the Window State: winuse get-window-state "+id))
 	}
 	var write *uia.WriteError
 	if errors.As(err, &write) {
-		return Fail(err.Error(), "the Action may have taken effect; read the Window State (winuse get-window-state "+id+") before repeating it")
+		return mayHaveActed(Fail(err.Error(), "the Action may have taken effect; read the Window State (winuse get-window-state "+id+") before repeating it"))
 	}
 	e := run.refusal(err, w, index)
 	if refusedBeforeCall(err) {
 		e = nothingSent(e)
+	}
+	if errors.Is(err, uia.ErrDisabled) && index >= 0 {
+		e = waitsFor(e, refusalWait{kind: waitEnable, window: w, index: index}) // briefwait.go: it may enable
 	}
 	return e
 }

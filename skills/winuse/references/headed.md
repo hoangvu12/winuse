@@ -58,7 +58,9 @@ read-back, so check the next Window State.
 `--headed`, as in `winuse --headed click 101 3`, forces the Headed way; on a
 Batch it makes every step Headed. It goes before the command or anywhere
 after it, except inside `type-text`'s text, `set-value`'s value and
-`clipboard-set`'s text, where it is literal text; put it first there. Use
+`clipboard-set`'s text, where it is literal text; put it first there
+(`set-value` refuses a value that ends with a winuse flag, nothing sent,
+and its hint shows the line with the flag moved). Use
 it when a refusal's hint offers it and the step needs the real pointer or
 keyboard, when a Headless Action had no effect (custom-drawn controls and
 some web widgets respond only to a real click), or when you need keyboard

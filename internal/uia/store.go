@@ -84,6 +84,14 @@ type windowState struct {
 	// added maps the RuntimeId of each added Element to its Element Index
 	// (desktop-parity 17), so the same Element is never added twice.
 	added map[string]int
+	// partial says the read did not see the whole Window (WalkResult.
+	// Partial, or a Page read cut by its caps): a name:/id: reference then
+	// never takes its one match as unique (reliability council 03).
+	partial bool
+	// doubted holds the added Elements a partial fresh read found as a
+	// reference's one match: the refusal named their indexes, and the cache
+	// never answers that reference with them.
+	doubted map[int]bool
 }
 
 func newStore(addRef, release func(comPtr)) *store {
@@ -137,8 +145,9 @@ func (s *store) beginRead() uint64 {
 // worker's job completing after a newer read) has its elems released
 // instead; the newer Window State is left untouched. Then the idle
 // Agents' Window States and those past the cap are dropped. Callers run
-// on a COM thread: the worker whose walk produced the Elements.
-func (s *store) install(agent string, hwnd uint64, seq uint64, elems []comPtr, elements []wstate.Element) {
+// on a COM thread: the worker whose walk produced the Elements. partial
+// says the read did not see the whole Window.
+func (s *store) install(agent string, hwnd uint64, seq uint64, elems []comPtr, elements []wstate.Element, partial bool) {
 	key := storeKey{agent, hwnd}
 	s.mu.Lock()
 	st := s.states[key]
@@ -157,7 +166,7 @@ func (s *store) install(agent string, hwnd uint64, seq uint64, elems []comPtr, e
 		delete(s.states, key)
 		s.touch(agent, nil)
 	} else {
-		st = &windowState{seq: seq, elems: elems, elements: elements, base: len(elements)}
+		st = &windowState{seq: seq, elems: elems, elements: elements, base: len(elements), partial: partial}
 		s.states[key] = st
 		s.touch(agent, st)
 	}
@@ -356,17 +365,40 @@ func (s *store) add(agent string, hwnd uint64, elems []comPtr, elements []wstate
 	return indexes
 }
 
-// refState returns the Elements of the Agent's latest Window State of hwnd
-// and how many of them its read stored (the rest were added by find or a
-// region read).
-func (s *store) refState(agent string, hwnd uint64) ([]wstate.Element, int, bool) {
+// refState returns what reference resolution reads of the Agent's latest
+// Window State of hwnd: its Elements, how many of them its read stored
+// (the rest were added by find, a region read or a fresh read), whether
+// that read was partial, and the doubted added Elements (a copy).
+func (s *store) refState(agent string, hwnd uint64) (cacheView, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st := s.lookupState(agent, hwnd)
 	if st == nil {
-		return nil, 0, false
+		return cacheView{}, false
 	}
-	return st.elements, st.base, true
+	cv := cacheView{els: st.elements, base: st.base, partial: st.partial, ok: true}
+	for i := range st.doubted {
+		if cv.doubted == nil {
+			cv.doubted = map[int]bool{}
+		}
+		cv.doubted[i] = true
+	}
+	return cv, true
+}
+
+// doubt marks the Element at index of the Agent's Window State of hwnd as
+// one a partial fresh read found as a reference's one match.
+func (s *store) doubt(agent string, hwnd uint64, index int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.lookupState(agent, hwnd)
+	if st == nil || index < 0 || index >= len(st.elements) {
+		return
+	}
+	if st.doubted == nil {
+		st.doubted = map[int]bool{}
+	}
+	st.doubted[index] = true
 }
 
 // releaseAll drops every stored Window of every Agent. Called on the

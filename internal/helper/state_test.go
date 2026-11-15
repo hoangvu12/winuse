@@ -91,6 +91,18 @@ func runCommand(t *testing.T, cmds map[string]Command, cmd string, args any) (st
 	return c(context.Background(), raw)
 }
 
+// runCommandNoWait is runCommand sent with --no-wait (briefwait.go): a
+// refusal that may pass on its own fails at once, as before
+// reliability-council 06.
+func runCommandNoWait(t *testing.T, cmds map[string]Command, cmd string, args any) (string, *Error) {
+	t.Helper()
+	raw, err := json.Marshal(args)
+	if err != nil {
+		t.Fatalf("marshal args: %v", err)
+	}
+	return cmds[cmd](withNoWait(context.Background()), raw)
+}
+
 func TestGetWindowStateByWindowID(t *testing.T) {
 	trees := &fakeTrees{trees: map[uint64]*wstate.Tree{101: cannedTree()}}
 	out, cmdErr := runCommand(t, CommandsWith(testServices(trees)), "get-window-state", windowRef{Window: "101"})

@@ -1,0 +1,682 @@
+[
+ {
+  "window": "Calculator",
+  "case": "read (full)",
+  "tool": "agent-desktop",
+  "min_ms": 177,
+  "p50_ms": 215,
+  "ok": "16/16",
+  "kb": 14.1,
+  "nodes": 89
+ },
+ {
+  "window": "Calculator",
+  "case": "read (ad -i --compact)",
+  "tool": "agent-desktop",
+  "min_ms": 178,
+  "p50_ms": 223,
+  "ok": "16/16",
+  "kb": 9.7,
+  "nodes": 50
+ },
+ {
+  "window": "Calculator",
+  "case": "skeleton",
+  "tool": "agent-desktop",
+  "min_ms": 184,
+  "p50_ms": 231,
+  "ok": "16/16",
+  "kb": 2.7,
+  "nodes": 16
+ },
+ {
+  "window": "Calculator",
+  "case": "find button --first",
+  "tool": "agent-desktop",
+  "min_ms": 184,
+  "p50_ms": 239,
+  "ok": "16/16",
+  "kb": 0.3,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "click",
+  "tool": "agent-desktop",
+  "min_ms": 178,
+  "p50_ms": 203,
+  "ok": "16/16",
+  "kb": 0.4,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "read then click",
+  "tool": "agent-desktop",
+  "min_ms": 363,
+  "p50_ms": 430,
+  "ok": "16/16",
+  "kb": 10.1,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "read (full)",
+  "tool": "agent-desktop",
+  "min_ms": 346,
+  "p50_ms": 382,
+  "ok": "16/16",
+  "kb": 51.7,
+  "nodes": 266
+ },
+ {
+  "window": "Explorer System32",
+  "case": "read (ad -i --compact)",
+  "tool": "agent-desktop",
+  "min_ms": 336,
+  "p50_ms": 396,
+  "ok": "16/16",
+  "kb": 45.0,
+  "nodes": 208
+ },
+ {
+  "window": "Explorer System32",
+  "case": "skeleton",
+  "tool": "agent-desktop",
+  "min_ms": 336,
+  "p50_ms": 379,
+  "ok": "16/16",
+  "kb": 4.1,
+  "nodes": 24
+ },
+ {
+  "window": "Explorer System32",
+  "case": "find button --first",
+  "tool": "agent-desktop",
+  "min_ms": 345,
+  "p50_ms": 385,
+  "ok": "16/16",
+  "kb": 0.4,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "click",
+  "tool": "agent-desktop",
+  "min_ms": 455,
+  "p50_ms": 759,
+  "ok": "16/16",
+  "kb": 0.6,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "read then click",
+  "tool": "agent-desktop",
+  "min_ms": 816,
+  "p50_ms": 962,
+  "ok": "16/16",
+  "kb": 45.6,
+  "nodes": null
+ },
+ {
+  "window": "Discord",
+  "case": "read (full)",
+  "tool": "agent-desktop",
+  "min_ms": 780,
+  "p50_ms": 876,
+  "ok": "16/16",
+  "kb": 193.0,
+  "nodes": 1305
+ },
+ {
+  "window": "Discord",
+  "case": "read (ad -i --compact)",
+  "tool": "agent-desktop",
+  "min_ms": 788,
+  "p50_ms": 998,
+  "ok": "16/16",
+  "kb": 79.8,
+  "nodes": 489
+ },
+ {
+  "window": "Discord",
+  "case": "skeleton",
+  "tool": "agent-desktop",
+  "min_ms": 784,
+  "p50_ms": 870,
+  "ok": "16/16",
+  "kb": 1.8,
+  "nodes": 12
+ },
+ {
+  "window": "Discord",
+  "case": "find button --first",
+  "tool": "agent-desktop",
+  "min_ms": 731,
+  "p50_ms": 838,
+  "ok": "16/16",
+  "kb": 0.4,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "read (full)",
+  "tool": "winuse",
+  "min_ms": 51,
+  "p50_ms": 56,
+  "ok": "16/16",
+  "kb": 2.3,
+  "nodes": 53
+ },
+ {
+  "window": "Calculator",
+  "case": "click",
+  "tool": "winuse",
+  "min_ms": 375,
+  "p50_ms": 387,
+  "ok": "16/16",
+  "kb": 0.0,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "read then click",
+  "tool": "winuse",
+  "min_ms": 430,
+  "p50_ms": 452,
+  "ok": "16/16",
+  "kb": 2.3,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "skeleton",
+  "tool": "winuse",
+  "min_ms": 43,
+  "p50_ms": 46,
+  "ok": "16/16",
+  "kb": 0.8,
+  "nodes": 15
+ },
+ {
+  "window": "Calculator",
+  "case": "find button --first",
+  "tool": "winuse",
+  "min_ms": 51,
+  "p50_ms": 60,
+  "ok": "16/16",
+  "kb": 0.3,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "read (full)",
+  "tool": "winuse",
+  "min_ms": 136,
+  "p50_ms": 193,
+  "ok": "16/16",
+  "kb": 14.8,
+  "nodes": 214
+ },
+ {
+  "window": "Explorer System32",
+  "case": "click",
+  "tool": "winuse",
+  "min_ms": 383,
+  "p50_ms": 905,
+  "ok": "16/16",
+  "kb": 0.0,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "read then click",
+  "tool": "winuse",
+  "min_ms": 531,
+  "p50_ms": 1314,
+  "ok": "16/16",
+  "kb": 14.8,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "skeleton",
+  "tool": "winuse",
+  "min_ms": 72,
+  "p50_ms": 458,
+  "ok": "16/16",
+  "kb": 1.6,
+  "nodes": 26
+ },
+ {
+  "window": "Explorer System32",
+  "case": "find button --first",
+  "tool": "winuse",
+  "min_ms": 136,
+  "p50_ms": 204,
+  "ok": "16/16",
+  "kb": 0.2,
+  "nodes": null
+ },
+ {
+  "window": "Discord",
+  "case": "read (full)",
+  "tool": "winuse",
+  "min_ms": 163,
+  "p50_ms": 196,
+  "ok": "16/16",
+  "kb": 25.8,
+  "nodes": 607
+ },
+ {
+  "window": "Discord",
+  "case": "skeleton",
+  "tool": "winuse",
+  "min_ms": 4988,
+  "p50_ms": 5136,
+  "ok": "16/16",
+  "kb": 0.6,
+  "nodes": 5
+ },
+ {
+  "window": "Discord",
+  "case": "find button --first",
+  "tool": "winuse",
+  "min_ms": 166,
+  "p50_ms": 225,
+  "ok": "16/16",
+  "kb": 0.2,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "read (full)",
+  "tool": "winuse no-settle",
+  "min_ms": 52,
+  "p50_ms": 62,
+  "ok": "16/16",
+  "kb": 2.3,
+  "nodes": 53
+ },
+ {
+  "window": "Calculator",
+  "case": "click",
+  "tool": "winuse no-settle",
+  "min_ms": 59,
+  "p50_ms": 69,
+  "ok": "16/16",
+  "kb": 0.0,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "read then click",
+  "tool": "winuse no-settle",
+  "min_ms": 118,
+  "p50_ms": 133,
+  "ok": "16/16",
+  "kb": 2.3,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "skeleton",
+  "tool": "winuse no-settle",
+  "min_ms": 43,
+  "p50_ms": 51,
+  "ok": "16/16",
+  "kb": 0.8,
+  "nodes": 15
+ },
+ {
+  "window": "Calculator",
+  "case": "find button --first",
+  "tool": "winuse no-settle",
+  "min_ms": 54,
+  "p50_ms": 64,
+  "ok": "16/16",
+  "kb": 0.3,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "read (full)",
+  "tool": "winuse no-settle",
+  "min_ms": 135,
+  "p50_ms": 149,
+  "ok": "16/16",
+  "kb": 14.8,
+  "nodes": 214
+ },
+ {
+  "window": "Explorer System32",
+  "case": "click",
+  "tool": "winuse no-settle",
+  "min_ms": 56,
+  "p50_ms": 61,
+  "ok": "16/16",
+  "kb": 0.0,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "read then click",
+  "tool": "winuse no-settle",
+  "min_ms": 222,
+  "p50_ms": 261,
+  "ok": "16/16",
+  "kb": 14.8,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "skeleton",
+  "tool": "winuse no-settle",
+  "min_ms": 97,
+  "p50_ms": 108,
+  "ok": "16/16",
+  "kb": 1.6,
+  "nodes": 26
+ },
+ {
+  "window": "Explorer System32",
+  "case": "find button --first",
+  "tool": "winuse no-settle",
+  "min_ms": 141,
+  "p50_ms": 157,
+  "ok": "16/16",
+  "kb": 0.2,
+  "nodes": null
+ },
+ {
+  "window": "Discord",
+  "case": "read (full)",
+  "tool": "winuse no-settle",
+  "min_ms": 168,
+  "p50_ms": 257,
+  "ok": "16/16",
+  "kb": 25.9,
+  "nodes": 607
+ },
+ {
+  "window": "Discord",
+  "case": "skeleton",
+  "tool": "winuse no-settle",
+  "min_ms": 5001,
+  "p50_ms": 5307,
+  "ok": "16/16",
+  "kb": 0.6,
+  "nodes": 5
+ },
+ {
+  "window": "Discord",
+  "case": "find button --first",
+  "tool": "winuse no-settle",
+  "min_ms": 176,
+  "p50_ms": 634,
+  "ok": "16/16",
+  "kb": 0.2,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "read (full)",
+  "tool": "winuse no-cursor",
+  "min_ms": 51,
+  "p50_ms": 57,
+  "ok": "16/16",
+  "kb": 2.3,
+  "nodes": 53
+ },
+ {
+  "window": "Calculator",
+  "case": "click",
+  "tool": "winuse no-cursor",
+  "min_ms": 378,
+  "p50_ms": 386,
+  "ok": "16/16",
+  "kb": 0.0,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "read then click",
+  "tool": "winuse no-cursor",
+  "min_ms": 439,
+  "p50_ms": 448,
+  "ok": "16/16",
+  "kb": 2.3,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "skeleton",
+  "tool": "winuse no-cursor",
+  "min_ms": 42,
+  "p50_ms": 47,
+  "ok": "16/16",
+  "kb": 0.8,
+  "nodes": 15
+ },
+ {
+  "window": "Calculator",
+  "case": "find button --first",
+  "tool": "winuse no-cursor",
+  "min_ms": 52,
+  "p50_ms": 56,
+  "ok": "16/16",
+  "kb": 0.3,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "read (full)",
+  "tool": "winuse no-cursor",
+  "min_ms": 137,
+  "p50_ms": 153,
+  "ok": "16/16",
+  "kb": 14.8,
+  "nodes": 214
+ },
+ {
+  "window": "Explorer System32",
+  "case": "click",
+  "tool": "winuse no-cursor",
+  "min_ms": 381,
+  "p50_ms": 388,
+  "ok": "16/16",
+  "kb": 0.0,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "read then click",
+  "tool": "winuse no-cursor",
+  "min_ms": 519,
+  "p50_ms": 546,
+  "ok": "16/16",
+  "kb": 14.8,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "skeleton",
+  "tool": "winuse no-cursor",
+  "min_ms": 66,
+  "p50_ms": 75,
+  "ok": "16/16",
+  "kb": 1.6,
+  "nodes": 26
+ },
+ {
+  "window": "Explorer System32",
+  "case": "find button --first",
+  "tool": "winuse no-cursor",
+  "min_ms": 134,
+  "p50_ms": 153,
+  "ok": "16/16",
+  "kb": 0.2,
+  "nodes": null
+ },
+ {
+  "window": "Discord",
+  "case": "read (full)",
+  "tool": "winuse no-cursor",
+  "min_ms": 165,
+  "p50_ms": 195,
+  "ok": "16/16",
+  "kb": 25.9,
+  "nodes": 609
+ },
+ {
+  "window": "Discord",
+  "case": "skeleton",
+  "tool": "winuse no-cursor",
+  "min_ms": 5001,
+  "p50_ms": 5027,
+  "ok": "16/16",
+  "kb": 0.6,
+  "nodes": 5
+ },
+ {
+  "window": "Discord",
+  "case": "find button --first",
+  "tool": "winuse no-cursor",
+  "min_ms": 178,
+  "p50_ms": 202,
+  "ok": "16/16",
+  "kb": 0.2,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "read (full)",
+  "tool": "winuse no-waits",
+  "min_ms": 52,
+  "p50_ms": 60,
+  "ok": "16/16",
+  "kb": 2.3,
+  "nodes": 53
+ },
+ {
+  "window": "Calculator",
+  "case": "click",
+  "tool": "winuse no-waits",
+  "min_ms": 55,
+  "p50_ms": 64,
+  "ok": "16/16",
+  "kb": 0.0,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "read then click",
+  "tool": "winuse no-waits",
+  "min_ms": 113,
+  "p50_ms": 132,
+  "ok": "16/16",
+  "kb": 2.3,
+  "nodes": null
+ },
+ {
+  "window": "Calculator",
+  "case": "skeleton",
+  "tool": "winuse no-waits",
+  "min_ms": 43,
+  "p50_ms": 49,
+  "ok": "16/16",
+  "kb": 0.8,
+  "nodes": 15
+ },
+ {
+  "window": "Calculator",
+  "case": "find button --first",
+  "tool": "winuse no-waits",
+  "min_ms": 56,
+  "p50_ms": 63,
+  "ok": "16/16",
+  "kb": 0.3,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "read (full)",
+  "tool": "winuse no-waits",
+  "min_ms": 143,
+  "p50_ms": 168,
+  "ok": "16/16",
+  "kb": 14.8,
+  "nodes": 217
+ },
+ {
+  "window": "Explorer System32",
+  "case": "click",
+  "tool": "winuse no-waits",
+  "min_ms": 54,
+  "p50_ms": 64,
+  "ok": "16/16",
+  "kb": 0.0,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "read then click",
+  "tool": "winuse no-waits",
+  "min_ms": 249,
+  "p50_ms": 286,
+  "ok": "16/16",
+  "kb": 14.8,
+  "nodes": null
+ },
+ {
+  "window": "Explorer System32",
+  "case": "skeleton",
+  "tool": "winuse no-waits",
+  "min_ms": 111,
+  "p50_ms": 154,
+  "ok": "16/16",
+  "kb": 1.6,
+  "nodes": 28
+ },
+ {
+  "window": "Explorer System32",
+  "case": "find button --first",
+  "tool": "winuse no-waits",
+  "min_ms": 154,
+  "p50_ms": 205,
+  "ok": "16/16",
+  "kb": 0.2,
+  "nodes": null
+ },
+ {
+  "window": "Discord",
+  "case": "read (full)",
+  "tool": "winuse no-waits",
+  "min_ms": 168,
+  "p50_ms": 204,
+  "ok": "16/16",
+  "kb": 25.8,
+  "nodes": 607
+ },
+ {
+  "window": "Discord",
+  "case": "skeleton",
+  "tool": "winuse no-waits",
+  "min_ms": 5007,
+  "p50_ms": 5065,
+  "ok": "16/16",
+  "kb": 0.6,
+  "nodes": 5
+ },
+ {
+  "window": "Discord",
+  "case": "find button --first",
+  "tool": "winuse no-waits",
+  "min_ms": 175,
+  "p50_ms": 193,
+  "ok": "16/16",
+  "kb": 0.2,
+  "nodes": null
+ }
+]

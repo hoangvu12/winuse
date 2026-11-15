@@ -117,7 +117,7 @@ func startTrace(args []string, getenv func(string) string) (rest []string, run *
 	for ; i < len(args); i++ {
 		tok := args[i]
 		switch {
-		case tok == headedFlag:
+		case tok == headedFlag, tok == noWaitFlag:
 			rest = append(rest, tok)
 			continue
 		case tok == traceUnredactedFlag:

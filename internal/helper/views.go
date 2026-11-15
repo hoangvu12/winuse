@@ -53,7 +53,7 @@ func (a windowRef) view(ref string) wstate.View {
 	if limit > 0 && a.Screenshot {
 		limit = max(limit-screenshotReserve, 1)
 	}
-	return wstate.View{Full: a.Full, Interactive: a.Interactive, Depth: a.Depth, Compact: a.Compact, MaxChars: limit, Ref: ref}
+	return wstate.View{Full: a.Full, Interactive: a.Interactive, Visible: a.Visible, MarkOffscreen: a.MarkOffscreen, Depth: a.Depth, Compact: a.Compact, MaxChars: limit, Ref: ref}
 }
 
 // regionCut is how a --root read prints its lines: a's cap and, unless
@@ -74,8 +74,8 @@ func budgetError(a windowRef) *Error {
 	switch {
 	case a.Depth < 0 || a.MaxChars != nil && *a.MaxChars < 0:
 		return Fail("get-window-state: --depth takes a positive number and --max-chars a number (0: no cap)", windowStateUsage)
-	case a.Full && (a.Compact || a.MaxChars != nil || a.Root == "" && (a.Interactive || a.Depth != 0)):
-		return Fail("get-window-state: --full prints the Window State as Codex does, whole and uncut; it takes no --interactive, --depth, --compact or --max-chars (with --root, --depth and --interactive still shape the read)", windowStateUsage)
+	case a.Full && (a.Compact || a.Visible || a.MaxChars != nil || a.Root == "" && (a.Interactive || a.Depth != 0)):
+		return Fail("get-window-state: --full prints the Window State as Codex does, whole and uncut; it takes no --interactive, --visible, --depth, --compact or --max-chars (with --root, --depth and --interactive still shape the read)", windowStateUsage)
 	case explicitCap && a.Out != "":
 		return Fail("get-window-state: pass --out or --max-chars, not both: --out writes the whole Window State to the file", windowStateUsage)
 	}
@@ -86,17 +86,23 @@ func budgetError(a windowRef) *Error {
 // flags ask for or, with --out, writes it to that file, uncut, and prints
 // its header, the file's line and the tail (the focused Element and the
 // notes), which carry what the agent must not miss: a partial read, a
-// thin tree.
-func renderState(tree *wstate.Tree, a windowRef, ref string) (string, *Error) {
+// thin tree. With --diff it prints what changed since before, the Agent's
+// earlier Window State of what (nil: none), as --observe=diff does.
+func renderState(tree *wstate.Tree, a windowRef, ref string, before []wstate.Element, what string) (string, *Error) {
 	if e := budgetError(a); e != nil {
 		return "", e
 	}
+	render, title := func(v wstate.View) string { return wstate.RenderView(tree, v) }, "Window State"
+	if a.Diff {
+		render = func(v wstate.View) string { return wstate.RenderChanges(before, tree, v, what).Text }
+		title = "Window State diff"
+	}
 	v := a.view(ref)
 	if a.Out == "" {
-		return wstate.RenderView(tree, v), nil
+		return render(v), nil
 	}
 	v.MaxChars = 0
-	return writeStateOut(wstate.RenderView(tree, v), tree, a.Out, "Window State")
+	return writeStateOut(render(v), tree, a.Out, title)
 }
 
 // writeStateOut writes a printed Window State (or --observe's diff of one)

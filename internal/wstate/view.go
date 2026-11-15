@@ -25,9 +25,22 @@ type View struct {
 	// text, shared IDs included, never cut. The other fields are ignored.
 	Full bool
 
-	// Interactive prints only the Elements an agent acts on (Interactive),
-	// plus the root and the Elements that carry a walk's cut marks.
+	// Interactive prints only the Elements an agent acts on (ActedOn),
+	// disabled ones included, plus the root and the Elements that carry a
+	// walk's cut marks.
 	Interactive bool
+
+	// Visible prints only the Elements on screen: it leaves out those a
+	// Page read found scrolled out of the viewport (Element.Offscreen).
+	// Elements whose place is unknown (a desktop Window's, an iframe's)
+	// print.
+	Visible bool
+
+	// MarkOffscreen prints every Element, an off-screen one with
+	// OffscreenMark after its index: for winuse run, which sends a Jev
+	// server what is on screen and the off-screen Elements its goal names
+	// (internal/jev). No CLI flag sets it.
+	MarkOffscreen bool
 
 	// Depth prints only the Elements at most Depth levels below the
 	// Window (0: every level); one with children below the cut says how
@@ -48,7 +61,15 @@ type View struct {
 	// Ref is the Window as the notes' --root commands name it ("1234");
 	// empty, the notes leave --root out (a Tab target has no --root).
 	Ref string
+
+	// folded says RenderView turned Compact on itself, because the read
+	// did not fit MaxChars (fold before the cut).
+	folded bool
 }
+
+// OffscreenMark follows the index of an off-screen Element's line under
+// View.MarkOffscreen.
+const OffscreenMark = "[off screen]"
 
 // flags names the view's shaping flags as the CLI spells them.
 func (v View) flags() string {
@@ -56,10 +77,15 @@ func (v View) flags() string {
 	if v.Interactive {
 		f = append(f, "--interactive")
 	}
+	if v.Visible {
+		f = append(f, "--visible")
+	}
 	if v.Depth > 0 {
 		f = append(f, "--depth "+strconv.Itoa(v.Depth))
 	}
-	if v.Compact {
+	if v.folded {
+		f = append(f, "folding unnamed containers to fit --max-chars "+strconv.Itoa(v.MaxChars)+" (as --compact does)")
+	} else if v.Compact {
 		f = append(f, "--compact")
 	}
 	return strings.Join(f, " ")
@@ -68,11 +94,29 @@ func (v View) flags() string {
 // RenderView prints a Window State through a view: Render's format, with
 // each printed Element indented one level below its nearest printed
 // ancestor, and a note saying what the view left out and how to see it.
+//
+// A read that MaxChars would cut folds its bare containers first, as
+// Compact does, and cuts only what still does not fit (reliability-council
+// 12): on a Chromium or Electron Window a third of the Elements are
+// unnamed wrappers, and folding them and their indent fits about 1.5
+// times as many useful Elements under the default cap (Discord,
+// measured). A read that fits prints as before.
 func RenderView(t *Tree, v View) string {
 	if v.Full {
 		return Render(t)
 	}
 	shared := SharedIDs(t.Elements)
+	out, cut := renderView(t, v, shared)
+	if cut && !v.Compact {
+		v.Compact, v.folded = true, true
+		out, _ = renderView(t, v, shared)
+	}
+	return out
+}
+
+// renderView is RenderView's one pass through v; cut reports that
+// MaxChars stopped the Element lines.
+func renderView(t *Tree, v View, shared map[string]bool) (string, bool) {
 	lines, hidden := viewLines(t, v, shared)
 
 	var head strings.Builder
@@ -99,7 +143,7 @@ func RenderView(t *Tree, v View) string {
 	if v.Ref != "" {
 		hint = "See them with winuse get-window-state " + v.Ref + " --root <element>, narrow the read with --interactive, --compact or --depth, or write it all with --out <file>"
 	}
-	return Cut(head.String(), lines, tail.String(), v.MaxChars, hint)
+	return cutLines(head.String(), lines, tail.String(), v.MaxChars, hint)
 }
 
 // PrintedLine is one Element line of a printed Window State or find
@@ -115,6 +159,12 @@ type PrintedLine struct {
 // the lines not printed, then hint, the way to see them. The header and
 // the tail are never cut, so a tiny cap can still be passed.
 func Cut(head string, lines []PrintedLine, tail string, maxChars int, hint string) string {
+	out, _ := cutLines(head, lines, tail, maxChars, hint)
+	return out
+}
+
+// cutLines is Cut, and whether it stopped the lines.
+func cutLines(head string, lines []PrintedLine, tail string, maxChars int, hint string) (string, bool) {
 	const format = "Note: --max-chars %d stopped the output after %s: %d more Element lines (from Element %d on) are not printed; their Element Indexes still work. %s\n"
 	printed := len(lines)
 	if maxChars > 0 {
@@ -144,7 +194,7 @@ func Cut(head string, lines []PrintedLine, tail string, maxChars int, hint strin
 		b.WriteByte('\n')
 		b.WriteString(tail)
 	}
-	return b.String()
+	return b.String(), printed < len(lines)
 }
 
 // SharedIDs are the IDs (collapsed, as printed) two or more of the
@@ -198,7 +248,14 @@ func viewLines(t *Tree, v View, shared map[string]bool) ([]PrintedLine, int) {
 		stack = append(stack, shown{e.Depth, level})
 		var b strings.Builder
 		b.WriteString(strings.Repeat("\t", level+1))
-		writeElement(&b, i, &e, false)
+		var line strings.Builder
+		writeElement(&line, i, &e, false)
+		text := line.String()
+		if v.MarkOffscreen && e.Offscreen {
+			idx := strconv.Itoa(i) + " "
+			text = idx + OffscreenMark + " " + strings.TrimPrefix(text, idx)
+		}
+		b.WriteString(text)
 		writeHint(&b, hint)
 		b.WriteByte('\n')
 		out = append(out, PrintedLine{i, b.String()})
@@ -216,7 +273,10 @@ func (v View) prints(i int, e *Element) bool {
 	if i == 0 || e.Truncated != nil || e.MoreChildren > 0 {
 		return true
 	}
-	if v.Interactive && !e.Interactive() {
+	if v.Interactive && !e.ActedOn() {
+		return false
+	}
+	if v.Visible && e.Offscreen {
 		return false
 	}
 	if v.Compact && e.bare() {

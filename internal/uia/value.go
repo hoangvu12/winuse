@@ -442,6 +442,14 @@ func propBool(el comPtr, prop uint32) bool {
 	return v.has(vtBool) && v.boolean()
 }
 
+// propBoolRead reads a VT_BOOL property and whether it read at all: ok is
+// false when the answer is not a VT_BOOL (unsupported or failed).
+func propBoolRead(el comPtr, prop uint32) (value, ok bool) {
+	v := cachedProp(el, prop)
+	defer clearVariant(&v)
+	return v.has(vtBool) && v.boolean(), v.has(vtBool)
+}
+
 // propState reads a pattern-state VT_I4 property; -1 (unknown) when the
 // element does not support it. ExpandState and ToggleState use -1 for
 // "pattern present but state unreadable" (both actions offered then).
@@ -879,10 +887,13 @@ func patternState(pat comPtr, slot uintptr) int32 {
 // fail as stale (the read-the-state-again contract), disabled elements say
 // so — both refusals, nothing happened — and anything else is a
 // *WriteError naming the operation and the HRESULT, which may have taken
-// effect.
+// effect. Only UIA_E_ELEMENTNOTAVAILABLE is stale here, not hrStale's RPC
+// and CO codes: a provider that faults or disconnects in the middle of
+// the call may have acted before failing (reliability-council 02;
+// agent-desktop's Mutation Classifier calls them uncertain).
 func callErr(hr HRESULT, what string) error {
 	switch {
-	case hrStale(hr):
+	case hr == uiaErrElementGone:
 		return staleErr(hr)
 	case hr == uiaErrElementDisabled:
 		return ErrDisabled

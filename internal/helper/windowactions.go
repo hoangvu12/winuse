@@ -331,6 +331,9 @@ func (s Services) runWindowAction(ctx context.Context, ref string, act func(ctx 
 		return "", nothingSent(Fail(err.Error(), ""))
 	}
 	defer armPassive(s.Esc)()
+	if rerr := s.sameWindow(ctx, w.ID); rerr != nil {
+		return "", rerr // the identity re-check (identity.go)
+	}
 	out, e := act(ctx, w)
 	if s.Esc.Stopped() {
 		return "", escStopError()

@@ -33,6 +33,9 @@ type Merged struct {
 	From []int
 	// Origins are the Page Elements' origins, in index order.
 	Origins []Origin
+	// Partial says the Page read did not see the whole Page (Result.
+	// Partial); the frame's own completeness is the frame read's.
+	Partial bool
 }
 
 // Merge splices a Raw read into the frame read through UI Automation. The
@@ -127,7 +130,7 @@ func Merge(frame *wstate.Tree, raw *Raw) (*Merged, error) {
 		o.DocIndex = at
 		origins[i] = o
 	}
-	return &Merged{Tree: &tree, Doc: at, End: end, From: from, Origins: origins}, nil
+	return &Merged{Tree: &tree, Doc: at, End: end, From: from, Origins: origins, Partial: res.Partial()}, nil
 }
 
 // NamedAfter reports whether a document Element's name is the Tab's

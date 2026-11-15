@@ -426,11 +426,17 @@ func (r *Reader) readDoc(ctx context.Context, c *cdp.Client, ts *tabSession, ses
 	}
 	tree := c.Send(session, "Page.getFrameTree", nil)
 	ax := c.Send(session, "Accessibility.getFullAXTree", nil)
-	var shot *cdp.Pending
+	var shot, metrics *cdp.Pending
 	if snap {
 		shot = c.Send(session, "DOMSnapshot.captureSnapshot", snapshotParams)
+		if session == ts.id {
+			// The Tab's own document: where its viewport is, to tell which
+			// Elements are scrolled away (offscreenOf). An iframe's
+			// viewport is its own, with no place on the Page known here.
+			metrics = c.Send(session, "Page.getLayoutMetrics", nil)
+		}
 	}
-	all := append(ons, tree, ax, shot)
+	all := append(ons, tree, ax, shot, metrics)
 	fail := func(err error) (docResult, error) {
 		ts.forget(session)
 		giveUp(all...)
@@ -468,8 +474,12 @@ func (r *Reader) readDoc(ctx context.Context, c *cdp.Client, ts *tabSession, ses
 		if err == nil {
 			d.snap, err = decodeSnapshot(res)
 		}
+		vp, vpOK := layoutViewport(ctx, metrics)
 		if doc := d.snap.doc(d.FrameID); doc != nil {
 			d.Marks = marksOf(d.snap, doc, d.Nodes)
+			if vpOK && d.Marks != nil {
+				d.Marks.Offscreen = offscreenOf(doc, vp)
+			}
 		}
 		if d.Marks != nil {
 			d.Snapshot = true
@@ -482,6 +492,32 @@ func (r *Reader) readDoc(ctx context.Context, c *cdp.Client, ts *tabSession, ses
 		d.Marks = readMarks(ctx, c, session, 0)
 	}
 	return d, nil
+}
+
+// layoutViewport reads Page.getLayoutMetrics' answer: the layout
+// viewport's scroll offset and size in CSS px. A failed or missing answer
+// is not ok, and the read marks nothing off-screen.
+func layoutViewport(ctx context.Context, p *cdp.Pending) (viewport, bool) {
+	if p == nil {
+		return viewport{}, false
+	}
+	res, err := p.Wait(ctx)
+	if err != nil {
+		return viewport{}, false
+	}
+	var m struct {
+		CSSLayoutViewport *struct {
+			PageX        float64 `json:"pageX"`
+			PageY        float64 `json:"pageY"`
+			ClientWidth  float64 `json:"clientWidth"`
+			ClientHeight float64 `json:"clientHeight"`
+		} `json:"cssLayoutViewport"`
+	}
+	if json.Unmarshal(res, &m) != nil || m.CSSLayoutViewport == nil {
+		return viewport{}, false
+	}
+	v := m.CSSLayoutViewport
+	return viewport{X: v.PageX, Y: v.PageY, W: v.ClientWidth, H: v.ClientHeight}, v.ClientWidth > 0 && v.ClientHeight > 0
 }
 
 // sameProcessFrame reads a same-origin iframe the main tree left out: the

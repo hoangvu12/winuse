@@ -21,6 +21,8 @@ jobs:
           for arch in amd64 arm64; do
             CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -ldflags "-s -w" -o "dist/winuse_windows_$arch.exe" ./cmd/winuse
           done
+          # winuse update checks its download against this
+          (cd dist && sha256sum winuse_windows_*.exe > SHA256SUMS)
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:

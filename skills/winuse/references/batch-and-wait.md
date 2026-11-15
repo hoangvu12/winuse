@@ -72,17 +72,25 @@ Changed since this agent's last read of window 101 (~ changed, * new, - gone); E
   and `--full` for Codex's text, every ID, uncut.
   They go before the command or anywhere after it, but not inside type-text's
   text or set-value's value, where they would be text (as `--headed`).
+  `set-value 101 id:qty 3 --observe` is refused with nothing sent: write
+  `set-value 101 --observe id:qty 3`.
 - When the Action opened one new Window (a menu, a dialog, a popup), it is
   read too and printed whole after the diff, under `The Window the Action
   opened, <Window ID>, read whole; its Element Indexes go with window
-  <Window ID>:`. Act on it with that Window ID, not the Action's. Several new
-  Windows are a `Note:` listing their IDs: read the one you need. A Batch
-  reads only a Window still open after its last step.
+  <Window ID>:`. Act on it with that Window ID, not the Action's. A dialog
+  the Action's Window already shows inside its own read is not read again:
+  a `Note:` names its Element there. Several new Windows are a `Note:`
+  listing their IDs: read the one you need. A Batch reads only a Window
+  still open after its last step.
 - A failed Action prints no observation. A Batch observes after its last
   step, failed steps included. A read that fails is a `Note:`; the Action's
   own result stands.
 - On a Page, the read comes right after the Action: a page that reacts late
   may not show it yet.
+- To read again with no Action, after a `wait` or something the user did,
+  `winuse get-window-state <window> --diff` prints the same diff, under the
+  same rules and budgets (not with `--root` or `--skeleton`, which read part
+  of the Window). It is a Batch step too: `... then get-window-state --diff`.
 
 ## Wait for a change
 
@@ -109,6 +117,15 @@ instead of two: `batch 101 click name:Save then wait text Saved`.
   the Element cannot show, such as `value` without `Value:`, fails at once.
 - A wait only reads: it does not renumber your indexes, and an Action can
   run meanwhile.
+- You need no wait for a short one. An Action refused because its Element
+  is disabled, a modal dialog blocks its Window, or its `name:`/`id:`
+  matches nothing yet waits up to 1.8 s on its own, without holding up
+  other Actions, and then runs once more: `Note: waited 0.4 s for element
+  14 to enable`. Past that it fails as before, with a hint that says how long
+  it waited. Only a refusal that sent nothing waits, never a write that may
+  have acted; `--no-wait` fails at once, and Esc stops it. A Batch's steps
+  do not wait (the Batch holds its Window for all its steps): put a
+  `wait <ref> enabled` step before one that may find its Element disabled.
 - With a Browser Connection, `text` waits in the Page (see "Act on a Page"
   in `winuse skill browser` for the other Page waits), and an element wait takes the frame's
   Elements, not the Page's.

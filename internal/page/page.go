@@ -83,6 +83,10 @@ type Marks struct {
 	// Hints are the unnamed or duplicate controls' hints (hints.go), from
 	// the snapshot only: the clickables.js pass has none.
 	Hints []NodeHint `json:"hints,omitempty"`
+	// Offscreen are the backendNodeIds of the nodes whose box lies wholly
+	// outside the viewport (offscreenOf): the Tab's own document only, from
+	// the snapshot.
+	Offscreen []int64 `json:"offscreen,omitempty"`
 }
 
 // Clickable is an element with no interactive role that still takes

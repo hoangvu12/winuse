@@ -51,11 +51,11 @@ type jsonError struct {
 }
 
 // leadingFlag reports how many tokens the global flag at args[0] takes
-// (0 when args[0] is not one): --headed, --json, --trace-unredacted and
+// (0 when args[0] is not one): --headed, --no-wait, --json, --trace-unredacted and
 // --trace=<file> take one, --trace <file> two.
 func leadingFlag(args []string) int {
 	switch tok := args[0]; {
-	case tok == headedFlag || tok == jsonFlag || tok == traceUnredactedFlag || strings.HasPrefix(tok, traceFlag+"="):
+	case tok == headedFlag || tok == noWaitFlag || tok == jsonFlag || tok == traceUnredactedFlag || strings.HasPrefix(tok, traceFlag+"="):
 		return 1
 	case tok == traceFlag:
 		return min(2, len(args))
@@ -125,7 +125,7 @@ func jsonLineFor(command string, code int, stdout, stderr string, resp *protocol
 		}
 	}
 	if r.Code == "" { // the CLI's own failure, or a helper of an older build
-		r.Stamp("")
+		r.Stamp("", "")
 	}
 	line.Error = &jsonError{Code: r.Code, Message: r.Err, Hint: r.Hint, Delivery: r.Delivery, Retry: r.Retry}
 	return line

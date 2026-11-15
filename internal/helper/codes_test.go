@@ -198,6 +198,11 @@ func TestHandleStampsEveryFailure(t *testing.T) {
 		"computed": func(context.Context, json.RawMessage) (string, *Error) {
 			return "", Fail(errors.New("HRESULT 0x80004005").Error(), "")
 		},
+		"typed": func(context.Context, json.RawMessage) (string, *Error) {
+			// A failed write whose text names no delivery: the typed value
+			// reaches the Response (reliability-council 02).
+			return "", mayHaveActed(Fail("invoking the Element failed (HRESULT 0x80010105)", ""))
+		},
 		"ok": echoCommand("done\n"),
 	}
 	s := New("0.1.0", time.Hour, 50*time.Millisecond, commands, discardLogger())
@@ -210,6 +215,7 @@ func TestHandleStampsEveryFailure(t *testing.T) {
 		{testRequest("esc"), protocol.CodeStopped, protocol.DeliveryUncertain, protocol.RetryUnsafe},
 		{testRequest("slow"), protocol.CodeTimeout, protocol.DeliveryUncertain, protocol.RetryUnsafe},
 		{testRequest("computed"), protocol.CodeInternal, "", ""},
+		{testRequest("typed"), protocol.CodeInternal, protocol.DeliveryUncertain, protocol.RetryUnsafe},
 		{testRequest("nope"), protocol.CodeUsage, protocol.DeliveryNotDelivered, protocol.RetrySafe},
 		{&protocol.Request{V: protocol.Version + 1, Ver: "0.1.0", Cmd: "ok"}, protocol.CodeInternal, "", ""},
 		{&protocol.Request{V: protocol.Version, Ver: "9.9.9", Cmd: "ok"}, protocol.CodeInternal, "", ""},

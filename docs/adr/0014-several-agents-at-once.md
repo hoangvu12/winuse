@@ -131,4 +131,8 @@ State a reference came from.
   ID first, an agent still holding the old ID passes the check and acts
   on the new Window. Per-agent records would close that gap at the cost of
   each agent listing again after every reuse; the shared design was
-  chosen.
+  chosen. Since reliability-council ticket 09 each Action checks the
+  identity again right before it writes, against what it saw at its own
+  start: that catches a reuse during the command's wait or read, but not
+  one another agent listed before the command started, so the gap is
+  narrower, not closed.

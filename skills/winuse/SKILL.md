@@ -17,7 +17,9 @@ run `winuse skill <topic>`. Check that table before you decide winuse
 cannot do something. If `winuse version` is not found, install it with
 `irm https://raw.githubusercontent.com/hoangvu12/winuse/main/install.ps1 | iex`
 and call `$env:LOCALAPPDATA\winuse\winuse.exe` until the terminal restarts
-(topic `setup`).
+(topic `setup`). If a command or flag here does not exist, the installed
+winuse is older than this skill: tell the user, and upgrade with
+`winuse update` when they agree.
 
 ## Safety
 
@@ -63,8 +65,9 @@ ordinary Escape; only the physical key stops winuse.
 | Symptom | Next step |
 |---|---|
 | A stale index or point, shifted UI, a moved Window | A fresh `get-window-state` (and screenshot), then one retry |
-| `window <id> closed; a new window reused its ID; nothing was sent` | `list-windows`, and read the new Window before you act on it |
-| A modal dialog blocks the target (named, with its Window ID) | Handle that dialog's Window, then return to the owner |
+| `window <id> closed` (`during this command`); `a new window reused its ID; nothing was sent` | `list-windows`, and read the new Window before you act on it |
+| A modal dialog blocks the target (named, with its Window ID) | winuse already waited for it to close: handle that dialog's Window, then return to the owner |
+| `the Element is disabled; nothing was sent` | winuse already waited 1.8 s: read the Window State for what it needs first (a required field), or `wait <window> <ref> enabled --timeout <s>` for something slow |
 | `is minimized` | `restore-window <window>` (no foreground), read, retry once |
 | An administrator (`admin`) Window | Not reachable in any mode: tell the user it needs winuse started from an elevated terminal; report the Action as not done |
 | The desktop is locked | Stop, ask the user to unlock it; leave the lock screen alone |
@@ -96,7 +99,9 @@ send them as one `winuse batch` rather than a command per turn, with the
 in one call: it prints only the Element Indexes whose line changed since
 your last read (`~` changed, `*` new, `-` gone; the rest are unchanged), or
 the whole State when that is shorter, then a menu or dialog the Action
-opened, whole (topic `batch-and-wait`).
+opened, whole (topic `batch-and-wait`). To read a Window again after a
+`wait` or the user's input, `get-window-state <window> --diff` prints the
+same diff.
 
 ```
 winuse list-windows                     # <Window ID>  <App>  <title>
@@ -121,13 +126,17 @@ The focused UI element is 1 edit (settable, string) Search ID: searchBox.
 ```
 
 One line per Element: index, role, name, state (`disabled`, `settable`,
-`on`/`off`, `Value:`...), `ID:` and Secondary Actions; the last line is
+`on`/`off`, `Value:`...; `password` means a secret field whose Value is
+never shown), `ID:` and Secondary Actions; the last line is
 where typed text lands. Trust the tree first; add `--screenshot` for
 canvases, visual questions or a sparse tree, and open the printed
 `Screenshot: <path>` with your file tool. A big Window: `winuse find
 <window> --name save`, or `--skeleton` then `--root <index>`; to print
-less of a full read, `--interactive --compact`. A read stops before 28000
-characters with a note on what it left out (`--max-chars N` sets the cap,
+less of a full read, `--interactive --compact` (`--interactive` keeps
+every Element you act on, a disabled one with `disabled`, while `find
+--state interactive` matches enabled ones only). A read stops before 28000
+characters with a note on what it left out, folding unnamed containers
+first as `--compact` does when that makes it fit (`--max-chars N` sets the cap,
 `--out <file>` writes it all to a file) and drops IDs several Elements
 share, which `id:` cannot name (topic `reading`).
 
@@ -141,7 +150,12 @@ share, which `id:` cannot name (topic `reading`).
   Element under it and name it in a `Note:`.
 
 Matching is exact and case-sensitive; a name or ID that matches several
-Elements fails and lists them. An index or point is valid only for the read
+Elements fails and lists them. One match counts only in a read that saw the
+whole Window: when your read and winuse's fresh one are both partial (a
+partial note, `--skeleton`, a `(truncated: ...)` line) it fails with `1
+match in the part read; the read was partial` and that match's index; narrow
+with `find` or `--root`, or act by the index. A miss there is incomplete,
+not absent. An index or point is valid only for the read
 that printed it; a stale one fails and asks for a fresh read. `name:` and
 `id:` outlast it: winuse finds them in a fresh read and says so in a
 `Note:`, and your indexes still work. Prefer them for an Element you will
@@ -151,7 +165,7 @@ act on again. In full: topic `reading`.
 
 | Need | Command |
 |---|---|
-| Fill a field, tick a box, pick a combo or list item | `set-value <window> <ref> <text\|on\|off\|item>` (Headless, read back) |
+| Fill a field, tick a box, pick a combo or list item | `set-value <window> <ref> <text\|on\|off\|item>` (Headless, read back; flags such as `--observe` go before `<ref>`) |
 | Press a button, open a menu or tree item | `click <window> <ref>` |
 | Type into a named field | `type-text <window> --into <ref> <text>` |
 | Send a key or chord | `press-key <window> Return`, `Control_L+s`, `Escape` |
@@ -164,8 +178,20 @@ act on again. In full: topic `reading`.
 
 Prefer `set-value` over clicking and typing. A dialog (Save As, a message
 box, a file picker) is its own Window, named by the Action's `Note:`; act
-on that id. Every command: `winuse help`; one command's usage and
+on that id. An Action on a disabled Element, on a Window behind a modal
+dialog, or on a `name:`/`id:` that matches nothing yet waits up to 1.8 s
+for that to pass, then runs, with a `Note: waited 0.4 s for element 14 to
+enable`: no `wait ... enabled` is needed before a button that enables right
+after your last Action, only before something slower. Only a refusal that
+sent nothing waits; `--no-wait` fails at once, and a Batch's steps never
+wait. Every command: `winuse help`; one command's usage and
 examples: `winuse <command> --help`.
+
+If `winuse jev` shows a key, `winuse pick <window> "<description>"
+[--click | --set-value <text>]` finds an Element without the Window State
+entering your context, and `winuse run <window> "<goal>"` does a short
+task in a Page or App step by step (topic `pick`). Without a key, do not
+use or suggest either; when one hands back, go on yourself.
 
 ## Headless first; Headed only by your choice
 
@@ -234,6 +260,7 @@ Read `references/<topic>.md`, or run `winuse skill <topic>`
 | `shell` | The taskbar, Start, the tray, quick settings, toast notifications |
 | `batch-and-wait` | `--observe`, reads as Batch steps, long Batches, `batch -` from stdin, `in new`, failed steps, every `wait` form |
 | `multi-agent` | More than one agent on the desktop |
+| `pick` | `winuse jev` shows a key: find an Element by description with `pick`, hand a short task to `run`, or the user asks to set up Jev |
 | `troubleshooting` | Every result phrase and note, refusals, timeouts, `--json`, `--trace`, `winuse status` |
 | `setup` | winuse missing, SmartScreen, building from source, installing the skill |
 | `commands` | Every command's syntax on one page (`winuse help` has the same, per command) |

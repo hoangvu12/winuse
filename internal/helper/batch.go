@@ -188,7 +188,11 @@ func batch(commands map[string]Command, s Services) Command {
 			}
 			sw, serr := resolveWindow(s, st.own)
 			if serr == nil {
-				serr = s.reusedID(sw.ID)
+				var now win.WindowOwner
+				var seen bool
+				if now, seen, serr = s.reusedID(sw.ID); seen {
+					ctx = withStartIdentity(ctx, sw.ID, now) // re-checked at its step's write (identity.go)
+				}
 			}
 			if serr != nil {
 				return "", &Error{Msg: fmt.Sprintf("batch: Action %d (%s): %s", i+1, st.kind, serr.Msg), Hint: serr.Hint, Exit: serr.Exit}
@@ -305,10 +309,11 @@ func batch(commands map[string]Command, s Services) Command {
 			}
 			if err != nil && (a.StopOnError || err.Exit == protocol.ExitEsc) {
 				return stop(&Error{
-					Msg:  fmt.Sprintf("batch stopped at Action %d (%s): %s", i+1, st.kind, err.Msg),
-					Hint: err.Hint,
-					Exit: err.Exit,
-					Code: err.Code,
+					Msg:      fmt.Sprintf("batch stopped at Action %d (%s): %s", i+1, st.kind, err.Msg),
+					Hint:     err.Hint,
+					Exit:     err.Exit,
+					Code:     err.Code,
+					Delivery: err.Delivery,
 				})
 			}
 			if err != nil {
@@ -370,9 +375,13 @@ type batchFailure struct {
 }
 
 // uncertainFailure reports whether a failed step may have acted: its
-// message or hint says the Action may have taken effect, or was delivered
-// and must not be repeated (SKILL.md's result phrases).
+// delivery is uncertain or delivered, or, when it set none, its message
+// or hint says the Action may have taken effect, or was delivered and
+// must not be repeated (SKILL.md's result phrases).
 func uncertainFailure(e *Error) bool {
+	if e.Delivery != "" {
+		return e.Delivery != protocol.DeliveryNotDelivered
+	}
 	text := e.Msg + " " + e.Hint
 	return strings.Contains(text, "may have taken effect") || strings.Contains(text, "do not repeat")
 }

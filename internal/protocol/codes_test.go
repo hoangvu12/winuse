@@ -73,18 +73,54 @@ func TestDeliveryOfEveryPhrase(t *testing.T) {
 
 func TestStamp(t *testing.T) {
 	ok := Response{OK: true, Out: "done\n"}
-	ok.Stamp(CodeInternal)
+	ok.Stamp(CodeInternal, DeliveryUncertain)
 	if ok.Code != "" || ok.Delivery != "" || ok.Retry != "" {
 		t.Errorf("a success was stamped: %+v", ok)
 	}
 	own := Response{Err: "element 3 is disabled; nothing was sent", Exit: 1}
-	own.Stamp(CodeNotFound)
+	own.Stamp(CodeNotFound, "")
 	if own.Code != CodeNotFound || own.Delivery != DeliveryNotDelivered || own.Retry != RetrySafe {
 		t.Errorf("the site's code: %+v", own)
 	}
 	usage := Response{Err: "winuse: --timeout takes seconds", Exit: 2}
-	usage.Stamp("")
+	usage.Stamp("", "")
 	if usage.Code != CodeUsage || usage.Delivery != DeliveryNotDelivered || usage.Retry != RetrySafe {
 		t.Errorf("a usage error was never sent: %+v", usage)
+	}
+	// The site's typed delivery outranks the text, whatever its wording
+	// (reliability-council 02).
+	typed := Response{Err: "invoking the Element failed (HRESULT 0x80010105)", Exit: 1}
+	typed.Stamp("", DeliveryUncertain)
+	if typed.Delivery != DeliveryUncertain || typed.Retry != RetryUnsafe {
+		t.Errorf("a typed delivery: %+v", typed)
+	}
+	reworded := Response{Err: "element 3 is disabled; nothing was sent", Exit: 1}
+	reworded.Stamp("", DeliveryDeliveredUnverified)
+	if reworded.Delivery != DeliveryDeliveredUnverified || reworded.Retry != RetryUnsafe {
+		t.Errorf("the typed delivery must win over the text's: %+v", reworded)
+	}
+	unknown := Response{Err: "HRESULT 0x80004005", Exit: 1}
+	unknown.Stamp("", "")
+	if unknown.Delivery != "" || unknown.Retry != "" {
+		t.Errorf("text that says nothing, untyped: %+v", unknown)
+	}
+}
+
+func TestRetryOfAndSentNothing(t *testing.T) {
+	for _, tc := range []struct {
+		delivery, retry string
+		sentNothing     bool
+	}{
+		{DeliveryNotDelivered, RetrySafe, true},
+		{DeliveryDeliveredUnverified, RetryUnsafe, false},
+		{DeliveryUncertain, RetryUnsafe, false},
+		{"", "", false},
+	} {
+		if got := RetryOf(tc.delivery); got != tc.retry {
+			t.Errorf("RetryOf(%q) = %q, want %q", tc.delivery, got, tc.retry)
+		}
+		if got := SentNothing(tc.delivery); got != tc.sentNothing {
+			t.Errorf("SentNothing(%q) = %v, want %v", tc.delivery, got, tc.sentNothing)
+		}
 	}
 }

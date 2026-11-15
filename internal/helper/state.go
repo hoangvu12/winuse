@@ -471,6 +471,10 @@ func CommandsWith(s Services) map[string]Command {
 			// A hung App is refused next (hung.go), before anything is sent;
 			// then the menu the Agent left open closes (contextmenu.go).
 			cmd = s.laned(name, s.checkWindow(s.refuseHung(s.closeLeftMenu(name, s.reportAfter(name, cmd)))))
+			// A refusal that may pass on its own (a disabled Element, a modal
+			// dialog, a reference not found yet) waits briefly outside the
+			// lanes, then the command runs again on them (briefwait.go).
+			cmd = s.briefWaited(name, cmd)
 		default:
 			cmd = s.recordReads(name, cmd) // identity.go: what a read Window ID names
 		}
@@ -482,6 +486,9 @@ func CommandsWith(s Services) map[string]Command {
 		}
 		cmd = s.tracedWindow(cmd)      // a traced run names its Window (trace.go, desktop-parity ticket 19)
 		cmd = s.tabTargeted(name, cmd) // a <window>:<tab> target runs on its Tab (tabtarget.go, ADR 0017)
+		if name != "wait" && !observationOnlyCommand(name) {
+			cmd = actionDelivered(cmd) // delivery.go: an Action's failure says whether it was sent
+		}
 		out[name] = cmd
 	}
 	return out
@@ -940,6 +947,17 @@ type windowRef struct {
 	MaxChars *int   `json:"max_chars,omitempty"`
 	Out      string `json:"out,omitempty"`
 	Full     bool   `json:"full,omitempty"`
+	// Visible prints only the Elements on screen: a Page's scrolled-away
+	// Elements are left out (wstate.View.Visible).
+	Visible bool `json:"visible,omitempty"`
+	// MarkOffscreen prints every Element and marks the off-screen ones
+	// (wstate.View.MarkOffscreen): winuse run's read; no CLI flag.
+	MarkOffscreen bool `json:"mark_offscreen,omitempty"`
+
+	// Diff prints what changed since the Agent's latest Window State of
+	// the Window, as --observe=diff does (reliability-council 10, ADR
+	// 0021): a full read only, under the same budgets.
+	Diff bool `json:"diff,omitempty"`
 }
 
 // getWindowState answers `winuse get-window-state <window>`: the resolved
@@ -949,7 +967,8 @@ type windowRef struct {
 // (activated first under --headed), the image saved scaled (to the
 // model's image budget, shot.FitScale; JPEG q80) with its path printed and
 // its mapping recorded for `@x,y` references and zoom regions. The output
-// budgets (views.go) shape what is printed of the tree.
+// budgets (views.go) shape what is printed of the tree; --diff prints what
+// changed since the Agent's latest Window State of the Window instead.
 func getWindowState(s Services, ctx context.Context, args json.RawMessage) (string, *Error) {
 	var a windowRef
 	if err := parseArgs(args, &a); err != nil {
@@ -963,6 +982,10 @@ func getWindowState(s Services, ctx context.Context, args json.RawMessage) (stri
 	if a.Screenshot && (a.Root != "" || a.Skeleton) {
 		return "", Fail("get-window-state: --screenshot goes with a full read, not --root or --skeleton", windowStateUsage)
 	}
+	if a.Diff && (a.Root != "" || a.Skeleton) {
+		return "", Fail("get-window-state: --diff compares a full read with your last one; --root and --skeleton read part of the Window",
+			"drop --diff to read the part, or --root/--skeleton to diff the whole Window")
+	}
 	if out, serr, ok := windowStateShape(s, ctx, w, a); ok {
 		return out, serr
 	}
@@ -974,11 +997,22 @@ func getWindowState(s Services, ctx context.Context, args json.RawMessage) (stri
 			return windowStateScreenshot(s, ctx, w, a)
 		})(ctx, args)
 	}
+	before, what := s.baselineOf(ctx, w, a)
 	tree, terr := readWindowTree(s, ctx, w)
 	if terr != nil {
 		return "", terr
 	}
-	return renderState(tree, a, strconv.FormatUint(w.ID, 10))
+	return renderState(tree, a, strconv.FormatUint(w.ID, 10), before, what)
+}
+
+// baselineOf is what a --diff read of w compares with: the Agent's latest
+// Window State of w, taken before the read replaces it (nil: none), and
+// the Window's name in the diff's text. Nothing without --diff.
+func (s Services) baselineOf(ctx context.Context, w win.WindowInfo, a windowRef) ([]wstate.Element, string) {
+	if !a.Diff {
+		return nil, ""
+	}
+	return s.storedState(ctx, w.ID), "window " + strconv.FormatUint(w.ID, 10)
 }
 
 // stateSettle is the Chromium settle budget of a get-window-state under
@@ -1077,6 +1111,14 @@ func resolveWindow(s Services, ref string) (win.WindowInfo, *Error) {
 	return w, nil
 }
 
+// transientTreeRead reports a tree read that failed on a Window that is
+// still open and was not refused (uia.TreeReadError): a poll reads again,
+// and a scan over several Windows skips it (reliability-council 04).
+func transientTreeRead(err error) bool {
+	var tre *uia.TreeReadError
+	return errors.As(err, &tre) && !tre.Refused()
+}
+
 // treeReadError maps a capture failure to a user-facing error. Context
 // deadlines stay plain: the server's central timeout policy answers those.
 func treeReadError(err error) *Error {
@@ -1084,9 +1126,14 @@ func treeReadError(err error) *Error {
 		return Fail("the tree read did not complete in time", "retry; if it keeps failing, the app's accessibility tree is slow")
 	}
 	hint := ""
+	var unread *uia.TreeReadError
 	switch {
 	case errors.Is(err, uia.ErrWindowGone):
 		hint = "the Window may have closed; run winuse list-windows"
+	case errors.As(err, &unread) && unread.Refused():
+		hint = "the Window is open but refuses UI Automation reads; start winuse from an elevated terminal to read administrator Windows, or request a screenshot"
+	case errors.As(err, &unread):
+		hint = "the Window is still open but its app did not answer the read; run the command again, or request a screenshot if it keeps failing"
 	case errors.Is(err, uia.ErrInit):
 		hint = "UI Automation could not start in the helper; report this if it persists"
 	}

@@ -114,7 +114,7 @@ func resolveElementRef(ctx context.Context, s Services, w win.WindowInfo, ref st
 	if live, ok := s.Actions.(LiveResolver); ok && !isCacheOnly(ctx) {
 		res, err := live.ResolveElementRefLive(ctx, w.ID, ref, liveBudget(ctx))
 		if err != nil {
-			return 0, refError(err, w)
+			return 0, refMissing(refError(err, w), err, w, ref)
 		}
 		if res.Fresh {
 			noteFreshRef(ctx, w, ref, res.Index)
@@ -127,9 +127,23 @@ func resolveElementRef(ctx context.Context, s Services, w win.WindowInfo, ref st
 	}
 	index, err := resolver.ResolveElementRef(ctx, w.ID, ref)
 	if err != nil {
-		return 0, refError(err, w)
+		return 0, refMissing(refError(err, w), err, w, ref)
 	}
 	return index, nil
+}
+
+// refMissing marks a reference that matches nothing, in the cached Window
+// State or a fresh read, as a refusal that may pass: the Element may be
+// about to appear (briefwait.go). It waits only where the Action says
+// nothing was sent. A miss in a partial read does not wait: the Element
+// may sit in the part not read, which waiting does not change
+// (reliability-council 03).
+func refMissing(e *Error, err error, w win.WindowInfo, ref string) *Error {
+	var missing *wstate.NoMatchRefError
+	if errors.As(err, &missing) && !missing.Partial {
+		return waitsFor(e, refusalWait{kind: waitAppear, window: w, ref: ref})
+	}
+	return e
 }
 
 // refError maps a reference-resolution failure to the user-facing line
@@ -143,6 +157,9 @@ func refError(err error, w win.WindowInfo) *Error {
 	if errors.As(err, &ambiguous) {
 		return Fail(fmt.Sprintf("%s in the cached Window State for window %d", err.Error(), w.ID),
 			"candidates:\n"+strings.Join(ambiguous.Candidates, "\n"))
+	}
+	if perr := partialRefError(err, fmt.Sprintf("the cached Window State of window %d", w.ID), windowPartialHint(w)); perr != nil {
+		return perr
 	}
 	var missing *wstate.NoMatchRefError
 	if errors.As(err, &missing) {
@@ -171,8 +188,43 @@ func liveRefError(live *uia.LiveRefError, w win.WindowInfo) *Error {
 		return Fail(fmt.Sprintf("%s in a fresh read of window %d", live.Error(), w.ID),
 			"pick one by its Element Index; the candidates are now in the Window State under these indexes:\n"+strings.Join(ambiguous.Candidates, "\n"))
 	}
+	if perr := partialRefError(live, fmt.Sprintf("a fresh read of window %d", w.ID), windowPartialHint(w)); perr != nil {
+		return perr
+	}
 	return Fail(fmt.Sprintf("%s in window %d, in its cached Window State or a fresh read", live.Error(), w.ID),
 		"run winuse get-window-state "+id+" or winuse find "+id+" and use what it prints (name: and id: match the tree's name and ID: columns exactly)")
+}
+
+// partialRefError maps a name:/id: reference a partial read could not
+// settle (reliability council 03), or returns nil for any other failure.
+// where names that read. Its one match is never taken as unique
+// (AMBIGUOUS_TARGET: another may sit in the part not read) and its miss
+// is incomplete, not absent (NOT_FOUND, said so); hint gives the recovery,
+// with the one match's tree line when there is one.
+func partialRefError(err error, where string, hint func(candidate string) string) *Error {
+	var one *wstate.PartialRefError
+	if errors.As(err, &one) {
+		return &Error{Msg: fmt.Sprintf("%s (%s)", err.Error(), where), Hint: hint(one.Candidate), Exit: 1, Code: protocol.CodeAmbiguousTarget}
+	}
+	var missing *wstate.NoMatchRefError
+	if errors.As(err, &missing) && missing.Partial {
+		return &Error{Msg: fmt.Sprintf("%s (%s), so it may be in the part not read", err.Error(), where), Hint: hint(""), Exit: 1, Code: protocol.CodeNotFound}
+	}
+	return nil
+}
+
+// windowPartialHint is a Window's partialRefError hint: narrow the read
+// so it sees the whole part, and, with the one match's line, act on that
+// Element by its index if it is the one meant.
+func windowPartialHint(w win.WindowInfo) func(string) string {
+	id := strconv.FormatUint(w.ID, 10)
+	return func(candidate string) string {
+		hint := "narrow the read: winuse find " + id + " --role <role> --name <text> searches the live Window, or winuse get-window-state " + id + " --root <element> reads one part of it; then act on an Element Index it prints"
+		if candidate != "" {
+			hint += "; if this is the Element you mean, act on it by its Element Index:\n" + candidate
+		}
+		return hint
+	}
 }
 
 // noStateError maps an Element Reference into a Window with no Window

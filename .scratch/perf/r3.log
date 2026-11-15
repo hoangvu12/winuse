@@ -1,0 +1,22 @@
+pass 1: agent-desktop done
+pass 1: winuse done
+pass 2: winuse done
+pass 2: agent-desktop done
+| Window | Case | agent-desktop | winuse |
+|---|---|---|---|
+| Calculator | read (full) | 201 / 282 (16/16, 14.1 KB) | 63 / 94 (16/16, 2.3 KB) |
+| Calculator | read (ad -i --compact) | 210 / 282 (16/16, 9.7 KB) | - |
+| Calculator | skeleton | 209 / 287 (16/16, 2.7 KB) | 48 / 109 (16/16, 0.8 KB) |
+| Calculator | find button --first | 203 / 284 (16/16, 0.3 KB) | 61 / 122 (16/16, 0.3 KB) |
+| Calculator | click | 194 / 253 (16/16, 0.4 KB) | 81 / 255 (16/16, 0.0 KB) |
+| Calculator | read then click | 378 / 558 (16/16, 10.1 KB) | 151 / 854 (16/16, 2.3 KB) |
+| Explorer System32 | read (full) | 392 / 765 (16/16, 51.8 KB) | 155 / 184 (16/16, 14.7 KB) |
+| Explorer System32 | read (ad -i --compact) | 388 / 701 (16/16, 45.0 KB) | - |
+| Explorer System32 | skeleton | 399 / 855 (16/16, 4.1 KB) | 103 / 161 (16/16, 1.5 KB) |
+| Explorer System32 | find button --first | 479 / 807 (16/16, 0.4 KB) | 160 / 251 (16/16, 0.2 KB) |
+| Explorer System32 | click | 517 / 1165 (16/16, 0.6 KB) | 71 / 108 (16/16, 0.0 KB) |
+| Explorer System32 | read then click | 813 / 1719 (16/16, 45.6 KB) | 314 / 621 (16/16, 14.7 KB) |
+| Discord | read (full) | 829 / 1356 (16/16, 200.6 KB) | 188 / 799 (16/16, 26.5 KB) |
+| Discord | read (ad -i --compact) | 884 / 1093 (16/16, 83.4 KB) | - |
+| Discord | skeleton | 864 / 1242 (16/16, 1.8 KB) | 44 / 525 (16/16, 0.3 KB) |
+| Discord | find button --first | 843 / 1368 (16/16, 0.4 KB) | 190 / 583 (16/16, 0.2 KB) |

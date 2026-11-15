@@ -25,6 +25,11 @@ type NodeData struct {
 	Enabled      bool
 	Focused      bool
 
+	// IsPassword is the cached IsPassword; PasswordUnread says it did not
+	// read. Either on an Edit withholds the Value (secret).
+	IsPassword     bool
+	PasswordUnread bool
+
 	// Pattern facts (ticket 07), from cached pattern properties.
 	HasWindow bool
 	HasScroll bool
@@ -62,8 +67,9 @@ var ErrChunkTimedOut = errors.New("ui automation chunk timed out")
 // Children receives the walk's remaining budget so the implementation can
 // bound the cross-process call (the UIA transaction timeout). It returns the
 // node's control-view children together with their cached data, in order.
-// A nil slice without error means a leaf; an error means the children could
-// not be read and the node is treated as a childless element.
+// A nil slice without error means a leaf; an error means not every child
+// could be read: the walk keeps the children returned with it (the ones that
+// did read; none when the list itself failed) and marks the tree partial.
 type TreeSource[T any] interface {
 	Root() (T, NodeData, error)
 	Children(node T, remaining time.Duration) ([]T, []NodeData, error)
@@ -184,6 +190,13 @@ type WalkResult[T any] struct {
 	// Uncounted lists the skeleton's Elements whose children were not
 	// counted in time (a note names them).
 	Uncounted []int
+	// Partial says the walk did not see the whole Window (reliability
+	// council 03): a partial-tree note (time, node cap, depth cap,
+	// unreadable children, a cut slow list), a truncation marker (the
+	// children cap), or a skeleton node whose children were counted, or
+	// could not be. A cut Document is not a loss: its content is read
+	// elsewhere.
+	Partial bool
 
 	// notes rebuilds Notes with Elements named by label: a find or a
 	// region read names them by the indexes it added, not by walk position.
@@ -248,6 +261,8 @@ func Walk[T any](src TreeSource[T], cfg WalkConfig) (WalkResult[T], error) {
 	}
 	w.visit(root, data, 0)
 	res.Slow, res.Uncounted = w.slow, w.uncounted
+	_, reasoned := w.reasonNote(elementLabel)
+	res.Partial = reasoned || w.truncated || w.hidden
 	w.res = nil // the closure below keeps the walker, not the result
 	elements, cut := len(res.Elements), res.Cut
 	res.notes = func(label func(int) string) []string {
@@ -284,6 +299,7 @@ type walker[T any] struct {
 	res       *WalkResult[T]
 	stopped   bool
 	truncated bool // any element carries a truncation marker, or a slow list was cut
+	hidden    bool // a skeleton node has children left unread, or uncounted
 	reasons   [reasonCount]bool
 	slow      []SlowChildren // the cut slow lists (WalkResult.Slow)
 	uncounted []int          // the skeleton counts that ran out of time
@@ -307,6 +323,7 @@ type docMark struct {
 	open      bool // its descendants are being read
 	reasons   [reasonCount]bool
 	truncated bool
+	hidden    bool
 	slow      int // len(walker.slow) when it was reached
 	uncounted int // len(walker.uncounted) when it was reached
 }
@@ -323,7 +340,7 @@ func (w *walker[T]) visit(node T, data NodeData, depth int) {
 		if data.HasValue {
 			value = data.ValueValue
 		}
-		w.docs = append(w.docs, docMark{index: index, name: data.Name, value: value, open: true, reasons: w.reasons, truncated: w.truncated,
+		w.docs = append(w.docs, docMark{index: index, name: data.Name, value: value, open: true, reasons: w.reasons, truncated: w.truncated, hidden: w.hidden,
 			slow: len(w.slow), uncounted: len(w.uncounted)})
 		w.openDocs++
 		w.expand(node, depth, index)
@@ -371,19 +388,21 @@ func (w *walker[T]) expand(node T, depth, index int) {
 	}
 	kids, kidData, err := w.src.Children(node, remaining)
 	if err != nil {
-		switch {
-		case !errors.Is(err, ErrChunkTimedOut):
-			w.reasons[reasonUnreadable] = true
-		case w.deadline.Sub(w.now()) <= 0:
-			// The chunk ran into the walk's own budget.
-			w.reasons[reasonTime] = true
-			w.stopped = true
-		default:
-			// Too slow as one chunk (a huge list): one at a time instead,
-			// and the walk goes on with this node's siblings.
-			w.slowChildren(node, depth, index)
+		if errors.Is(err, ErrChunkTimedOut) {
+			w.drop(kids)
+			if w.deadline.Sub(w.now()) <= 0 {
+				// The chunk ran into the walk's own budget.
+				w.reasons[reasonTime] = true
+				w.stopped = true
+			} else {
+				// Too slow as one chunk (a huge list): one at a time instead,
+				// and the walk goes on with this node's siblings.
+				w.slowChildren(node, depth, index)
+			}
+			return
 		}
-		return
+		// The children that did read stay; the note names the rest.
+		w.reasons[reasonUnreadable] = true
 	}
 
 	limit := len(kids)
@@ -521,6 +540,7 @@ func (w *walker[T]) countHidden(node T, index int) {
 	}
 	n, err := w.count(node, min(remaining, countBudget))
 	if err != nil {
+		w.hidden = true
 		if errors.Is(err, ErrChunkTimedOut) {
 			if w.deadline.Sub(w.now()) <= 0 {
 				w.reasons[reasonTime] = true
@@ -532,6 +552,9 @@ func (w *walker[T]) countHidden(node T, index int) {
 		return
 	}
 	w.res.Elements[index].MoreChildren = n
+	if n > 0 {
+		w.hidden = true
+	}
 }
 
 // count counts node's children: through the source's own count when it has
@@ -585,7 +608,7 @@ func (w *walker[T]) cutAt(index int) {
 	w.res.Live = w.res.Live[:index+1]
 	w.res.Elements = w.res.Elements[:index+1]
 	w.res.Elements[index].Truncated = nil
-	w.reasons, w.truncated = w.mark.reasons, w.mark.truncated
+	w.reasons, w.truncated, w.hidden = w.mark.reasons, w.mark.truncated, w.mark.hidden
 	w.slow, w.uncounted = w.slow[:w.mark.slow], w.uncounted[:w.mark.uncounted]
 	if w.res.FocusedIndex > index {
 		w.res.FocusedIndex = index
@@ -698,7 +721,11 @@ func elementFrom(d NodeData, depth int) wstate.Element {
 	} else if d.HasValue && !d.ValueReadOnly {
 		e.Settable = "string"
 	}
-	if d.HasValue {
+	if d.secret() {
+		// The Value never reaches the line, the diff or the store; role,
+		// name and index stay (reliability-council 07).
+		e.Password = true
+	} else if d.HasValue {
 		e.Value = d.ValueValue
 	}
 	if d.HasToggle {
@@ -713,4 +740,11 @@ func elementFrom(d NodeData, depth int) wstate.Element {
 	}
 	e.SecondaryActions = d.patternFacts().secondaryActions()
 	return e
+}
+
+// secret reports whether a node's Value is withheld: IsPassword reads
+// true, or an Edit's IsPassword did not read (agent-desktop withholds an
+// unreadable answer too).
+func (d NodeData) secret() bool {
+	return d.IsPassword || (d.PasswordUnread && d.ControlType == wstate.ControlTypeEdit)
 }

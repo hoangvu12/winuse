@@ -1,0 +1,60 @@
+name: e2e
+
+# The end-to-end lane: the e2e tests the ledger (test/e2e/ledger.md)
+# declares for the runner, on GitHub's hosted windows-latest runner,
+# against winuse's own fixture app only. WINUSE_E2E=1 is set here and
+# nowhere else; the tests that drive other Apps, a browser, the shell or
+# toasts are user-only rows and are not selected.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build the ledger check
+        run: go build -o "${{ runner.temp }}\e2eledger.exe" ./cmd/e2eledger
+      # The -run pattern comes from the ledger's runner rows. The tests
+      # build winuse and the fixture themselves (runner_test.go,
+      # fixture_test.go). TEMP points into the runner's temp folder so
+      # winuse's screenshots (%TEMP%\winuse) can be uploaded below.
+      - name: End-to-end tests (fixture only)
+        shell: pwsh
+        env:
+          WINUSE_E2E: "1"
+          TEMP: ${{ runner.temp }}\e2e-temp
+          TMP: ${{ runner.temp }}\e2e-temp
+        run: |
+          New-Item -ItemType Directory -Force $env:TEMP | Out-Null
+          $run = & "${{ runner.temp }}\e2eledger.exe" pattern
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          go test -tags e2e -count=1 -timeout 60m -json -run $run ./test/e2e > e2e.json
+      # Fails the lane when a test the ledger declares for the runner
+      # skipped, failed or did not run, or when any test failed.
+      - name: Ledger check
+        if: always()
+        shell: pwsh
+        run: '& "${{ runner.temp }}\e2eledger.exe" check --summary $env:GITHUB_STEP_SUMMARY e2e.json'
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: |
+            e2e.json
+            ${{ runner.temp }}/e2e-temp/winuse/
+          if-no-files-found: warn
+          retention-days: 14

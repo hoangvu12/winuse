@@ -275,8 +275,11 @@ An Action or Batch sent with `--observe` echoes the Window State after it:
 whole (`--observe=full`) or the Element Indexes whose line changed since
 the Agent's last read (`--observe`, diff), with the whole State past 60%
 changed (speed observe, ADR 0021), then the one Window the Action opened,
-whole (learn-from 01). It is opt-in: without it the output is
-the `ok` above. **extension**.
+whole, unless the read above holds it (learn-from 01). It is opt-in:
+without it the output is the `ok` above. `get-window-state <window> --diff`
+prints the same diff on a plain read, after a `wait` or the user's input
+(reliability-council 10); cua's `get_window_state` takes
+`since: <snapshot_id>` for that. **extension**.
 
 ### timeouts
 
@@ -406,9 +409,12 @@ one whose role and name another shares, ends its line with
 ` Hint: <icon, image, test id or field name>, in <its row's text>`
 where that tells it apart; Codex has no such field.
 `get-window-state --full` (and `find --full`) prints Codex's text byte
-for byte, with no hint. **matched (grammar; byte for byte under `--full`) /
+for byte, with no hint, save one more state word: an Element whose
+IsPassword reads true (or, on an Edit, does not read) has its `Value:`
+withheld and `password` last in its states (reliability-council 07);
+Codex prints the Value. **matched (grammar; byte for byte under `--full`) /
 intentionally different (roles, bounds, shared IDs, the default cap,
-hints)**.
+hints, the `password` state)**.
 
 ### secondary actions
 
@@ -502,7 +508,8 @@ Codex's surface has no hover, no zoom, no Batch, no `name:`/`id:`
 references, no `record-tree`, no `find`, no partial tree reads; winuse has
 all of them (`find` with role, name, text and state filters,
 `get-window-state --root`, `--depth`, `--interactive` and `--skeleton`,
-desktop-parity 04, from agent-desktop), keeping Codex's
+desktop-parity 04, from agent-desktop, and `--diff`, what changed since
+the last read, reliability-council 10), keeping Codex's
 parameter names where a parameter exists. A Batch works like
 agent-desktop's (desktop-parity 20): each step's output on its own
 numbered line (`Action N (<action>): ...`), a failed step does not stop
@@ -576,7 +583,9 @@ agent-desktop's envelope: `ok`, `command`, `out` (a Window State stays its
 text tree), and on a failure `error` with a code (`STALE_REF`,
 `NO_HEADLESS_ROUTE`, `TIMEOUT`, ...), the message, the hint, and the
 delivery and retry its text states ("nothing was sent" is
-`not_delivered`, safe to retry). Codes come from the failure's text in one
+`not_delivered`, safe to retry; the failure site sets the delivery where it
+knows it, and an Action's failure that says nothing is
+`delivery_uncertain`, reliability-council 02). Codes come from the failure's text in one
 table (`internal/protocol/codes.go`). Exit codes are unchanged, and
 without the flag the output is byte-for-byte the text. Codex has no JSON
 output. **extension**.

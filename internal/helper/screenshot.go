@@ -68,6 +68,7 @@ func windowStateScreenshot(s Services, ctx context.Context, w win.WindowInfo, a 
 		tree *wstate.Tree
 		err  *Error
 	}
+	before, what := s.baselineOf(ctx, w, a)
 	tctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	trees := make(chan read, 1)
@@ -89,7 +90,7 @@ func windowStateScreenshot(s Services, ctx context.Context, w win.WindowInfo, a 
 	// screenshot it actually saw (the tree is part of the same answer).
 	s.Shots.Record(AgentOf(ctx).ID, w.ID, m)
 	r := frame.Rect
-	out, rerr := renderState(t.tree, a, strconv.FormatUint(w.ID, 10))
+	out, rerr := renderState(t.tree, a, strconv.FormatUint(w.ID, 10), before, what)
 	if rerr != nil {
 		return "", rerr
 	}

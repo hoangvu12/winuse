@@ -38,6 +38,20 @@ type Result struct {
 	Reasons []string
 }
 
+// Partial says the read did not see the whole Page: a cut reason, or a
+// truncation marker the children cap left (reliability council 03).
+func (r *Result) Partial() bool {
+	if len(r.Reasons) > 0 || r.DocTruncated != nil {
+		return true
+	}
+	for i := range r.Elements {
+		if r.Elements[i].Truncated != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // Build renders a Raw read into Window State Elements: CDP roles mapped to
 // the UIA role words (roles.go), ignored and wrapper nodes left out with
 // their children taking their place, text that repeats its parent's name
@@ -97,12 +111,13 @@ type docState struct {
 	clickables map[int64]string
 	passwords  map[int64]bool
 	hints      map[int64]NodeHint // the unnamed or duplicate controls' hints
+	offscreen  map[int64]bool     // scrolled out of the viewport (Marks.Offscreen)
 	fieldNames map[string]bool    // names of fields, for dropping their labels
 }
 
 func (b *builder) doc(d *Doc, owner *Owner) *docState {
 	s := &docState{d: d, owner: owner, byID: make(map[string]*AXNode, len(d.Nodes)),
-		clickables: map[int64]string{}, passwords: map[int64]bool{}, fieldNames: map[string]bool{}}
+		clickables: map[int64]string{}, passwords: map[int64]bool{}, offscreen: map[int64]bool{}, fieldNames: map[string]bool{}}
 	for i := range d.Nodes {
 		n := &d.Nodes[i]
 		s.byID[n.NodeID] = n
@@ -124,6 +139,9 @@ func (b *builder) doc(d *Doc, owner *Owner) *docState {
 			for _, h := range d.Marks.Hints {
 				s.hints[h.BackendNodeID] = h
 			}
+		}
+		for _, o := range d.Marks.Offscreen {
+			s.offscreen[o] = true
 		}
 	}
 	return s
@@ -272,7 +290,7 @@ func textOf(s *docState, n *AXNode) string {
 // element builds a node's line: role, name, description, states, value
 // and Secondary Actions, in the UIA vocabulary.
 func (b *builder) element(s *docState, n *AXNode, role, name string) wstate.Element {
-	e := wstate.Element{Role: role, Name: name}
+	e := wstate.Element{Role: role, Name: name, Offscreen: s.offscreen[n.BackendDOMNodeID]}
 	if h, ok := s.hints[n.BackendDOMNodeID]; ok && n.BackendDOMNodeID != 0 {
 		e.Hint, e.RowText = h.Hint, h.Row
 	}

@@ -43,7 +43,8 @@ _Avoid_: CDP session, debug port, endpoint
 **Window State**:
 What the agent observes about one Window at one moment: its accessibility tree of Elements as text and, when requested, a screenshot.
 Each Agent keeps its own Window State per Window (ADR 0014), so another Agent's read never replaces it.
-An Action or Batch sent with `--observe` reads its Window afterwards and prints the new Window State, whole or as the Element Indexes whose line changed since that Agent's latest Window State of the Window (ADR 0021); when the Action opened exactly one new Window, that Window's State follows, whole.
+An Action or Batch sent with `--observe` reads its Window afterwards and prints the new Window State, whole or as the Element Indexes whose line changed since that Agent's latest Window State of the Window (ADR 0021); when the Action opened exactly one new Window, that Window's State follows, whole, unless the read above already holds it.
+A secret field (UI Automation's IsPassword, or an Edit whose IsPassword cannot be read) keeps its role, name and Element Index, but its Value never enters the Window State; its line says `password` instead.
 _Avoid_: App state, snapshot, skyshot
 
 **Element**:
@@ -74,7 +75,7 @@ An operation an Element offers besides a plain click, such as Expand, Collapse, 
 _Avoid_: Pattern, verb, default action
 
 **Element Reference**:
-How an Action names its target: an Element Index, an Element's name, an Element's ID, or screen coordinates. A name or ID that matches more than one Element is an error, never a guess.
+How an Action names its target: an Element Index, an Element's name, an Element's ID, or screen coordinates. A name or ID that matches more than one Element is an error, never a guess, and so is one match in a read that did not see the whole Window (a partial or skeleton Window State): another may sit in the part not read.
 _Avoid_: Selector, locator
 
 **Batch**:
@@ -111,7 +112,7 @@ The user pressing the physical Escape key while winuse is acting: the running co
 _Avoid_: Interrupt, cancel, kill switch
 
 **Delivery**:
-What a failure says about its Action reaching the app: not delivered ("nothing was sent", a retry is safe), delivered but unverified ("the Action was delivered; do not repeat it"), or uncertain ("may have taken effect"). Under `--json` it is a field beside the failure's code (desktop-parity 07); in the text it is the phrase.
+What a failure says about its Action reaching the app: not delivered ("nothing was sent", a retry is safe), delivered but unverified ("the Action was delivered; do not repeat it"), or uncertain ("may have taken effect"). The failure sets it where it happens, from what the native error proves: a refusal raised before the write sent nothing, a write that failed (a provider fault or disconnect included) may have taken effect; an Action's failure that cannot say is uncertain (reliability-council 02). Under `--json` it is a field beside the failure's code (desktop-parity 07); in the text it is the phrase.
 _Avoid_: Sent state, side effect
 
 **Harness**:

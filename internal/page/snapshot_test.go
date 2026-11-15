@@ -237,8 +237,10 @@ func TestReadSnapshotMatchesThePass(t *testing.T) {
 
 // TestReadInOneBurst: a warm read sends the Tab's list, its window's
 // bounds, then everything else at once: the dialog probe, and for the Tab
-// and its iframe the frame tree, the accessibility tree and the snapshot.
-// DOM and Accessibility are turned on by the first read of a session only.
+// and its iframe the frame tree, the accessibility tree and the snapshot,
+// and for the Tab its viewport (Page.getLayoutMetrics, for the off-screen
+// marks). DOM and Accessibility are turned on by the first read of a
+// session only.
 func TestReadInOneBurst(t *testing.T) {
 	w, read := benchRead(t, time.Millisecond, 200, false)
 	for i := 0; i < 2; i++ {
@@ -248,8 +250,8 @@ func TestReadInOneBurst(t *testing.T) {
 		if waves != 3 {
 			t.Errorf("read %d: %d round trips one after another, want 3 (%v)", i, waves, methods)
 		}
-		if calls != 10 {
-			t.Errorf("read %d: %d commands, want 10 (%v)", i, calls, methods)
+		if calls != 11 || methods["Page.getLayoutMetrics"] != 1 {
+			t.Errorf("read %d: %d commands, want 11 with one Page.getLayoutMetrics (%v)", i, calls, methods)
 		}
 		for _, m := range []string{"DOM.enable", "Accessibility.enable", "DOMSnapshot.enable", "DOM.describeNode", "Runtime.getProperties"} {
 			if methods[m] != 0 {

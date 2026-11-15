@@ -80,6 +80,9 @@ type Element struct {
 	Settable    string `json:"settable,omitempty"`    // "string" (ValuePattern) | "float" (RangeValue)
 	Value       string `json:"value,omitempty"`
 	Toggle      string `json:"toggle,omitempty"` // "on" | "off" | "indeterminate"
+	// Password marks a secret field (UIA IsPassword, or unreadable on an
+	// Edit): its Value is withheld, and the line says "password".
+	Password bool `json:"password,omitempty"`
 
 	// SecondaryActions are the Element's Secondary Actions (Raise, Scroll
 	// Down, Expand, ...), rendered as "Secondary Actions: A, B".
@@ -100,6 +103,12 @@ type Element struct {
 	// is unnamed or whose role and name another control shares.
 	Hint    string `json:"hint,omitempty"`
 	RowText string `json:"rowText,omitempty"`
+
+	// Offscreen says the Element's box lies wholly outside the Page's
+	// viewport: scrolled away. Only a Page read through its Browser
+	// Connection sets it (the Tab's own document); it is not printed, and
+	// --visible leaves such Elements out (View.Visible).
+	Offscreen bool `json:"offscreen,omitempty"`
 }
 
 // Tree is one Window State: the header data plus the depth-first Element

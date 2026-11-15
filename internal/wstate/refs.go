@@ -14,6 +14,7 @@ package wstate
 // error carrying the candidate lines, never a guess (user story 40).
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -92,17 +93,38 @@ func (e *AmbiguousRefError) Error() string {
 }
 
 // NoMatchRefError reports a reference matching no Element of the Window
-// State it was resolved against.
+// State it was resolved against. Partial says that Window State was
+// partial, so the Element may be in the part it did not read.
 type NoMatchRefError struct {
-	Kind RefKind
-	Text string // the collapsed reference text
+	Kind    RefKind
+	Text    string // the collapsed reference text
+	Partial bool
 }
 
 func (e *NoMatchRefError) Error() string {
+	msg := fmt.Sprintf("no element named %q", e.Text)
 	if e.Kind == RefID {
-		return fmt.Sprintf("no element with ID %q", e.Text)
+		msg = fmt.Sprintf("no element with ID %q", e.Text)
 	}
-	return fmt.Sprintf("no element named %q", e.Text)
+	if e.Partial {
+		msg += " in the part read; the read was partial"
+	}
+	return msg
+}
+
+// PartialRefError reports a reference matching exactly one Element of a
+// partial Window State (reliability council 03): another Element may match
+// in the part not read, so the one match is never taken as unique.
+// Candidate is the match's tree line.
+type PartialRefError struct {
+	Kind      RefKind
+	Text      string // the collapsed reference text
+	Match     int    // the matching Element Index
+	Candidate string // the matching Element's tree line
+}
+
+func (e *PartialRefError) Error() string {
+	return fmt.Sprintf("%s %q: 1 match in the part read; the read was partial", e.Kind.word(), e.Text)
 }
 
 // ResolveElementRef resolves a name:/id: Element Reference against one
@@ -144,6 +166,23 @@ func ResolveElementRef(elements []Element, ref string) (int, error) {
 			Candidates: candidateLines(elements, matches),
 		}
 	}
+}
+
+// InPartialRead turns the resolution of ref against a partial Window
+// State's elements (index and err, as ResolveElementRef returns them) into
+// its answer there (reliability council 03): one match is a
+// PartialRefError, none a NoMatchRefError marked Partial; several stay an
+// AmbiguousRefError, and any other failure is returned as is.
+func InPartialRead(elements []Element, ref string, index int, err error) (int, error) {
+	var none *NoMatchRefError
+	switch {
+	case err == nil:
+		kind, text, _ := ParseElementRef(ref)
+		return 0, &PartialRefError{Kind: kind, Text: Collapse(text), Match: index, Candidate: Line(index, &elements[index])}
+	case errors.As(err, &none):
+		none.Partial = true
+	}
+	return 0, err
 }
 
 // candidateLines renders the matching Elements' tree lines, without their

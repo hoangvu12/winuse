@@ -46,6 +46,7 @@ func runCommand(args []string) (code int) {
 	}
 	activeTrace = trace
 	defer func() { trace.finish(code) }()
+	args, activeNoWait = extractNoWait(args) // nowait.go
 	args, headed := extractHeaded(args)
 	if len(args) == 0 {
 		return helpCmd(nil) // help.go: the command index
@@ -71,6 +72,12 @@ func runCommand(args []string) (code int) {
 		return getWindowCmd(args[1:])
 	case "find":
 		return findCmd(args[1:]) // find.go, desktop-parity 04
+	case "pick":
+		return pickCmd(args[1:], headed) // pick.go, ADR 0023
+	case "jev":
+		return jevCmd(args[1:]) // pick.go
+	case "run":
+		return runCmd(args[1:], headed) // run.go, ADR 0023
 	case "get-window-state":
 		return getWindowStateCmd(args[1:], headed)
 	case "record-tree":
@@ -143,6 +150,8 @@ func runCommand(args []string) (code int) {
 		return skillCmd(args[1:])
 	case "status":
 		return statusCmd(args[1:])
+	case "update":
+		return updateCmd(args[1:]) // update.go
 	case "trace":
 		return traceCmd(args[1:]) // trace.go, desktop-parity ticket 19
 	default:
@@ -242,7 +251,12 @@ type windowArgs struct {
 	Compact  bool   `json:"compact,omitempty"`
 	MaxChars *int   `json:"max_chars,omitempty"` // nil: the helper's default cap
 	Full     bool   `json:"full,omitempty"`
-	Out      string `json:"out,omitempty"` // absolute
+	Out      string `json:"out,omitempty"`     // absolute
+	Visible  bool   `json:"visible,omitempty"` // only the Elements on screen
+	// MarkOffscreen marks the off-screen Elements' lines: run's read only.
+	MarkOffscreen bool `json:"mark_offscreen,omitempty"`
+
+	Diff bool `json:"diff,omitempty"` // what changed since the Agent's last read (reliability-council 10)
 }
 
 // recordArgs is record-tree's CLI→helper argument shape.
@@ -252,7 +266,7 @@ type recordArgs struct {
 }
 
 // windowStateUsage is get-window-state's usage line.
-const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--timeout <seconds>]"
+const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--visible] [--compact] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]"
 
 // getWindowStateCmd prints the Window State: Codex's depth-first,
 // indented, numbered Element tree — with --screenshot, the screenshot line
@@ -443,16 +457,26 @@ func runWithArgs(cmd string, args any) error {
 // runRequest is runWithArgs with a hook that adjusts the request before
 // it is sent (a caller-set timeout, timeout.go). edit may be nil.
 func runRequest(cmd string, args any, edit func(*protocol.Request)) error {
+	resp, err := sendRequest(cmd, args, edit)
+	if err != nil {
+		return err
+	}
+	return finish(resp)
+}
+
+// sendRequest sends one command to the helper and returns its response
+// unprinted (pick reads a Window State this way, pick.go).
+func sendRequest(cmd string, args any, edit func(*protocol.Request)) (*protocol.Response, error) {
 	if !win.HasInputDesktop() {
-		return inputDesktopExitError()
+		return nil, inputDesktopExitError()
 	}
 	client, err := DefaultClient()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req, err := Request(cmd, args)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if edit != nil {
 		edit(req)
@@ -460,13 +484,11 @@ func runRequest(cmd string, args any, edit func(*protocol.Request)) error {
 	if activeObserve != nil && protocol.Observable(cmd) {
 		req.Observe = activeObserve // observe.go
 	}
+	req.NoWait = activeNoWait // nowait.go
 	req.Trace = tracing()
 	resp, err := client.Call(context.Background(), req)
 	activeTrace.observe(req, resp, err) // trace.go
-	if err != nil {
-		return err
-	}
-	return finish(resp)
+	return resp, err
 }
 
 // finish turns a response into an error carrying the exit code the CLI

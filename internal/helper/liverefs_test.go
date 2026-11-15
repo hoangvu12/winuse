@@ -12,8 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
+	"github.com/hoangvu12/winuse/internal/win"
 	"github.com/hoangvu12/winuse/internal/wstate"
 )
 
@@ -123,7 +125,7 @@ func (s *storeSpy) ResolveElementRef(ctx context.Context, hwnd uint64, ref strin
 	return 0, &wstate.NoMatchRefError{}
 }
 
-func (s *storeSpy) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any) error {
+func (s *storeSpy) SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any, pagePartial bool) error {
 	return nil
 }
 
@@ -145,5 +147,47 @@ func TestLiveRefNoteSurvivesTheLaneClassification(t *testing.T) {
 	}
 	if out, e := runCommand(t, CommandsWith(s.svc), "click", protocol.ClickArgs{Window: "101", Ref: "name:Save"}); e != nil || out != "ok\n" {
 		t.Errorf("the second click, a cache hit: %q, %+v, want ok alone", out, e)
+	}
+}
+
+// A name:/id: reference a partial read could not settle (reliability
+// council 03): a fresh read's one match is refused with its new index and
+// the narrowing hint, a miss is incomplete rather than absent, and the
+// cache-only resolution and a Tab target say the same of their read. The
+// codes are AMBIGUOUS_TARGET and NOT_FOUND, whatever the wording matches.
+func TestPartialReadRefusals(t *testing.T) {
+	l := newLiveSpy()
+	l.err = &uia.LiveRefError{Err: &wstate.PartialRefError{Kind: wstate.RefName, Text: "Delete", Match: 245, Candidate: "245 button Delete"}}
+	_, e := runCommand(t, CommandsWith(l.svc), "click", protocol.ClickArgs{Window: "101", Ref: "name:Delete"})
+	if e == nil || e.Msg != `name "Delete": 1 match in the part read; the read was partial (a fresh read of window 101); nothing was sent` ||
+		e.Code != protocol.CodeAmbiguousTarget || !strings.Contains(e.Hint, "winuse find 101") || !strings.Contains(e.Hint, "--root") ||
+		!strings.HasSuffix(e.Hint, "act on it by its Element Index:\n245 button Delete") {
+		t.Errorf("one match: %+v", e)
+	}
+	if l.hIndex != 0 || strings.Contains(strings.Join(l.recorded(), ","), "headless-click") {
+		t.Errorf("a refused reference acted: %v", l.recorded())
+	}
+
+	l = newLiveSpy()
+	l.err = &uia.LiveRefError{Err: &wstate.NoMatchRefError{Kind: wstate.RefID, Text: "del", Partial: true}}
+	_, e = runCommand(t, CommandsWith(l.svc), "click", protocol.ClickArgs{Window: "101", Ref: "id:del"})
+	if e == nil || e.Msg != `no element with ID "del" in the part read; the read was partial (a fresh read of window 101), so it may be in the part not read; nothing was sent` ||
+		e.Code != protocol.CodeNotFound || !strings.Contains(e.Hint, "--root") || strings.Contains(e.Hint, "Element Index:\n") {
+		t.Errorf("no match: %+v", e)
+	}
+
+	spy := &actionSpy{refErr: &wstate.PartialRefError{Kind: wstate.RefID, Text: "del", Match: 3, Candidate: "3 button Delete ID: del"}}
+	_, e = runCommand(t, CommandsWith(spy.services()), "click", protocol.ClickArgs{Window: "101", Ref: "id:del", Headed: true})
+	if e == nil || e.Msg != `ID "del": 1 match in the part read; the read was partial (the cached Window State of window 101)` ||
+		e.Code != protocol.CodeAmbiguousTarget || containsStep(spy.recorded(), "click") {
+		t.Errorf("cache only: %+v", e)
+	}
+
+	bt := &bgTab{tab: page.Tab{TargetID: "E2000000"}}
+	bt.w = win.WindowInfo{ID: 301}
+	e = tabTargetRefError(&wstate.PartialRefError{Kind: wstate.RefName, Text: "Sign in", Match: 4, Candidate: "4 button Sign in"}, bt)
+	if !strings.HasPrefix(e.Msg, `name "Sign in": 1 match in the part read; the read was partial (the Window State of tab `) ||
+		e.Code != protocol.CodeAmbiguousTarget || strings.Contains(e.Hint, "--root") || !strings.HasSuffix(e.Hint, "\n4 button Sign in") {
+		t.Errorf("Tab target: %+v", e)
 	}
 }

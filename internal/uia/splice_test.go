@@ -39,13 +39,13 @@ func TestSplicePageNumbersAcrossBothParts(t *testing.T) {
 		{Depth: 2, Role: "link", Name: "old"}, {Depth: 2, Role: "button", Name: "old"}, {Depth: 1, Role: "group", Name: "infobar"},
 	}
 	ptrs := []comPtr{comPtr(&win), comPtr(&tab), comPtr(&doc), comPtr(&old1), comPtr(&old2), comPtr(&bar)}
-	c.store.install(defaultAgent, 7, c.store.beginRead(), ptrs, base)
+	c.store.install(defaultAgent, 7, c.store.beginRead(), ptrs, base, false)
 
 	merged := []wstate.Element{base[0], base[1], base[2],
 		{Depth: 2, Role: "heading", Name: "page"}, {Depth: 2, Role: "edit", Name: "page"}, {Depth: 2, Role: "button", Name: "page"},
 		base[5]}
 	origins := map[int]any{3: "h", 4: "e", 5: "b"}
-	if err := c.SplicePage(context.Background(), 7, base, merged, []int{0, 1, 2, -1, -1, -1, 5}, origins); err != nil {
+	if err := c.SplicePage(context.Background(), 7, base, merged, []int{0, 1, 2, -1, -1, -1, 5}, origins, false); err != nil {
 		t.Fatal(err)
 	}
 	// The replaced UIA Elements are released, the others kept.
@@ -83,7 +83,7 @@ func TestSplicePageNumbersAcrossBothParts(t *testing.T) {
 
 	// A new read replaces the Page origins with the rest.
 	var fresh int
-	c.store.install(defaultAgent, 7, c.store.beginRead(), []comPtr{comPtr(&fresh)}, []wstate.Element{{Role: "window"}})
+	c.store.install(defaultAgent, 7, c.store.beginRead(), []comPtr{comPtr(&fresh)}, []wstate.Element{{Role: "window"}}, false)
 	if o, err := c.ElementOrigin(context.Background(), 7, 0); err != nil || o != nil {
 		t.Errorf("after a new read: %v, %v", o, err)
 	}
@@ -96,12 +96,12 @@ func TestSplicePageRefusesASupersededState(t *testing.T) {
 	c, released := spliceClient(t)
 	var a, b, d int
 	first := []wstate.Element{{Role: "window"}, {Depth: 1, Role: "document"}, {Depth: 2, Role: "link"}}
-	c.store.install(defaultAgent, 7, c.store.beginRead(), []comPtr{comPtr(&a), comPtr(&b), comPtr(&d)}, first)
+	c.store.install(defaultAgent, 7, c.store.beginRead(), []comPtr{comPtr(&a), comPtr(&b), comPtr(&d)}, first, false)
 	// A newer read of the Window lands before the splice.
 	second := append([]wstate.Element(nil), first...)
-	c.store.install(defaultAgent, 7, c.store.beginRead(), []comPtr{comPtr(&a), comPtr(&b), comPtr(&d)}, second)
+	c.store.install(defaultAgent, 7, c.store.beginRead(), []comPtr{comPtr(&a), comPtr(&b), comPtr(&d)}, second, false)
 	before := len(released())
-	err := c.SplicePage(context.Background(), 7, first, []wstate.Element{first[0], first[1], {Depth: 2, Role: "button"}}, []int{0, 1, -1}, map[int]any{2: "x"})
+	err := c.SplicePage(context.Background(), 7, first, []wstate.Element{first[0], first[1], {Depth: 2, Role: "button"}}, []int{0, 1, -1}, map[int]any{2: "x"}, false)
 	if !errors.Is(err, ErrSuperseded) {
 		t.Fatalf("err = %v", err)
 	}
@@ -120,9 +120,9 @@ func TestSplicePageIntoACutRead(t *testing.T) {
 	c, released := spliceClient(t)
 	var win, doc, bar int
 	base := []wstate.Element{{Depth: 0, Role: "window"}, {Depth: 1, Role: "document", Name: "Page"}, {Depth: 1, Role: "group", Name: "infobar"}}
-	c.store.install(defaultAgent, 7, c.store.beginRead(), []comPtr{comPtr(&win), comPtr(&doc), comPtr(&bar)}, base)
+	c.store.install(defaultAgent, 7, c.store.beginRead(), []comPtr{comPtr(&win), comPtr(&doc), comPtr(&bar)}, base, false)
 	merged := []wstate.Element{base[0], base[1], {Depth: 2, Role: "edit", Name: "Email"}, {Depth: 2, Role: "button", Name: "Sign in"}, base[2]}
-	if err := c.SplicePage(context.Background(), 7, base, merged, []int{0, 1, -1, -1, 2}, map[int]any{2: "e", 3: "b"}); err != nil {
+	if err := c.SplicePage(context.Background(), 7, base, merged, []int{0, 1, -1, -1, 2}, map[int]any{2: "e", 3: "b"}, false); err != nil {
 		t.Fatal(err)
 	}
 	if len(released()) != 0 {
@@ -156,11 +156,11 @@ func TestSplicePageLeavesAStaleDocumentOut(t *testing.T) {
 		{Depth: 1, Role: "toolbar"}, {Depth: 1, Role: "document"}, {Depth: 2, Role: "edit", Name: "address"},
 	}
 	ptrs := []comPtr{comPtr(&win), comPtr(&stale), comPtr(&old), comPtr(&bar), comPtr(&doc), comPtr(&edit)}
-	c.store.install(defaultAgent, 7, c.store.beginRead(), ptrs, base)
+	c.store.install(defaultAgent, 7, c.store.beginRead(), ptrs, base, false)
 	// The document at 4 is the Tab's, with one UIA descendant replaced; the
 	// one at 1 is stale.
 	merged := []wstate.Element{base[0], base[3], base[4], {Depth: 2, Role: "heading", Name: "page"}}
-	if err := c.SplicePage(context.Background(), 7, base, merged, []int{0, 3, 4, -1}, map[int]any{3: "h"}); err != nil {
+	if err := c.SplicePage(context.Background(), 7, base, merged, []int{0, 3, 4, -1}, map[int]any{3: "h"}, false); err != nil {
 		t.Fatal(err)
 	}
 	if r := released(); len(r) != 3 || r[0] != comPtr(&stale) || r[1] != comPtr(&old) || r[2] != comPtr(&edit) {
@@ -179,10 +179,10 @@ func TestSplicePageLeavesAStaleDocumentOut(t *testing.T) {
 	}
 
 	// A mapping out of order, or past the frame read, changes nothing.
-	c.store.install(defaultAgent, 7, c.store.beginRead(), ptrs, base)
+	c.store.install(defaultAgent, 7, c.store.beginRead(), ptrs, base, false)
 	before := len(released())
 	for _, from := range [][]int{{0, 3, 3, -1}, {0, 4, 3, -1}, {0, 3, 6, -1}, {0, 3, 4}} {
-		if err := c.SplicePage(context.Background(), 7, base, merged, from, nil); err == nil || errors.Is(err, ErrSuperseded) {
+		if err := c.SplicePage(context.Background(), 7, base, merged, from, nil, false); err == nil || errors.Is(err, ErrSuperseded) {
 			t.Errorf("from %v: %v", from, err)
 		}
 	}

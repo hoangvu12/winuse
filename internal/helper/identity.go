@@ -16,6 +16,11 @@ package helper
 // list or read records the new Window. A Window with no record (the helper
 // restarted) is recorded at its first Action and passes. A Window whose
 // identity cannot be read is not checked: its command fails on it anyway.
+//
+// The check runs again right before the write (reliability-council ticket
+// 09, sameWindow): the identity seen at the start rides on the context
+// through the read and the waits, and each Action pipeline compares the
+// Window's identity now with it before its first write to the handle.
 
 import (
 	"context"
@@ -118,8 +123,12 @@ func (s Services) checkWindow(cmd Command) Command {
 	}
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		if id, ok := numericWindow(args); ok {
-			if err := s.reusedID(id); err != nil {
+			now, seen, err := s.reusedID(id)
+			if err != nil {
 				return "", err
+			}
+			if seen {
+				ctx = withStartIdentity(ctx, id, now)
 			}
 		}
 		return cmd(ctx, args)
@@ -128,14 +137,16 @@ func (s Services) checkWindow(cmd Command) Command {
 
 // reusedID is checkWindow's check of one Window ID, also run on the
 // Window a Batch step names itself (batch.go, desktop-parity ticket 24).
-func (s Services) reusedID(id uint64) *Error {
+// It returns what the ID names now, for the re-check at the write; seen
+// is false when that could not be read.
+func (s Services) reusedID(id uint64) (now win.WindowOwner, seen bool, rerr *Error) {
 	if s.windowIDs == nil || s.WindowIdentity == nil {
-		return nil
+		return win.WindowOwner{}, false, nil
 	}
 	now, ok := s.WindowIdentity(id)
 	if !ok {
 		s.windowIDs.forget(id) // gone: the command fails on it anyway
-		return nil
+		return win.WindowOwner{}, false, nil
 	}
 	was, ok := s.windowIDs.lookup(id)
 	switch {
@@ -143,15 +154,66 @@ func (s Services) reusedID(id uint64) *Error {
 		s.windowIDs.record(id, now) // first seen here (a helper restart)
 	case was != now:
 		s.windowIDs.forget(id)
-		return reusedWindowError(id)
+		return win.WindowOwner{}, false, reusedWindowError(id)
 	}
-	return nil
+	return now, true, nil
 }
 
 // reusedWindowError is the refusal of a Window ID another Window took.
 func reusedWindowError(id uint64) *Error {
-	return Fail(fmt.Sprintf("window %d closed; a new window reused its ID; nothing was sent", id),
-		"run winuse list-windows and use the Window ID it prints now; read the new Window's State before acting on it")
+	return Fail(fmt.Sprintf("window %d closed; a new window reused its ID; nothing was sent", id), reusedWindowHint)
+}
+
+const reusedWindowHint = "run winuse list-windows and use the Window ID it prints now; read the new Window's State before acting on it"
+
+// startIdentityKey carries what each Window ID a command names was when
+// its identity was checked at the command's start (checkWindow, and a
+// Batch's step Windows), for the re-check at the write.
+type startIdentityKey struct{}
+
+// withStartIdentity adds what id named at the command's start to ctx.
+func withStartIdentity(ctx context.Context, id uint64, o win.WindowOwner) context.Context {
+	prev, _ := ctx.Value(startIdentityKey{}).(map[uint64]win.WindowOwner)
+	m := make(map[uint64]win.WindowOwner, len(prev)+1)
+	for k, v := range prev {
+		m[k] = v
+	}
+	m[id] = o
+	return context.WithValue(ctx, startIdentityKey{}, m)
+}
+
+// startIdentity is what id named at the command's start.
+func startIdentity(ctx context.Context, id uint64) (win.WindowOwner, bool) {
+	m, _ := ctx.Value(startIdentityKey{}).(map[uint64]win.WindowOwner)
+	o, ok := m[id]
+	return o, ok
+}
+
+// sameWindow is the identity re-check right before a write to a Window's
+// handle (reliability-council ticket 09): the lane wait, the read and the
+// polite and brief waits run after checkWindow, and a Window that closes
+// meanwhile may hand its ID to a new one. It compares what id names now
+// with what it named at the command's start, not with the shared record,
+// which another agent's list may have replaced since. One
+// GetWindowThreadProcessId and the process's start time (WindowIdentity).
+// A command that named no Window by its ID, or whose identity could not
+// be read at the start or now, is not checked: a gone Window fails the
+// write anyway.
+func (s Services) sameWindow(ctx context.Context, id uint64) *Error {
+	was, ok := startIdentity(ctx, id)
+	if !ok || s.WindowIdentity == nil {
+		return nil
+	}
+	now, ok := s.WindowIdentity(id)
+	if !ok || now == was {
+		return nil
+	}
+	if s.windowIDs != nil {
+		if rec, ok := s.windowIDs.lookup(id); ok && rec == was {
+			s.windowIDs.forget(id) // the next list or read records the new Window
+		}
+	}
+	return nothingSent(Fail(fmt.Sprintf("window %d closed during this command; a new window reused its ID; nothing was sent", id), reusedWindowHint))
 }
 
 // recordReads records the Window a successful read names, without

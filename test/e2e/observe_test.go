@@ -26,13 +26,14 @@ func TestObserveOnTheFixture(t *testing.T) {
 		t.Helper()
 		out, stderr, exit := runWinuse(t, args, "WINUSE_HELPER_IDLE="+e2eIdle)
 		if exit != 0 {
-			t.Fatalf("winuse %s: exit %d, stderr:\n%s", strings.Join(args, " "), exit, stderr)
+			t.Fatalf("winuse %s: exit %d, stdout:\n%s\nstderr:\n%s", strings.Join(args, " "), exit, out, stderr)
 		}
 		return out
 	}
 
 	// A set-value with --observe: ok, then the field's line as changed.
-	out := run("set-value", window, "id:"+string(fixture.ElemTextField), "observed", "--observe")
+	// The flag goes before the value: everything after the value is text.
+	out := run("set-value", window, "--observe", "id:"+string(fixture.ElemTextField), "observed")
 	fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.Text == "observed" })
 	if !strings.HasPrefix(out, "ok\n") || !strings.Contains(out, "Changed since this agent's last read of window "+window) ||
 		!regexp.MustCompile(`(?m)^\t+~\d+ edit .*Value: observed`).MatchString(out) {
@@ -54,7 +55,9 @@ func TestObserveOnTheFixture(t *testing.T) {
 	}
 
 	// A Batch acts, reads and acts: its read step prints under its number.
-	out = run("batch", window, "set-value", "id:"+string(fixture.ElemTextField), "batched", "then", "find", "--role", "edit", "then", "press-key", "Tab")
+	// Tab is posted: an unheaded key without --post has no background
+	// route outside a classic dialog (headless-max 21).
+	out = run("batch", window, "set-value", "id:"+string(fixture.ElemTextField), "batched", "then", "find", "--role", "edit", "then", "press-key", "Tab", "--post")
 	if !regexp.MustCompile(`(?m)^Action 2 \(find\): `).MatchString(out) || !strings.Contains(out, "Value: batched") {
 		t.Errorf("a Batch with a find step:\n%s", out)
 	}

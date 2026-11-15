@@ -65,6 +65,24 @@ func TestRenderStatesOrderAndToggleToken(t *testing.T) {
 	}
 }
 
+func TestRenderPasswordState(t *testing.T) {
+	tree := &Tree{
+		Title: "T",
+		App:   "a.exe",
+		Elements: []Element{
+			{Depth: 0, Role: "edit", Name: "Password", Settable: "string", Password: true},
+			{Depth: 0, Role: "edit", Name: "PIN", Password: true},
+		},
+		FocusedIndex: -1,
+	}
+	want := "Window: \"T\", App: a.exe.\n" +
+		"\t0 edit (settable, string, password) Password\n" +
+		"\t1 edit (password) PIN\n"
+	if got := Render(tree); got != want {
+		t.Errorf("render:\n got %q\nwant %q", got, want)
+	}
+}
+
 func TestRenderFocusedTailAndNotes(t *testing.T) {
 	tree := &Tree{
 		Title: "T",

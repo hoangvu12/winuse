@@ -345,6 +345,39 @@ func (v *docView) marks(s *domSnapshot, d *snapDoc) *Marks {
 	return m
 }
 
+// viewport is the part of a document on screen, in the snapshot's
+// coordinates: Page.getLayoutMetrics' cssLayoutViewport, the scroll
+// offset and the size in CSS px.
+type viewport struct {
+	X, Y, W, H float64
+}
+
+// offscreenOf lists the nodes of a snapshot document whose box lies wholly
+// outside the viewport: scrolled away above, below or to a side. A node
+// with no box, or an empty one (a closed <select>'s options, a hidden
+// node), is not listed: where it is cannot be told, and a read keeps it.
+func offscreenOf(d *snapDoc, vp viewport) []int64 {
+	if vp.W <= 0 || vp.H <= 0 {
+		return nil
+	}
+	var out []int64
+	seen := map[int]bool{}
+	for li, ni := range d.Layout.NodeIndex {
+		if li >= len(d.Layout.Bounds) || ni < 0 || ni >= len(d.Nodes.BackendNodeID) || seen[ni] {
+			continue
+		}
+		seen[ni] = true // a node's first layout entry, as docView takes it
+		b := d.Layout.Bounds[li]
+		if len(b) < 4 || b[2] <= 0 || b[3] <= 0 {
+			continue
+		}
+		if b[1]+b[3] <= vp.Y || b[1] >= vp.Y+vp.H || b[0]+b[2] <= vp.X || b[0] >= vp.X+vp.W {
+			out = append(out, d.Nodes.BackendNodeID[ni])
+		}
+	}
+	return out
+}
+
 // editable is isContentEditable from the contenteditable attributes of the
 // element and its ancestors (a page in designMode is not seen).
 func (v *docView) editable(i int) bool {

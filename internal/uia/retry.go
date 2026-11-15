@@ -2,6 +2,7 @@ package uia
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -142,13 +143,20 @@ func readTree(ctx context.Context, app string, budget, settle time.Duration, mar
 	if err != nil {
 		return nil, err
 	}
-	if worthSettle(first, app) {
+	// A skeleton leaves the Documents' content out by design, so it always
+	// looks thin: settling it would spend the whole budget waiting for
+	// content it never reads (perf ticket 03), and it says nothing about
+	// whether the page has built, so it leaves the mark as it is.
+	if skeleton(ctx) {
+		if !treeIsSparse(first.tree) {
+			return first.tree, nil
+		}
+	} else if worthSettle(first, app) {
 		if mark.marked() {
 			return retryThin(ctx, first, budget, mark, read, sleep)
 		}
 		return settleTree(ctx, first, budget, settle, mark, read, sleep)
-	}
-	if !first.paged {
+	} else if !first.paged {
 		mark.forget()
 	}
 	if !treeIsSparse(first.tree) {
@@ -170,6 +178,39 @@ func readTree(ctx context.Context, app string, budget, settle time.Duration, mar
 		noteRetry(second.tree)
 	}
 	return second.tree, nil
+}
+
+// rootRetryDelay and rootRetries bound the retry of a failed root read
+// (reliability-council 04, after cua's 40 ms apart): a provider
+// rebuilding its tree answers E_FAIL for a moment while the Window stays.
+const (
+	rootRetryDelay = 40 * time.Millisecond
+	rootRetries    = 2
+)
+
+// retryRoot wraps read so a read whose root failed with E_FAIL or a
+// transport error (hrTransient) on a Window that still exists (a
+// TreeReadError: rootReadErr checked IsWindow) is read again after
+// rootRetryDelay, up to rootRetries times, within ctx's deadline. A
+// Window gone, access denied or a timeout fails at once. This retry is for
+// failed reads; readTree's retry is for nearly empty ones (ADR 0005).
+func retryRoot(ctx context.Context, read treeRead, sleep func(context.Context, time.Duration) error) treeRead {
+	return func(cfg WalkConfig) (*readResult, error) {
+		res, err := read(cfg)
+		for tries := 0; tries < rootRetries && rootTransient(err); tries++ {
+			if serr := sleep(ctx, rootRetryDelay); serr != nil {
+				break
+			}
+			res, err = read(cfg)
+		}
+		return res, err
+	}
+}
+
+// rootTransient reports whether err is a failed root read worth a retry.
+func rootTransient(err error) bool {
+	var te *TreeReadError
+	return errors.As(err, &te) && hrTransient(te.HR)
 }
 
 // settleTree polls a thin Chromium tree until its web content has built:

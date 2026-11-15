@@ -160,7 +160,7 @@ The user chose two of the proposed defaults
   shares (for `find`, of its walk), the focused Element's sentence
   included. `id:` refuses those IDs as ambiguous, so the line loses
   nothing an agent can name. A unique ID always prints. Folding stays
-  opt-in under `--compact`.
+  opt-in under `--compact`, except before the cap (next bullet).
 - **The output stops before 28000 characters.** Claude Code cuts a Bash
   command's output at about 30000 characters, in the middle. A read now
   cuts at a line boundary first, with the `--max-chars` note naming the
@@ -168,6 +168,14 @@ The user chose two of the proposed defaults
   `--screenshot`, room for the Screenshot line, and leaves about 2000
   characters for the shell's own lines. `--max-chars N` sets the cap,
   `--max-chars 0` lifts it, and `--out <file>` writes the read uncut.
+  **Fold before the cut** (reliability-council 12, 2026-11-07): a full
+  read the cap would cut first folds its bare containers as `--compact`
+  does, with a note, and cuts only what still does not fit. Measured on
+  Discord (no Browser Connection): 784 Elements, a third unnamed
+  wrappers; the cut read printed 306 non-wrapper lines, the folded one
+  458, and the whole read shrank from 40,309 to 29,732 characters. A
+  read that fits prints as before; `--out` and `--max-chars 0` never
+  fold.
 - **`--full`** prints Codex's text byte for byte: every ID, no cap
   (`wstate.Render`). It refuses `--interactive`, `--depth`, `--compact`
   and `--max-chars` on a full read. With `--root`, `--depth` and

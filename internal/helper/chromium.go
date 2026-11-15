@@ -77,6 +77,9 @@ func (s Services) runChromium(ctx context.Context, w win.WindowInfo, run chromiu
 	if esc.Stopped() {
 		return "", escStopBeforeActError()
 	}
+	if rerr := s.sameWindow(ctx, w.ID); rerr != nil {
+		return "", rerr // the identity re-check (identity.go)
+	}
 	n, err := run.send()
 	if shown && n > 0 {
 		s.cursorClick(ctx, w, rect)

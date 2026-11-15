@@ -62,6 +62,10 @@ serving live reads, recorded fixtures and the offline tests.
   name, only the near-empty trigger and the exe-name list apply.
 - A retry read that fails (the Window closed mid-retry, COM error) fails
   the command: a stale tree is worse than an honest error.
+- This retry is for empty reads. A failed one has its own
+  (reliability-council 04, `retryRoot`): a root read that fails with
+  E_FAIL or a transport error while the Window still exists is read again
+  up to twice, 40 ms apart, and a chunk that fails with E_FAIL once.
 - Offline tests drive `readTree` with hand-authored recorded Chromium/
   Electron trees (`internal/uia/testdata/`, marked as hand-authored in
   their `source`); the live two-phase behaviour is the user-run e2e test

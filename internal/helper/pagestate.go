@@ -82,7 +82,7 @@ type PageReader interface {
 
 // PageSplicer is the live-Element store's side of the merge: *uia.Client.
 type PageSplicer interface {
-	SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any) error
+	SplicePage(ctx context.Context, hwnd uint64, base, merged []wstate.Element, from []int, origins map[int]any, pagePartial bool) error
 	ElementOrigin(ctx context.Context, hwnd uint64, index int) (any, error)
 }
 
@@ -185,7 +185,7 @@ func readWindowTree(s Services, ctx context.Context, w win.WindowInfo) (*wstate.
 		o := merged.Origins[i]
 		origins[merged.Doc+1+i] = &o
 	}
-	if err := splicer.SplicePage(ctx, w.ID, tree.Elements, merged.Tree.Elements, merged.From, origins); err != nil {
+	if err := splicer.SplicePage(ctx, w.ID, tree.Elements, merged.Tree.Elements, merged.From, origins, merged.Partial); err != nil {
 		if errors.Is(err, uia.ErrSuperseded) {
 			return fallback("the Window was read again while its Page was read")
 		}

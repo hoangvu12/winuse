@@ -220,7 +220,7 @@ func shortcutFailure(err error, w win.WindowInfo) *Error {
 	id := strconv.FormatUint(w.ID, 10)
 	var write *uia.WriteError
 	if errors.As(err, &write) {
-		return Fail(err.Error(), "the command may have run; read the Window State (winuse get-window-state "+id+") before repeating it")
+		return mayHaveActed(Fail(err.Error(), "the command may have run; read the Window State (winuse get-window-state "+id+") before repeating it"))
 	}
 	return Fail(err.Error(), "read the Window State (winuse get-window-state "+id+") and try again")
 }

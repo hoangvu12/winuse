@@ -40,6 +40,19 @@ func expectedLines() []string {
 	state := fixture.State{}
 	nodes := fixture.NewTreeMap(fixture.BuildTree(state))
 	indexes := mainElementIndexes() // reserves the OS caption subtree's indexes
+	// A default read drops an ID several Elements share (speed-defaults):
+	// id: cannot name it, so solo-one and solo-two print without "solo".
+	ids := map[string]int{}
+	var count func(e fixture.Elem)
+	count = func(e fixture.Elem) {
+		if id := fixture.AutomationID(e); id != "" {
+			ids[id]++
+		}
+		for _, kid := range nodes.Children(e) {
+			count(kid)
+		}
+	}
+	count(fixture.ElemWindow)
 	var lines []string
 	var walk func(e fixture.Elem, depth int)
 	walk = func(e fixture.Elem, depth int) {
@@ -97,7 +110,7 @@ func expectedLines() []string {
 		if len(actions) > 0 {
 			line += " Secondary Actions: " + strings.Join(actions, ", ")
 		}
-		if id := fixture.AutomationID(e); id != "" {
+		if id := fixture.AutomationID(e); id != "" && ids[id] == 1 {
 			line += " ID: " + id
 		}
 		lines = append(lines, line)

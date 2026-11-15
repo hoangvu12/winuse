@@ -261,3 +261,29 @@ func TestLineMatchesTheTreesOwnRendering(t *testing.T) {
 		t.Errorf("Line(1) = %q, want %q", got, want)
 	}
 }
+
+// TestInPartialRead: in a partial Window State (reliability council 03)
+// one match is refused with its line, none is incomplete, several stay
+// ambiguous.
+func TestInPartialRead(t *testing.T) {
+	els := refElements()
+	i, err := ResolveElementRef(els, "name:Example")
+	_, err = InPartialRead(els, "name:Example", i, err)
+	var one *PartialRefError
+	if !errors.As(err, &one) || one.Match != 0 || one.Candidate != Line(0, &els[0]) ||
+		err.Error() != `name "Example": 1 match in the part read; the read was partial` {
+		t.Errorf("one match: %v %+v", err, one)
+	}
+	i, err = ResolveElementRef(els, "id:nope")
+	_, err = InPartialRead(els, "id:nope", i, err)
+	var none *NoMatchRefError
+	if !errors.As(err, &none) || !none.Partial || err.Error() != `no element with ID "nope" in the part read; the read was partial` {
+		t.Errorf("no match: %v", err)
+	}
+	i, err = ResolveElementRef(els, "name:Twin")
+	_, err = InPartialRead(els, "name:Twin", i, err)
+	var several *AmbiguousRefError
+	if !errors.As(err, &several) {
+		t.Errorf("several: %v", err)
+	}
+}

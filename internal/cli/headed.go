@@ -9,7 +9,9 @@ package cli
 // other, so an agent typing the literal "--headed" never has it silently
 // eaten. Put the flag before the command (or before the text) there.
 // When --stdin or --file stands for the text (textsource.go), there is no
-// literal text, and the flags after it are flags.
+// literal text, and the flags after it are flags. set-value refuses a
+// value that ends with winuse flags instead of setting it (setvalue.go);
+// type-text and clipboard-set do not.
 // Commands that are always Headed, and the Desktop commands, accept the
 // flag and ignore it.
 //

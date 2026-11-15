@@ -146,6 +146,11 @@ func (s Services) runKeyHeadless(ctx context.Context, w win.WindowInfo, run keyR
 		return "", rerr
 	}
 	if run.prepare != nil {
+		// The identity re-check (identity.go) runs before the prepare step
+		// too: invoke-menu's sends WM_INITMENUPOPUP to the Window.
+		if rerr := s.sameWindow(ctx, w.ID); rerr != nil {
+			return "", rerr
+		}
 		if perr := run.prepare(&run); perr != nil {
 			return "", perr
 		}
@@ -159,6 +164,9 @@ func (s Services) runKeyHeadless(ctx context.Context, w win.WindowInfo, run keyR
 	rect, shown := s.cursorTravelRect(ctx, w, run.target, run.label)
 	if esc.Stopped() {
 		return "", escStopBeforeActError()
+	}
+	if rerr := s.sameWindow(ctx, w.ID); rerr != nil {
+		return "", rerr // the identity re-check (identity.go)
 	}
 	err := run.act()
 	var notSent *notSentError
@@ -190,9 +198,9 @@ func keyFailure(err error, w win.WindowInfo) *Error {
 	}
 	var verify *uia.VerifyError
 	if errors.As(err, &verify) {
-		return Fail(err.Error(), "the Action was delivered; do not repeat it, read the Window State: winuse get-window-state "+id)
+		return wasDelivered(Fail(err.Error(), "the Action was delivered; do not repeat it, read the Window State: winuse get-window-state "+id))
 	}
-	return Fail(err.Error(), "the Action may have taken effect; read the Window State (winuse get-window-state "+id+") before repeating it")
+	return mayHaveActed(Fail(err.Error(), "the Action may have taken effect; read the Window State (winuse get-window-state "+id+") before repeating it"))
 }
 
 // pressDialogKey runs a Headless Return or Escape on a classic dialog:

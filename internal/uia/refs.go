@@ -28,13 +28,22 @@ import (
 // read's own Elements are searched first, and the added ones only when
 // none of them matches: a reference that worked before a find still
 // resolves to the same Element after it.
+//
+// A partial Window State answers only with ambiguity (reliability council
+// 03): its one match is a *wstate.PartialRefError and its miss a
+// *wstate.NoMatchRefError marked Partial (wstate.InPartialRead); so is a
+// one match a partial fresh read found and added (doubted).
 func (c *Client) ResolveElementRef(ctx context.Context, hwnd uint64, ref string) (int, error) {
 	who := storeAgent(ctx)
-	els, base, ok := c.store.refState(who, hwnd)
+	cv, ok := c.store.refState(who, hwnd)
 	if !ok {
 		return 0, c.store.noState(who, hwnd)
 	}
-	return resolveBaseFirst(els, base, ref)
+	i, err := resolveBaseFirst(cv.els, cv.base, ref)
+	if cv.partial || (err == nil && cv.doubted[i]) {
+		return wstate.InPartialRead(cv.els, ref, i, err)
+	}
+	return i, err
 }
 
 // resolveBaseFirst resolves ref against els[:base], then, when nothing

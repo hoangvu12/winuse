@@ -27,7 +27,8 @@ The focused UI element is 1 edit (settable, string) Search ID: searchBox.
 ```
 
 Each line gives the Element's role, name and state (`disabled`, `selected`,
-`expanded`, `settable`, a toggle's `on` or `off`, its `Value:`), its `ID:`,
+`expanded`, `settable`, a toggle's `on` or `off`, its `Value:`, and
+`password` for a secret field, whose Value is never printed), its `ID:`,
 and the Secondary Actions it offers besides a click. The last line names the
 focused Element, where typed text lands. The tree includes the web content
 of Electron apps and browser Windows (see `winuse skill browser`).
@@ -106,12 +107,19 @@ By default a read, `find` and `--root` stop before 28000 characters
 (under the Harness's 30000-character cap on a command's output) with a
 note naming the first Element not printed, and leave out the IDs two or
 more Elements share, which `id:` refuses as ambiguous; a unique ID always
-prints. `--max-chars N` sets the cap, `--max-chars 0` lifts it, and
+prints. A full read that would pass the cap first folds its unnamed
+containers, as `--compact` does, and says so in a note; it cuts only what
+still does not fit (on Chromium and Electron Windows, where a third of the
+Elements can be such wrappers, that fits far more). A read that fits
+prints whole. `--max-chars N` sets the cap, `--max-chars 0` lifts it, and
 `--out <file>` writes the whole read to the file.
 
 On a full read, `--interactive`, `--depth N` and `--compact` (folds
 unnamed containers) print less, but the Window State is kept whole:
 every index printed is its own, and the ones left out still work.
+`--interactive` keeps a disabled control with its `disabled` state, so a
+greyed-out Submit button still prints; `find --state interactive` matches
+enabled Elements only.
 
 `--role` takes the role as the tree prints it, and `--name` and `--text` a
 part of the name (or the value and description), ignoring case. A role
@@ -155,6 +163,19 @@ finds, saying
 your Window State's indexes still work. Prefer `name:` and `id:` for an
 Element you will act on again. A fresh read that finds the name twice
 refuses, with the candidates under new indexes.
+
+One match counts only in a read that saw the whole Window. When the Window
+State you read is partial (a `this Window State is partial` note, a
+`--skeleton` read, a `(truncated: ...)` line), winuse looks in a fresh read
+instead; when that one is partial too, it refuses:
+`name "Delete": 1 match in the part read; the read was partial (a fresh read of window 101)`,
+with the match under a new index in the hint, since another may sit in the
+part not read. Narrow the read (`winuse find 101 --role button --name
+Delete`, or `get-window-state 101 --root <element>`), or act by that index
+if it is the one you mean. A name it does not find in a partial read is
+reported as `... in the part read; the read was partial ..., so it may be
+in the part not read`, never as absent. An Element Index is never
+re-resolved, so this does not touch it.
 
 An Action's `--observe` is a full read too, so it renumbers the same way;
 its diff lists every index whose line changed, and an index it does not

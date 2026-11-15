@@ -30,10 +30,20 @@ const usageHead = `usage: winuse [--headed] <command> [arguments]
 global options:
   each goes before the command or anywhere after it, except inside
   type-text's text, set-value's value and clipboard-set's text, where it is
-  literal text
-  --headed                    run an Action the v1 way: bring the Window to the
+  literal text; set-value refuses a value that ends with winuse flags,
+  with nothing sent (-- before the value sets it as written)
+  --headed                   run an Action the v1 way: bring the Window to the
                                foreground, use the real pointer and keyboard,
                                and show the in-control banner
+  --no-wait                   fail at once when an Action is refused for a
+                               reason that may pass on its own: without it, a
+                               disabled Element, a modal dialog over the
+                               Window or a name:/id: reference that matches
+                               nothing waits up to 1.8 s (holding up no other
+                               Action; Esc stops it) and the Action runs
+                               again, with a Note: waited 0.4 s for element
+                               14 to enable. Only a refusal that sent nothing
+                               waits; a batch's steps never do
   --trace <file>              (or WINUSE_TRACE=<file>): append one JSON line
                                per command to the file: time, command, Agent,
                                Window, arguments, routes (Headless, Posted,
@@ -131,7 +141,7 @@ commands:
                                command that ends a process. Windows' own
                                processes (explorer, dwm, csrss, ...) and
                                administrator Apps are refused, nothing sent
-  get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--full] [--timeout <seconds>]
+  get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--visible] [--compact] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]
                                print a Window's State: its Element tree as text,
                                and with --screenshot a screenshot saved to a file
                                whose path is printed (sized to the model's
@@ -153,8 +163,10 @@ commands:
                                before 28000 characters with a note on what it
                                left out; --max-chars N sets the cap, 0 none.
                                On a full read, --interactive prints only the
-                               Elements you act on, --depth N the first N
-                               levels, --compact folds unnamed containers;
+                               Elements you act on, --visible only those on
+                               screen (a Page's scrolled-away Elements left
+                               out), --depth N the first N levels, --compact
+                               folds unnamed containers;
                                the Window State is still read and kept whole,
                                so the indexes printed are its own and the
                                rest still work. --out <file> writes the
@@ -167,7 +179,14 @@ commands:
                                lines around it do not show it); a hint is
                                not a name: name: never matches it. --full
                                prints Codex's text byte for byte: every ID,
-                               no cap, no hint
+                               no cap, no hint.
+                               --diff prints only the Element Indexes whose
+                               line changed since your last read of the
+                               Window (~ changed, * new, - gone), as
+                               --observe=diff does after an Action; with no
+                               earlier read, or past 60% changed, the whole
+                               Window State prints with a note. It takes the
+                               budgets above, not --root or --skeleton
   find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N | --full]
                                search the Window's whole live tree, past the
                                Window State's caps: print the matching
@@ -179,6 +198,43 @@ commands:
                                it leaves out shared IDs, adds hints (with
                                the row a duplicate sits in) and stops before
                                28000 characters (--max-chars, --full)
+  pick <window> <description> [--click | --set-value <text>] [--model <m>]
+                               with a Jev API key (winuse jev): read the Window
+                               inside winuse, have a Jev-compatible System One
+                               server choose the Element that matches the
+                               description, and print its line ("ok 36 button
+                               Plus  p=0.97"), so the Window State never enters
+                               your context; --click or --set-value then acts
+                               on it. The read replaces your Window State of
+                               that Window, so the index works afterwards. A
+                               pick below p=0.5 acts on nothing, lists the
+                               likeliest Elements and exits 1. The Window's
+                               text is sent to the server
+  run <window> <goal> [--set <text>]... [--max-steps N] [--model <m>]
+                               with a Jev API key: keep the wheel for a bounded
+                               task in a Page or a desktop App. Without a key,
+                               or when the server fails, it does nothing more
+                               and exits 1: do the task yourself. Each step
+                               reads the Window, asks the Jev
+                               server for the next operation (click, type one of
+                               your values, select, scroll, wait, done) and its
+                               target in one request, does it and lets the Window
+                               settle, until a separate check
+                               sees the goal achieved (exit 0). Jev writes no
+                               text: values come from --set and quoted strings
+                               in the goal. It stops and exits 1 on a sign-in,
+                               password or payment window, when 3 steps in a row
+                               change nothing, at --max-steps (default 25, up to
+                               100) or when it is blocked; Esc stops it (130)
+  jev [status] | jev set [--key <key> | --key -] [--base-url <url>] [--model <m>] | jev clear | jev check
+                               the server, key and model pick and run use,
+                               stored in %LOCALAPPDATA%\winuse\jev.json
+                               (TYPESAFE_API_KEY, TYPESAFE_BASE_URL and
+                               WINUSE_JEV_MODEL win over it); default server
+                               https://api.typesafe.ai,
+                               model jev-latest; status masks the key; --key -
+                               reads it from stdin; check sends one question
+                               and prints the model and round trip
   record-tree <window> <file> record a Window's real tree to a fixture file
   zoom <window> <x>,<y>,<w>,<h>
                                save a full-resolution crop of a region of the
@@ -245,9 +301,14 @@ commands:
                                for a Page's custom combobox or listbox, which
                                winuse opens or types into, then clicks the
                                option); @x,y sets the Element
-                               under a point of the latest screenshot.
-                               --stdin or --file <path> reads the value
-                               instead, as type-text's does
+                               under a point of the latest screenshot. The
+                               value is everything after the Element: one
+                               ending with winuse flags (--observe, --headed,
+                               --no-wait, --timeout ...) is refused, nothing
+                               sent; put flags before the Element, or -- before
+                               a value that really ends so. --stdin or
+                               --file <path> reads the value instead, as
+                               type-text's does
   perform-secondary-action <window> <element index | name: | id: | @x,y> <action>
                                perform one of the Element's Secondary Actions
                                (`
@@ -502,6 +563,17 @@ const usageTail = `);
   trace show <file>           print a trace file readably: per command its
                                time, Agent, Window, routes, outcome and
                                duration, then its arguments, error and files
+  update [--to <version>] [--no-skill]
+                               replace this winuse.exe with the latest
+                               release, or the one --to names (older ones
+                               too), checked against its SHA256SUMS, and
+                               rewrite the skill copies in ~\.agents\skills
+                               and ~\.claude\skills; a copy that links
+                               elsewhere (Fleet) is left alone, and
+                               --no-skill skips them all. A running helper
+                               finishes its requests and restarts at the
+                               next command; nothing changes when the
+                               download fails
   version                     print the winuse version
   help [<command> | global | all]
                                print the command index, a command's examples
@@ -588,11 +660,24 @@ var commandGroups = []struct {
 			"winuse get-window-state 4242 --root 42 --depth 2 --interactive",
 			"winuse get-window-state 4242 --interactive --compact --max-chars 20000",
 			"winuse get-window-state 4242 --out state.txt",
-			"winuse get-window-state 4242 --full"}},
+			"winuse get-window-state 4242 --full",
+			"winuse get-window-state 4242 --diff"}},
 		{"find", "search the whole live tree: role, name, text", []string{
 			"winuse find 4242 --role button --name save",
 			`winuse find 4242 --text "invoice" --first`,
 			`winuse find 4242 --role "list item" --limit 20`}},
+		{"pick", "Jev chooses the Element a description names", []string{
+			`winuse pick 4242 "the Save button"`,
+			`winuse pick 4242 "the search box" --set-value "invoice 2026"`,
+			`winuse pick 4242:1a2b3c4d "accept all cookies" --click`}},
+		{"run", "Jev drives a bounded task to its goal", []string{
+			`winuse run 4242:1a2b3c4d "open the Wikipedia article about Kurt Godel" --set "Kurt Godel"`,
+			`winuse run 4242 "fill in the form and submit it" --set "Ada Lovelace" --set ada@example.com`,
+			`winuse run Settings "open the About page"`}},
+		{"jev", "the Jev server, key and model pick and run use", []string{
+			"winuse jev",
+			"winuse jev set --key - --base-url https://api.codiv.ai",
+			"winuse jev check"}},
 		{"zoom", "a full-resolution crop of the latest screenshot", []string{
 			"winuse zoom 4242 100,80,400,300"}},
 	}},
@@ -721,6 +806,9 @@ var commandGroups = []struct {
 		{"trace", "summarize a --trace file", []string{
 			"winuse --trace run.jsonl click 4242 3",
 			"winuse trace show run.jsonl"}},
+		{"update", "install the latest or a given release", []string{
+			"winuse update",
+			"winuse update --to 0.4.0"}},
 		{"version", "the winuse version", []string{
 			"winuse version"}},
 		{"help", "this index, or one command's help", []string{
@@ -760,7 +848,7 @@ func commandIndex() string {
 	b.WriteString(`
 <window> is a Window ID from list-windows; <ref> an Element Index, name:<text>,
 id:<AutomationId> or @x,y from your latest get-window-state.
-global options: --headed, --json, --trace <file>, --help (winuse help global).
+global options: --headed, --no-wait, --json, --trace <file>, --help (winuse help global).
 winuse help <command>: its examples and usage. winuse help all: everything.
 winuse skill: the agent guide.
 `)

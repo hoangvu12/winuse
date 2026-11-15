@@ -71,7 +71,13 @@ again, or use `name:` or `id:`.
 - A locked desktop is reported as locked. Stop and ask the user to unlock
   it, and leave the lock screen alone.
 - A modal dialog blocking the target is named in the failure, with its
-  Window ID. Handle that dialog's Window, then return to the owner.
+  Window ID, after winuse waited 1.8 s for it to close. Handle that
+  dialog's Window, then return to the owner.
+- `the Element is disabled; nothing was sent` comes after winuse waited
+  1.8 s for it to enable, and so does a `name:` or `id:` that matches
+  nothing (the hint says how long). Something must happen first, such as a
+  required field: read the Window State. For something slow, `winuse wait
+  <window> <ref> enabled --timeout <seconds>`. `--no-wait` skips the wait.
 - `window <id>'s App is not responding; nothing was sent` means the App
   is hung. Wait until it responds and retry, or work in another App's
   Window meanwhile; other Apps are not held up.
