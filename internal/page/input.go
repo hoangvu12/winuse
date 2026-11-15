@@ -996,6 +996,15 @@ func (f Field) Refusal() error {
 // field's ReadField answer; a failed read-back is a *VerifyError that never
 // shows a password field's value.
 func (o Origin) SetValue(ctx context.Context, in *Input, f Field, value string) error {
+	if err := o.ReplaceText(ctx, in, value); err != nil {
+		return err
+	}
+	return o.CheckValue(ctx, f, value)
+}
+
+// ReplaceText is SetValue without the read-back: DOM.focus, select all,
+// then Input.insertText (an empty value: a Backspace).
+func (o Origin) ReplaceText(ctx context.Context, in *Input, value string) error {
 	c, err := o.caller()
 	if err != nil {
 		return err
@@ -1008,12 +1017,17 @@ func (o Origin) SetValue(ctx context.Context, in *Input, f Field, value string) 
 	}
 	if value == "" {
 		chord, _ := keys.Parse("BackSpace")
-		err = in.PressKeys(ctx, chord)
-	} else {
-		err = in.InsertText(ctx, value)
+		return in.PressKeys(ctx, chord)
 	}
+	return in.InsertText(ctx, value)
+}
+
+// CheckValue is SetValue's read-back: the field holds value (ValueMatches),
+// else a *VerifyError.
+func (o Origin) CheckValue(ctx context.Context, f Field, value string) error {
+	c, err := o.caller()
 	if err != nil {
-		return err
+		return &VerifyError{Msg: "the value was delivered, but the field could not be read back"}
 	}
 	var got string
 	if err := callWith(ctx, c, o.SessionID, o.BackendNodeID, readJS, nil, &got); err != nil {

@@ -226,7 +226,10 @@ commands:
                                edit, a numeric range, on|off for a check
                                box or other toggle, an item's name for a
                                combo box or list, or an option's label or
-                               value for a Page's list); @x,y sets the Element
+                               value for a Page's list, or an option's name
+                               for a Page's custom combobox or listbox, which
+                               winuse opens or types into, then clicks the
+                               option); @x,y sets the Element
                                under a point of the latest screenshot
   perform-secondary-action <window> <element index | name: | id: | @x,y> <action>
                                perform one of the Element's Secondary Actions
