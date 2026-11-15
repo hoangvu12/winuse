@@ -208,7 +208,7 @@ func TestStateJSONFieldNames(t *testing.T) {
 		"canvasRightClicks", "canvasDrags", "canvasScrolls", "canvasRect", "focusRequests", "accelerators", "generation",
 		"classicOpen", "classicWindowId", "classicResult", "classicText", "classicPassword", "classicFocus", "classicColor", "classicComboDrops",
 		"classicMenu", "classicMenuInits",
-		"messageBoxOpen", "messageBoxResult",
+		"messageBoxOpen", "messageBoxResult", "hugeListWindowId",
 	} {
 		if _, ok := m[key]; !ok {
 			t.Errorf("state JSON is missing key %q", key)

@@ -70,6 +70,12 @@ type comSource struct {
 	from      comPtr // a region read's root Element (region.go); nil: the Window's
 	req       comPtr // cache request, created on first use
 	rootClass string // the root element's ClassName, read in Root (Chromium/Electron detection)
+
+	// Created on first use, for a slow list and the skeleton's counts
+	// (learn-from 08).
+	stepReq  comPtr // the tree properties for one Element alone (TreeScope_Element)
+	countReq comPtr // no properties, control-view children, no live Elements
+	walker   comPtr // the control-view tree walker
 }
 
 // ensureRequest lazily builds the cache request: the properties of the basic
@@ -78,39 +84,70 @@ func (s *comSource) ensureRequest() error {
 	if s.req != nil {
 		return nil
 	}
+	req, err := s.newRequest(treeProperties, treeScopeElementChildren, automationElementModeFull)
+	s.req = req
+	return err
+}
+
+// newRequest builds a cache request over the control view with the given
+// properties, scope and element mode. The request is returned even with an
+// error once created, so the caller's dispose releases it.
+func (s *comSource) newRequest(props []uint32, scope, mode uintptr) (comPtr, error) {
 	var req comPtr
 	if hr := call(s.th.auto, uiaCreateCacheRequest, uintptr(unsafe.Pointer(&req))); hr.Failed() || req == nil {
-		return fmt.Errorf("%w: creating the cache request failed (HRESULT %s)", ErrInit, hr)
+		return nil, fmt.Errorf("%w: creating the cache request failed (HRESULT %s)", ErrInit, hr)
 	}
-	s.req = req
-	for _, prop := range treeProperties {
+	for _, prop := range props {
 		if hr := call(req, reqAddProperty, uintptr(prop)); hr.Failed() {
-			return fmt.Errorf("AddProperty(%d) failed (HRESULT %s)", prop, hr)
+			return req, fmt.Errorf("AddProperty(%d) failed (HRESULT %s)", prop, hr)
 		}
 	}
 	var cond comPtr
 	if hr := call(s.th.auto, uiaGetControlViewCondition, uintptr(unsafe.Pointer(&cond))); hr.Failed() || cond == nil {
-		return fmt.Errorf("get_ControlViewCondition failed (HRESULT %s)", hr)
+		return req, fmt.Errorf("get_ControlViewCondition failed (HRESULT %s)", hr)
 	}
 	defer release(cond) // the request holds its own reference
 	if hr := call(req, reqPutTreeFilter, uintptr(cond)); hr.Failed() {
-		return fmt.Errorf("put_TreeFilter failed (HRESULT %s)", hr)
+		return req, fmt.Errorf("put_TreeFilter failed (HRESULT %s)", hr)
 	}
-	if hr := call(req, reqPutTreeScope, treeScopeElementChildren); hr.Failed() {
-		return fmt.Errorf("put_TreeScope failed (HRESULT %s)", hr)
+	if hr := call(req, reqPutTreeScope, scope); hr.Failed() {
+		return req, fmt.Errorf("put_TreeScope failed (HRESULT %s)", hr)
 	}
-	if hr := call(req, reqPutAutomationElementMode, automationElementModeFull); hr.Failed() {
-		return fmt.Errorf("put_AutomationElementMode failed (HRESULT %s)", hr)
+	if hr := call(req, reqPutAutomationElementMode, mode); hr.Failed() {
+		return req, fmt.Errorf("put_AutomationElementMode failed (HRESULT %s)", hr)
 	}
-	return nil
+	return req, nil
 }
 
-// dispose releases the cache request (the only object comSource owns).
+// dispose releases the cache requests and the tree walker (the only
+// objects comSource owns).
 func (s *comSource) dispose() {
-	if s.req != nil {
-		release(s.req)
-		s.req = nil
+	for _, p := range []*comPtr{&s.req, &s.stepReq, &s.countReq, &s.walker} {
+		if *p != nil {
+			release(*p)
+			*p = nil
+		}
 	}
+}
+
+// putTimeout bounds the next cross-process call: the UIA transaction
+// timeout is set to remaining, at most maxTransactionTimeout and at least
+// 1 ms.
+func (s *comSource) putTimeout(remaining time.Duration) {
+	tx := min(remaining, maxTransactionTimeout)
+	if tx < time.Millisecond {
+		tx = time.Millisecond
+	}
+	call(s.th.auto, uia2PutTransactionTimeout, uintptr(uint32(tx.Milliseconds())))
+}
+
+// chunkErr maps a failed cache call's HRESULT: UIA_E_TIMEOUT is
+// ErrChunkTimedOut.
+func chunkErr(what string, hr HRESULT) error {
+	if hr == uiaErrTimeout {
+		return fmt.Errorf("%w (HRESULT %s)", ErrChunkTimedOut, hr)
+	}
+	return fmt.Errorf("%s failed (HRESULT %s)", what, hr)
 }
 
 // Root returns the Window's root element with its properties cached,
@@ -147,23 +184,14 @@ func (s *comSource) Root() (comPtr, NodeData, error) {
 // remaining bounds the chunk: the UIA transaction timeout is set to
 // min(remaining, maxTransactionTimeout), so a provider that does not answer
 // in time fails with UIA_E_TIMEOUT, mapped to ErrChunkTimedOut (the walk
-// then returns the partial tree with the time-limit note).
+// then reads the node's children one at a time through FirstChild and
+// NextSibling).
 func (s *comSource) Children(node comPtr, remaining time.Duration) ([]comPtr, []NodeData, error) {
-	tx := remaining
-	if tx > maxTransactionTimeout {
-		tx = maxTransactionTimeout
-	}
-	if tx < time.Millisecond {
-		tx = time.Millisecond
-	}
-	call(s.th.auto, uia2PutTransactionTimeout, uintptr(uint32(tx.Milliseconds())))
+	s.putTimeout(remaining)
 
 	var fresh comPtr
 	if hr := call(node, elBuildUpdatedCache, uintptr(s.req), uintptr(unsafe.Pointer(&fresh))); hr.Failed() || fresh == nil {
-		if hr == uiaErrTimeout {
-			return nil, nil, fmt.Errorf("%w (HRESULT %s)", ErrChunkTimedOut, hr)
-		}
-		return nil, nil, fmt.Errorf("updating the element cache failed (HRESULT %s)", hr)
+		return nil, nil, chunkErr("updating the element cache", hr)
 	}
 	defer release(fresh)
 
@@ -193,6 +221,100 @@ func (s *comSource) Children(node comPtr, remaining time.Duration) ([]comPtr, []
 		data[i] = s.data(k)
 	}
 	return kids, data, nil
+}
+
+// The COM source reads a slow list one Element at a time and counts
+// without properties.
+var (
+	_ ChildStepper[comPtr] = (*comSource)(nil)
+	_ ChildCounter[comPtr] = (*comSource)(nil)
+)
+
+// ensureStepping lazily builds what a slow list's one-at-a-time read needs:
+// the control-view tree walker and a cache request for one Element.
+func (s *comSource) ensureStepping() error {
+	if s.walker == nil {
+		var walker comPtr
+		if hr := call(s.th.auto, uiaGetControlViewWalker, uintptr(unsafe.Pointer(&walker))); hr.Failed() || walker == nil {
+			return fmt.Errorf("get_ControlViewWalker failed (HRESULT %s)", hr)
+		}
+		s.walker = walker
+	}
+	if s.stepReq == nil {
+		req, err := s.newRequest(treeProperties, treeScopeElement, automationElementModeFull)
+		s.stepReq = req
+		return err
+	}
+	return nil
+}
+
+// FirstChild reads node's first control-view child with its properties
+// cached: one round trip, bounded like a chunk (ChildStepper).
+func (s *comSource) FirstChild(node comPtr, remaining time.Duration) (comPtr, NodeData, bool, error) {
+	return s.step(walkerGetFirstChildBuildCache, node, remaining)
+}
+
+// NextSibling reads prev's next control-view sibling (ChildStepper).
+func (s *comSource) NextSibling(prev comPtr, remaining time.Duration) (comPtr, NodeData, bool, error) {
+	return s.step(walkerGetNextSiblingBuildCache, prev, remaining)
+}
+
+func (s *comSource) step(slot uintptr, from comPtr, remaining time.Duration) (comPtr, NodeData, bool, error) {
+	if err := s.ensureStepping(); err != nil {
+		return nil, NodeData{}, false, err
+	}
+	s.putTimeout(remaining)
+	var el comPtr
+	if hr := call(s.walker, slot, uintptr(from), uintptr(s.stepReq), uintptr(unsafe.Pointer(&el))); hr.Failed() {
+		return nil, NodeData{}, false, chunkErr("reading the next child", hr)
+	}
+	if el == nil {
+		return nil, NodeData{}, false, nil // no such child
+	}
+	return el, s.data(el), true, nil
+}
+
+// ItemsAfter reads how many items of its set follow child: its live
+// SizeOfSet minus its PositionInSet, when its provider gives both.
+func (s *comSource) ItemsAfter(child comPtr) (int, bool) {
+	size, pos := currentState(child, propSizeOfSet), currentState(child, propPositionInSet)
+	if size <= 0 || pos <= 0 || pos > size {
+		return 0, false
+	}
+	return int(size - pos), true
+}
+
+// CountChildren counts node's control-view children with a cache request
+// that asks for no property and no live Element (AutomationElementMode
+// None): the provider still lists them, but nothing is read per child and
+// nothing is kept (ChildCounter). remaining bounds it like a chunk.
+func (s *comSource) CountChildren(node comPtr, remaining time.Duration) (int, error) {
+	if s.countReq == nil {
+		req, err := s.newRequest(nil, treeScopeElementChildren, automationElementModeNone)
+		s.countReq = req
+		if err != nil {
+			return 0, err
+		}
+	}
+	s.putTimeout(remaining)
+	var fresh comPtr
+	if hr := call(node, elBuildUpdatedCache, uintptr(s.countReq), uintptr(unsafe.Pointer(&fresh))); hr.Failed() || fresh == nil {
+		return 0, chunkErr("counting the children", hr)
+	}
+	defer release(fresh)
+	var arr comPtr
+	if hr := call(fresh, elGetCachedChildren, uintptr(unsafe.Pointer(&arr))); hr.Failed() {
+		return 0, fmt.Errorf("reading cached children failed (HRESULT %s)", hr)
+	}
+	if arr == nil {
+		return 0, nil
+	}
+	defer release(arr)
+	var n int32
+	if hr := call(arr, arrGetLength, uintptr(unsafe.Pointer(&n))); hr.Failed() || n < 0 {
+		return 0, nil
+	}
+	return int(n), nil
 }
 
 // data reads an element's cached properties (in-process reads from the

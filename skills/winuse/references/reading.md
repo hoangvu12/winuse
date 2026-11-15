@@ -61,9 +61,11 @@ found in `list-windows`. A minimized Window is refused; run
 old way, for an app whose headless capture comes out blank.
 
 A slow app can return a partial tree with a note; that is progress, not a
-failure. A read has 10 seconds; pass `--timeout <seconds>` (up to 60) for a
-slow Electron or Office tree or a cold Chromium page, which also extends
-the wait for a thin Chromium tree.
+failure. A list too long to read at once is cut after its first items,
+with a note naming it, and the Elements after it are still read. A read
+has 10 seconds; pass `--timeout <seconds>` (up to 60) for a slow Electron
+or Office tree or a cold Chromium page, which also extends the wait for a
+thin Chromium tree.
 
 ### Dense Windows
 

@@ -190,3 +190,51 @@ latest Window State, so an index it leaves out still names an Element with
 the same line. ADR 0021 has the baseline, the 60% fallback and why indexes
 stay positional. The observation takes the read's defaults (shared IDs left
 out, the 28000-character cap) and --full.
+
+## Amendment: one slow child list no longer ends the read (learn-from 08, 2026-11-15)
+
+Before, a chunk that hit its transaction timeout (2 s) stopped the whole
+walk: one huge list (a classic list box of 20,000 items, a panel of
+thousands of buttons) left a partial tree with nothing after it. UI
+Automation cannot cap how many children one cached read returns
+(agent-desktop #643), so the cap of 1000 children only applied after all
+of them came back.
+
+- **A timed-out chunk cuts that node only.** Its children are then read
+  one at a time through the control-view tree walker
+  (`GetFirstChildElementBuildCache`, `GetNextSiblingElementBuildCache`,
+  the tree properties for the child alone), each step bounded like a
+  chunk, up to the 1000-children cap, and the walk goes on with the
+  node's siblings. A list whose children all fit under the cap is read
+  whole, with no note. All of it stays inside the walk's budget
+  (`WINUSE_TREE_BUDGET`) and the element cap, which still stop the walk.
+- **A provider that does not answer one step stops the walk**, as a
+  timed-out chunk did: the App is not answering, not just slow on a long
+  list.
+- **The note.** No new grammar. A cut slow list is named in the
+  partial-tree note, after the other reasons, by its Element Index:
+  `the children of Element 12 were too slow to read at once, so the first
+  1000 were read one at a time and 19000 more items were not read`. The
+  count is the last read child's SizeOfSet minus its PositionInSet when
+  its provider gives both, else "and the rest were not read". A list
+  whose steps failed from the start: `the children of Element 12 did not
+  answer in time and were not read`. Its line gets no
+  `(truncated: ...)` suffix, which stays for exact child counts. `find`
+  and `--root` name it by the index they added it as, or by its role and
+  name when they did not print it.
+- **Skeleton counts read nothing per child.** `(+N children)` comes from a
+  second cache request with no properties and AutomationElementMode
+  None, bounded to 250 ms per count. A count that runs out of time prints
+  no number, the walk goes on, and a note (not the partial-tree note: the
+  skeleton's shape is chosen) says `the children of Element 12 were not
+  counted in time`. Before, a count fetched every child with every
+  property and a timed-out count stopped the walk. The Grid pattern's
+  RowCount was not used: it is not the child count (header rows, groups)
+  and needs another cached property on every Element.
+- **Not changed:** a list that comes back as one chunk is still read
+  that way and cut at 1000 with the exact suffix; collection types are
+  not stepped up front (agent-desktop does): a stepped list costs one
+  round trip per child, which small lists, the common case, do not need.
+  The live cost of both routes on a 20,000-item list box is measured by
+  `winusetasks latency` on the fixture's `-huge-list` Window
+  (`.scratch/learn-from/issues/08-huge-lists-in-tree-reads.md`).

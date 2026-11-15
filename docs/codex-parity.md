@@ -368,7 +368,9 @@ Codex's background event monitoring and bulk reads freeze apps
 system-wide (issues #36833, #43692); winuse does no event monitoring
 ever, scopes cache requests to the target Window one node chunk at a
 time, and caps the walk (3000 elements, depth 48, 1000 children, a time
-budget) returning the partial tree with a note. **intentionally different** (fix).
+budget) returning the partial tree with a note. A child list too slow to
+read as one chunk is read one child at a time up to the cap, and the walk
+goes on past it (ADR 0004). **intentionally different** (fix).
 
 ### screenshots
 

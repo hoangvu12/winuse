@@ -1299,3 +1299,20 @@ set WINUSE_E2E_HUMAN=1
 go test -tags e2e -v -run "TestEscStopsEveryAgent$" ./test/e2e
 ```
 
+## The huge list test
+
+`TestHugeListDoesNotEndTheRead` (`huge_list_test.go`, learn-from 08)
+starts the fixture with `-huge-list 20000`: beside the main window, a
+Window holding a classic list box of 20,000 items and an "After the list"
+button. A full read and a `--skeleton` read of that Window must both reach
+the button. The full read must cut the list, with the exact `(truncated:
+1000, omitted ...)` suffix when the list came back as one chunk or the
+slow-list note when it was read one item at a time. The `MEASURED:` lines
+say which route ran, the notes, and how long each read took. Nothing is
+clicked.
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -run "TestHugeListDoesNotEndTheRead$" ./test/e2e
+```
+
