@@ -91,8 +91,10 @@ act and see the effect in one call: <action> ... --observe[=diff|full]
   and their defaults (shared IDs left out, the 28000-character cap; --full
   for Codex's text) shape it as on a read; like --headed they go before the
   command or anywhere after it outside type-text's text and set-value's
-  value. A failed Action prints none; a read that fails is a note and the
-  Action's result stands.
+  value. When the Action opened one new Window (a menu, a dialog), it is
+  read too and printed whole after, under a line naming its Window ID;
+  several new Windows are a note. A failed Action prints none; a read that
+  fails is a note and the Action's result stands.
 
 commands:
   list-windows [--details] [--app <name>] [--shell]
@@ -821,8 +823,9 @@ func commandUsage(words []string) (string, bool) {
 		b.WriteString(`
 --observe prints the Window State after it: --observe (diff) the Element
 Indexes whose line changed since your last read (~ changed, * new, - gone;
-the rest are unchanged), --observe=full all of it; --interactive, --depth N,
---compact, --max-chars N, --out <file> and --full shape it as on a read (winuse help all).
+the rest are unchanged), --observe=full all of it, and the one Window the
+Action opened whole; --interactive, --depth N, --compact, --max-chars N,
+--out <file> and --full shape it as on a read (winuse help all).
 `)
 	}
 	if window {

@@ -19,7 +19,9 @@ package helper
 // each lives in its own host process (desktop-parity 09), and never a toast
 // banner (desktop-parity 18). A reported menu
 // that list-windows drops still resolves by its Window ID
-// (resolveWindow), so the agent can read it next.
+// (resolveWindow), so the agent can read it next. With --observe, the
+// opened Windows the settle found are recorded (recordOpened), and one
+// alone is read with the observation (observe.go, ADR 0021 amendment).
 //
 // The diff only reads window metadata: no input, no activation. It is
 // skipped when the Action failed (its error stands alone; a Batch that
@@ -285,6 +287,9 @@ func (s Services) openedNotes(ctx context.Context, before openedBefore, windows 
 				windows = false
 			} else if opened, closed := openedChanges(before, after); len(opened) > 0 || closed {
 				notes = formatOpened(opened, before.target, closed)
+				recordOpened(ctx, opened) // --observe reads it too (observe.go)
+			} else {
+				recordOpened(ctx, nil)
 			}
 		}
 		seen := map[string]bool{} // a Batch's probes can find the same Tab

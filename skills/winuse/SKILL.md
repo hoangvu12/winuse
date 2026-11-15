@@ -95,7 +95,8 @@ send them as one `winuse batch` rather than a command per turn: each turn
 costs seconds. Add `--observe` to an Action or Batch to get steps 2 and 3
 in one call: it prints only the Element Indexes whose line changed since
 your last read (`~` changed, `*` new, `-` gone; the rest are unchanged), or
-the whole State when that is shorter (topic `batch-and-wait`).
+the whole State when that is shorter, then a menu or dialog the Action
+opened, whole (topic `batch-and-wait`).
 
 ```
 winuse list-windows                     # <Window ID>  <App>  <title>

@@ -274,7 +274,8 @@ left open says so in a `Note:` (multi-agent 08). **intentionally different**.
 An Action or Batch sent with `--observe` echoes the Window State after it:
 whole (`--observe=full`) or the Element Indexes whose line changed since
 the Agent's last read (`--observe`, diff), with the whole State past 60%
-changed (speed observe, ADR 0021). It is opt-in: without it the output is
+changed (speed observe, ADR 0021), then the one Window the Action opened,
+whole (learn-from 01). It is opt-in: without it the output is
 the `ok` above. **extension**.
 
 ### timeouts
