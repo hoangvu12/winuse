@@ -190,6 +190,102 @@ func TestCursorTravelDurationIsCuasFitts(t *testing.T) {
 	}
 }
 
+// TestABatchGlideIsTheFullOneInHalfTheTime (learn-from 09, ADR 0018
+// amendment): a GlideBatch takes half the full glide's time, never under
+// 300 ms, so 300–550 ms; a hop of nothing and reduced motion's 120 ms move
+// are unchanged; GlideFull is the full glide.
+func TestABatchGlideIsTheFullOneInHalfTheTime(t *testing.T) {
+	o := fpoint{100, 100}
+	for d := 2.0; d < 50000; d *= 1.3 {
+		for _, side := range []float64{0, 4, 24, 40, 200} {
+			full := cursorTravelDuration(o, fpoint{100 + d, 100}, side, 1, false)
+			if got := cursorGlideDuration(o, fpoint{100 + d, 100}, side, 1, false, GlideFull); got != full {
+				t.Fatalf("GlideFull at %v px takes %v, want the full %v", d, got, full)
+			}
+			got := cursorGlideDuration(o, fpoint{100 + d, 100}, side, 1, false, GlideBatch)
+			if want := max(full/2, cursorBatchGlideFloor); got != want {
+				t.Fatalf("GlideBatch at %v px to %v takes %v, want %v", d, side, got, want)
+			}
+			if got < 300*time.Millisecond || got > 550*time.Millisecond {
+				t.Fatalf("GlideBatch at %v px takes %v, want 300–550 ms", d, got)
+			}
+		}
+	}
+	if got := cursorGlideDuration(o, fpoint{101, 100}, 40, 1, false, GlideBatch); got != 0 {
+		t.Errorf("a hop under two pixels glides %v in a Batch, want nothing", got)
+	}
+	if got := cursorGlideDuration(o, fpoint{2100, 100}, 40, 1, true, GlideBatch); got != cursorReducedTravel {
+		t.Errorf("with animations off a Batch glide takes %v, want %v", got, cursorReducedTravel)
+	}
+}
+
+// TestABatchGlideKeepsThePath: a GlideBatch is the same arc, follow-through
+// and lean played faster: the tip is at the same place at the same
+// fraction of the travel, arrives at the same fraction, leans mid-way and
+// is upright at its arrival.
+func TestABatchGlideKeepsThePath(t *testing.T) {
+	from, to := fpoint{200, 700}, fpoint{1400, 300}
+	full := newCursorGlide(from, to, Rect{}, 1, false, GlideFull)
+	fast := newCursorGlide(from, to, Rect{}, 1, false, GlideBatch)
+	if fast.dur != full.dur/2 {
+		t.Fatalf("the Batch glide takes %v, the full one %v: want half", fast.dur, full.dur)
+	}
+	for i := 0; i <= 100; i++ {
+		u := float64(i) / 100
+		if a, b := full.at(u), fast.at(u); a.dist(b) > 1e-9 {
+			t.Fatalf("at %d %% the full glide is at %+v, the Batch glide at %+v", i, a, b)
+		}
+	}
+	ff, fb := full.progress(full.arrive), fast.progress(fast.arrive)
+	if math.Abs(ff-fb) > 2*float64(time.Millisecond)/float64(fast.dur) || fast.arrive >= fast.dur {
+		t.Errorf("arrivals at %.3f and %.3f of the travel, want the same", ff, fb)
+	}
+	if fast.turn == 0 || math.Abs(fast.tipAngle(fast.arrive/2)) < 5*math.Pi/180 {
+		t.Errorf("mid-way the Batch glide leans %v, want a visible lean", fast.tipAngle(fast.arrive/2))
+	}
+	if fast.tipAngle(fast.arrive) != 0 {
+		t.Error("the Batch glide is upright at its arrival")
+	}
+}
+
+// TestGlideAsReleasesAtTheShorterArrival: the controller plays a
+// GlideBatch with its own duration, releases the waiter at its arrival, and
+// bounds the wait by twice the Batch glide.
+func TestGlideAsReleasesAtTheShorterArrival(t *testing.T) {
+	view := &fakeCursorView{}
+	clock := &fakeClock{t: t0}
+	c := newAgentCursor(inlineDo, view, clock.now)
+	defer c.Close()
+	origin := Rect{Right: 1920, Bottom: 1040}
+	target := Rect{Left: 1700, Top: 50, Right: 1800, Bottom: 90}
+	full, fast := c.travelBound(origin, target, GlideFull), c.travelBound(origin, target, GlideBatch)
+	if fast >= full || fast < 2*cursorBatchGlideFloor {
+		t.Errorf("the Batch glide's bound is %v, the full one's %v", fast, full)
+	}
+	done := make(chan struct{})
+	c.postWait(func() { c.ui.glide(0, origin, target, "", GlideBatch, done) }, time.Second)
+	var p cursorPath
+	c.postWait(func() { p = c.ui.model.path }, time.Second)
+	want := cursorGlideDuration(rectCentre(origin), rectCentre(target), targetSide(target), 1, false, GlideBatch)
+	if p.dur != want {
+		t.Fatalf("the controller glides %v, want the Batch glide's %v", p.dur, want)
+	}
+	clock.set(t0.Add(p.arrive - time.Millisecond))
+	c.postWait(func() { c.ui.tick() }, time.Second)
+	select {
+	case <-done:
+		t.Fatal("released before the arrival")
+	default:
+	}
+	clock.set(t0.Add(p.arrive))
+	c.postWait(func() { c.ui.tick() }, time.Second)
+	select {
+	case <-done:
+	default:
+		t.Errorf("not released at the Batch glide's arrival %v", p.arrive)
+	}
+}
+
 // TestTipTurnsAlongThePathAndLandsUpright (cursor-look 04, cursor-turn):
 // the arrow leans toward where it is going, at most 30°, eases in and out,
 // and is exactly upright at the arrival and after it; short hops and
@@ -1419,7 +1515,7 @@ func TestTravelReturnsWhenTheTravelCompletes(t *testing.T) {
 
 	origin := Rect{Right: 1920, Bottom: 1040}
 	target := Rect{Left: 1700, Top: 50, Right: 1800, Bottom: 90}
-	bound := c.travelBound(origin, target)
+	bound := c.travelBound(origin, target, GlideFull)
 	start := time.Now()
 	returned := make(chan struct{})
 	go func() { c.Travel(origin, target, `click "Save"`); close(returned) }()
@@ -1521,7 +1617,7 @@ func TestTravelIsBoundedWhenTheUIThreadNeverRuns(t *testing.T) {
 
 	origin := Rect{Right: 1920, Bottom: 1040}
 	target := Rect{Left: 10, Top: 10, Right: 20, Bottom: 20}
-	bound := c.travelBound(origin, target)
+	bound := c.travelBound(origin, target, GlideFull)
 	if want := 2*cursorTravelDuration(rectCentre(origin), rectCentre(target), 10, 1, false) + cursorTravelSlack; bound != want {
 		t.Fatalf("bound = %v, want about twice the travel time (%v)", bound, want)
 	}

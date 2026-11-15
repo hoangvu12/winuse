@@ -481,7 +481,7 @@ func (s Services) cursorTravelRect(ctx context.Context, w win.WindowInfo, target
 		return win.Rect{}, false
 	}
 	cursorTrace(ctx, "travel")
-	cursorBestEffort("travelling", func() { s.cursorFor(ctx, w).Travel(w.Bounds, target, label) })
+	cursorBestEffort("travelling", func() { travelCursor(ctx, s.cursorFor(ctx, w), w.Bounds, target, label) })
 	cursorTrace(ctx, "landed")
 	return target, true
 }
@@ -505,7 +505,7 @@ func (s Services) cursorTravel(ctx context.Context, actor HeadlessActor, w win.W
 		return win.Rect{}, false
 	}
 	cursorTrace(ctx, "travel")
-	cursorBestEffort("travelling", func() { s.cursorFor(ctx, w).Travel(w.Bounds, rect, cursorLabel(verb, name)) })
+	cursorBestEffort("travelling", func() { travelCursor(ctx, s.cursorFor(ctx, w), w.Bounds, rect, cursorLabel(verb, name)) })
 	cursorTrace(ctx, "landed")
 	return rect, true
 }

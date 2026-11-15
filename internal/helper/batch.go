@@ -254,6 +254,9 @@ func batch(commands map[string]Command, s Services) Command {
 			s.showOverlay(*bw)
 			defer s.hideOverlay()
 		}
+		// The Agent Cursor glides in full to the Batch's first Element and
+		// in half the time after (glideFor, ADR 0018 learn-from 09).
+		ctx = withBatchGlides(ctx)
 		var lines strings.Builder // the steps' output, under their numbers
 		var failed []batchFailure
 		stop := func(e *Error) (string, *Error) {
