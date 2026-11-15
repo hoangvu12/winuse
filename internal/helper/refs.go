@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
@@ -73,9 +74,22 @@ func (t elementTarget) resolve(ctx context.Context, s Services, w win.WindowInfo
 	index := -1
 	switch {
 	case t.ref != "":
-		i, rerr := resolveElementRef(ctx, s, w, t.ref)
-		if rerr != nil {
-			return i, rerr
+		// A reference that matches nothing yet is read afresh again for a
+		// short while (targetwait.go); the Element may be about to appear.
+		i, err := resolveRef(ctx, s, w, t.ref)
+		var waited time.Duration
+		if refPending(ctx, s, err) {
+			var stop bool
+			waited, stop = s.waitActionable(ctx, s.escStopped, func() bool {
+				i, err = resolveRef(ctx, s, w, t.ref)
+				return refPending(ctx, s, err)
+			})
+			if stop {
+				return 0, escStopBeforeActError()
+			}
+		}
+		if err != nil {
+			return 0, withWaited(refError(err, w), waited)
 		}
 		index = i
 	case t.index != nil:
@@ -111,10 +125,23 @@ type ElementResolver interface {
 // cached Window State cannot answer is resolved in a fresh bounded read,
 // and the Action's output notes it.
 func resolveElementRef(ctx context.Context, s Services, w win.WindowInfo, ref string) (int, *Error) {
+	index, err := resolveRef(ctx, s, w, ref)
+	if err != nil {
+		return 0, refError(err, w)
+	}
+	return index, nil
+}
+
+// errNoResolver is a reference on a helper with no UIA client.
+var errNoResolver = errors.New("element references are unavailable: no UIA client")
+
+// resolveRef is resolveElementRef's resolution, with the element side's
+// error unmapped (elementTarget.resolve tells a pending reference from it).
+func resolveRef(ctx context.Context, s Services, w win.WindowInfo, ref string) (int, error) {
 	if live, ok := s.Actions.(LiveResolver); ok && !isCacheOnly(ctx) {
 		res, err := live.ResolveElementRefLive(ctx, w.ID, ref, liveBudget(ctx))
 		if err != nil {
-			return 0, refError(err, w)
+			return 0, err
 		}
 		if res.Fresh {
 			noteFreshRef(ctx, w, ref, res.Index)
@@ -123,13 +150,9 @@ func resolveElementRef(ctx context.Context, s Services, w win.WindowInfo, ref st
 	}
 	resolver, ok := s.Actions.(ElementResolver)
 	if !ok {
-		return 0, Fail("element references are unavailable: no UIA client", "")
+		return 0, errNoResolver
 	}
-	index, err := resolver.ResolveElementRef(ctx, w.ID, ref)
-	if err != nil {
-		return 0, refError(err, w)
-	}
-	return index, nil
+	return resolver.ResolveElementRef(ctx, w.ID, ref)
 }
 
 // refError maps a reference-resolution failure to the user-facing line

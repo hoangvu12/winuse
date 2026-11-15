@@ -75,9 +75,10 @@ func TestLiveRefNoteOncePerBatch(t *testing.T) {
 
 func TestLiveRefRefusals(t *testing.T) {
 	l := newLiveSpy()
+	l.svc.Sleep = func(time.Duration) {} // the 2 s of fresh reads first (targetwait.go)
 	l.err = &uia.LiveRefError{Err: &wstate.NoMatchRefError{Kind: wstate.RefName, Text: "Save"}}
 	_, e := runCommand(t, CommandsWith(l.svc), "click", protocol.ClickArgs{Window: "101", Ref: "name:Save"})
-	if e == nil || e.Msg != `no element named "Save" in window 101, in its cached Window State or a fresh read; nothing was sent` || !strings.Contains(e.Hint, "winuse find 101") {
+	if e == nil || e.Msg != `no element named "Save" in window 101, in its cached Window State or a fresh read, still after waiting 2s; nothing was sent` || !strings.Contains(e.Hint, "winuse find 101") {
 		t.Errorf("no match: %+v", e)
 	}
 	l = newLiveSpy()

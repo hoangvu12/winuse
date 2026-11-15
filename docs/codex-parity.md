@@ -472,6 +472,14 @@ Window State cannot answer (a helper restart, a gone Element) is resolved
 in a fresh bounded read instead of failing (desktop-parity 17), and the
 output says so. **matched (extended)**.
 
+Codex refuses a disabled Element at once. winuse tries a disabled Element
+(native or Page), and a `name:`/`id:` reference that matches nothing yet,
+again for up to 2 s before the same refusal, which then says how long it
+waited and still that nothing was sent (learn-from 02, ADR 0022); an
+Element Index never re-resolves. A Page click point that still moves after
+the scroll is waited on, and one off-screen or covered is scrolled to the
+centre once. **extension**.
+
 ### background tabs
 
 Codex acts only in what the screen shows, so an agent in the user's
