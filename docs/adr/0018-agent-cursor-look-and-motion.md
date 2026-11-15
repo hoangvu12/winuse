@@ -12,6 +12,8 @@ The motion is ported from trycua/cua at ecaf10b (MIT; `third_party/cua/LICENSE`)
 *Amended (cursor-look issue 11):* the arrow, the name tag and the palette
 are no longer cua's but drawn after Mural's presence cursor (Decisions 3,
 8 and 11); the motion is unchanged.
+*Amended (learn-from 09):* a Batch's glides after its first take half
+the time (Decision 1).
 
 ## Context
 
@@ -37,6 +39,24 @@ insertion caret and showing what each Action does.
    spanning the whole move it never reaches past the target (the sine still
    trails by 8 % at 0.82), so our sine covers the path by 0.82, where the
    bump peaks.
+   *Amended (learn-from 09, the user's call: keep the glide for a single
+   Action, shorten it in Batches):* in a Batch, the first glide is the one
+   above and every later glide of the same Batch takes **half** its time,
+   never under **300 ms** (`cursorBatchGlideScale`,
+   `cursorBatchGlideFloor`): 300–550 ms, arriving after 220–375 ms instead
+   of 440–750. Path, ease, follow-through and lean are unchanged; the move
+   plays faster. The first glide stays full because the cursor may be
+   hidden or far away and the user's eye has to find it; after that the
+   user is watching it, which is what the 600 ms floor was for. The rule
+   counts glides, not steps, so a first step with nothing to point at (a
+   read) leaves the full glide to the first step that has. 300 ms is cua's
+   own shortest Fitts time and 2.5 times the 120 ms reduced-motion move,
+   which reads as a jump; on cua's arc with the in-out sine, the lean and
+   the follow-through it still reads as a glide (the straight 150–400 ms
+   minimum-jerk move it replaced read as a jump, but had none of these).
+   Only the helper's Batch makes the shorter glide: the Task Suite's
+   unattended runs follow the same rule, with no switch of their own, and
+   reduced motion stays 120 ms.
 2. **Act at the arrival.** Travel returns, and so the Action is delivered,
    when the tip is first within 1 logical px of the target (cua's
    `arrival_t`); the label's reveal ends then (browser-ux 03), and the
@@ -199,6 +219,9 @@ recordings would show the cursor. It is the user's decision.
 
 - Every Headless and Page Action takes about 300 ms longer before it is
   delivered (600 ms minimum glide, arrival a little before its end).
+  Since learn-from 09 a Batch's glides after its first take half that
+  time, about 230 ms less per step on a short hop: a 5-step Batch about
+  0.9 s, a 10-step one about 2.1 s.
 - About 13 % of one core of this machine while a cursor animates (124–126
   frames per second, 0.5 ms of drawing per frame), under 1 % while one
   floats, none when hidden (`TestAgentCursorFrameRate`).

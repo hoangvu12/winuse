@@ -48,6 +48,13 @@ const (
 	// off (SPI_GETCLIENTAREAANIMATION): straight, minimum-jerk, nothing
 	// else moving (plan.rs reduced motion).
 	cursorReducedTravel = 120 * time.Millisecond
+	// cursorBatchGlideScale and cursorBatchGlideFloor time a GlideBatch
+	// (learn-from 09, ADR 0018 amendment): the full glide's time halved,
+	// never under 300 ms, cua's shortest Fitts time (cursorFittsMin), so
+	// 300–550 ms on the same arc and ease. The floor only matters if the
+	// full glide's floor drops under 600 ms.
+	cursorBatchGlideScale = 0.5
+	cursorBatchGlideFloor = cursorFittsMin
 
 	// cursorPressDuration is the click's press: the arrow squeezes to 93 %,
 	// springs to 103 % and settles (cua's action_click theme frames, 20 at
@@ -204,6 +211,33 @@ func cursorTravelDuration(from, to fpoint, side, scale float64, reduced bool) ti
 	return max(time.Duration(float64(fitts)*cursorFittsStretch), cursorTravelFloor)
 }
 
+// Glide is how long a travel takes (ADR 0018 Decision 1 and its
+// learn-from 09 amendment).
+type Glide int
+
+const (
+	// GlideFull is the whole glide, 600–1100 ms: a single Action's, and a
+	// Batch's first, when the user's eye still has to find the cursor.
+	GlideFull Glide = iota
+	// GlideBatch is the glide of a Batch's later steps: the same arc, ease,
+	// follow-through and lean in half the time (cursorBatchGlideScale), so a
+	// cursor the user is already watching still visibly goes to each
+	// Element while a long Batch no longer waits seconds on it.
+	GlideBatch
+)
+
+// cursorGlideDuration is cursorTravelDuration for glide: a GlideBatch
+// takes cursorBatchGlideScale of the full time, at least
+// cursorBatchGlideFloor. A hop of nothing and reduced motion's 120 ms move
+// stay as they are.
+func cursorGlideDuration(from, to fpoint, side, scale float64, reduced bool, glide Glide) time.Duration {
+	d := cursorTravelDuration(from, to, side, scale, reduced)
+	if glide != GlideBatch || reduced || d <= 0 {
+		return d
+	}
+	return max(time.Duration(float64(d)*cursorBatchGlideScale), cursorBatchGlideFloor)
+}
+
 // cursorPath is one travel: from → to over dur along cua's signature arc,
 // eased by distance, with a small follow-through past to that settles
 // back by dur. It arrives (arrive) a little before dur.
@@ -221,16 +255,22 @@ type cursorPath struct {
 	scale    float64       // the monitor's dpi/96: physical pixels per logical one
 }
 
-// newCursorPath plans a travel from → to toward target (its size sets
+// newCursorPath plans a full glide from → to toward target (its size sets
 // the duration) at scale; reduced is Windows' animations being off.
 func newCursorPath(from, to fpoint, target Rect, scale float64, reduced bool) cursorPath {
+	return newCursorGlide(from, to, target, scale, reduced, GlideFull)
+}
+
+// newCursorGlide is newCursorPath timed for glide: only the duration
+// differs, so a GlideBatch is the same path played faster.
+func newCursorGlide(from, to fpoint, target Rect, scale float64, reduced bool, glide Glide) cursorPath {
 	if scale <= 0 || math.IsNaN(scale) {
 		scale = 1
 	}
 	p := cursorPath{
 		from:     from,
 		to:       to,
-		dur:      cursorTravelDuration(from, to, targetSide(target), scale, reduced),
+		dur:      cursorGlideDuration(from, to, targetSide(target), scale, reduced, glide),
 		straight: reduced,
 		scale:    scale,
 	}
@@ -740,6 +780,11 @@ type cursorModel struct {
 // is (mid-travel and mid-float included, so it never jumps). reduced is
 // Windows' animations being off. It returns the travel's duration.
 func (m *cursorModel) startTravel(now time.Time, origin, target Rect, scale float64, reduced bool) time.Duration {
+	return m.startGlide(now, origin, target, scale, reduced, GlideFull)
+}
+
+// startGlide is startTravel timed for glide.
+func (m *cursorModel) startGlide(now time.Time, origin, target Rect, scale float64, reduced bool, glide Glide) time.Duration {
 	from := m.tipAt(now)
 	if !m.shown || m.fading {
 		from = rectCentre(origin)
@@ -748,7 +793,7 @@ func (m *cursorModel) startTravel(now time.Time, origin, target Rect, scale floa
 	m.scale = scale
 	m.reduced = reduced
 	m.tip = from
-	m.path = newCursorPath(from, rectCentre(target), target, scale, reduced)
+	m.path = newCursorGlide(from, rectCentre(target), target, scale, reduced, glide)
 	m.start = now
 	m.travel = m.path.dur > 0
 	m.arrived = !m.travel
