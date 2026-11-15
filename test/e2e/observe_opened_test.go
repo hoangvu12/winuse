@@ -32,14 +32,21 @@ func TestObserveReadsTheOpenedDialog(t *testing.T) {
 	}
 	st := fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.ClassicOpen && s.ClassicWindowID != 0 })
 	dialog := strconv.FormatUint(st.ClassicWindowID, 10)
-	head := "The Window the Action opened, " + dialog + ", read whole; its Element Indexes go with window " + dialog + ":\n"
-	main := strings.Index(out, " read of window "+window) // the diff's header, or the whole State's note
-	opened := strings.Index(out, head)
-	if main < 0 || opened < main {
-		t.Fatalf("click --observe prints the main Window, then the dialog:\n%s", out)
+	// UI Automation lists the fixture's owned Classic Dialog inside the main
+	// Window's tree, so the main observation holds it and a note names its
+	// Element instead of a second, identical read. An unowned opened Window
+	// is read whole under "The Window the Action opened, <id>, read whole"
+	// (internal/helper/observe_opened_test.go).
+	main := strings.Index(out, `Window: "winuse fixture app"`)
+	note := strings.Index(out, "Note: the Window the Action opened, "+dialog+` "`+fixture.ClassicDialogTitle+`", is Element `)
+	if main < 0 || note < main {
+		t.Fatalf("click --observe prints the main Window holding the dialog, then a note naming it:\n%s", out)
 	}
-	if !strings.Contains(out[opened:], `Window: "`+fixture.ClassicDialogTitle+`"`) {
-		t.Errorf("the dialog's Window State follows its line:\n%s", out[opened:])
+	if !strings.Contains(out[main:note], "window "+fixture.ClassicDialogTitle) {
+		t.Errorf("the main Window's read holds the dialog:\n%s", out)
+	}
+	if strings.Contains(out, "read whole; its Element Indexes go with window "+dialog) {
+		t.Errorf("the dialog the main read holds is not read again:\n%s", out)
 	}
 	if fg := win.ForegroundWindow(); fg != cover {
 		t.Errorf("the foreground is %s; the cover %d must stay in front", describeWindow(t, fg), cover)

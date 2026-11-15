@@ -138,6 +138,16 @@ but does not inline them. Decision 2 now reads:
   <Window ID>:`, in both modes. A new Window has no earlier read worth
   diffing against; a menu's Window ID can be reused, so a stored State of
   it may be of another menu.
+- **A Window the read above already holds is not read again.** UI
+  Automation lists a dialog its owner owns inside the owner's tree (a
+  classic dialog, a WinForms form; the live e2e run showed the fixture's
+  Classic Dialog as Element 1 of the main Window's read). When the opened
+  Window has an owner and the Action's Window's observation holds a
+  `window` Element named as its title, a note names that Element instead
+  (`Note: the Window the Action opened, 777 "Save As", is Element 1 of the
+  read above, so it is not read again; ...`): the same lines twice would
+  only cost tokens. A Tab target's observation and an observation written
+  with `--out` are never matched.
 - **Several new Windows: none is read.** A note lists their Window IDs
   (`Note: --observe read none of the 2 Windows the Action opened (777,
   778); read the one you need with winuse get-window-state <Window ID>`):

@@ -114,6 +114,37 @@ The Window the Action opened, 777, read whole; its Element Indexes go with windo
 	}
 }
 
+// A dialog UI Automation already lists inside its owner's tree (a classic
+// dialog, a WinForms form) printed with the Action's Window: a note names
+// its Element there and it is not read again.
+func TestObserveOpenedWindowInsideTheReadIsANote(t *testing.T) {
+	trees := openedFixture(t)
+	after := *trees.trees[101]
+	after.Elements = append(append([]wstate.Element(nil), after.Elements[:1]...),
+		append([]wstate.Element{{Depth: 1, Role: "window", Name: "Save As"}, {Depth: 2, Role: "button", Name: "Save"}}, after.Elements[1:]...)...)
+	trees.trees[101] = &after
+	desk := newDesk([]win.WindowInfo{saveDialog, notepadMain, otherApp})
+	out, err := observeReported(t, trees, desk, "click", okCmd, &protocol.Observe{Mode: protocol.ObserveFull})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(out, "Note: the Window the Action opened, 777 \"Save As\", is Element 1 of the read above, so it is not read again; act on it through that read, or read it alone with winuse get-window-state 777\n") {
+		t.Errorf("got:\n%s", out)
+	}
+	if len(trees.reads) != 1 {
+		t.Errorf("reads %v, want the Action's Window alone", trees.reads)
+	}
+	// Unowned, the same title is another Window's: it is read.
+	trees = openedFixture(t)
+	trees.trees[101] = &after
+	unowned := saveDialog
+	unowned.Owner = 0
+	out, _ = observeReported(t, trees, newDesk([]win.WindowInfo{unowned, notepadMain, otherApp}), "click", okCmd, &protocol.Observe{Mode: protocol.ObserveFull})
+	if !strings.Contains(out, "The Window the Action opened, 777, read whole") {
+		t.Errorf("an unowned Window is read:\n%s", out)
+	}
+}
+
 // The opened Window prints whole even with a baseline (a reused menu
 // Window ID), and through the observation's view.
 func TestObserveOpenedWindowWholeThroughTheView(t *testing.T) {

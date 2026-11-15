@@ -59,8 +59,9 @@ type ARIAList struct {
 
 // ariaFindJS finds the widget's lists and their options (see the file
 // comment). It expects mode; it may return {state: 'gone'} or
-// {state: 'several'} early, and leaves el, lists, options, roleOf, clean
-// and nameOf for the code after it.
+// sets several (the count of unlinked lists that appeared, when more than
+// one did; lists stays empty then), and leaves el, lists, several,
+// options, roleOf, clean and nameOf for the code after it.
 const ariaFindJS = `
   const el = this.nodeType === 1 ? this : this.parentElement;
   if (!el || !el.isConnected) return {state: 'gone'};
@@ -80,7 +81,7 @@ const ariaFindJS = `
   };
   const key = Symbol.for('winuse.arialists');
   const self = roleOf(el) === 'listbox';
-  let lists = [];
+  let lists = [], several = 0;
   const add = l => { if (l && !lists.includes(l)) lists.push(l); };
   if (self) add(el);
   else {
@@ -101,8 +102,10 @@ const ariaFindJS = `
   } else if (!lists.length && !self) {
     const seen = win[key];
     const fresh = listboxes().filter(l => shown(l) && !(seen && seen.has(l)));
-    if (fresh.length > 1) return {state: 'several', lists: fresh.length};
-    if (fresh.length === 1) add(fresh[0]);
+    // Several new lists name no option, but the widget's own value is still
+    // read (ariaListJS): a list it closed leaves the page's others behind.
+    if (fresh.length > 1) several = fresh.length;
+    else if (fresh.length === 1) add(fresh[0]);
   }
   const options = [], had = new Set();
   for (const l of lists) {
@@ -155,6 +158,7 @@ const ariaListJS = `function(mode) {
   }
   const opts = options.slice(0, 500).map(o => ({name: nameOf(o), selected: selectedOf(o),
     disabled: o.getAttribute('aria-disabled') === 'true' || !!(o.matches && o.matches(':disabled'))}));
+  if (several) return {state: 'several', lists: several, options: [], expanded: el.getAttribute('aria-expanded') === 'true', value, around};
   return {state: lists.length ? 'ok' : 'none', lists: lists.length, multi: lists.some(l => l.getAttribute('aria-multiselectable') === 'true'),
     expanded: el.getAttribute('aria-expanded') === 'true', options: opts, more: Math.max(0, options.length - 500), value, around};
 }`
@@ -164,7 +168,7 @@ const ariaListJS = `function(mode) {
 const ariaOptionJS = `function(i, name) {
   /* winuse:ariaoption */
   const mode = 'after';` + ariaFindJS + `
-  const o = options[i];
+  const o = several ? null : options[i];
   return o && nameOf(o) === name ? o : null;
 }`
 

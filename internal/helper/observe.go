@@ -126,10 +126,12 @@ func (s Services) observed(name string, cmd Command) Command {
 				return out, err // a failed Action, a stopped Batch: nothing to observe
 			}
 			e := *err
-			e.Out += s.observe(ctx, args, o) + s.observeOpened(ctx, rec.get(), o)
+			main, mainTree := s.observe(ctx, args, o)
+			e.Out += main + s.observeOpened(ctx, rec.get(), o, mainTree)
 			return "", &e
 		}
-		return out + s.observe(ctx, args, o) + s.observeOpened(ctx, rec.get(), o), nil
+		main, mainTree := s.observe(ctx, args, o)
+		return out + main + s.observeOpened(ctx, rec.get(), o, mainTree), nil
 	}
 }
 
@@ -164,7 +166,7 @@ func (r *openedRecord) get() []win.WindowInfo {
 // whole Window State under a line naming it, through o's view; "" when
 // none opened. Several opened Windows are a note: which one the agent
 // wants is not winuse's guess. A read that fails is a note.
-func (s Services) observeOpened(ctx context.Context, opened []win.WindowInfo, o *protocol.Observe) string {
+func (s Services) observeOpened(ctx context.Context, opened []win.WindowInfo, o *protocol.Observe, mainTree *wstate.Tree) string {
 	switch len(opened) {
 	case 0:
 		return ""
@@ -196,6 +198,10 @@ func (s Services) observeOpened(ctx context.Context, opened []win.WindowInfo, o 
 			}
 		}
 	}
+	if at := windowInRead(mainTree, w); at > 0 {
+		return fmt.Sprintf("%sthe Window the Action opened, %s %q, is Element %d of the read above, so it is not read again; act on it through that read, or read it alone with winuse get-window-state %s\n",
+			notePrefix, id, w.Title, at, id)
+	}
 	v := observeRef(o).view(id)
 	if o.Out != "" {
 		v.MaxChars = 0
@@ -217,6 +223,28 @@ func (s Services) observeOpened(ctx context.Context, opened []win.WindowInfo, o 
 	return head + text
 }
 
+// windowInRead is the Element Index at which the read tree already holds
+// the opened Window w, or 0: UI Automation lists a dialog its main Window
+// owns inside that Window's tree (a classic dialog, a WinForms form), so
+// the main observation printed it already. It matches a "window" Element
+// below the root named as w's title, and only for a Window that has an
+// owner.
+func windowInRead(tree *wstate.Tree, w win.WindowInfo) int {
+	if tree == nil || w.Owner == 0 {
+		return 0
+	}
+	title := wstate.Collapse(w.Title)
+	if title == "" {
+		return 0
+	}
+	for i, e := range tree.Elements {
+		if i > 0 && e.Depth > 0 && e.Role == "window" && e.Name == title {
+			return i
+		}
+	}
+	return 0
+}
+
 // openedOut is the file --out <file> writes the opened Window's State to:
 // the observation's file with the Window ID before its extension
 // (observed.txt: observed-5678.txt).
@@ -226,8 +254,9 @@ func openedOut(out string, id uint64) string {
 }
 
 // observe reads the Window (or Tab target) the command named in args and
-// prints it as o asks; a read that fails is a note.
-func (s Services) observe(ctx context.Context, args json.RawMessage, o *protocol.Observe) string {
+// prints it as o asks, with the tree it read (nil for a Tab target or a
+// read that failed); a read that fails is a note.
+func (s Services) observe(ctx context.Context, args json.RawMessage, o *protocol.Observe) (string, *wstate.Tree) {
 	var a struct {
 		Window string `json:"window"`
 	}
@@ -249,7 +278,7 @@ func (s Services) observe(ctx context.Context, args json.RawMessage, o *protocol
 	} else {
 		w, werr := resolveWindow(s, a.Window)
 		if werr != nil {
-			return observeNote(a.Window, werr)
+			return observeNote(a.Window, werr), nil
 		}
 		what = "window " + strconv.FormatUint(w.ID, 10)
 		v.Ref = strconv.FormatUint(w.ID, 10) // the notes' --root commands
@@ -260,7 +289,7 @@ func (s Services) observe(ctx context.Context, args json.RawMessage, o *protocol
 		}
 	}
 	if rerr != nil {
-		return observeNote(a.Window, rerr)
+		return observeNote(a.Window, rerr), nil
 	}
 	text := wstate.RenderView(tree, v)
 	if o.Mode == protocol.ObserveDiff {
@@ -269,11 +298,14 @@ func (s Services) observe(ctx context.Context, args json.RawMessage, o *protocol
 	if o.Out != "" {
 		out, werr := writeStateOut(text, tree, o.Out, "Observed Window State")
 		if werr != nil {
-			return observeNote(a.Window, werr)
+			return observeNote(a.Window, werr), nil
 		}
-		return out
+		return out, nil // the read is in the file: the opened Window gets its own
 	}
-	return text
+	if tabTargetOf(ctx) != nil {
+		return text, nil
+	}
+	return text, tree
 }
 
 // storedState is the Agent's latest Window State of hwnd, every Element

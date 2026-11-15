@@ -26,7 +26,7 @@ func TestHugeListDoesNotEndTheRead(t *testing.T) {
 
 	for _, args := range [][]string{
 		{"get-window-state", id, "--max-chars", "0"},
-		{"get-window-state", id, "--skeleton"},
+		{"get-window-state", id, "--skeleton", "--max-chars", "0"},
 	} {
 		start := time.Now()
 		out, stderr, exit := runWinuse(t, args, env)
