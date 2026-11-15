@@ -19,7 +19,7 @@ import (
 
 const (
 	clipboardGetUsage   = "usage: winuse clipboard-get [--format text|image|files] [--out <path>]"
-	clipboardSetUsage   = "usage: winuse clipboard-set <text> | --image <png> | --file <path>..."
+	clipboardSetUsage   = "usage: winuse clipboard-set <text> | --stdin | --text-file <path> | --image <png> | --file <path>..."
 	clipboardClearUsage = "usage: winuse clipboard-clear"
 )
 
@@ -119,7 +119,8 @@ func parseClipboardGetArgs(args []string) (protocol.ClipboardGetArgs, error) {
 // parseClipboardSetArgs parses clipboard-set's one representation:
 // --image <png>, --file <path>... (each path may repeat the flag, as in
 // agent-desktop's --file-url), or else the text, its arguments joined by
-// spaces as type-text joins them.
+// spaces as type-text joins them, or read with --stdin or --text-file
+// <path> (textsource.go; --file is taken by the file list).
 func parseClipboardSetArgs(args []string) (protocol.ClipboardSetArgs, error) {
 	if len(args) == 0 {
 		return protocol.ClipboardSetArgs{}, errors.New("clipboard-set takes a text, --image <png> or --file <path>; clipboard-clear empties the clipboard")
@@ -153,6 +154,20 @@ func parseClipboardSetArgs(args []string) (protocol.ClipboardSetArgs, error) {
 			return protocol.ClipboardSetArgs{}, errors.New("--file takes file paths")
 		}
 		return protocol.ClipboardSetArgs{Files: files}, nil
+	}
+	src, n, err := takeTextSource(args, textFileFlag)
+	if err != nil {
+		return protocol.ClipboardSetArgs{}, err
+	}
+	if src.given() {
+		if extra := args[n:]; len(extra) > 0 {
+			return protocol.ClipboardSetArgs{}, errTextAndSource("clipboard-set", src, extra)
+		}
+		text, err := src.read()
+		if err != nil {
+			return protocol.ClipboardSetArgs{}, err
+		}
+		return protocol.ClipboardSetArgs{Text: &text}, nil
 	}
 	text := strings.Join(args, " ")
 	return protocol.ClipboardSetArgs{Text: &text}, nil

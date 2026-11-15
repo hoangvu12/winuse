@@ -97,6 +97,9 @@ winuse wait <window> <ref> enabled             # also disabled, gone, value <v>,
 winuse wait 500                                # a plain pause, in milliseconds (at most 300000)
 ```
 
+Put an Action and the `wait` that checks it in one Batch, one call
+instead of two: `batch 101 click name:Save then wait text Saved`.
+
 - A wait lasts 10 seconds by default (`--timeout <seconds>` up to 300);
   one that runs out fails with what it saw last, such as
   `it reads disabled`.
