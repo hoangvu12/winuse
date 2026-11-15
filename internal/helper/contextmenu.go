@@ -210,6 +210,7 @@ func (s Services) contextMenu(ctx context.Context, a protocol.SecondaryActionArg
 		return out, rerr
 	}
 	s.Menus.set(AgentOf(ctx).ID, leftMenu{menu: got.menu, owner: got.owner, reopen: retry(strconv.FormatUint(target0.ID, 10))})
+	recordOpened(ctx, []win.WindowInfo{got.menu}) // --observe reads the menu too (observe.go)
 	return contextMenuOutput(got, target0), nil
 }
 

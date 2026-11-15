@@ -72,6 +72,12 @@ Changed since this agent's last read of window 101 (~ changed, * new, - gone); E
   and `--full` for Codex's text, every ID, uncut.
   They go before the command or anywhere after it, but not inside type-text's
   text or set-value's value, where they would be text (as `--headed`).
+- When the Action opened one new Window (a menu, a dialog, a popup), it is
+  read too and printed whole after the diff, under `The Window the Action
+  opened, <Window ID>, read whole; its Element Indexes go with window
+  <Window ID>:`. Act on it with that Window ID, not the Action's. Several new
+  Windows are a `Note:` listing their IDs: read the one you need. A Batch
+  reads only a Window still open after its last step.
 - A failed Action prints no observation. A Batch observes after its last
   step, failed steps included. A read that fails is a `Note:`; the Action's
   own result stands.
