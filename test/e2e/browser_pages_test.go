@@ -119,7 +119,6 @@ func runBrowserPages(t *testing.T, sys *browser.System, b browser.Browser, srv *
 	coverOver(t, p.cover, p.main)
 
 	t.Run("page-actions", p.pageActions)
-	t.Run("aria-lists", p.ariaLists)
 	t.Run("drag-and-pointer-capture", p.dragAndCapture)
 	t.Run("dialogs", p.dialogs)
 	// The Headless tab switch goes through the frame's UI Automation tree,
@@ -130,8 +129,13 @@ func runBrowserPages(t *testing.T, sys *browser.System, b browser.Browser, srv *
 	// UI Automation call into the Window failed with E_FAIL
 	// (get-window-state's root read included) for as long as the test
 	// waited (30 s). The switch then refuses with nothing sent, naming the
-	// failed calls (uia.ErrTabStripUnanswered).
+	// failed calls (uia.ErrTabStripUnanswered). MEASURED on 2026-11-15
+	// (Chrome four runs, Edge one): page-actions then aria-lists does the
+	// same (the root read fails with 0x80004005 after the first switch),
+	// while either one alone before tabs does not; so aria-lists runs after
+	// tabs too.
 	t.Run("tabs", p.tabs)
+	t.Run("aria-lists", p.ariaLists)
 	t.Run("cross-origin-iframe", p.crossOriginIframe)
 	t.Run("upload", p.upload)
 	t.Run("download", p.download)
