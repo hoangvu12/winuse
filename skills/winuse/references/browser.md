@@ -115,6 +115,16 @@ winuse drag <window> <element> <element|@x,y>
 - `set-value` fills a text field, picks a list option by label or value,
   and turns a check box, switch or radio button `on` or `off` (turn another
   radio button on to turn one off).
+- `set-value` also picks an option of a custom combobox or listbox (Radix,
+  Headless UI, MUI, React Select) by its name, exactly or in any case, in
+  one call: name the combobox, its button or the listbox. winuse opens it
+  unless it is open, clicks the option and reads the choice back. A
+  combobox you type into gets the text first, and the option of that name
+  is then clicked; with no option of that name it keeps the text (a note
+  lists the options). An option that is not there, or several of one name,
+  fails listing the options; a list winuse opened stays open, so retry
+  with the right name. Use `type-text` to type into a search box without
+  picking a suggestion.
 - A covered, disabled, hidden or off-screen Page Element is refused with
   nothing sent, naming any covering Element, such as a cookie banner.
 - A click or key that opens a JavaScript dialog (alert, confirm, prompt,
