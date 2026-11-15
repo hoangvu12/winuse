@@ -1,12 +1,15 @@
 // Command winusetasks runs winuse's Task Suite: the fixed set of real
 // desktop tasks whose unattended, Harness-driven runs measure whether
-// winuse is as good as Codex Computer Use. Maintainer tooling, built
-// from this repository — not part of the shipped winuse binary.
+// winuse is as good as Codex Computer Use. It also runs the latency A/B,
+// which times read-only winuse calls on two builds. Maintainer tooling,
+// built from this repository — not part of the shipped winuse binary.
 //
 // A run takes over the screen (the driven agents click, type, activate
 // windows and take screenshots on the live desktop), so `run` refuses to
 // start without --i-am-the-user: the Task Suite is started only by the
-// user, from their own terminal. See tasksuite/README.md.
+// user, from their own terminal. See tasksuite/README.md. `latency`
+// refuses the same way: it replaces the running winuse helper and starts
+// the fixture app.
 package main
 
 import (
@@ -28,6 +31,12 @@ commands:
                              (takes over the screen; user-started only)
   report <results.json>      print a run's speed summary (and A/B comparison)
                              again from its results file (no desktop access)
+  latency [options]          the latency A/B: build two winuse revisions and
+                             time read-only calls on the fixture app and on
+                             Windows you name, p50 and p95 per call (replaces
+                             the running helper; user-started only)
+  latency-report <results.json>
+                             print a latency A/B's table again (no desktop access)
 
 run options:
   --harness <claude|pi>      claude (default): every task, Opus 5.5;
@@ -51,6 +60,24 @@ run options:
                              machine, starting the run yourself. Agents never
                              pass this. See tasksuite/README.md first.
 
+latency options:
+  --a <ref|tree|exe>         arm A: a git ref, a source tree or a winuse.exe
+                             (default: the merge-base of HEAD and main)
+  --b <ref|tree|exe>         arm B (default: HEAD, as committed; "." is the
+                             working tree with its changes)
+  --a-label, --b-label <name>  the arms' names (default A and B)
+  --window <id|app>          also read this Window of a real App: a Window ID,
+                             or an App name with one Window (repeatable)
+  --huge-list <n>            also open the fixture's huge-list Window, a list
+                             box of n items, and read it
+  --no-fixture               do not start the fixture app
+  --rounds <n>               rounds; each runs one block per build, ABBA (default 6)
+  --per-block <n>            timed passes over every call per block (default 5)
+  --warmup <n>               untimed passes per block first (default 1)
+  --out <dir>                where results.json and summary.txt go
+                             (default: a new temp folder)
+  --i-am-the-user            as for run: you start it yourself
+
 examples:
   winusetasks list
   winusetasks run --i-am-the-user
@@ -59,6 +86,9 @@ examples:
   winusetasks run --i-am-the-user --repeats 3
   winusetasks run --i-am-the-user --repeats 3 --b-winuse ..\winuse-wt\speed-waits --b-label waits
   winusetasks report <run directory>\results.json
+  winusetasks latency --i-am-the-user
+  winusetasks latency --i-am-the-user --huge-list 20000 --window notepad
+  winusetasks latency --i-am-the-user --a main --b .
 `
 
 func main() {
@@ -79,6 +109,10 @@ func run(args []string) int {
 		return runCmd(args[1:])
 	case "report":
 		return reportCmd(args[1:])
+	case "latency":
+		return latencyCmd(args[1:])
+	case "latency-report":
+		return latencyReportCmd(args[1:])
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 		return 0
