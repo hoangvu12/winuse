@@ -947,6 +947,12 @@ type windowRef struct {
 	MaxChars *int   `json:"max_chars,omitempty"`
 	Out      string `json:"out,omitempty"`
 	Full     bool   `json:"full,omitempty"`
+	// Visible prints only the Elements on screen: a Page's scrolled-away
+	// Elements are left out (wstate.View.Visible).
+	Visible bool `json:"visible,omitempty"`
+	// MarkOffscreen prints every Element and marks the off-screen ones
+	// (wstate.View.MarkOffscreen): winuse run's read; no CLI flag.
+	MarkOffscreen bool `json:"mark_offscreen,omitempty"`
 
 	// Diff prints what changed since the Agent's latest Window State of
 	// the Window, as --observe=diff does (reliability-council 10, ADR

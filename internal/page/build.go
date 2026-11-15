@@ -110,12 +110,13 @@ type docState struct {
 	byID       map[string]*AXNode
 	clickables map[int64]string
 	passwords  map[int64]bool
+	offscreen  map[int64]bool  // scrolled out of the viewport (Marks.Offscreen)
 	fieldNames map[string]bool // names of fields, for dropping their labels
 }
 
 func (b *builder) doc(d *Doc, owner *Owner) *docState {
 	s := &docState{d: d, owner: owner, byID: make(map[string]*AXNode, len(d.Nodes)),
-		clickables: map[int64]string{}, passwords: map[int64]bool{}, fieldNames: map[string]bool{}}
+		clickables: map[int64]string{}, passwords: map[int64]bool{}, offscreen: map[int64]bool{}, fieldNames: map[string]bool{}}
 	for i := range d.Nodes {
 		n := &d.Nodes[i]
 		s.byID[n.NodeID] = n
@@ -131,6 +132,9 @@ func (b *builder) doc(d *Doc, owner *Owner) *docState {
 		}
 		for _, p := range d.Marks.Passwords {
 			s.passwords[p] = true
+		}
+		for _, o := range d.Marks.Offscreen {
+			s.offscreen[o] = true
 		}
 	}
 	return s
@@ -279,7 +283,7 @@ func textOf(s *docState, n *AXNode) string {
 // element builds a node's line: role, name, description, states, value
 // and Secondary Actions, in the UIA vocabulary.
 func (b *builder) element(s *docState, n *AXNode, role, name string) wstate.Element {
-	e := wstate.Element{Role: role, Name: name}
+	e := wstate.Element{Role: role, Name: name, Offscreen: s.offscreen[n.BackendDOMNodeID]}
 	if desc := Collapse(n.Description.String()); desc != "" && desc != name {
 		e.Description = desc
 	}

@@ -147,6 +147,7 @@ type windowShape struct {
 	Root        string
 	Depth       int
 	Interactive bool
+	Visible     bool
 	Skeleton    bool
 	Compact     bool
 	MaxChars    *int   // nil: the helper's default cap (speed 13)
@@ -168,13 +169,15 @@ func takeShapeFlags(args []string) ([]string, windowShape, error) {
 		}
 		name, value, inline := strings.Cut(tok[2:], "=")
 		switch name {
-		case "interactive", "skeleton", "compact", "full":
+		case "interactive", "visible", "skeleton", "compact", "full":
 			if inline {
 				return nil, sh, fmt.Errorf("--%s is a flag (no value)", name)
 			}
 			switch name {
 			case "interactive":
 				sh.Interactive = true
+			case "visible":
+				sh.Visible = true
 			case "skeleton":
 				sh.Skeleton = true
 			case "compact":
@@ -227,8 +230,8 @@ func takeShapeFlags(args []string) ([]string, windowShape, error) {
 	if sh.Out != "" && sh.MaxChars != nil && *sh.MaxChars > 0 {
 		return nil, sh, errors.New("pass --out or --max-chars, not both: --out writes the whole Window State to the file")
 	}
-	if sh.Full && (sh.Compact || sh.MaxChars != nil || sh.Root == "" && (sh.Interactive || sh.Depth != 0)) {
-		return nil, sh, errors.New("--full prints the Window State as Codex does, whole and uncut: it takes no --interactive, --depth, --compact or --max-chars (with --root, --depth and --interactive still shape the read)")
+	if sh.Full && (sh.Compact || sh.Visible || sh.MaxChars != nil || sh.Root == "" && (sh.Interactive || sh.Depth != 0)) {
+		return nil, sh, errors.New("--full prints the Window State as Codex does, whole and uncut: it takes no --interactive, --visible, --depth, --compact or --max-chars (with --root, --depth and --interactive still shape the read)")
 	}
 	return rest, sh, nil
 }

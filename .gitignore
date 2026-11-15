@@ -5,5 +5,9 @@
 .scratch/cursor-look/refs/*.png
 .scratch/cursor-look/labels.png
 .scratch/cursor-look/cursor-sheet.png
+# Jev run dumps (Window States of the user's own Windows) and the copy of
+# jev-ultrafast read for the research stay local
+.scratch/jev/dump-*/
+.scratch/jev/src/
 # the orchestrator's local handoff note
 .scratch/handoff-orchestrator.md

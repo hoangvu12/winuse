@@ -127,7 +127,7 @@ func windowStateRequest(args []string, headed bool) (windowArgs, error) {
 	}
 	return windowArgs{Window: window, Screenshot: screenshot, Headed: headed,
 		Root: sh.Root, Depth: sh.Depth, Interactive: sh.Interactive, Skeleton: sh.Skeleton,
-		Compact: sh.Compact, MaxChars: sh.MaxChars, Out: sh.Out, Full: sh.Full, Diff: diff}, nil
+		Compact: sh.Compact, MaxChars: sh.MaxChars, Out: sh.Out, Full: sh.Full, Visible: sh.Visible, Diff: diff}, nil
 }
 
 // takeDiff takes get-window-state's --diff (reliability-council 10) out of

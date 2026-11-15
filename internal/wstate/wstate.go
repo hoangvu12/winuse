@@ -94,6 +94,12 @@ type Element struct {
 	// MoreChildren is the number of children a skeleton read left unread
 	// below its depth (desktop-parity 04), rendered as "(+N children)".
 	MoreChildren int `json:"moreChildren,omitempty"`
+
+	// Offscreen says the Element's box lies wholly outside the Page's
+	// viewport: scrolled away. Only a Page read through its Browser
+	// Connection sets it (the Tab's own document); it is not printed, and
+	// --visible leaves such Elements out (View.Visible).
+	Offscreen bool `json:"offscreen,omitempty"`
 }
 
 // Tree is one Window State: the header data plus the depth-first Element
