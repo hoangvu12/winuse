@@ -88,5 +88,17 @@ func TestObservableCommandsAreCommands(t *testing.T) {
 	}
 }
 
+// The help says --observe reads the Window the Action opened (learn-from
+// 01, ADR 0021 amendment), in help global and under each command.
+func TestObserveHelpNamesTheOpenedWindow(t *testing.T) {
+	if g := strings.Join(strings.Fields(globalHelp()), " "); !strings.Contains(g, "When the Action opened one new Window (a menu, a dialog), it is read too") {
+		t.Error("help global does not say --observe reads the Window the Action opened")
+	}
+	out, ok := commandUsage([]string{"click"})
+	if !ok || !strings.Contains(strings.Join(strings.Fields(out), " "), "and the one Window the Action opened whole") {
+		t.Errorf("help click:\n%s", out)
+	}
+}
+
 // charsOf is a --max-chars value as the requests carry it.
 func charsOf(n int) *int { return &n }

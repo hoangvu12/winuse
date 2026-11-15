@@ -14,6 +14,9 @@ package page
 //     differs, then reads the state back and fails when it did not change.
 //     There is no JS fallback: a page that ignores the trusted click would
 //     then be toggled behind its own back.
+//   - A custom list (role=combobox, role=listbox, a button with
+//     aria-haspopup=listbox): set-value opens it or types into it with
+//     trusted input and clicks the option it names (aria.go, learn-from 05).
 //
 // Also here: what upload needs of a file input, and the guard that keeps
 // Chrome's own context menu from opening on a right click.
@@ -38,7 +41,8 @@ type Option struct {
 // Choice is what kind of choice a node is.
 type Choice struct {
 	// Kind is "select" (a <select>), "check" (a check box or switch),
-	// "radio", or "" for anything else.
+	// "radio", "picker", "aria" (a custom list: aria.go), or "" for
+	// anything else.
 	Kind     string   `json:"kind"`
 	Checked  bool     `json:"checked"`
 	Mixed    bool     `json:"mixed"` // aria-checked="mixed" or an indeterminate box
@@ -50,6 +54,13 @@ type Choice struct {
 	// click opens a popup the browser draws on the screen (ADR 0017).
 	Type  string `json:"type"`
 	Value string `json:"value"`
+	// An "aria" list's: List for a listbox itself; Editable for a text
+	// field that filters its list as it is typed into (Field is its
+	// page.Field kind, "text" or "editable"); Expanded for aria-expanded.
+	List     bool   `json:"list"`
+	Editable bool   `json:"editable"`
+	Field    string `json:"field"`
+	Expanded bool   `json:"expanded"`
 }
 
 // pickerJS writes a date, time or colour input's value from the page's
@@ -161,6 +172,13 @@ const choiceJS = `function() {
   if (role === 'checkbox' || role === 'switch' || role === 'menuitemcheckbox' || role === 'radio' || role === 'menuitemradio') {
     const a = (el.getAttribute('aria-checked') || '').toLowerCase();
     return {kind: role.indexOf('radio') >= 0 ? 'radio' : 'check', checked: a === 'true', mixed: a === 'mixed', disabled};
+  }
+  // A custom list (learn-from 05, aria.go): a combobox, a button that pops
+  // up a listbox, or a listbox itself.
+  if (role === 'combobox' || role === 'listbox' || (el.getAttribute('aria-haspopup') || '').toLowerCase() === 'listbox') {
+    const text = el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(button|submit|reset|checkbox|radio|file|image|range|color|hidden)$/.test(t));
+    const editable = (text || el.isContentEditable) && !el.readOnly && el.getAttribute('aria-readonly') !== 'true';
+    return {kind: 'aria', disabled, list: role === 'listbox', editable, field: text ? 'text' : 'editable', expanded: el.getAttribute('aria-expanded') === 'true'};
   }
   return {kind: ''};
 }`

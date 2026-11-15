@@ -242,6 +242,11 @@ func (c *AgentCursor) Travel(origin, target Rect, label string) {
 	c.TravelAbove(0, origin, target, label)
 }
 
+// Glide is Travel timed for glide (GlideAs).
+func (c *AgentCursor) Glide(origin, target Rect, label string, glide Glide) {
+	c.GlideAs(0, origin, target, "", label, glide)
+}
+
 // TravelAbove is TravelAs with no Agent name: the default Agent's arrow,
 // with no tag.
 func (c *AgentCursor) TravelAbove(anchor uint64, origin, target Rect, label string) {
@@ -258,16 +263,22 @@ func (c *AgentCursor) TravelAbove(anchor uint64, origin, target Rect, label stri
 // travel arrived (the tip within a pixel of the target, its
 // follow-through still settling while the Action runs), or after a bound
 // of about twice the travel time: a stuck UI thread never holds the
-// Action back longer than that.
+// Action back longer than that. It is the full glide (GlideAs).
 func (c *AgentCursor) TravelAs(anchor uint64, origin, target Rect, name, label string) {
+	c.GlideAs(anchor, origin, target, name, label, GlideFull)
+}
+
+// GlideAs is TravelAs timed for glide: GlideBatch for a Batch's steps
+// after its first glide (ADR 0018, learn-from 09).
+func (c *AgentCursor) GlideAs(anchor uint64, origin, target Rect, name, label string, glide Glide) {
 	if c == nil {
 		return
 	}
-	bound := c.travelBound(origin, target)
+	bound := c.travelBound(origin, target, glide)
 	done := make(chan struct{})
 	failed := make(chan struct{})
 	if !c.enqueue(func() {
-		if err := c.do(func() { c.ui.travel(anchor, origin, target, name, done) }); err != nil {
+		if err := c.do(func() { c.ui.glide(anchor, origin, target, name, glide, done) }); err != nil {
 			close(failed)
 		}
 	}) {
@@ -287,13 +298,13 @@ func (c *AgentCursor) TravelAs(anchor uint64, origin, target Rect, name, label s
 // from the last published position, plus the trip to the UI thread. The
 // estimate uses scale 1, an upper bound for any monitor at 96 DPI or
 // more (the duration shrinks with the scale).
-func (c *AgentCursor) travelBound(origin, target Rect) time.Duration {
+func (c *AgentCursor) travelBound(origin, target Rect, glide Glide) time.Duration {
 	visible, tip := c.snap.load()
 	from := rectCentre(origin)
 	if visible {
 		from = tip
 	}
-	return 2*cursorTravelDuration(from, rectCentre(target), targetSide(target), 1, false) + cursorTravelSlack
+	return 2*cursorGlideDuration(from, rectCentre(target), targetSide(target), 1, false, glide) + cursorTravelSlack
 }
 
 // Click is ClickAbove with no anchor.
@@ -397,8 +408,13 @@ type cursorUI struct {
 }
 
 // travel starts a Travel (see AgentCursor.TravelAs); done is closed
-// when it completes, is superseded, or cannot run.
+// when it completes, is superseded, or cannot run. It is the full glide.
 func (u *cursorUI) travel(anchor uint64, origin, target Rect, name string, done chan struct{}) {
+	u.glide(anchor, origin, target, name, GlideFull, done)
+}
+
+// glide is travel timed for glide (see AgentCursor.GlideAs).
+func (u *cursorUI) glide(anchor uint64, origin, target Rect, name string, glide Glide, done chan struct{}) {
 	if u.closed {
 		close(done)
 		return
@@ -412,7 +428,7 @@ func (u *cursorUI) travel(anchor uint64, origin, target Rect, name string, done 
 	u.look = u.lookFor(to, name, work, scale)
 	u.finishTravel() // a travel still in flight is superseded
 	u.done = done
-	u.model.startTravel(now, origin, target, scale, u.view.reducedMotion())
+	u.model.startGlide(now, origin, target, scale, u.view.reducedMotion(), glide)
 	u.view.raise(anchor)
 	u.render(now)
 }

@@ -52,8 +52,10 @@ type NodeData struct {
 }
 
 // ErrChunkTimedOut reports that a cache chunk exceeded the UIA transaction
-// timeout: the provider did not answer in time. The walk stops and returns
-// the partial tree with the time-limit note.
+// timeout: the provider did not answer in time. A node's children that time
+// out as one chunk are read one at a time (ChildStepper) and the walk goes
+// on with the node's siblings; a provider that does not answer a single
+// step either stops the walk with the time-limit note.
 var ErrChunkTimedOut = errors.New("ui automation chunk timed out")
 
 // TreeSource supplies the elements of one Window's control-view tree, one
@@ -72,6 +74,35 @@ type TreeSource[T any] interface {
 	Root() (T, NodeData, error)
 	Children(node T, remaining time.Duration) ([]T, []NodeData, error)
 }
+
+// ChildStepper is a TreeSource that can also read a node's children one at
+// a time (a tree walker's first child, then next sibling, each with its
+// properties cached). UI Automation cannot cap how many children one cached
+// read returns, so a huge child list (tens of thousands of list items) can
+// time out as one chunk; the walk then steps through the first MaxChildren
+// of them instead (learn-from 08).
+//
+// FirstChild and NextSibling answer ok false when there is no such child.
+// ItemsAfter says how many items of its set follow child, when its provider
+// says (UIA SizeOfSet minus PositionInSet), for the note on a cut list.
+type ChildStepper[T any] interface {
+	FirstChild(node T, remaining time.Duration) (child T, data NodeData, ok bool, err error)
+	NextSibling(prev T, remaining time.Duration) (sibling T, data NodeData, ok bool, err error)
+	ItemsAfter(child T) (n int, ok bool)
+}
+
+// ChildCounter is a TreeSource that can count a node's children without
+// reading their properties or keeping them (a cache request with no
+// properties and no live Elements). The skeleton counts with it; a source
+// without it is counted by reading the children and releasing them.
+type ChildCounter[T any] interface {
+	CountChildren(node T, remaining time.Duration) (int, error)
+}
+
+// countBudget bounds one skeleton count: a count is a hint, so one huge
+// list must not spend the read's budget on it. A count that does not come
+// back in time prints no number and is named in a note.
+const countBudget = 250 * time.Millisecond
 
 // WalkConfig bounds one tree read. The caps keep output and time bounded on
 // runaway trees; the budget is the walk's soft time limit (checked before
@@ -153,12 +184,41 @@ type WalkResult[T any] struct {
 	// Cut is the Element Index of the Document Element whose descendants
 	// were left out (WalkConfig.Cut), or -1.
 	Cut int
+	// Slow lists the Elements whose children did not come back as one
+	// chunk in time and were cut (the partial-tree note names them).
+	Slow []SlowChildren
+	// Uncounted lists the skeleton's Elements whose children were not
+	// counted in time (a note names them).
+	Uncounted []int
 	// Partial says the walk did not see the whole Window (reliability
 	// council 03): a partial-tree note (time, node cap, depth cap,
-	// unreadable children), a truncation marker (the children cap), or a
-	// skeleton node whose children were counted, or could not be. A cut
-	// Document is not a loss: its content is read elsewhere.
+	// unreadable children, a cut slow list), a truncation marker (the
+	// children cap), or a skeleton node whose children were counted, or
+	// could not be. A cut Document is not a loss: its content is read
+	// elsewhere.
 	Partial bool
+
+	// notes rebuilds Notes with Elements named by label: a find or a
+	// region read names them by the indexes it added, not by walk position.
+	notes func(label func(int) string) []string
+}
+
+// SlowChildren is one Element whose children were too slow to read as one
+// chunk: the walk read Read of them one at a time and cut the rest. More is
+// how many items its provider says follow the last one read, or -1.
+type SlowChildren struct {
+	Index int
+	Read  int
+	More  int
+}
+
+// NotesWith returns the walk's notes with the Elements they name labelled
+// by label (from the walk position) instead of "Element <position>".
+func (r WalkResult[T]) NotesWith(label func(int) string) []string {
+	if r.notes == nil {
+		return r.Notes
+	}
+	return r.notes(label)
 }
 
 // walk reasons, in the order the partial-tree note lists them.
@@ -200,18 +260,33 @@ func Walk[T any](src TreeSource[T], cfg WalkConfig) (WalkResult[T], error) {
 		return res, err
 	}
 	w.visit(root, data, 0)
-	reason, ok := w.reasonNote()
-	res.Partial = ok || w.truncated || w.hidden
-	if ok {
-		res.Notes = append(res.Notes, reason)
-	} else if !w.truncated && res.Cut < 0 && len(res.Elements) <= nearEmptyNodes {
-		// Only an uncut tree this small is "nearly empty": a tree cut by a
-		// budget is partial, not sparse (its note already says so), and a
-		// cut Document's content is read elsewhere.
-		res.Notes = append(res.Notes, nearEmptyNote)
+	res.Slow, res.Uncounted = w.slow, w.uncounted
+	_, reasoned := w.reasonNote(elementLabel)
+	res.Partial = reasoned || w.truncated || w.hidden
+	w.res = nil // the closure below keeps the walker, not the result
+	elements, cut := len(res.Elements), res.Cut
+	res.notes = func(label func(int) string) []string {
+		var notes []string
+		if reason, ok := w.reasonNote(label); ok {
+			notes = append(notes, reason)
+		} else if !w.truncated && cut < 0 && elements <= nearEmptyNodes {
+			// Only an uncut tree this small is "nearly empty": a tree cut by a
+			// budget is partial, not sparse (its note already says so), and a
+			// cut Document's content is read elsewhere.
+			notes = append(notes, nearEmptyNote)
+		}
+		if note, ok := w.uncountedNote(label); ok {
+			notes = append(notes, note)
+		}
+		return notes
 	}
+	res.Notes = res.notes(elementLabel)
 	return res, nil
 }
+
+// elementLabel names an Element by its walk position, which is its Element
+// Index in a full read.
+func elementLabel(i int) string { return "Element " + strconv.Itoa(i) }
 
 // walker carries one walk's state. A stopped walk (time or node cap) cuts
 // remaining siblings at every level, recording them as Dropped, so their
@@ -223,9 +298,11 @@ type walker[T any] struct {
 	deadline  time.Time
 	res       *WalkResult[T]
 	stopped   bool
-	truncated bool // any element carries a truncation marker
+	truncated bool // any element carries a truncation marker, or a slow list was cut
 	hidden    bool // a skeleton node has children left unread, or uncounted
 	reasons   [reasonCount]bool
+	slow      []SlowChildren // the cut slow lists (WalkResult.Slow)
+	uncounted []int          // the skeleton counts that ran out of time
 
 	// The pending Document cut (WalkConfig.Cut).
 	cutDone  bool      // answered: a Document was cut, or none will be
@@ -247,6 +324,8 @@ type docMark struct {
 	reasons   [reasonCount]bool
 	truncated bool
 	hidden    bool
+	slow      int // len(walker.slow) when it was reached
+	uncounted int // len(walker.uncounted) when it was reached
 }
 
 func (w *walker[T]) visit(node T, data NodeData, depth int) {
@@ -261,7 +340,8 @@ func (w *walker[T]) visit(node T, data NodeData, depth int) {
 		if data.HasValue {
 			value = data.ValueValue
 		}
-		w.docs = append(w.docs, docMark{index: index, name: data.Name, value: value, open: true, reasons: w.reasons, truncated: w.truncated, hidden: w.hidden})
+		w.docs = append(w.docs, docMark{index: index, name: data.Name, value: value, open: true, reasons: w.reasons, truncated: w.truncated, hidden: w.hidden,
+			slow: len(w.slow), uncounted: len(w.uncounted)})
 		w.openDocs++
 		w.expand(node, depth, index)
 		w.openDocs--
@@ -309,9 +389,16 @@ func (w *walker[T]) expand(node T, depth, index int) {
 	kids, kidData, err := w.src.Children(node, remaining)
 	if err != nil {
 		if errors.Is(err, ErrChunkTimedOut) {
-			w.reasons[reasonTime] = true
-			w.stopped = true
 			w.drop(kids)
+			if w.deadline.Sub(w.now()) <= 0 {
+				// The chunk ran into the walk's own budget.
+				w.reasons[reasonTime] = true
+				w.stopped = true
+			} else {
+				// Too slow as one chunk (a huge list): one at a time instead,
+				// and the walk goes on with this node's siblings.
+				w.slowChildren(node, depth, index)
+			}
 			return
 		}
 		// The children that did read stay; the note names the rest.
@@ -355,9 +442,95 @@ func (w *walker[T]) expand(node T, depth, index int) {
 	w.drop(kids[limit:])
 }
 
+// slowChildren reads the children of a node whose one-chunk read timed
+// out, one at a time, when the source can (ChildStepper). Without a
+// stepper the node's children are left out. Either way the cut is noted
+// and the walk goes on with the node's siblings.
+func (w *walker[T]) slowChildren(node T, depth, index int) {
+	st, ok := w.src.(ChildStepper[T])
+	if !ok {
+		w.markSlow(index, 0, -1)
+		return
+	}
+	var prev T
+	read := 0
+	for {
+		remaining := w.deadline.Sub(w.now())
+		if remaining <= 0 {
+			w.reasons[reasonTime] = true
+			w.stopped = true
+			return
+		}
+		var kid T
+		var data NodeData
+		var more bool
+		var err error
+		if read == 0 {
+			kid, data, more, err = st.FirstChild(node, remaining)
+		} else {
+			kid, data, more, err = st.NextSibling(prev, remaining)
+		}
+		if err != nil {
+			switch {
+			case read == 0 && errors.Is(err, ErrChunkTimedOut):
+				// Not one step answered: the provider is not answering at
+				// all, not just slow on a long list. Stop, as a timed-out
+				// chunk always did.
+				w.reasons[reasonTime] = true
+				w.stopped = true
+			case w.deadline.Sub(w.now()) <= 0:
+				w.reasons[reasonTime] = true
+				w.stopped = true
+			default:
+				w.markSlow(index, read, -1)
+			}
+			return
+		}
+		if !more {
+			return // every child was read
+		}
+		if read >= w.cfg.MaxChildren {
+			// kid proves there are more; how many, only the provider knows.
+			w.drop([]T{kid})
+			after := -1
+			if n, ok := st.ItemsAfter(prev); ok && n > 0 {
+				after = n
+			}
+			w.markSlow(index, read, after)
+			return
+		}
+		if len(w.res.Live) >= w.cfg.MaxNodes {
+			w.reasons[reasonNodes] = true
+			w.stopped = true
+			w.drop([]T{kid})
+			return
+		}
+		w.visit(kid, data, depth+1)
+		if w.unwind >= 0 {
+			// A late Document cut, as in expand.
+			if w.unwind == index {
+				w.cutAt(index)
+			}
+			return
+		}
+		prev = kid
+		read++
+		if w.stopped {
+			return
+		}
+	}
+}
+
+// markSlow records a node whose children were cut after read of them were
+// read one at a time; more is how many items follow, or -1.
+func (w *walker[T]) markSlow(index, read, more int) {
+	w.truncated = true
+	w.slow = append(w.slow, SlowChildren{Index: index, Read: read, More: more})
+}
+
 // countHidden reads how many children a node below the skeleton's depth
-// has, and releases them unread. A read that fails or runs out of time
-// leaves no count.
+// has, within countBudget. A count that fails leaves no number; one that
+// runs out of time is named in a note, and the walk goes on.
 func (w *walker[T]) countHidden(node T, index int) {
 	remaining := w.deadline.Sub(w.now())
 	if remaining <= 0 {
@@ -365,20 +538,35 @@ func (w *walker[T]) countHidden(node T, index int) {
 		w.stopped = true
 		return
 	}
-	kids, _, err := w.src.Children(node, remaining)
-	w.drop(kids)
+	n, err := w.count(node, min(remaining, countBudget))
 	if err != nil {
 		w.hidden = true
 		if errors.Is(err, ErrChunkTimedOut) {
-			w.reasons[reasonTime] = true
-			w.stopped = true
+			if w.deadline.Sub(w.now()) <= 0 {
+				w.reasons[reasonTime] = true
+				w.stopped = true
+				return
+			}
+			w.uncounted = append(w.uncounted, index)
 		}
 		return
 	}
-	w.res.Elements[index].MoreChildren = len(kids)
-	if len(kids) > 0 {
+	w.res.Elements[index].MoreChildren = n
+	if n > 0 {
 		w.hidden = true
 	}
+}
+
+// count counts node's children: through the source's own count when it has
+// one (no properties, nothing kept), else by reading them and releasing
+// them unread.
+func (w *walker[T]) count(node T, bound time.Duration) (int, error) {
+	if c, ok := w.src.(ChildCounter[T]); ok {
+		return c.CountChildren(node, bound)
+	}
+	kids, _, err := w.src.Children(node, bound)
+	w.drop(kids)
+	return len(kids), err
 }
 
 // cutPending reports whether the walk still has a Document cut to place.
@@ -421,6 +609,7 @@ func (w *walker[T]) cutAt(index int) {
 	w.res.Elements = w.res.Elements[:index+1]
 	w.res.Elements[index].Truncated = nil
 	w.reasons, w.truncated, w.hidden = w.mark.reasons, w.mark.truncated, w.mark.hidden
+	w.slow, w.uncounted = w.slow[:w.mark.slow], w.uncounted[:w.mark.uncounted]
 	if w.res.FocusedIndex > index {
 		w.res.FocusedIndex = index
 	}
@@ -448,8 +637,9 @@ func (w *walker[T]) markTruncated(index, limit, omitted int) {
 }
 
 // reasonNote builds the partial-tree note from the walk's reasons, in a
-// fixed order so the text is stable.
-func (w *walker[T]) reasonNote() (string, bool) {
+// fixed order so the text is stable, with the slow lists last, each named
+// by label.
+func (w *walker[T]) reasonNote(label func(int) string) (string, bool) {
 	var parts []string
 	if w.reasons[reasonTime] {
 		parts = append(parts, fmt.Sprintf("the tree read exceeded the %s time limit", w.cfg.Budget))
@@ -463,10 +653,39 @@ func (w *walker[T]) reasonNote() (string, bool) {
 	if w.reasons[reasonUnreadable] {
 		parts = append(parts, "not every Element's children could be read")
 	}
+	for _, s := range w.slow {
+		parts = append(parts, slowReason(s, label(s.Index)))
+	}
 	if len(parts) == 0 {
 		return "", false
 	}
 	return partialNotePrefix + " " + strings.Join(parts, "; "), true
+}
+
+// slowReason says what happened to one slow list's children.
+func slowReason(s SlowChildren, who string) string {
+	if s.Read == 0 {
+		return "the children of " + who + " did not answer in time and were not read"
+	}
+	rest := "the rest were not read"
+	if s.More > 0 {
+		rest = fmt.Sprintf("%d more items were not read", s.More)
+	}
+	return fmt.Sprintf("the children of %s were too slow to read at once, so the first %d were read one at a time and %s", who, s.Read, rest)
+}
+
+// uncountedNote names the skeleton's Elements whose children were not
+// counted in time. It is not a partial-tree note: the skeleton's shape is
+// chosen, only a hint is missing.
+func (w *walker[T]) uncountedNote(label func(int) string) (string, bool) {
+	if len(w.uncounted) == 0 {
+		return "", false
+	}
+	names := make([]string, len(w.uncounted))
+	for i, idx := range w.uncounted {
+		names[i] = label(idx)
+	}
+	return "the children of " + strings.Join(names, ", ") + " were not counted in time", true
 }
 
 // elementFrom builds the renderable Element from one node's cached data.

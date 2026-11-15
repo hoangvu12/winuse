@@ -129,8 +129,13 @@ func runBrowserPages(t *testing.T, sys *browser.System, b browser.Browser, srv *
 	// UI Automation call into the Window failed with E_FAIL
 	// (get-window-state's root read included) for as long as the test
 	// waited (30 s). The switch then refuses with nothing sent, naming the
-	// failed calls (uia.ErrTabStripUnanswered).
+	// failed calls (uia.ErrTabStripUnanswered). MEASURED on 2026-11-15
+	// (Chrome four runs, Edge one): page-actions then aria-lists does the
+	// same (the root read fails with 0x80004005 after the first switch),
+	// while either one alone before tabs does not; so aria-lists runs after
+	// tabs too.
 	t.Run("tabs", p.tabs)
+	t.Run("aria-lists", p.ariaLists)
 	t.Run("cross-origin-iframe", p.crossOriginIframe)
 	t.Run("upload", p.upload)
 	t.Run("download", p.download)
@@ -310,6 +315,50 @@ func (p *pageRun) pageActions(t *testing.T) {
 
 	p.actOK(t, "hover", p.window, hover)
 	p.expectEval(t, "String(document.getElementById('hover').dataset.hovered)", "yes")
+}
+
+// ariaLists: set-value on custom ARIA lists (learn-from 05,
+// testdata/page-aria.html): a Radix-like select opened by its trigger, a
+// Headless UI-like listbox button whose list is linked to nothing, a
+// typeahead combobox, a multi-select listbox, an option that is not there
+// (the list stays open, and the retry needs no second click), a disabled
+// option and two options of one name.
+func (p *pageRun) ariaLists(t *testing.T) {
+	st := p.open(t, p.srv.a.URL+"/page-aria.html", "")
+	radix := pageIndex(t, st, "", "e2e radix fruit")
+	headless := pageIndex(t, st, "", "e2e headless colour")
+	city := pageIndex(t, st, "", "e2e typeahead city")
+	sizes := pageIndex(t, st, "", "e2e sizes")
+	dups := pageIndex(t, st, "", "e2e dups")
+
+	p.actOK(t, "set-value", p.window, radix, "banana")
+	p.expectEval(t, "String(window.e2eAria.radix)", "banana")
+	p.expectEval(t, "document.getElementById('radix-trigger').getAttribute('aria-expanded')", "false")
+
+	out, _ := p.failing(t, "set-value", p.window, radix, "Kiwi")
+	expectContains(t, "set-value Kiwi", out, `the list has no option "Kiwi"; its options are "Apple", "Banana", "Cherry", "Durian"`)
+	expectContains(t, "set-value Kiwi", out, "still open")
+	out, _ = p.failing(t, "set-value", p.window, radix, "Durian")
+	expectContains(t, "set-value Durian", out, `its option "Durian" is disabled; nothing was sent`)
+	p.actOK(t, "set-value", p.window, radix, "Cherry") // open already: no click on the trigger
+	p.expectEval(t, "String(window.e2eAria.radix)", "cherry")
+	p.expectEval(t, "document.getElementById('radix-native').value", "cherry")
+
+	p.actOK(t, "set-value", p.window, headless, "Blue")
+	p.expectEval(t, "String(window.e2eAria.headless)", "Blue")
+
+	p.actOK(t, "set-value", p.window, city, "hamburg")
+	p.expectEval(t, "document.getElementById('ta-input').value", "Hamburg")
+	p.actOK(t, "set-value", p.window, city, "Paris") // no list: free text
+	p.expectEval(t, "document.getElementById('ta-input').value", "Paris")
+
+	p.actOK(t, "set-value", p.window, sizes, "Large")
+	p.actOK(t, "set-value", p.window, sizes, "Medium") // selected already: left alone
+	p.expectEval(t, "String(window.e2eAria.sizes)", "Medium,Large")
+
+	out, _ = p.failing(t, "set-value", p.window, dups, "pear")
+	expectContains(t, "set-value pear", out, `several options match "pear"`)
+	expectContains(t, "set-value pear", out, "nothing was sent")
 }
 
 // dragAndCapture: an HTML5 drag and drop between two Elements, and a

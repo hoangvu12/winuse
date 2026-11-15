@@ -160,7 +160,7 @@ it and winuse's code refuses it (see cross-cutting).
 | Parameter | Codex | winuse `type-text` | Status |
 |---|---|---|---|
 | `window` | the Window with the focused Element | `<window>`; text into a focused classic edit box, `--into` a named field, Page typing, typing into a Chromium or Electron Window without a Browser Connection (window messages, read back where the field has a value, ticket 20) and `--post` need no foreground; anything else types Headed only with `--headed`, and is refused with nothing sent without it (ticket 21) | intentionally different |
-| `text` | one string, typed into the current focus as Unicode | every argument after the Window joins into the text (CLI sugar); injected as Unicode key events, one UTF-16 unit per event, newline/tab as real Return/Tab keys | matched |
+| `text` | one string, typed into the current focus as Unicode | every argument after the Window joins into the text (CLI sugar), or `--stdin`/`--file <path>` reads it (UTF-8, one trailing newline dropped, learn-from 06); injected as Unicode key events, one UTF-16 unit per event, newline/tab as real Return/Tab keys | matched |
 
 ### scroll
 
@@ -177,7 +177,7 @@ it and winuse's code refuses it (see cross-cutting).
 |---|---|---|---|
 | `window` | the Window holding the Element | `<window>` | matched |
 | `element_index` | the Element to write | the Element Index, a `name:`/`id:` reference, or `@x,y` (the target Window's own Element under the point of the latest screenshot, ticket 11) | matched (extended) |
-| `value` | the string to set | the value; numeric Elements (RangeValue) take it parsed as a number; a combo box or list with no writable value takes an item's name | matched |
+| `value` | the string to set | the value (or `--stdin`/`--file <path>`, learn-from 06); numeric Elements (RangeValue) take it parsed as a number; a combo box or list with no writable value takes an item's name | matched |
 | (delivery) | activates the Window, focuses the Element, then writes | by Element Index or reference **Headless**: no activation and no focus (UIA SetFocus moves the desktop foreground), a text write read back live; `--headed` keeps Codex's activate-and-focus order; `@x,y` is Headless on the Element under the point (ticket 11) | intentionally different |
 
 Non-settable Elements fail with Codex's `Cannot set a value for an
@@ -274,10 +274,12 @@ left open says so in a `Note:` (multi-agent 08). **intentionally different**.
 An Action or Batch sent with `--observe` echoes the Window State after it:
 whole (`--observe=full`) or the Element Indexes whose line changed since
 the Agent's last read (`--observe`, diff), with the whole State past 60%
-changed (speed observe, ADR 0021). It is opt-in: without it the output is
-the `ok` above. `get-window-state <window> --diff` prints the same diff on a
-plain read, after a `wait` or the user's input (reliability-council 10);
-cua's `get_window_state` takes `since: <snapshot_id>` for that. **extension**.
+changed (speed observe, ADR 0021), then the one Window the Action opened,
+whole, unless the read above holds it (learn-from 01). It is opt-in:
+without it the output is the `ok` above. `get-window-state <window> --diff`
+prints the same diff on a plain read, after a `wait` or the user's input
+(reliability-council 10); cua's `get_window_state` takes
+`since: <snapshot_id>` for that. **extension**.
 
 ### timeouts
 
@@ -370,7 +372,9 @@ Codex's background event monitoring and bulk reads freeze apps
 system-wide (issues #36833, #43692); winuse does no event monitoring
 ever, scopes cache requests to the target Window one node chunk at a
 time, and caps the walk (3000 elements, depth 48, 1000 children, a time
-budget) returning the partial tree with a note. **intentionally different** (fix).
+budget) returning the partial tree with a note. A child list too slow to
+read as one chunk is read one child at a time up to the cap, and the walk
+goes on past it (ADR 0004). **intentionally different** (fix).
 
 ### screenshots
 
@@ -400,13 +404,17 @@ Codex's budgets are unknown. Two defaults print less than Codex's text
 output stops before 28000 characters with a `Note:` naming the first
 Element not printed (Codex prints the whole tree, which a Harness's
 ~30k-character cap on a command's output then cuts in the middle).
+A third prints more (learn-from 04, ADR 0004): an unnamed control, or
+one whose role and name another shares, ends its line with
+` Hint: <icon, image, test id or field name>, in <its row's text>`
+where that tells it apart; Codex has no such field.
 `get-window-state --full` (and `find --full`) prints Codex's text byte
-for byte, save one more state word: an Element whose IsPassword reads
-true (or, on an Edit, does not read) has its `Value:` withheld and
-`password` last in its states (reliability-council 07); Codex prints the
-Value. **matched (grammar; byte for byte under `--full`) /
+for byte, with no hint, save one more state word: an Element whose
+IsPassword reads true (or, on an Edit, does not read) has its `Value:`
+withheld and `password` last in its states (reliability-council 07);
+Codex prints the Value. **matched (grammar; byte for byte under `--full`) /
 intentionally different (roles, bounds, shared IDs, the default cap,
-the `password` state)**.
+hints, the `password` state)**.
 
 ### secondary actions
 

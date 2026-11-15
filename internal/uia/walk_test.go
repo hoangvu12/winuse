@@ -272,7 +272,10 @@ func TestWalkTimeBudgetReturnsPartialWithNote(t *testing.T) {
 	}
 }
 
-func TestWalkChunkTimeoutStopsWalk(t *testing.T) {
+// TestWalkChunkTimeoutCutsOnlyThatNode: a source that cannot step through
+// children (no ChildStepper) leaves out the timed-out node's children and
+// goes on with its siblings (learn-from 08; it used to stop the walk).
+func TestWalkChunkTimeoutCutsOnlyThatNode(t *testing.T) {
 	tree := sampleTree()
 	src := newFakeSource(tree)
 	src.childrenErr = func(n *fakeNode) error {
@@ -285,19 +288,43 @@ func TestWalkChunkTimeoutStopsWalk(t *testing.T) {
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
-	// The root and the menu bar (whose chunk timed out) render; the walk
-	// stops there.
-	if len(res.Elements) > 2 {
-		t.Fatalf("walk must stop at the timed-out chunk, got %d elements", len(res.Elements))
+	if got := walkNames(res); got != "Sample|Menu Bar|Name|OK" {
+		t.Fatalf("elements = %q, want the menu bar's siblings read", got)
 	}
-	found := false
-	for _, n := range res.Notes {
-		if strings.Contains(n, "time limit") {
-			found = true
+	want := partialNotePrefix + " the children of Element 1 did not answer in time and were not read"
+	if len(res.Notes) != 1 || res.Notes[0] != want {
+		t.Errorf("Notes = %q, want %q", res.Notes, want)
+	}
+	if len(res.Slow) != 1 || res.Slow[0] != (SlowChildren{Index: 1, Read: 0, More: -1}) {
+		t.Errorf("Slow = %+v", res.Slow)
+	}
+}
+
+// TestWalkChunkTimeoutPastTheBudgetStops: a chunk that times out because
+// the walk's own budget ran out still stops the walk with the time note.
+func TestWalkChunkTimeoutPastTheBudgetStops(t *testing.T) {
+	tree := sampleTree()
+	src := newFakeSource(tree)
+	src.onChildren = func(n *fakeNode) {
+		if n == tree.kids[0] {
+			src.elapsed += 10 * time.Second // the chunk ate the budget
 		}
 	}
-	if !found {
-		t.Errorf("Notes = %v, want the time-limit note", res.Notes)
+	src.childrenErr = func(n *fakeNode) error {
+		if n == tree.kids[0] {
+			return ErrChunkTimedOut
+		}
+		return nil
+	}
+	res, err := Walk[*fakeNode](src, WalkConfig{Budget: 8 * time.Second, Now: src.now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := walkNames(res); got != "Sample|Menu Bar" {
+		t.Errorf("elements = %q, want the walk stopped at the menu bar", got)
+	}
+	if len(res.Notes) != 1 || !strings.Contains(res.Notes[0], "exceeded the 8s time limit") || len(res.Slow) != 0 {
+		t.Errorf("Notes = %q, Slow = %+v", res.Notes, res.Slow)
 	}
 }
 
@@ -429,7 +456,7 @@ func lateCut(title string, known *bool) DocumentCut {
 	return func(name, _ string) (bool, bool) { return *known && name == title, *known }
 }
 
-func walkNames(res WalkResult[*fakeNode]) string {
+func walkNames[T any](res WalkResult[T]) string {
 	var out []string
 	for _, e := range res.Elements {
 		out = append(out, e.Name)

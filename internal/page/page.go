@@ -28,9 +28,11 @@
 package page
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/hoangvu12/winuse/internal/cdp"
 )
@@ -78,6 +80,9 @@ type Frame struct {
 type Marks struct {
 	Clickables []Clickable `json:"clickables,omitempty"`
 	Passwords  []int64     `json:"passwords,omitempty"` // backendNodeIds of password inputs
+	// Hints are the unnamed or duplicate controls' hints (hints.go), from
+	// the snapshot only: the clickables.js pass has none.
+	Hints []NodeHint `json:"hints,omitempty"`
 	// Offscreen are the backendNodeIds of the nodes whose box lies wholly
 	// outside the viewport (offscreenOf): the Tab's own document only, from
 	// the snapshot.
@@ -117,6 +122,11 @@ type AXValue struct {
 func (v *AXValue) String() string {
 	if v == nil || len(v.Value) == 0 {
 		return ""
+	}
+	// A plain string, the common case, without a decoder (the hint pass
+	// reads every node's role).
+	if raw := v.Value; len(raw) >= 2 && raw[0] == '"' && raw[len(raw)-1] == '"' && !bytes.ContainsAny(raw[1:len(raw)-1], "\\\"") && utf8.Valid(raw) {
+		return string(raw[1 : len(raw)-1])
 	}
 	var s string
 	if json.Unmarshal(v.Value, &s) == nil {

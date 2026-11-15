@@ -11,6 +11,9 @@ package page
 //     the node's own frame and in every frame above it). A failed check
 //     is a *NotActionableError naming the reason, and the blocker when
 //     something covers the node. Nothing is sent to the Page's input.
+//     After the scroll it waits for the node's box to stop moving, and a
+//     node still outside the viewport or covered is scrolled to the
+//     viewport's centre once and checked again (learn-from 02).
 //   - Input sends trusted input (Input.dispatchMouseEvent,
 //     Input.dispatchKeyEvent, Input.insertText) into the Tab's own
 //     session, and races every event against Page.javascriptDialogOpening:
@@ -216,22 +219,111 @@ func (o Origin) Aim(ctx context.Context, opt AimOptions) (Aim, error) {
 }
 
 func aim(ctx context.Context, c Caller, o Origin, opt AimOptions) (Aim, error) {
-	if opt.Scroll {
-		if _, err := c.CallSession(ctx, o.SessionID, "DOM.scrollIntoViewIfNeeded", map[string]any{"backendNodeId": o.BackendNodeID}); err != nil {
-			if err := staleOr(err); errors.Is(err, ErrStale) {
-				return Aim{}, err
-			}
-			// A node with no layout object cannot be scrolled to: it is
-			// hidden (display: none, or detached from the rendering).
-			var ce *cdp.Error
-			if errors.As(err, &ce) && opt.Visible {
-				return Aim{}, &NotActionableError{Why: WhyHidden}
-			}
-			if !errors.As(err, &ce) {
-				return Aim{}, err
-			}
+	if !opt.Scroll {
+		return aimNow(ctx, c, o, opt)
+	}
+	if _, err := c.CallSession(ctx, o.SessionID, "DOM.scrollIntoViewIfNeeded", map[string]any{"backendNodeId": o.BackendNodeID}); err != nil {
+		if err := staleOr(err); errors.Is(err, ErrStale) {
+			return Aim{}, err
+		}
+		// A node with no layout object cannot be scrolled to: it is
+		// hidden (display: none, or detached from the rendering).
+		var ce *cdp.Error
+		if errors.As(err, &ce) && opt.Visible {
+			return Aim{}, &NotActionableError{Why: WhyHidden}
+		}
+		if !errors.As(err, &ce) {
+			return Aim{}, err
 		}
 	}
+	// The click point (learn-from 02): the box may still move after the
+	// scroll (smooth scrolling, a sticky header sliding in, content loading
+	// above it), so wait for it to stop before measuring; and a node still
+	// outside the viewport or covered at its centre (straddling an edge,
+	// under a sticky bar) is scrolled to the viewport's centre once and
+	// measured again before the refusal.
+	settle(ctx, c, o)
+	a, err := aimNow(ctx, c, o, opt)
+	var na *NotActionableError
+	if errors.As(err, &na) && (na.Why == WhyOutside || na.Why == WhyCovered) && recentre(ctx, c, o) {
+		settle(ctx, c, o)
+		a, err = aimNow(ctx, c, o, opt)
+	}
+	return a, err
+}
+
+// settleJS waits, in the node's frame, for its box to stop moving: it
+// compares the box before and after two animation frames (or 100 ms, which
+// ends the round when frames do not come), up to rounds times. A hidden
+// document runs no frames and nothing moves on the screen, so it answers at
+// once.
+const settleJS = `function(rounds) {
+  /* winuse:settle */
+  const el = this.nodeType === 1 ? this : this.parentElement;
+  if (!el || !el.isConnected || document.visibilityState === 'hidden') return 0;
+  const box = () => { const r = el.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(v => Math.round(v * 2) / 2).join(','); };
+  const frames = () => new Promise(done => {
+    let over = false;
+    const end = () => { if (!over) { over = true; done(); } };
+    requestAnimationFrame(() => requestAnimationFrame(end));
+    setTimeout(end, 100);
+  });
+  return (async () => {
+    let last = box();
+    for (let i = 1; i <= rounds; i++) {
+      await frames();
+      const now = box();
+      if (now === last) return i;
+      last = now;
+    }
+    return -1;
+  })();
+}`
+
+// recentreJS scrolls the node to the centre of its scrolling boxes, at
+// once (no smooth scrolling).
+const recentreJS = `function() {
+  /* winuse:recentre */
+  const el = this.nodeType === 1 ? this : this.parentElement;
+  if (!el || !el.isConnected) return false;
+  el.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
+  return true;
+}`
+
+const (
+	// settleRounds bounds the settle: five rounds of two frames, as
+	// agent-browser does (ab#2587).
+	settleRounds = 5
+	// settleTimeout bounds one settle, whatever the Page does: the aim
+	// then measures as it would have.
+	settleTimeout = 700 * time.Millisecond
+)
+
+// settle waits for the node's box to stop moving (settleJS). Best effort:
+// a failure or a box that keeps moving leaves the measuring to the aim.
+func settle(ctx context.Context, c Caller, o Origin) {
+	sctx, cancel := context.WithTimeout(ctx, settleTimeout)
+	defer cancel()
+	_ = callAwait(sctx, c, o.SessionID, o.BackendNodeID, settleJS, []any{settleRounds}, nil)
+}
+
+// recentre scrolls the node, and for a cross-origin iframe's node its
+// iframe element first, to the centre of the viewport (recentreJS). It
+// reports whether the node's own scroll ran.
+func recentre(ctx context.Context, c Caller, o Origin) bool {
+	if o.Owner != nil {
+		_ = callWith(ctx, c, o.Owner.SessionID, o.Owner.BackendNodeID, recentreJS, nil, nil)
+	}
+	var done bool
+	if err := callWith(ctx, c, o.SessionID, o.BackendNodeID, recentreJS, nil, &done); err != nil {
+		return false
+	}
+	return done
+}
+
+// aimNow measures the node where it is now, with the checks opt asks for
+// (aim without its scroll).
+func aimNow(ctx context.Context, c Caller, o Origin, opt AimOptions) (Aim, error) {
 	var st aimState
 	if err := callWith(ctx, c, o.SessionID, o.BackendNodeID, aimJS, []any{opt.Enabled, opt.HitTest, nil, nil}, &st); err != nil {
 		return Aim{}, staleOr(err)
@@ -304,6 +396,16 @@ func quadTopLeft(ctx context.Context, c Caller, session string, backendNodeID in
 // session, calls fn on it with args (JSON values; nil is undefined), and
 // decodes the returned value. The object is released.
 func callWith(ctx context.Context, c Caller, session string, backendNodeID int64, fn string, args []any, out any) error {
+	return callFn(ctx, c, session, backendNodeID, fn, args, out, false)
+}
+
+// callAwait is callWith for a function that returns a promise: the call
+// answers once the promise settles, with its value.
+func callAwait(ctx context.Context, c Caller, session string, backendNodeID int64, fn string, args []any, out any) error {
+	return callFn(ctx, c, session, backendNodeID, fn, args, out, true)
+}
+
+func callFn(ctx context.Context, c Caller, session string, backendNodeID int64, fn string, args []any, out any, await bool) error {
 	res, err := c.CallSession(ctx, session, "DOM.resolveNode", map[string]any{"backendNodeId": backendNodeID, "objectGroup": objectGroup})
 	if err != nil {
 		return err
@@ -325,9 +427,13 @@ func callWith(ctx context.Context, c Caller, session string, backendNodeID int64
 		}
 		callArgs[i] = map[string]any{"value": a}
 	}
-	res, err = c.CallSession(ctx, session, "Runtime.callFunctionOn", map[string]any{
+	params := map[string]any{
 		"objectId": rn.Object.ObjectID, "functionDeclaration": fn, "arguments": callArgs, "returnByValue": true, "silent": true,
-	})
+	}
+	if await {
+		params["awaitPromise"] = true
+	}
+	res, err = c.CallSession(ctx, session, "Runtime.callFunctionOn", params)
 	if err != nil {
 		return err
 	}
@@ -996,6 +1102,15 @@ func (f Field) Refusal() error {
 // field's ReadField answer; a failed read-back is a *VerifyError that never
 // shows a password field's value.
 func (o Origin) SetValue(ctx context.Context, in *Input, f Field, value string) error {
+	if err := o.ReplaceText(ctx, in, value); err != nil {
+		return err
+	}
+	return o.CheckValue(ctx, f, value)
+}
+
+// ReplaceText is SetValue without the read-back: DOM.focus, select all,
+// then Input.insertText (an empty value: a Backspace).
+func (o Origin) ReplaceText(ctx context.Context, in *Input, value string) error {
 	c, err := o.caller()
 	if err != nil {
 		return err
@@ -1008,12 +1123,17 @@ func (o Origin) SetValue(ctx context.Context, in *Input, f Field, value string) 
 	}
 	if value == "" {
 		chord, _ := keys.Parse("BackSpace")
-		err = in.PressKeys(ctx, chord)
-	} else {
-		err = in.InsertText(ctx, value)
+		return in.PressKeys(ctx, chord)
 	}
+	return in.InsertText(ctx, value)
+}
+
+// CheckValue is SetValue's read-back: the field holds value (ValueMatches),
+// else a *VerifyError.
+func (o Origin) CheckValue(ctx context.Context, f Field, value string) error {
+	c, err := o.caller()
 	if err != nil {
-		return err
+		return &VerifyError{Msg: "the value was delivered, but the field could not be read back"}
 	}
 	var got string
 	if err := callWith(ctx, c, o.SessionID, o.BackendNodeID, readJS, nil, &got); err != nil {

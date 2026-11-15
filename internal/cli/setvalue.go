@@ -19,7 +19,7 @@ import (
 )
 
 // setValueUsage is the set-value command's usage line.
-const setValueUsage = "usage: winuse set-value <window> <element index | name:<text> | id:<id> | @x,y> <value>"
+const setValueUsage = "usage: winuse set-value <window> <element index | name:<text> | id:<id> | @x,y> <value> | --stdin | --file <path>"
 
 // secondaryActionUsage is the perform-secondary-action command's usage
 // line.
@@ -30,7 +30,8 @@ const secondaryActionUsage = "usage: winuse perform-secondary-action <window> <e
 // or @x,y coordinates) positionally, then the value — every remaining
 // argument joined with single spaces, so an unquoted value with spaces
 // (hello world) still reaches the Element as one string. A value that
-// ends with winuse flags is refused (setValueText).
+// ends with winuse flags is refused (setValueText). --stdin or --file
+// <path> in the value's place reads the value instead (textsource.go).
 func parseSetValueArgs(args []string) (window string, index *int, ref string, point *protocol.Point, value string, err error) {
 	if len(args) < 3 {
 		return "", nil, "", nil, "", errors.New("set-value takes a window reference, an element index, name:/id: reference or @x,y coordinates, and a value")
@@ -39,12 +40,25 @@ func parseSetValueArgs(args []string) (window string, index *int, ref string, po
 	if err != nil {
 		return "", nil, "", nil, "", err
 	}
-	value, err = setValueText(args[2:], false)
+	src, n, err := takeTextSource(args[2:], fileFlag)
 	if err != nil {
-		var vf *valueFlagsError
-		if errors.As(err, &vf) {
-			vf.fillStandalone(args[0], args[1])
+		return "", nil, "", nil, "", err
+	}
+	if !src.given() {
+		value, err = setValueText(args[2:], false)
+		if err != nil {
+			var vf *valueFlagsError
+			if errors.As(err, &vf) {
+				vf.fillStandalone(args[0], args[1])
+			}
+			return "", nil, "", nil, "", err
 		}
+		return args[0], index, ref, point, value, nil
+	}
+	if extra := args[2+n:]; len(extra) > 0 {
+		return "", nil, "", nil, "", errTextAndSource("set-value", src, extra)
+	}
+	if value, err = src.read(); err != nil {
 		return "", nil, "", nil, "", err
 	}
 	return args[0], index, ref, point, value, nil

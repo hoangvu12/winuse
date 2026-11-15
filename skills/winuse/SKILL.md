@@ -94,13 +94,14 @@ Every task is the same loop.
 Any Action, app change or user input can make a reference stale (see
 "Name an Element"). After a failure, read a fresh Window State before you
 reuse one. When you know the next few routine steps (fill a form, then OK),
-send them as one `winuse batch` rather than a command per turn: each turn
-costs seconds. Add `--observe` to an Action or Batch to get steps 2 and 3
+send them as one `winuse batch` rather than a command per turn, with the
+`wait` that checks an Action in the same Batch: each turn costs seconds. Add `--observe` to an Action or Batch to get steps 2 and 3
 in one call: it prints only the Element Indexes whose line changed since
 your last read (`~` changed, `*` new, `-` gone; the rest are unchanged), or
-the whole State when that is shorter (topic `batch-and-wait`). To read a
-Window again after a `wait` or the user's input, `get-window-state <window>
---diff` prints the same diff.
+the whole State when that is shorter, then a menu or dialog the Action
+opened, whole (topic `batch-and-wait`). To read a Window again after a
+`wait` or the user's input, `get-window-state <window> --diff` prints the
+same diff.
 
 ```
 winuse list-windows                     # <Window ID>  <App>  <title>
@@ -228,8 +229,12 @@ JSON line with `delivery` and `retry` fields (topic `troubleshooting`).
 
 - PowerShell reads a bare `>` as a redirect: quote `invoke-menu` paths.
   PowerShell 5.1 strips double quotes inside arguments: put longer
-  JavaScript in a file, `winuse eval <window> --file x.js`.
+  JavaScript in a file, `winuse eval <window> --file x.js`, and quoted or
+  long text too, `type-text`/`set-value ... --file x.txt` (topic `input`).
 - Send control keys with `press-key`, never inside `type-text`.
+- Never copy a value between Apps through the clipboard: it replaces what
+  the user copied. Read it from the Window State and `set-value` or
+  `type-text` it.
 - Windows hands a closed Window's ID to a new Window; winuse refuses the
   Action rather than act on the wrong Window.
 - In File Explorer a click opens the item; select files with

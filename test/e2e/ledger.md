@@ -129,6 +129,8 @@ says why; no cell contains `|`.
 | `TestCtrlClickOnASingleSelectListIsRefused` | A Ctrl+click on a single-select list is refused | runner | - | 2026-11-07, lane runs 42367421412 and 42367782401 | passed |
 | `TestCtrlAndShiftClickSelectInAMultiSelectList` | Ctrl+ and Shift+clicks select in a multi-select list | runner | - | 2026-11-07, lane runs 42367421412 and 42367782401 | passed |
 | `TestObserveOnTheFixture` | observe reports the fixture's changes | runner | - | 2026-11-07, lane runs 42367421412 and 42367782401 | passed |
+| `TestObserveReadsTheOpenedDialog` | observe after an Action that opens a dialog names the dialog the main read already holds, and its Window ID works at once | runner | - | 2026-11-15, user run (learn-from 01) | passed |
+| `TestHugeListDoesNotEndTheRead` | a 20,000-item list box does not end the tree read: the full read and the skeleton reach the button after it | runner | - | 2026-11-15, user run (learn-from 08) | passed |
 | `TestNotepadSessionParsing` | A measured Notepad Window State parses into tabs and the save prompt (offline) | runner | - | 2026-11-07, lane runs 42367421412 and 42367782401 | passed |
 | `TestBatchInNewActsInTheOpenedMessageBox` | A Batch step in the new Window acts in the MessageBox it opened | runner | - | 2026-11-07, lane runs 42367421412 and 42367782401 | passed |
 | `TestNotificationsPressAndDismissARaisedToast` | A raised toast is pressed and dismissed | user | raises toasts (WINUSE_E2E_TOASTS); notifications are out of the lane | - | - |

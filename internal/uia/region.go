@@ -46,6 +46,21 @@ type Added struct {
 	Indexes  []int
 	Elements []wstate.Element
 	Notes    []string // the walk's partial-tree note, when it was cut
+	// Hints is parallel to Elements: each unnamed or duplicate control's
+	// hint, from the whole walk's tree (wstate.Hints, learn-from 04), so a
+	// find match keeps the row it sits in. Nil when none has one.
+	Hints []wstate.Hint
+}
+
+// keepHint appends hints[i] to a.Hints, parallel to a.Elements.
+func (a *Added) keepHint(hints []wstate.Hint, i int) {
+	if hints == nil {
+		return
+	}
+	if a.Hints == nil {
+		a.Hints = make([]wstate.Hint, len(a.Elements)-1, len(a.Elements))
+	}
+	a.Hints = append(a.Hints, hints[i])
 }
 
 // FindResult is find's answer: the matches it added, how many Elements
@@ -86,18 +101,25 @@ func (c *Client) Find(ctx context.Context, hwnd uint64, budget time.Duration, ma
 		}
 		out.RolesPresent = wstate.RolesPresent(res.Elements)
 		out.SharedIDs = wstate.SharedIDs(res.Elements)
-		out.Notes = partialOnly(res.Notes)
 		keep := pickMatches(res.Elements, match, limit, countOnly, &out.Count)
+		var hints []wstate.Hint
+		if !countOnly {
+			hints = wstate.Hints(res.Elements)
+		}
 		var live []comPtr
+		var kept []int
 		for i := range res.Elements {
 			if keep[i] {
 				live = append(live, res.Live[i])
 				out.Elements = append(out.Elements, res.Elements[i])
+				kept = append(kept, i)
+				out.keepHint(hints, i)
 				continue
 			}
 			release(res.Live[i])
 		}
 		out.Indexes = c.addRead(who, hwnd, live, out.Elements, r)
+		out.Notes = partialOnly(res.NotesWith(addedLabel(res.Elements, kept, out.Indexes)))
 	})
 	if err != nil {
 		return FindResult{}, err
@@ -155,17 +177,21 @@ func (c *Client) ReadRegion(ctx context.Context, hwnd uint64, index, depth int, 
 			jobErr = err
 			return
 		}
-		out.Notes = partialOnly(res.Notes)
+		hints := wstate.Hints(res.Elements)
 		var live []comPtr
+		var kept []int
 		for i, e := range res.Elements {
 			if i == 0 || !interactive || e.ActedOn() {
 				live = append(live, res.Live[i])
 				out.Elements = append(out.Elements, e)
+				kept = append(kept, i)
+				out.keepHint(hints, i)
 				continue
 			}
 			release(res.Live[i])
 		}
 		out.Indexes = c.addRead(who, hwnd, live, out.Elements, r)
+		out.Notes = partialOnly(res.NotesWith(addedLabel(res.Elements, kept, out.Indexes)))
 	})
 	if err != nil {
 		return Added{}, err
@@ -193,6 +219,34 @@ func (c *Client) addRead(agent string, hwnd uint64, elems []comPtr, elements []w
 		return nil
 	}
 	return c.store.add(agent, hwnd, elems, elements, ids)
+}
+
+// addedLabel names a walk position in a find's or a region read's notes:
+// by the Element Index it was added as when it was kept (kept[k] was added
+// as indexes[k]), else by its role and name, since the agent has no index
+// for it.
+func addedLabel(els []wstate.Element, kept, indexes []int) func(int) string {
+	added := make(map[int]int, len(kept))
+	for k, i := range kept {
+		if k < len(indexes) {
+			added[i] = indexes[k]
+		}
+	}
+	return func(i int) string {
+		if idx, ok := added[i]; ok {
+			return elementLabel(idx)
+		}
+		if i < 0 || i >= len(els) {
+			return "an Element"
+		}
+		if name := []rune(wstate.Collapse(els[i].Name)); len(name) > 0 {
+			if len(name) > 60 {
+				name = append(name[:57:57], []rune("...")...)
+			}
+			return "the " + els[i].Role + ` "` + string(name) + `"`
+		}
+		return "an unnamed " + els[i].Role
+	}
 }
 
 // partialOnly keeps the walk's partial-tree note: a region or a find is

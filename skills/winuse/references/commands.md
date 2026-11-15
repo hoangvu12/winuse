@@ -20,9 +20,9 @@ find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--firs
 zoom <window> <x>,<y>,<w>,<h>
 click <window> <ref> [--count 1|2|3] [--button left|middle|right] [--post] [--modifiers ctrl,shift,alt]
 # --modifiers: Headless on a Page and for ctrl or shift on a multi-select list item; else --post or --headed
-set-value <window> <ref> <value|on|off|item name>   # flags before <ref>: a value ending with winuse flags is refused; -- <value> sets it as written
+set-value <window> <ref> <value|on|off|item name> | --stdin | --file <path>   # flags before <ref>: a value ending with winuse flags is refused; -- <value> sets it as written
 perform-secondary-action <window> <ref> <action>   # Raise, Scroll Up/Down/Left/Right, Expand, Collapse, Toggle, Select, ContextMenu
-type-text <window> [--post | --into <ref>] [--interval-ms <n>] <text>
+type-text <window> [--post | --into <ref>] [--interval-ms <n>] <text> | --stdin | --file <path>
 press-key <window> <key> [--post] [--force]
 select-text <window> <ref> <start> <length> | select-text <window> <ref> all
 invoke-menu <window> "<menu> > <item>"   # a classic menu bar command, Headless
@@ -50,7 +50,7 @@ browser clone [browser] [--profile <folder>] [--fresh] [--close-source]
 browser ext install [browser|all] [--open] | browser ext status [browser] [--wait <s>]
 browser attach <window> | browser detach <window>   # a running Electron App; ask the user first
 clipboard-get [--format text|image|files] [--out <path>]
-clipboard-set <text> | --image <png> | --file <path>... | clipboard-clear
+clipboard-set <text> | --stdin | --text-file <path> | --image <png> | --file <path>... | clipboard-clear
 list-displays | screenshot --display <n>   # --screen <n> is the same
 list-notifications [--app <a>] [--text <t>]   # the showing toast banners, numbered
 notification-action <n> <button> | notification-dismiss <n>   # Headless; refused if the toast changed

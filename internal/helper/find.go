@@ -109,16 +109,18 @@ type findCut struct {
 	maxChars       int
 	shared         map[string]bool // IDs left out of the lines
 	narrow         string          // how to see the lines --max-chars cut, after "Narrow ..."; "" for find's
+	hints          bool            // print the controls' hints (learn-from 04); off with --full
+	inRow          bool            // with their row part: the lines do not show the rows' text
 }
 
-// newFindCut is find's cut: --limit, --max-chars or the default cap, and
-// the walk's shared IDs, all off with --full.
+// newFindCut is find's cut: --limit, --max-chars or the default cap, the
+// walk's shared IDs and the hints, all off with --full.
 func newFindCut(a protocol.FindArgs, matched int, shared map[string]bool) findCut {
 	c := findCut{limit: a.Limit, matched: matched}
 	if a.Full {
 		return c
 	}
-	c.maxChars, c.shared = defaultMaxChars, shared
+	c.maxChars, c.shared, c.hints, c.inRow = defaultMaxChars, shared, true, true
 	if a.MaxChars != nil {
 		c.maxChars = *a.MaxChars
 	}
@@ -126,10 +128,22 @@ func newFindCut(a protocol.FindArgs, matched int, shared map[string]bool) findCu
 }
 
 // line is Element e's line at index, indented by tabs, its shared ID left
-// out.
-func (c findCut) line(tabs, index int, e wstate.Element) wstate.PrintedLine {
+// out and its hint h added.
+func (c findCut) line(tabs, index int, e wstate.Element, h wstate.Hint) wstate.PrintedLine {
 	e = e.WithoutSharedID(c.shared)
-	return wstate.PrintedLine{Index: index, Text: strings.Repeat("\t", tabs) + wstate.Line(index, &e) + "\n"}
+	text := wstate.Line(index, &e)
+	if hint := h.Text(c.inRow); c.hints && hint != "" {
+		text += " Hint: " + hint
+	}
+	return wstate.PrintedLine{Index: index, Text: strings.Repeat("\t", tabs) + text + "\n"}
+}
+
+// hintAt is hs[i], or the zero Hint.
+func hintAt(hs []wstate.Hint, i int) wstate.Hint {
+	if i < len(hs) {
+		return hs[i]
+	}
+	return wstate.Hint{}
 }
 
 // limitNote is the note on the matches --limit left out, or "".
@@ -168,10 +182,11 @@ func findInFreshRead(s Services, ctx context.Context, w win.WindowInfo, q wstate
 		return "", noMatch(w, q, wstate.RolesPresent(tree.Elements))
 	}
 	cut := newFindCut(a, len(matches), wstate.SharedIDs(tree.Elements))
+	hints := wstate.Hints(tree.Elements)
 	var lines []wstate.PrintedLine
 	for _, i := range matches {
 		if a.Limit <= 0 || len(lines) < a.Limit {
-			lines = append(lines, cut.line(1, i, tree.Elements[i]))
+			lines = append(lines, cut.line(1, i, tree.Elements[i], hintAt(hints, i)))
 		}
 	}
 	var tail strings.Builder
@@ -212,7 +227,7 @@ func renderAdded(w win.WindowInfo, added uia.Added, flat bool, what string, cut 
 		if !flat {
 			tabs = e.Depth + 1
 		}
-		lines[i] = cut.line(tabs, added.Indexes[i], e)
+		lines[i] = cut.line(tabs, added.Indexes[i], e, hintAt(added.Hints, i))
 	}
 	var tail strings.Builder
 	for _, n := range added.Notes {
@@ -352,6 +367,7 @@ func storedSubtree(ctx context.Context, s Services, w win.WindowInfo, index int,
 		return "", elementError(fmt.Errorf("%w: element %d", uia.ErrStale, index), w, index)
 	}
 	cut := a.regionCut(wstate.SharedIDs(els))
+	hints := wstate.Hints(els)
 	var lines []wstate.PrintedLine
 	root := els[index].Depth
 	for i := index; i < len(els); i++ {
@@ -363,7 +379,7 @@ func storedSubtree(ctx context.Context, s Services, w win.WindowInfo, index int,
 		if a.Depth > 0 && rel > a.Depth || i > index && a.Interactive && !e.ActedOn() {
 			continue
 		}
-		lines = append(lines, cut.line(rel+1, i, e))
+		lines = append(lines, cut.line(rel+1, i, e, hintAt(hints, i)))
 	}
 	tail := fmt.Sprintf("%sElement %d holds Page Elements, read whole with the Window State, so these keep their Element Indexes\n", notePrefix, index)
 	return wstate.Cut(header(w), lines, tail, cut.maxChars, cut.hint()), nil

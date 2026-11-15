@@ -20,6 +20,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hoangvu12/winuse/internal/agent"
@@ -31,6 +32,8 @@ import (
 // the offline tests.
 type agentCursor interface {
 	TravelAs(anchor uint64, origin, target win.Rect, name, label string)
+	GlideAs(anchor uint64, origin, target win.Rect, name, label string, glide win.Glide) // TravelAs timed for glide
+
 	ClickAbove(anchor uint64, target win.Rect)
 	CaretAbove(anchor uint64, x, top, bottom int32) // the insertion caret (multi-agent ticket 11)
 	HideWhile(f func())
@@ -287,12 +290,69 @@ func (a anchoredCursor) Travel(origin, target win.Rect, label string) {
 	a.c.TravelAs(a.anchor, origin, target, a.name, label)
 }
 
+// Glide is Travel timed for glide (glidingCursor).
+func (a anchoredCursor) Glide(origin, target win.Rect, label string, glide win.Glide) {
+	a.c.GlideAs(a.anchor, origin, target, a.name, label, glide)
+}
+
 func (a anchoredCursor) Click(target win.Rect) { a.c.ClickAbove(a.anchor, target) }
 
 func (a anchoredCursor) HideWhile(f func()) { a.c.HideWhile(f) }
 
 // Caret draws the insertion caret above the Action's Window (caret.go).
 func (a anchoredCursor) Caret(x, top, bottom int32) { a.c.CaretAbove(a.anchor, x, top, bottom) }
+
+// glidingCursor is a Cursor whose travel can be timed (win.Glide): the
+// real cursors are; a plain Cursor (the offline fakes) always travels in
+// full.
+type glidingCursor interface {
+	Glide(origin, target win.Rect, label string, glide win.Glide)
+}
+
+var (
+	_ glidingCursor = anchoredCursor{}
+	_ glidingCursor = (*win.AgentCursor)(nil)
+)
+
+// A Batch's later glides are shorter (ADR 0018, learn-from 09): its first
+// glide is the full one, so the user's eye finds the cursor wherever it
+// was; every glide after it in the same Batch is a win.GlideBatch, the
+// same arc in half the time, since the user is already watching the
+// cursor. The rule counts glides, not steps: a first step with nothing to
+// point at (a read, a key with no target) leaves the full glide to the
+// first step that glides. The Task Suite's unattended runs use it as is.
+type batchGlideKey struct{}
+
+// batchGlides is one Batch's glide count: whether it has glided yet.
+type batchGlides struct{ glided atomic.Bool }
+
+// withBatchGlides marks ctx as one Batch's: the travels under it follow
+// the Batch rule (glideFor).
+func withBatchGlides(ctx context.Context) context.Context {
+	return context.WithValue(ctx, batchGlideKey{}, &batchGlides{})
+}
+
+// glideFor is the glide of a travel about to start under ctx, and counts
+// it: full outside a Batch and for a Batch's first glide, GlideBatch for
+// the Batch's later ones.
+func glideFor(ctx context.Context) win.Glide {
+	b, _ := ctx.Value(batchGlideKey{}).(*batchGlides)
+	if b == nil || !b.glided.Swap(true) {
+		return win.GlideFull
+	}
+	return win.GlideBatch
+}
+
+// travelCursor glides c from origin to target, labelled, timed by the
+// Batch rule (glideFor).
+func travelCursor(ctx context.Context, c Cursor, origin, target win.Rect, label string) {
+	glide := glideFor(ctx)
+	if g, ok := c.(glidingCursor); ok {
+		g.Glide(origin, target, label, glide)
+		return
+	}
+	c.Travel(origin, target, label)
+}
 
 // cursorFor is the Cursor the requesting Agent's Action on w shows (see
 // cursorSet.cursorFor); without a cursor set (offline tests, a helper

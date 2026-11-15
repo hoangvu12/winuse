@@ -198,3 +198,108 @@ latest Window State, so an index it leaves out still names an Element with
 the same line. ADR 0021 has the baseline, the 60% fallback and why indexes
 stay positional. The observation takes the read's defaults (shared IDs left
 out, the 28000-character cap) and --full.
+
+## Amendment: one slow child list no longer ends the read (learn-from 08, 2026-11-15)
+
+Before, a chunk that hit its transaction timeout (2 s) stopped the whole
+walk: one huge list (a classic list box of 20,000 items, a panel of
+thousands of buttons) left a partial tree with nothing after it. UI
+Automation cannot cap how many children one cached read returns
+(agent-desktop #643), so the cap of 1000 children only applied after all
+of them came back.
+
+- **A timed-out chunk cuts that node only.** Its children are then read
+  one at a time through the control-view tree walker
+  (`GetFirstChildElementBuildCache`, `GetNextSiblingElementBuildCache`,
+  the tree properties for the child alone), each step bounded like a
+  chunk, up to the 1000-children cap, and the walk goes on with the
+  node's siblings. A list whose children all fit under the cap is read
+  whole, with no note. All of it stays inside the walk's budget
+  (`WINUSE_TREE_BUDGET`) and the element cap, which still stop the walk.
+- **A provider that does not answer one step stops the walk**, as a
+  timed-out chunk did: the App is not answering, not just slow on a long
+  list.
+- **The note.** No new grammar. A cut slow list is named in the
+  partial-tree note, after the other reasons, by its Element Index:
+  `the children of Element 12 were too slow to read at once, so the first
+  1000 were read one at a time and 19000 more items were not read`. The
+  count is the last read child's SizeOfSet minus its PositionInSet when
+  its provider gives both, else "and the rest were not read". A list
+  whose steps failed from the start: `the children of Element 12 did not
+  answer in time and were not read`. Its line gets no
+  `(truncated: ...)` suffix, which stays for exact child counts. `find`
+  and `--root` name it by the index they added it as, or by its role and
+  name when they did not print it.
+- **Skeleton counts read nothing per child.** `(+N children)` comes from a
+  second cache request with no properties and AutomationElementMode
+  None, bounded to 250 ms per count. A count that runs out of time prints
+  no number, the walk goes on, and a note (not the partial-tree note: the
+  skeleton's shape is chosen) says `the children of Element 12 were not
+  counted in time`. Before, a count fetched every child with every
+  property and a timed-out count stopped the walk. The Grid pattern's
+  RowCount was not used: it is not the child count (header rows, groups)
+  and needs another cached property on every Element.
+- **Not changed:** a list that comes back as one chunk is still read
+  that way and cut at 1000 with the exact suffix; collection types are
+  not stepped up front (agent-desktop does): a stepped list costs one
+  round trip per child, which small lists, the common case, do not need.
+  The live cost of both routes on a 20,000-item list box is measured by
+  `winusetasks latency` on the fixture's `-huge-list` Window
+  (`.scratch/learn-from/issues/08-huge-lists-in-tree-reads.md`).
+
+## Amendment: hints on unnamed or duplicate controls (learn-from 04, 2026-11-15)
+
+Agents pick the wrong control when several print the same line
+(`button Delete` in every row) or when one has no name (an icon button).
+agent-browser's ab#2578 adds `hint="icon:trash; in:Blue mug"`. winuse adds
+the same information as one more field, the last on the line:
+
+`...[ (+N children)][ Hint: <own>[, in <row>]]`
+
+```
+		12 button Hint: icon trash
+		14 button Delete Hint: in Blue mug
+		19 button Delete Hint: in Red mug
+```
+
+- **Who gets one.** A control (button, split button, link, check box,
+  radio button, menu item, edit, combo box, slider, spinner, clickable)
+  with no name, or whose role and name another control of the same read
+  shares. Nothing else.
+- **`<own>`** is what the reader knew besides the line, from data it
+  already had. On a Page it comes from the DOMSnapshot the read takes for
+  the clickables: `icon <name>` (a `<use href="#x">` sprite, an `<svg>`'s
+  `data-icon`, `<title>` or id, an icon library's class), `img <file>` (an
+  `<img>` inside), and the first of `testid`, `name` or `id`. A value with
+  three digits in a row, or a React id, is left out as generated. UIA has
+  no icon names, so a native control has none. Each part is cut to 40
+  characters.
+- **`in <row>`** is the text of the row, list item or card the control
+  sits in, cut to 40 characters. On a Page it is the DOM's nearest `tr`,
+  `li`, `article`, `[role=row]`, `[role=listitem]`, `[role=article]` or
+  element whose class names a card, without the control's own text.
+  Otherwise it is the nearest of the control's ancestors in the read (up
+  to six levels, never the Window) that holds no other control of the same
+  line, and whose text no such control's ancestors have. An ancestor's text
+  is its name or, for an unnamed one of at most 16 Elements, the names in
+  it.
+- **Only where it tells controls apart.** A part two such controls share is
+  left out, except an unnamed control's own part, which says what the
+  control is. The default full read prints `<own>` only, since the row is a
+  few lines up. `--interactive` and `--depth` add `in` unless the row is a
+  named Element the view prints; `--root` adds it under either. `find`, an
+  `--observe` diff line and an ambiguous reference's candidates always add
+  it, as they print no rows. `--compact` keeps a bare line that has a hint.
+- **Not a name, not Codex's.** `name:`, `id:` and `find`'s filters never
+  match a hint, and a diff compares lines without it. `--full` (Codex's
+  text, `wstate.Render`) prints none, so its line stays byte for byte.
+- **No reader calls.** The Page parts come from the same captureSnapshot
+  answer, in Go (`internal/page/hints.go`), at most 300 per document; a
+  read through the clickables.js fallback has none. The tree's row part is
+  computed from the read's Elements (`wstate.Hints`). Neither sends a CDP
+  or UIA call per Element.
+- **Measured** (`.scratch/learn-from/issues/04-control-hints.md`): on 41
+  real Window States and the 2 fixtures (o200k tokens), the default read
+  +0.0%, `--interactive` +0.64%, a `find` of every control +2.1%. The Page
+  hint pass costs about 0.2 ms on the 200-clickable benchmark page and
+  0.7 ms with 400 duplicate controls, against a 19-24 ms Page read.

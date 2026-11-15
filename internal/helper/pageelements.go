@@ -12,6 +12,8 @@ package helper
 //	                                     through CDP drag events), Headless
 //	set-value <select> <label|value>     the option set by the page's JS, input + change   (today's routes)
 //	set-value <check box> on|off         a trusted click when the state differs, read back (today's routes)
+//	set-value <combobox|listbox> <name>  opened or typed into, the option clicked, read back (today's routes)
+//	                                     (pagearia.go, learn-from 05)
 //	upload <file input> <file>...        DOM.setFileInputFiles                              refused
 //	upload <file>...                     answers the file chooser a click opened            -
 //	click --button right                 the click, with Chrome's own context menu kept     (today's routes)
@@ -321,6 +323,13 @@ func (s Services) pageSetChoice(ctx context.Context, w win.WindowInfo, index int
 		return "", nil, false // not a choice, or unreadable: set-value's own path reports it
 	}
 	id := strconv.FormatUint(w.ID, 10)
+	if ch.Kind == "aria" {
+		if ch.Editable && value == "" {
+			return "", nil, false // clearing a combobox's text: the text route
+		}
+		out, rerr := s.pageSetARIA(ctx, w, index, o, target, ch, value) // pagearia.go (learn-from 05)
+		return out, rerr, true
+	}
 	if ch.Kind == "select" {
 		pick := -1
 		out, rerr := s.runPage(ctx, pageRun{

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"image/color"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/hoangvu12/winuse/internal/agent"
 	"github.com/hoangvu12/winuse/internal/page"
+	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/win"
 )
 
@@ -28,7 +30,8 @@ type fakeAgentCursor struct {
 	log     []string
 	anchors []uint64
 	labels  []string
-	names   []string // the Agent name passed with each label
+	names   []string    // the Agent name passed with each label
+	glides  []win.Glide // each travel's glide
 	carets  [][3]int32
 	closed  bool
 }
@@ -36,10 +39,15 @@ type fakeAgentCursor struct {
 func (c *fakeAgentCursor) record(s string) { c.mu.Lock(); c.log = append(c.log, s); c.mu.Unlock() }
 
 func (c *fakeAgentCursor) TravelAs(anchor uint64, origin, target win.Rect, name, label string) {
+	c.GlideAs(anchor, origin, target, name, label, win.GlideFull)
+}
+
+func (c *fakeAgentCursor) GlideAs(anchor uint64, origin, target win.Rect, name, label string, glide win.Glide) {
 	c.mu.Lock()
 	c.anchors = append(c.anchors, anchor)
 	c.labels = append(c.labels, label)
 	c.names = append(c.names, name)
+	c.glides = append(c.glides, glide)
 	c.mu.Unlock()
 	c.record("travel")
 }
@@ -289,5 +297,68 @@ func TestAHeadlessClickShowsItsAgentsCursor(t *testing.T) {
 	}
 	if f.base.log != nil {
 		t.Errorf("the default cursor moved for reviewer: %v", f.base.log)
+	}
+}
+
+// TestABatchGlidesInFullOnceThenShorter (learn-from 09, ADR 0018): a
+// Batch's first glide is the full one and its later glides are
+// win.GlideBatch; a single Action, and the next Batch, start in full
+// again.
+func TestABatchGlidesInFullOnceThenShorter(t *testing.T) {
+	spy := newHeadlessSpy()
+	f := newFakeCursorSet(time.Minute)
+	spy.svc.Cursor = f.cursorSet
+	cmds := CommandsWith(spy.svc)
+	batch := protocol.BatchArgs{
+		Window: "101",
+		Steps: []protocol.Step{
+			stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(2)}),
+			stepOf("set-value", protocol.SetValueArgs{ElementIndex: intPtrBatch(3), Value: "x"}),
+			stepOf("perform-secondary-action", protocol.SecondaryActionArgs{ElementIndex: intPtrBatch(4), Action: "Toggle"}),
+		},
+	}
+	glides := func() []win.Glide {
+		f.base.mu.Lock()
+		defer f.base.mu.Unlock()
+		return append([]win.Glide(nil), f.base.glides...)
+	}
+	if _, cmdErr := runCommand(t, cmds, "batch", batch); cmdErr != nil {
+		t.Fatalf("batch: %v", cmdErr)
+	}
+	want := []win.Glide{win.GlideFull, win.GlideBatch, win.GlideBatch}
+	if got := glides(); !slices.Equal(got, want) {
+		t.Fatalf("a 3-step Batch glided %v, want %v", got, want)
+	}
+	if _, cmdErr := runCommand(t, cmds, "click", protocol.ClickArgs{Window: "101", ElementIndex: intPtrBatch(2)}); cmdErr != nil {
+		t.Fatalf("click: %v", cmdErr)
+	}
+	if _, cmdErr := runCommand(t, cmds, "batch", batch); cmdErr != nil {
+		t.Fatalf("batch: %v", cmdErr)
+	}
+	want = append(want, win.GlideFull, win.GlideFull, win.GlideBatch, win.GlideBatch)
+	if got := glides(); !slices.Equal(got, want) {
+		t.Errorf("a single Action then another Batch glided %v, want %v", got, want)
+	}
+}
+
+// TestTheBatchRuleCountsGlidesNotSteps: the full glide goes to the
+// Batch's first travel, whatever step makes it; outside a Batch every
+// travel is full; a plain Cursor (no Glide) still travels.
+func TestTheBatchRuleCountsGlidesNotSteps(t *testing.T) {
+	ctx := context.Background()
+	if glideFor(ctx) != win.GlideFull || glideFor(ctx) != win.GlideFull {
+		t.Error("outside a Batch every glide is full")
+	}
+	b := withBatchGlides(ctx)
+	if got := []win.Glide{glideFor(b), glideFor(b), glideFor(b)}; !slices.Equal(got, []win.Glide{win.GlideFull, win.GlideBatch, win.GlideBatch}) {
+		t.Errorf("a Batch's glides = %v, want full then GlideBatch", got)
+	}
+	if glideFor(withBatchGlides(ctx)) != win.GlideFull {
+		t.Error("each Batch starts with a full glide")
+	}
+	spy := &cursorSpy{share: func(string) {}}
+	travelCursor(withBatchGlides(ctx), spy, win.Rect{}, win.Rect{Right: 9, Bottom: 9}, "click")
+	if len(spy.targets) != 1 {
+		t.Errorf("a plain Cursor travelled %d times, want 1", len(spy.targets))
 	}
 }

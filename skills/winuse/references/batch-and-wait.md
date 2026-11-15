@@ -74,6 +74,14 @@ Changed since this agent's last read of window 101 (~ changed, * new, - gone); E
   text or set-value's value, where they would be text (as `--headed`).
   `set-value 101 id:qty 3 --observe` is refused with nothing sent: write
   `set-value 101 --observe id:qty 3`.
+- When the Action opened one new Window (a menu, a dialog, a popup), it is
+  read too and printed whole after the diff, under `The Window the Action
+  opened, <Window ID>, read whole; its Element Indexes go with window
+  <Window ID>:`. Act on it with that Window ID, not the Action's. A dialog
+  the Action's Window already shows inside its own read is not read again:
+  a `Note:` names its Element there. Several new Windows are a `Note:`
+  listing their IDs: read the one you need. A Batch reads only a Window
+  still open after its last step.
 - A failed Action prints no observation. A Batch observes after its last
   step, failed steps included. A read that fails is a `Note:`; the Action's
   own result stands.
@@ -96,6 +104,9 @@ winuse wait <window> text <text>               # the text shows in the Window
 winuse wait <window> <ref> enabled             # also disabled, gone, value <v>, checked, unchecked, expanded, collapsed
 winuse wait 500                                # a plain pause, in milliseconds (at most 300000)
 ```
+
+Put an Action and the `wait` that checks it in one Batch, one call
+instead of two: `batch 101 click name:Save then wait text Saved`.
 
 - A wait lasts 10 seconds by default (`--timeout <seconds>` up to 300);
   one that runs out fails with what it saw last, such as

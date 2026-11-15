@@ -86,6 +86,24 @@ func TestFindPrintsTheAddedMatches(t *testing.T) {
 	}
 }
 
+// TestFindPrintsTheHints: find's matches have no rows around them, so a
+// duplicate control's line carries its whole hint (learn-from 04); --full
+// prints Codex's lines without it.
+func TestFindPrintsTheHints(t *testing.T) {
+	s, trees := findServices()
+	dup := []wstate.Element{{Depth: 3, Role: "button", Name: "Delete"}, {Depth: 3, Role: "button", Name: "Delete"}}
+	trees.found = uia.FindResult{Count: 2, Added: uia.Added{Indexes: []int{3, 4}, Elements: dup,
+		Hints: []wstate.Hint{{In: "Blue mug", Row: 2}, {Own: "icon trash", In: "Red mug", Row: 5}}}}
+	out, e := runCommand(t, CommandsWith(s), "find", protocol.FindArgs{Window: "101", Name: "Delete"})
+	if e != nil || !strings.Contains(out, "\t3 button Delete Hint: in Blue mug\n\t4 button Delete Hint: icon trash, in Red mug\n") {
+		t.Errorf("find: %q, %+v", out, e)
+	}
+	out, e = runCommand(t, CommandsWith(s), "find", protocol.FindArgs{Window: "101", Name: "Delete", Full: true})
+	if e != nil || strings.Contains(out, "Hint:") {
+		t.Errorf("find --full: %q, %+v", out, e)
+	}
+}
+
 func TestFindCountFirstAndMisses(t *testing.T) {
 	s, trees := findServices()
 	cmds := CommandsWith(s)

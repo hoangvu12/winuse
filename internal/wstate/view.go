@@ -7,7 +7,8 @@ package wstate
 //
 // Every view but Full leaves out the IDs two or more Elements of the read
 // share (speed 13: the default), which an id: reference refuses as
-// ambiguous anyway; a unique ID always prints.
+// ambiguous anyway; a unique ID always prints. Every view but Full adds a
+// hint to an unnamed or duplicate control (hint.go, learn-from 04).
 
 import (
 	"fmt"
@@ -219,13 +220,14 @@ func (e Element) WithoutSharedID(shared map[string]bool) Element {
 }
 
 // viewLines picks and indents the Element lines v prints, its shared IDs
-// left out, and counts the Elements it leaves out (a --max-chars cut
-// aside).
+// left out and its controls' hints added, and counts the Elements it
+// leaves out (a --max-chars cut aside).
 func viewLines(t *Tree, v View, shared map[string]bool) ([]PrintedLine, int) {
 	type shown struct{ depth, level int }
 	var stack []shown // the printed ancestors of the current Element
 	var out []PrintedLine
 	hidden := 0
+	hints := Hints(t.Elements)
 	for i := range t.Elements {
 		e := t.Elements[i].WithoutSharedID(shared)
 		for len(stack) > 0 && stack[len(stack)-1].depth >= e.Depth {
@@ -234,7 +236,8 @@ func viewLines(t *Tree, v View, shared map[string]bool) ([]PrintedLine, int) {
 		if v.Depth > 0 && e.Depth == v.Depth {
 			e.MoreChildren = max(e.MoreChildren, directChildren(t.Elements, i))
 		}
-		if !v.prints(i, &e) {
+		hint := v.viewHint(t, hints, i)
+		if !v.prints(i, &e) && !(hint != "" && v.unfolded().prints(i, &e)) { // --compact keeps a hinted line
 			hidden++
 			continue
 		}
@@ -253,6 +256,7 @@ func viewLines(t *Tree, v View, shared map[string]bool) ([]PrintedLine, int) {
 			text = idx + OffscreenMark + " " + strings.TrimPrefix(text, idx)
 		}
 		b.WriteString(text)
+		writeHint(&b, hint)
 		b.WriteByte('\n')
 		out = append(out, PrintedLine{i, b.String()})
 	}
@@ -279,6 +283,12 @@ func (v View) prints(i int, e *Element) bool {
 		return false
 	}
 	return true
+}
+
+// unfolded is v without --compact.
+func (v View) unfolded() View {
+	v.Compact = false
+	return v
 }
 
 // bare reports whether an Element's line would say nothing but its index

@@ -476,7 +476,7 @@ func (r *Reader) readDoc(ctx context.Context, c *cdp.Client, ts *tabSession, ses
 		}
 		vp, vpOK := layoutViewport(ctx, metrics)
 		if doc := d.snap.doc(d.FrameID); doc != nil {
-			d.Marks = marksOf(d.snap, doc)
+			d.Marks = marksOf(d.snap, doc, d.Nodes)
 			if vpOK && d.Marks != nil {
 				d.Marks.Offscreen = offscreenOf(doc, vp)
 			}
@@ -547,7 +547,7 @@ func (r *Reader) sameProcessFrame(ctx context.Context, c *cdp.Client, session, f
 		doc.Loaders[k] = v
 	}
 	if sd := main.snap.doc(frameID); sd != nil {
-		doc.Marks = marksOf(main.snap, sd)
+		doc.Marks = marksOf(main.snap, sd, doc.Nodes)
 		doc.Snapshot = doc.Marks != nil
 	}
 	if doc.Marks != nil {

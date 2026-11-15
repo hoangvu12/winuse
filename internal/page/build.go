@@ -110,8 +110,9 @@ type docState struct {
 	byID       map[string]*AXNode
 	clickables map[int64]string
 	passwords  map[int64]bool
-	offscreen  map[int64]bool  // scrolled out of the viewport (Marks.Offscreen)
-	fieldNames map[string]bool // names of fields, for dropping their labels
+	hints      map[int64]NodeHint // the unnamed or duplicate controls' hints
+	offscreen  map[int64]bool     // scrolled out of the viewport (Marks.Offscreen)
+	fieldNames map[string]bool    // names of fields, for dropping their labels
 }
 
 func (b *builder) doc(d *Doc, owner *Owner) *docState {
@@ -132,6 +133,12 @@ func (b *builder) doc(d *Doc, owner *Owner) *docState {
 		}
 		for _, p := range d.Marks.Passwords {
 			s.passwords[p] = true
+		}
+		if len(d.Marks.Hints) > 0 {
+			s.hints = make(map[int64]NodeHint, len(d.Marks.Hints))
+			for _, h := range d.Marks.Hints {
+				s.hints[h.BackendNodeID] = h
+			}
 		}
 		for _, o := range d.Marks.Offscreen {
 			s.offscreen[o] = true
@@ -284,6 +291,9 @@ func textOf(s *docState, n *AXNode) string {
 // and Secondary Actions, in the UIA vocabulary.
 func (b *builder) element(s *docState, n *AXNode, role, name string) wstate.Element {
 	e := wstate.Element{Role: role, Name: name, Offscreen: s.offscreen[n.BackendDOMNodeID]}
+	if h, ok := s.hints[n.BackendDOMNodeID]; ok && n.BackendDOMNodeID != 0 {
+		e.Hint, e.RowText = h.Hint, h.Row
+	}
 	if desc := Collapse(n.Description.String()); desc != "" && desc != name {
 		e.Description = desc
 	}

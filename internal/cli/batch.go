@@ -163,9 +163,12 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 		// and --into <element> there types into that Element
 		// (desktop-parity ticket 23); anywhere later either is text, as in
 		// the standalone form.
-		ta, text, err := typeTextFlags(rest)
+		ta, src, text, err := typeTextFlags(rest)
 		if err != nil {
 			return protocol.Step{}, fmt.Errorf("a batch type-text Action: %v", err)
+		}
+		if src.given() {
+			return protocol.Step{}, errSourceInBatch(kind) // textsource.go: batch - owns stdin
 		}
 		if len(text) == 0 {
 			return protocol.Step{}, errors.New("a batch type-text Action needs text")
@@ -189,6 +192,9 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 		index, ref, err := parseElementRefToken(rest[0])
 		if err != nil {
 			return protocol.Step{}, err
+		}
+		if _, n, serr := takeTextSource(rest[1:], fileFlag); n > 0 || serr != nil {
+			return protocol.Step{}, errSourceInBatch(kind)
 		}
 		value, err := setValueText(rest[1:], true) // setvalue.go: refused when it ends with winuse flags
 		if err != nil {

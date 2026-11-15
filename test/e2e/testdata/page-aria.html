@@ -1,0 +1,196 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>winuse e2e aria lists</title>
+<!--
+  Custom ARIA lists for set-value (learn-from 05; browser_pages_test.go's
+  aria-lists subtest). Each widget copies the markup and the events of a
+  library, in plain JS:
+
+    radix     Radix Select: a <button role=combobox aria-controls> trigger
+              that opens on pointerdown; its list is portaled to the end of
+              <body>, with role=listbox, and an item selects on pointerup;
+              while open, <body> takes no pointer events (the list does). A
+              hidden native <select> sits beside the trigger.
+    headless  Headless UI Listbox: a <button aria-haspopup=listbox> that
+              toggles on click, with no aria-controls, so winuse finds the
+              list as the one listbox that appeared; an option selects on
+              click.
+    typeahead MUI Autocomplete / Headless UI Combobox: an <input
+              role=combobox aria-controls> that filters its list as it is
+              typed into; an option fills the input and closes the list.
+    sizes     a role=listbox with aria-multiselectable: a click toggles an
+              option.
+    dups      a listbox with two options named the same: set-value refuses.
+
+  What each widget holds is in data-value and window.e2eAria, which the test
+  reads back with `winuse eval`.
+-->
+<style>
+  body { font: 14px sans-serif; margin: 8px; }
+  section { margin: 10px 0; }
+  .trigger { min-width: 160px; height: 28px; text-align: left; }
+  .list { list-style: none; margin: 0; padding: 4px; border: 1px solid #888; background: #fff; width: 180px; }
+  .list [role=option] { padding: 3px 6px; cursor: default; }
+  .list [role=option][aria-selected=true], .list [role=option][data-state=checked] { font-weight: bold; }
+  .list [role=option][aria-disabled=true] { color: #aaa; }
+  .popup { position: absolute; z-index: 10; }
+</style>
+</head>
+<body>
+<h1>winuse e2e aria lists</h1>
+<script>window.e2eAria = {};</script>
+
+<section>
+  <button class="trigger" id="radix-trigger" type="button" role="combobox" aria-label="e2e radix fruit"
+          aria-controls="radix-content" aria-expanded="false" aria-autocomplete="none" data-state="closed"><span id="radix-value">Pick a fruit</span> &#9662;</button>
+  <select aria-hidden="true" tabindex="-1" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" id="radix-native">
+    <option value=""></option><option value="apple">Apple</option><option value="banana">Banana</option><option value="cherry">Cherry</option><option value="durian">Durian</option>
+  </select>
+</section>
+
+<section>
+  <button class="trigger" id="hl-button" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="e2e headless colour"><span id="hl-value">Pick a colour</span></button>
+</section>
+
+<section>
+  <input id="ta-input" role="combobox" aria-label="e2e typeahead city" aria-autocomplete="list" aria-expanded="false" aria-controls="ta-list" autocomplete="off">
+  <ul class="list" id="ta-list" role="listbox" hidden></ul>
+</section>
+
+<section>
+  <div class="list" id="sizes" role="listbox" aria-label="e2e sizes" aria-multiselectable="true">
+    <div role="option" aria-selected="false">Small</div>
+    <div role="option" aria-selected="true">Medium</div>
+    <div role="option" aria-selected="false">Large</div>
+  </div>
+</section>
+
+<section>
+  <div class="list" id="dups" role="listbox" aria-label="e2e dups">
+    <div role="option" aria-selected="false">Pear</div>
+    <div role="option" aria-selected="false">Pear</div>
+  </div>
+</section>
+
+<script>
+(() => {
+  // Radix-like select.
+  const trigger = document.getElementById('radix-trigger');
+  const fruits = [['apple', 'Apple'], ['banana', 'Banana'], ['cherry', 'Cherry'], ['durian', 'Durian']];
+  let content = null, chosen = '';
+  const close = () => {
+    if (content) content.remove();
+    content = null;
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.dataset.state = 'closed';
+    document.body.style.pointerEvents = '';
+  };
+  const open = () => {
+    content = document.createElement('div');
+    content.id = 'radix-content';
+    content.setAttribute('role', 'listbox');
+    content.className = 'list popup';
+    content.style.pointerEvents = 'auto';
+    const r = trigger.getBoundingClientRect();
+    content.style.left = (r.left + scrollX) + 'px';
+    content.style.top = (r.bottom + scrollY + 2) + 'px';
+    for (const [value, label] of fruits) {
+      const item = document.createElement('div');
+      item.setAttribute('role', 'option');
+      item.dataset.state = value === chosen ? 'checked' : 'unchecked';
+      item.setAttribute('aria-selected', 'false');
+      if (value === 'durian') { item.setAttribute('aria-disabled', 'true'); item.dataset.disabled = ''; }
+      item.innerHTML = '<span>' + label + '</span>';
+      item.addEventListener('pointerup', () => {
+        if (item.getAttribute('aria-disabled') === 'true') return;
+        chosen = value;
+        trigger.dataset.value = value;
+        document.getElementById('radix-value').textContent = label;
+        document.getElementById('radix-native').value = value;
+        window.e2eAria.radix = value;
+        close();
+      });
+      content.appendChild(item);
+    }
+    document.body.appendChild(content);
+    trigger.setAttribute('aria-expanded', 'true');
+    trigger.dataset.state = 'open';
+    document.body.style.pointerEvents = 'none';
+  };
+  trigger.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    if (content) close(); else open();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && content) close(); });
+
+  // Headless UI-like listbox button: no aria-controls, the list appears at
+  // the end of <body>.
+  const button = document.getElementById('hl-button');
+  const colours = ['Red', 'Green', 'Blue'];
+  let list = null;
+  button.addEventListener('click', () => {
+    if (list) { list.remove(); list = null; button.setAttribute('aria-expanded', 'false'); return; }
+    list = document.createElement('ul');
+    list.setAttribute('role', 'listbox');
+    list.className = 'list popup';
+    const r = button.getBoundingClientRect();
+    list.style.left = (r.left + scrollX) + 'px';
+    list.style.top = (r.bottom + scrollY + 2) + 'px';
+    for (const c of colours) {
+      const li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', String(button.dataset.value === c));
+      li.textContent = c;
+      li.addEventListener('click', () => {
+        button.dataset.value = c;
+        document.getElementById('hl-value').textContent = c;
+        window.e2eAria.headless = c;
+        list.remove(); list = null;
+        button.setAttribute('aria-expanded', 'false');
+      });
+      list.appendChild(li);
+    }
+    document.body.appendChild(list);
+    button.setAttribute('aria-expanded', 'true');
+  });
+
+  // Typeahead combobox.
+  const input = document.getElementById('ta-input');
+  const taList = document.getElementById('ta-list');
+  const cities = ['Hanoi', 'Hamburg', 'Hamilton', 'Helsinki', 'Lisbon', 'London'];
+  input.addEventListener('input', () => {
+    const q = input.value.trim().toLowerCase();
+    taList.innerHTML = '';
+    const hits = q ? cities.filter(c => c.toLowerCase().startsWith(q.slice(0, 2))) : [];
+    for (const c of hits) {
+      const li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', 'false');
+      li.textContent = c;
+      li.addEventListener('mousedown', e => e.preventDefault());
+      li.addEventListener('click', () => {
+        input.value = c;
+        window.e2eAria.typeahead = c;
+        taList.hidden = true;
+        input.setAttribute('aria-expanded', 'false');
+      });
+      taList.appendChild(li);
+    }
+    taList.hidden = hits.length === 0;
+    input.setAttribute('aria-expanded', String(hits.length > 0));
+  });
+
+  // Multi-select listbox: a click toggles.
+  for (const o of document.querySelectorAll('#sizes [role=option], #dups [role=option]')) {
+    o.addEventListener('click', () => {
+      o.setAttribute('aria-selected', String(o.getAttribute('aria-selected') !== 'true'));
+      window.e2eAria.sizes = Array.from(document.querySelectorAll('#sizes [aria-selected=true]')).map(n => n.textContent).join(',');
+    });
+  }
+})();
+</script>
+</body>
+</html>

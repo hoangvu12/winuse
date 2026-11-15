@@ -6,7 +6,8 @@ Accepted (speed ticket 10, `.scratch/speed/issues/10-observe-after-action.md`,
 2026-11-05), from research recommendation 1 in
 `.scratch/research-speed/report.md`. It amends how ADR 0004's Element
 Indexes are read after an Action, not what a Window State is. The live
-check is still to run.
+check is still to run. Amended by learn-from 01 (2026-11-15): the Window
+the Action opened is read too (see the amendment at the end).
 
 ## Context
 
@@ -120,3 +121,67 @@ reads no RuntimeIds (ADR 0004 addendum: a round trip each).
 - Real transcripts held almost no whole read–act–read pairs: agents piped
   big reads through `Select-String` to save tokens, which the diff and the
   budgets now do inside winuse.
+
+## Amendment: --observe reads the Window the Action opened too (learn-from 01, 2026-11-15)
+
+Ticket `.scratch/learn-from/issues/01-observe-opened-window.md`, from
+`.scratch/learn-from/agent-desktop.md` §2.1. Decision 2 read only the
+Action's Window, so after `click name:File` the agent got the diff of the
+main Window and `Note: a new Window opened: 5678 ...`, then spent a turn on
+`get-window-state 5678`. Menus and dialogs are among the most common
+effects of an Action. agent-desktop lists the surfaces an Action opened
+but does not inline them. Decision 2 now reads:
+
+- **The Window the Action opened is read too**, when the opened-Window
+  settle (ADR 0019) found exactly one new Window, a dialog, a menu or a
+  popup of the target's App (or a shell surface for a shell target), or a
+  Headless ContextMenu opened its menu. It is read after the Action's own
+  Window, as `get-window-state <Window ID>` reads it: a full read that
+  replaces the Agent's Window State of that Window.
+- **It prints whole, never as a diff**, under the line `The Window the
+  Action opened, <Window ID>, read whole; its Element Indexes go with window
+  <Window ID>:`, in both modes. A new Window has no earlier read worth
+  diffing against; a menu's Window ID can be reused, so a stored State of
+  it may be of another menu.
+- **A Window the read above already holds is not read again.** UI
+  Automation lists a dialog its owner owns inside the owner's tree (a
+  classic dialog, a WinForms form; the live e2e run showed the fixture's
+  Classic Dialog as Element 1 of the main Window's read). When the opened
+  Window has an owner and the Action's Window's observation holds a
+  `window` Element named as its title, a note names that Element instead
+  (`Note: the Window the Action opened, 777 "Save As", is Element 1 of the
+  read above, so it is not read again; ...`): the same lines twice would
+  only cost tokens. A Tab target's observation and an observation written
+  with `--out` are never matched.
+- **Several new Windows: none is read.** A note lists their Window IDs
+  (`Note: --observe read none of the 2 Windows the Action opened (777,
+  778); read the one you need with winuse get-window-state <Window ID>`):
+  which one the agent wants is not winuse's guess, and reading every one
+  could cost more than the turn it saves.
+- **A Batch** follows what its settle around all its steps found: a
+  Window open at the end that was not open before the Batch. A Window the
+  Batch opened and closed again (an `in new` dialog it filled and
+  confirmed) is not read.
+- **A Tab target** keeps its observation of the Tab. A native Window its
+  browser opened (a Chromium menu popup) is read like any opened Window. A
+  new Tab and a JavaScript dialog are notes, as before, never read.
+- **Budget and caps.** The two reads share the observation's
+  `ObserveTimeout` (10 s), the Action's Window first; the request budget is
+  unchanged. Each read takes the observation's view on its own (the
+  28000-character cap, `--interactive`, `--depth`, `--compact`, `--full`),
+  as two `get-window-state` steps of a Batch would. With `--out <file>`
+  the opened Window's State goes to the file's name with `-<Window ID>`
+  before its extension (`observed-5678.txt`).
+- **Failures are notes.** A read that fails prints `Note: --observe could
+  not read <Window ID> after the Action, ...`, and so does a Window that
+  closed between the settle and the read. The Action's output and its own
+  observation stand. A failed Action and an Esc stop read nothing, as
+  before.
+
+Considered: reading the topmost of several new Windows (cheap, but a
+dialog and a tooltip-like popup of the same App can open together and the
+agent would act on the wrong one); a shared character cap across both
+reads (a whole main Window would leave the menu nothing); growing the
+request budget by a second `ObserveTimeout` (the client's budget would
+grow for every observed Action, for a read that rarely happens and is
+usually fast).

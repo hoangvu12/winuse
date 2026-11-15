@@ -858,6 +858,14 @@ later subtests still run. Its subtests:
   text; `press-key Control_L+Shift_L+k`, seen by the page as that chord;
   `scroll` by steps on a list row and `into-view` on the last row; and
   `hover`.
+- `aria-lists` (`testdata/page-aria.html`, learn-from 05): set-value on
+  custom ARIA lists: a Radix-like select (opened on pointerdown, its list
+  portaled, an item chosen on pointerup), a Headless UI-like listbox button
+  whose list is linked to nothing, a typeahead combobox (an option picked,
+  then free text with no list), a multi-select listbox (an option already
+  selected left alone); an option that is not there (the list stays open,
+  and the next set-value picks without a second click), a disabled option
+  and two options of one name, refused with nothing sent.
 - `drag-and-pointer-capture`: an HTML5 drag and drop between two Elements,
   and a slider that follows the pointer only through pointer capture,
   dragged to an Element outside its track.
@@ -1316,5 +1324,22 @@ go test -tags e2e -v -run "TestTwoAgentsRunInTheirOwnLanes$" ./test/e2e
 go test -tags e2e -v -run "TestHungAppStallsOnlyItsOwnWorker$" ./test/e2e
 set WINUSE_E2E_HUMAN=1
 go test -tags e2e -v -run "TestEscStopsEveryAgent$" ./test/e2e
+```
+
+## The huge list test
+
+`TestHugeListDoesNotEndTheRead` (`huge_list_test.go`, learn-from 08)
+starts the fixture with `-huge-list 20000`: beside the main window, a
+Window holding a classic list box of 20,000 items and an "After the list"
+button. A full read and a `--skeleton` read of that Window must both reach
+the button. The full read must cut the list, with the exact `(truncated:
+1000, omitted ...)` suffix when the list came back as one chunk or the
+slow-list note when it was read one item at a time. The `MEASURED:` lines
+say which route ran, the notes, and how long each read took. Nothing is
+clicked.
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -run "TestHugeListDoesNotEndTheRead$" ./test/e2e
 ```
 

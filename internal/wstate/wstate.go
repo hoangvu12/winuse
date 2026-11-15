@@ -95,6 +95,15 @@ type Element struct {
 	// below its depth (desktop-parity 04), rendered as "(+N children)".
 	MoreChildren int `json:"moreChildren,omitempty"`
 
+	// Hint and RowText are what the reader knew of the Element besides its
+	// line (learn-from 04): a Page Element's icon, image, test id or field
+	// name from the DOM ("icon trash, data-testid=del"), and the text of
+	// the row, list item or card it sits in. Never part of Codex's line:
+	// only a view prints them, through Hints, and only on a control that
+	// is unnamed or whose role and name another control shares.
+	Hint    string `json:"hint,omitempty"`
+	RowText string `json:"rowText,omitempty"`
+
 	// Offscreen says the Element's box lies wholly outside the Page's
 	// viewport: scrolled away. Only a Page read through its Browser
 	// Connection sets it (the Tab's own document); it is not printed, and
