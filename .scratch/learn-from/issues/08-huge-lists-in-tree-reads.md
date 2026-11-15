@@ -69,3 +69,28 @@ These start the build's own helper, which makes an installed helper of another b
 3. By hand, read-only, on a real long list: an Explorer folder with a few thousand files in Details view, and `get-window-state <window> --skeleton` on Settings. Check that the read reaches the Elements after the list and that the skeleton prints its counts.
 
 ## Comments
+
+### Live run, 2026-11-15
+
+`go run ./cmd/winusetasks latency --i-am-the-user --huge-list 20000`, A = merge-base 03fc3a4, B = HEAD c3d93c6, 30 timed calls per operation and build (ABBA):
+
+```
+Latency A/B
+  A: merge-base of HEAD and main (03fc3a44b5) (build 1f2euSr3YXHq)
+  B: HEAD (c3d93c6b2a) (build nkHgtvBnoCmt)
+30 timed calls per operation and build (6 rounds of 5, ABBA, after 1 untimed pass(es) per block).
+Wall time of each winuse call, process start included. * = the p25-p75 ranges do not overlap.
+
+operation                   A p50    A p95    B p50    B p95    p50 change            p95 change          failed A/B  
+list-windows                37 ms    52 ms    35 ms    37 ms    -3 ms (-6.7%) *       -15 ms (-28.2%)     0/0         
+fixture get-window-state    905 ms   1128 ms  65 ms    92 ms    -840 ms (-92.8%) *    -1036 ms (-91.8%)   1/0         
+fixture --skeleton          66 ms    77 ms    65 ms    83 ms    -2 ms (-2.5%)         +7 ms (+8.5%)       0/0         
+fixture find --role button  66 ms    80 ms    65 ms    82 ms    -1 ms (-1.3%)         +2 ms (+2.3%)       0/0         
+huge list get-window-state  2242 ms  2255 ms  5593 ms  5844 ms  +3351 ms (+149.4%) *  +3589 ms (+159.2%)  0/0         
+huge list --skeleton        -        -        5598 ms  5885 ms  -                     -                   30/0
+```
+
+- **The fix works.** On A a full read of the 20,000-item list box stops at the 2 s chunk timeout and prints nothing after the list (2.2 s); on B it steps the first 1000 items and reaches the button after it (5.6 s). `--skeleton` of that Window failed on A in 30 of 30 calls (`window is gone: ... HRESULT 0x80131505`, UIA_E_TIMEOUT: the count fetched every child with every property); on B all 30 worked (5.6 s).
+- **The App's other Window reads 14 times faster on B** (fixture main Window 905 to 65 ms p50; one A call failed with the same timeout). On A the abandoned 20,000-item request keeps the fixture's UI thread busy, so its next read waits; B abandons nothing.
+- **Cost:** B's huge-list read is 3.4 s slower than A's cut-short one: 2 s of chunk timeout plus about 3.5 ms per stepped item. A lower cap for a stepped list (for example 200 items) would bring it near 2.7 s; agents read a long list through `find` or `--root` anyway. Not changed: a decision for the issue's owner.
+- Ordinary reads did not move: list-windows, the fixture's `--skeleton` and `find` are within noise.
