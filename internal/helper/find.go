@@ -274,7 +274,7 @@ func windowStateShape(s Services, ctx context.Context, w win.WindowInfo, a windo
 }
 
 // windowStateUsage is get-window-state's usage line.
-const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]"
+const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--visible] [--compact] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]"
 
 // readRegion is get-window-state --root: the Element's subtree, read
 // afresh and added after the Window State's indexes; a Page Element's from

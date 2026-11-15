@@ -186,6 +186,12 @@ sent nothing waits; `--no-wait` fails at once, and a Batch's steps never
 wait. Every command: `winuse help`; one command's usage and
 examples: `winuse <command> --help`.
 
+If `winuse jev` shows a key, `winuse pick <window> "<description>"
+[--click | --set-value <text>]` finds an Element without the Window State
+entering your context, and `winuse run <window> "<goal>"` does a short
+task in a Page or App step by step (topic `pick`). Without a key, do not
+use or suggest either; when one hands back, go on yourself.
+
 ## Headless first; Headed only by your choice
 
 Headless, the default, leaves the user's pointer, keyboard and foreground
@@ -249,6 +255,7 @@ Read `references/<topic>.md`, or run `winuse skill <topic>`
 | `shell` | The taskbar, Start, the tray, quick settings, toast notifications |
 | `batch-and-wait` | `--observe`, reads as Batch steps, long Batches, `batch -` from stdin, `in new`, failed steps, every `wait` form |
 | `multi-agent` | More than one agent on the desktop |
+| `pick` | `winuse jev` shows a key: find an Element by description with `pick`, hand a short task to `run`, or the user asks to set up Jev |
 | `troubleshooting` | Every result phrase and note, refusals, timeouts, `--json`, `--trace`, `winuse status` |
 | `setup` | winuse missing, SmartScreen, building from source, installing the skill |
 | `commands` | Every command's syntax on one page (`winuse help` has the same, per command) |

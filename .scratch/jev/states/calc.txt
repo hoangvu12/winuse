@@ -1,0 +1,57 @@
+﻿Window: "Calculator", App: CalculatorApp.exe.
+	0 window Calculator Secondary Actions: Raise
+		1 window Calculator Value: Calculator ID: TitleBar
+			2 menu bar System ID: SystemMenuBar
+				3 menu item (collapsed) System Secondary Actions: Expand
+			4 button Minimize Calculator ID: Minimize
+			5 button Maximize Calculator ID: Maximize
+			6 button Close Calculator ID: Close
+		7 window Calculator
+			8 text Calculator ID: AppName
+			9 custom ID: NavView
+				10 button Open Navigation ID: TogglePaneButton
+					11 text ID: PaneTitleTextBlock
+				12 group
+					13 text Expression is ID: CalculatorExpression
+					14 text Display is 0 ID: CalculatorResults
+					15 button Open history flyout ID: HistoryButton
+					16 group Memory controls ID: MemoryPanel
+						17 button (disabled) Clear all memory ID: ClearMemoryButton
+						18 button (disabled) Memory recall ID: MemRecall
+						19 button Memory add ID: MemPlus
+						20 button Memory subtract ID: MemMinus
+						21 button Memory store ID: memButton
+						22 button (disabled) Open memory flyout ID: MemoryButton
+					23 group Display controls ID: DisplayControls
+						24 button Percent ID: percentButton
+						25 button Clear entry ID: clearEntryButton
+						26 button Clear ID: clearButton
+						27 button Backspace ID: backSpaceButton
+					28 group Standard functions ID: StandardFunctions
+						29 button Reciprocal ID: invertButton
+						30 button Square ID: xpower2Button
+						31 button Square root ID: squareRootButton
+					32 group Standard operators ID: StandardOperators
+						33 button Divide by ID: divideButton
+						34 button Multiply by ID: multiplyButton
+						35 button Minus ID: minusButton
+						36 button Plus ID: plusButton
+						37 button Equals ID: equalButton
+					38 group Number pad ID: NumberPad
+						39 button Zero ID: num0Button
+						40 button One ID: num1Button
+						41 button Two ID: num2Button
+						42 button Three ID: num3Button
+						43 button Four ID: num4Button
+						44 button Five ID: num5Button
+						45 button Six ID: num6Button
+						46 button Seven ID: num7Button
+						47 button Eight ID: num8Button
+						48 button Nine ID: num9Button
+						49 button Decimal separator ID: decimalSeparatorButton
+					50 button Positive negative ID: negateButton
+				51 text Standard Calculator mode ID: Header
+				52 button Keep on top ID: NormalAlwaysOnTopButton
+		53 pane
+
+The focused UI element is 14 text Display is 0 ID: CalculatorResults.

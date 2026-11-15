@@ -49,6 +49,13 @@ func observeFlagLen(args []string) int {
 	return 0
 }
 
+// observableHere reports whether a command line takes --observe: the
+// helper's ObservableCommands, and pick, a CLI command whose --click or
+// --set-value carries it to the Action it sends (pick.go).
+func observableHere(cmd string) bool {
+	return protocol.Observable(cmd) || cmd == "pick"
+}
+
 // extractObserve takes --observe and its output budgets out of a command
 // line (the command first) and parses them; nil when there is none. A
 // command that does not take --observe keeps every token for its own
@@ -70,7 +77,7 @@ func extractObserve(args []string) ([]string, *protocol.Observe, error) {
 	}
 	cmd := args[0]
 	if len(lead) > 0 {
-		if !protocol.Observable(cmd) {
+		if !observableHere(cmd) {
 			return nil, nil, fmt.Errorf("%s does not take --observe: it goes with an Action or batch", cmd)
 		}
 		args = append(append([]string{cmd}, lead...), args[1:]...)
@@ -79,7 +86,7 @@ func extractObserve(args []string) ([]string, *protocol.Observe, error) {
 	switch {
 	case cmd == "batch":
 		rest, taken = takeBatchObserve(args[1:])
-	case protocol.Observable(cmd):
+	case observableHere(cmd):
 		rest, taken = stripCommandFlags(cmd, args[1:], observeFlagLen)
 	default:
 		_, seen := stripCommandFlags(cmd, args[1:], func(a []string) int {

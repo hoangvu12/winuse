@@ -78,6 +78,10 @@ type Frame struct {
 type Marks struct {
 	Clickables []Clickable `json:"clickables,omitempty"`
 	Passwords  []int64     `json:"passwords,omitempty"` // backendNodeIds of password inputs
+	// Offscreen are the backendNodeIds of the nodes whose box lies wholly
+	// outside the viewport (offscreenOf): the Tab's own document only, from
+	// the snapshot.
+	Offscreen []int64 `json:"offscreen,omitempty"`
 }
 
 // Clickable is an element with no interactive role that still takes

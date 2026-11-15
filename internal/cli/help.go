@@ -139,7 +139,7 @@ commands:
                                command that ends a process. Windows' own
                                processes (explorer, dwm, csrss, ...) and
                                administrator Apps are refused, nothing sent
-  get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]
+  get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--visible] [--compact] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]
                                print a Window's State: its Element tree as text,
                                and with --screenshot a screenshot saved to a file
                                whose path is printed (sized to the model's
@@ -161,8 +161,10 @@ commands:
                                before 28000 characters with a note on what it
                                left out; --max-chars N sets the cap, 0 none.
                                On a full read, --interactive prints only the
-                               Elements you act on, --depth N the first N
-                               levels, --compact folds unnamed containers;
+                               Elements you act on, --visible only those on
+                               screen (a Page's scrolled-away Elements left
+                               out), --depth N the first N levels, --compact
+                               folds unnamed containers;
                                the Window State is still read and kept whole,
                                so the indexes printed are its own and the
                                rest still work. --out <file> writes the
@@ -186,6 +188,43 @@ commands:
                                nothing lists the roles present. Like a read,
                                it leaves out shared IDs and stops before
                                28000 characters (--max-chars, --full)
+  pick <window> <description> [--click | --set-value <text>] [--model <m>]
+                               with a Jev API key (winuse jev): read the Window
+                               inside winuse, have a Jev-compatible System One
+                               server choose the Element that matches the
+                               description, and print its line ("ok 36 button
+                               Plus  p=0.97"), so the Window State never enters
+                               your context; --click or --set-value then acts
+                               on it. The read replaces your Window State of
+                               that Window, so the index works afterwards. A
+                               pick below p=0.5 acts on nothing, lists the
+                               likeliest Elements and exits 1. The Window's
+                               text is sent to the server
+  run <window> <goal> [--set <text>]... [--max-steps N] [--model <m>]
+                               with a Jev API key: keep the wheel for a bounded
+                               task in a Page or a desktop App. Without a key,
+                               or when the server fails, it does nothing more
+                               and exits 1: do the task yourself. Each step
+                               reads the Window, asks the Jev
+                               server for the next operation (click, type one of
+                               your values, select, scroll, wait, done) and its
+                               target in one request, does it and lets the Window
+                               settle, until a separate check
+                               sees the goal achieved (exit 0). Jev writes no
+                               text: values come from --set and quoted strings
+                               in the goal. It stops and exits 1 on a sign-in,
+                               password or payment window, when 3 steps in a row
+                               change nothing, at --max-steps (default 25, up to
+                               100) or when it is blocked; Esc stops it (130)
+  jev [status] | jev set [--key <key> | --key -] [--base-url <url>] [--model <m>] | jev clear | jev check
+                               the server, key and model pick and run use,
+                               stored in %LOCALAPPDATA%\winuse\jev.json
+                               (TYPESAFE_API_KEY, TYPESAFE_BASE_URL and
+                               WINUSE_JEV_MODEL win over it); default server
+                               https://api.typesafe.ai,
+                               model jev-latest; status masks the key; --key -
+                               reads it from stdin; check sends one question
+                               and prints the model and round trip
   record-tree <window> <file> record a Window's real tree to a fixture file
   zoom <window> <x>,<y>,<w>,<h>
                                save a full-resolution crop of a region of the
@@ -605,6 +644,18 @@ var commandGroups = []struct {
 			"winuse find 4242 --role button --name save",
 			`winuse find 4242 --text "invoice" --first`,
 			`winuse find 4242 --role "list item" --limit 20`}},
+		{"pick", "Jev chooses the Element a description names", []string{
+			`winuse pick 4242 "the Save button"`,
+			`winuse pick 4242 "the search box" --set-value "invoice 2026"`,
+			`winuse pick 4242:1a2b3c4d "accept all cookies" --click`}},
+		{"run", "Jev drives a bounded task to its goal", []string{
+			`winuse run 4242:1a2b3c4d "open the Wikipedia article about Kurt Godel" --set "Kurt Godel"`,
+			`winuse run 4242 "fill in the form and submit it" --set "Ada Lovelace" --set ada@example.com`,
+			`winuse run Settings "open the About page"`}},
+		{"jev", "the Jev server, key and model pick and run use", []string{
+			"winuse jev",
+			"winuse jev set --key - --base-url https://api.codiv.ai",
+			"winuse jev check"}},
 		{"zoom", "a full-resolution crop of the latest screenshot", []string{
 			"winuse zoom 4242 100,80,400,300"}},
 	}},

@@ -29,6 +29,18 @@ type View struct {
 	// walk's cut marks.
 	Interactive bool
 
+	// Visible prints only the Elements on screen: it leaves out those a
+	// Page read found scrolled out of the viewport (Element.Offscreen).
+	// Elements whose place is unknown (a desktop Window's, an iframe's)
+	// print.
+	Visible bool
+
+	// MarkOffscreen prints every Element, an off-screen one with
+	// OffscreenMark after its index: for winuse run, which sends a Jev
+	// server what is on screen and the off-screen Elements its goal names
+	// (internal/jev). No CLI flag sets it.
+	MarkOffscreen bool
+
 	// Depth prints only the Elements at most Depth levels below the
 	// Window (0: every level); one with children below the cut says how
 	// many, as "(+N children)".
@@ -54,11 +66,18 @@ type View struct {
 	folded bool
 }
 
+// OffscreenMark follows the index of an off-screen Element's line under
+// View.MarkOffscreen.
+const OffscreenMark = "[off screen]"
+
 // flags names the view's shaping flags as the CLI spells them.
 func (v View) flags() string {
 	var f []string
 	if v.Interactive {
 		f = append(f, "--interactive")
+	}
+	if v.Visible {
+		f = append(f, "--visible")
 	}
 	if v.Depth > 0 {
 		f = append(f, "--depth "+strconv.Itoa(v.Depth))
@@ -226,7 +245,14 @@ func viewLines(t *Tree, v View, shared map[string]bool) ([]PrintedLine, int) {
 		stack = append(stack, shown{e.Depth, level})
 		var b strings.Builder
 		b.WriteString(strings.Repeat("\t", level+1))
-		writeElement(&b, i, &e, false)
+		var line strings.Builder
+		writeElement(&line, i, &e, false)
+		text := line.String()
+		if v.MarkOffscreen && e.Offscreen {
+			idx := strconv.Itoa(i) + " "
+			text = idx + OffscreenMark + " " + strings.TrimPrefix(text, idx)
+		}
+		b.WriteString(text)
 		b.WriteByte('\n')
 		out = append(out, PrintedLine{i, b.String()})
 	}
@@ -244,6 +270,9 @@ func (v View) prints(i int, e *Element) bool {
 		return true
 	}
 	if v.Interactive && !e.ActedOn() {
+		return false
+	}
+	if v.Visible && e.Offscreen {
 		return false
 	}
 	if v.Compact && e.bare() {

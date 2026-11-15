@@ -53,7 +53,7 @@ func (a windowRef) view(ref string) wstate.View {
 	if limit > 0 && a.Screenshot {
 		limit = max(limit-screenshotReserve, 1)
 	}
-	return wstate.View{Full: a.Full, Interactive: a.Interactive, Depth: a.Depth, Compact: a.Compact, MaxChars: limit, Ref: ref}
+	return wstate.View{Full: a.Full, Interactive: a.Interactive, Visible: a.Visible, MarkOffscreen: a.MarkOffscreen, Depth: a.Depth, Compact: a.Compact, MaxChars: limit, Ref: ref}
 }
 
 // regionCut is how a --root read prints its lines: a's cap and, unless
@@ -72,8 +72,8 @@ func budgetError(a windowRef) *Error {
 	switch {
 	case a.Depth < 0 || a.MaxChars != nil && *a.MaxChars < 0:
 		return Fail("get-window-state: --depth takes a positive number and --max-chars a number (0: no cap)", windowStateUsage)
-	case a.Full && (a.Compact || a.MaxChars != nil || a.Root == "" && (a.Interactive || a.Depth != 0)):
-		return Fail("get-window-state: --full prints the Window State as Codex does, whole and uncut; it takes no --interactive, --depth, --compact or --max-chars (with --root, --depth and --interactive still shape the read)", windowStateUsage)
+	case a.Full && (a.Compact || a.Visible || a.MaxChars != nil || a.Root == "" && (a.Interactive || a.Depth != 0)):
+		return Fail("get-window-state: --full prints the Window State as Codex does, whole and uncut; it takes no --interactive, --visible, --depth, --compact or --max-chars (with --root, --depth and --interactive still shape the read)", windowStateUsage)
 	case explicitCap && a.Out != "":
 		return Fail("get-window-state: pass --out or --max-chars, not both: --out writes the whole Window State to the file", windowStateUsage)
 	}

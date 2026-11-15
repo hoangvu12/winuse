@@ -1,0 +1,452 @@
+﻿Window: "Wikipedia, the free encyclopedia", App: brave.exe.
+	0 document Wikipedia, the free encyclopedia Value: https://en.wikipedia.org/wiki/Main_Page
+		1 link Jump to content
+		3 button Main menu
+		4 link Wikipedia The Free Encyclopedia
+		7 edit (settable, string) Search Wikipedia Description: Search Wikipedia [alt-f]
+		8 button Search
+		11 list item
+			12 link Donate
+		13 list item
+			14 link Create account Description: You are encouraged to create an account and log in; however, it is not mandatory
+		15 list item
+			16 link Log in Description: You're encouraged to log in; however, it's not mandatory. [alt-o]
+		19 list item
+			20 link Main Page Description: View the content page [alt-c]
+		21 list item
+			22 link Talk Description: Discuss improvements to the content page [alt-t]
+		25 list item
+			26 link Read
+		27 list item
+			28 link View source Description: This page is protected. You can view its source [alt-e]
+		29 list item
+			30 link View history Description: Past revisions of this page [alt-h]
+		31 list item
+			32 link Save Description: Add this page to your saved items
+		34 button Tools
+		36 button Hide Appearance
+		40 list item
+			41 radio button (selectable) Small Secondary Actions: Select
+			42 radio button (selectable, selected) Standard Secondary Actions: Select
+			43 radio button (selectable) Large Secondary Actions: Select
+		46 list item
+			47 radio button (selectable, selected) Standard Secondary Actions: Select
+			48 radio button (selectable) Wide Secondary Actions: Select
+		51 list item
+			52 radio button (selectable) Automatic Secondary Actions: Select
+			53 radio button (selectable, selected) Light Secondary Actions: Select
+			54 radio button (selectable) Dark Secondary Actions: Select
+		56 link Wikipedia
+		59 link free Description: Free content
+		61 link anyone can edit Description: Help:Introduction to Wikipedia
+		64 list item
+			65 link 264,734 Description: Special:Statistics
+		68 list item
+			69 link 7,264,459 Description: Special:Statistics
+			71 link English Description: English language
+		73 link Mariah Carey
+		77 link Can't Let Go Description: Can't Let Go (Mariah Carey song)
+		79 link Mariah Carey
+		82 link Emotions Description: Emotions (Mariah Carey album)
+		84 link Columbia Records
+		87 link synthesizers Description: Synthesizer
+		89 link drum programming Description: Programming (music)
+		91 link R&B Description: Contemporary R&B
+		93 link slow jam Description: Slow jam
+		95 link octaves Description: Octave
+		97 link register Description: Vocal register
+		99 link whistle notes Description: Whistle register
+		101 link Billboard Hot 100
+		103 link Jim Sonzero
+		106 link Full article... Description: Can't Let Go (Mariah Carey song)
+		110 list item
+			111 link Aucanquilcha
+		113 list item
+			114 link 2022–23 Notts County F.C. season
+		116 list item
+			117 link Royal Gloucestershire Hussars
+		119 list item
+			120 link Archive Description: Wikipedia:Today's featured article/November 2026
+		122 list item
+			123 link By email Description: mail:daily-article-l
+		125 list item
+			126 link More featured articles Description: Wikipedia:Featured articles (linked from TFAfooter)
+		128 list item
+			129 link About Description: Wikipedia:About Today's featured article
+		131 link Strike leader Sherman Miller being arrested
+		135 list item
+			137 link 1972 Mead wildcat strike
+			139 link red-bait Description: Red-baiting
+		143 list item
+			145 link Indefatigable Galápagos mouse Description: Nesoryzomys indefessus
+		147 list item
+			149 link Tanita Tikaram
+			151 link sixth-form Description: Sixth form
+		153 list item
+			155 link black holes Description: Black hole
+			157 link neutron stars Description: Neutron star
+			159 link high-mass X-ray binaries Description: High-mass X-ray binary
+			161 link high-energy radiation Description: Ionizing radiation
+		163 list item
+			165 link Hans Henkes
+			167 link CIRSE Description: Cardiovascular and Interventional Radiological Society of Europe
+		169 list item
+			171 link a well-performing racehorse Description: Drongo (horse)
+		173 list item
+			175 link a Ukrainian-language daily newspaper in the Russian Empire Description: Rada (newspaper)
+		177 list item
+			179 link Marie Wreschner
+		181 list item
+			183 link a film about transgender issues Description: What Is a Woman?
+		186 list item
+			187 link Archive Description: Wikipedia:Did you know archive
+		189 list item
+			190 link Start a new article Description: Help:Your first article
+		192 list item
+			193 link Nominate an article Description: Template talk:Did you know
+		195 link Several colourful spinning tops in a row Description: Spinning tops
+		199 link spinning top Description: Spinning top
+		203 list item
+			205 link History Description: Spinning top
+		207 list item
+			209 link reliable sources Description: Wikipedia:Reliable sources
+		212 link be bold Description: Wikipedia:Be bold
+		214 link start editing the article
+		216 link the article's talk page Description: Talk:Spinning top
+		218 link Teahouse Description: Wikipedia:Teahouse
+		221 list item
+			222 link For new editors Description: Help:Introduction
+		224 list item
+			225 link Archive Description: Wikipedia:Articles for improvement/Archives/Schedule
+		227 list item
+			228 link What is this? Description: Wikipedia:Articles for improvement
+		230 link Jensen Huang in 2026
+		234 list item
+			235 link Nvidia
+			237 link Jensen Huang
+			240 link being targeted by a Chinese spy Description: Jensen Huang spying scandal
+		242 list item
+			244 link Salvadoran military intervention in Haiti
+			246 link 400 Mawozo
+			248 link Stade Sylvio Cator
+		250 list item
+			252 link SS United States
+			254 link scuttled Description: Scuttling
+			256 link artificial reef Description: Artificial reef
+		258 list item
+			259 link The End of Everything Description: The End of Everything (Harrison novel)
+			261 link M. John Harrison
+			263 link Booker Prize
+		265 list item
+			266 link Novaya Gazeta
+		271 list item
+			272 link Iran war Description: 2026 Iran war
+		274 list item
+			275 link Russo-Ukrainian war Description: Russo-Ukrainian war (2022–present)
+			277 list item
+				279 link timeline Description: Timeline of the Russo-Ukrainian war (1 September 2026 – present)
+		282 list item
+			283 link Yemen offensives Description: 2026 Yemen offensives
+		284 link Recent deaths Description: Deaths in 2026
+		287 list item
+			288 link Alexander Darchiev
+		290 list item
+			291 link Tom O'Brien Description: Tom O'Brien (jockey)
+		293 list item
+			294 link Antonello Palombi
+		296 list item
+			297 link Mitsuru Nagai
+		299 list item
+			300 link Tommy Walsh Description: Tommy Walsh (builder)
+		302 list item
+			303 link Badrul Kamal
+		305 list item
+			306 link More current events Description: Portal:Current events
+		308 list item
+			309 link Nominate an article Description: Wikipedia:In the news/Candidates
+		311 link November 15
+		312 link Buran
+		316 list item
+			317 link 655
+			319 link Penda of Mercia
+			321 link Æthelhere of East Anglia
+			323 link Oswiu of Northumbria Description: Oswiu
+			325 link Battle of the Winwaed
+			327 link Yorkshire
+		329 list item
+			330 link 1859
+			332 link Evangelos Zappas
+			334 link the first modern revival Description: Zappas Olympics
+			336 link Olympic Games
+		338 list item
+			339 link 1908
+			341 link numerous atrocities in the territory Description: Atrocities in the Congo Free State
+			343 link Congo Free State
+			345 link Belgian Congo
+		347 list item
+			348 link 1943
+			350 link The Holocaust
+			352 link Romani Holocaust
+			354 link Heinrich Himmler
+			356 link Romani Description: Romani people
+			358 link concentration camps Description: Nazi concentration camps
+		360 list item
+			361 link 1988
+			363 link Buran Description: Buran (spacecraft)
+			366 link NASA
+			368 link Space Shuttle program
+		371 list item
+			372 link Cornelia Sorabji
+		377 list item
+			378 link John Le Mesurier
+		383 list item
+			384 link Sania Mirza
+		389 list item
+			390 link Kim Min-jae Description: Kim Min-jae (footballer)
+		396 list item
+			397 link November 14
+		399 list item
+			400 link November 15
+		402 list item
+			403 link November 16
+		405 list item
+			406 link Archive Description: Wikipedia:Selected anniversaries/November
+		408 list item
+			409 link By email Description: mail:daily-article-l
+		411 list item
+			412 link List of days of the year
+		414 list item
+			415 link About Description: Wikipedia:Selected anniversaries
+		417 link European hamster
+		420 link European hamster
+		424 link hamster Description: Hamster
+		426 link Eurasia
+		429 link hibernates Description: Hibernation
+		431 link critically endangered species Description: Critically endangered species
+		433 link International Union for Conservation of Nature
+		435 link Meidling
+		438 link Charles J. Sharp Description: User:Charlesjsharp
+		441 list item
+			442 link Harold Urey Description: Template:POTD/2026-11-14
+		444 list item
+			445 link Hupa Description: Template:POTD/2026-11-13
+		447 list item
+			448 link Collared lory Description: Template:POTD/2026-11-12
+		450 list item
+			451 link Archive Description: Wikipedia:Picture of the day/Archive
+		453 list item
+			454 link More featured pictures Description: Wikipedia:Featured pictures
+		457 list item
+			458 link Community portal Description: Wikipedia:Community portal
+		460 list item
+			461 link Village pump Description: Wikipedia:Village pump
+		463 list item
+			464 link Site news Description: Wikipedia:News
+		466 list item
+			467 link Teahouse Description: Wikipedia:Teahouse
+		469 list item
+			470 link Help desk Description: Wikipedia:Help desk
+		472 list item
+			473 link Reference desk Description: Wikipedia:Reference desk
+		475 list item
+			476 link Content portals Description: Wikipedia:Contents/Portals
+		480 link Wikimedia Foundation
+		482 link projects Description: foundationsite:what-we-do/wikimedia-projects/
+		485 list item
+			486 link Wikimedia Commons logo
+			488 link Commons Description: c:
+		490 list item
+			491 link MediaWiki logo
+			493 link MediaWiki Description: mw:
+		495 list item
+			496 link Meta-Wiki Description: m:
+		498 list item
+			499 link Wikibooks logo
+			501 link Wikibooks Description: b:
+		503 list item
+			504 link Wikidata Description: d:
+		506 list item
+			507 link Wikifunctions logo
+			509 link Wikifunctions Description: wikifunctions:
+		511 list item
+			512 link Wikiquote Description: q:
+		514 list item
+			515 link Wikisource logo
+			517 link Wikisource Description: s:
+		519 list item
+			520 link Wikispecies logo
+			522 link Wikispecies Description: species:
+		524 list item
+			525 link Wikiversity logo
+			527 link Wikiversity Description: v:
+		529 list item
+			530 link Wikivoyage logo
+			532 link Wikivoyage Description: voy:
+		534 list item
+			535 link Wiktionary logo
+			537 link Wiktionary Description: wikt:
+		541 link English Description: English language
+		543 link other Wikipedias are available Description: meta:List of Wikipedias
+		546 list item
+			549 list item
+				550 link العربية
+			552 list item
+				553 link Deutsch
+			555 list item
+				556 link Español
+			558 list item
+				559 link فارسی
+			562 list item
+				563 link Français
+			565 list item
+				566 link Italiano
+			568 list item
+				569 link Nederlands
+			571 list item
+				572 link 日本語
+			574 list item
+				575 link Polski
+			577 list item
+				578 link Português
+			580 list item
+				581 link Русский
+			583 list item
+				584 link Svenska
+			586 list item
+				587 link Українська
+			589 list item
+				590 link Tiếng Việt
+			592 list item
+				593 link 中文
+		594 list item
+			597 list item
+				598 link Bahasa Indonesia
+			600 list item
+				601 link Bahasa Melayu
+			603 list item
+				604 link Bân-lâm-gú
+			606 list item
+				607 link Български
+			609 list item
+				610 link Català
+			612 list item
+				613 link Čeština
+			615 list item
+				616 link Dansk
+			618 list item
+				619 link Eesti
+			621 list item
+				622 link Ελληνικά
+			624 list item
+				625 link Esperanto
+			627 list item
+				628 link Euskara
+			630 list item
+				631 link עברית
+			633 list item
+				634 link Հայերեն
+			636 list item
+				637 link 한국어
+			639 list item
+				640 link Magyar
+			642 list item
+				643 link Norsk bokmål
+			645 list item
+				646 link Română
+			648 list item
+				649 link Simple English
+			651 list item
+				652 link Slovenčina
+			654 list item
+				655 link Srpski
+			657 list item
+				658 link Srpskohrvatski
+			660 list item
+				661 link Suomi
+			663 list item
+				664 link Türkçe
+			666 list item
+				667 link Oʻzbekcha
+		668 list item
+			671 list item
+				672 link Asturianu
+			674 list item
+				675 link Azərbaycanca
+			677 list item
+				678 link বাংলা
+			680 list item
+				681 link Bosanski
+			683 list item
+				684 link کوردی
+			686 list item
+				687 link Frysk
+			689 list item
+				690 link Gaeilge
+			692 list item
+				693 link Galego
+			695 list item
+				696 link Hrvatski
+			698 list item
+				699 link ქართული
+			701 list item
+				702 link Kurdî
+			704 list item
+				705 link Latviešu
+			707 list item
+				708 link Lietuvių
+			710 list item
+				711 link മലയാളം
+			713 list item
+				714 link Македонски
+			716 list item
+				717 link မြန်မာဘာသာ
+			719 list item
+				720 link Norsk nynorsk
+			722 list item
+				723 link ਪੰਜਾਬੀ
+			725 list item
+				726 link Shqip
+			728 list item
+				729 link Slovenščina
+			731 list item
+				732 link ไทย
+			734 list item
+				735 link తెలుగు
+			737 list item
+				738 link اردو
+		739 button 349 languages Description: Go to an article in another language. Available in 349 languages
+		741 list item
+			743 link Parsoid Description: mw:Special:MyLanguage/Parsoid
+		745 list item
+			747 link Creative Commons Attribution-ShareAlike 4.0 License Description: Wikipedia:Text of the Creative Commons Attribution-ShareAlike 4.0 International License
+			749 link Terms of Use Description: foundation:Special:MyLanguage/Policy:Terms of Use
+			751 link Privacy Policy Description: foundation:Special:MyLanguage/Policy:Privacy policy
+			753 link Wikimedia Foundation, Inc.
+		756 list item
+			757 link Privacy policy
+		758 list item
+			759 link About Wikipedia
+		760 list item
+			761 link Disclaimers
+		762 list item
+			763 link Contact Wikipedia
+		764 list item
+			765 link Legal & safety contacts
+		766 list item
+			767 link Code of Conduct
+		768 list item
+			769 link Developers
+		770 list item
+			771 link Statistics
+		772 list item
+			773 link Cookie statement
+		774 list item
+			775 link Mobile view
+		777 list item
+			778 link Wikimedia Foundation
+		780 list item
+			781 link Powered by MediaWiki
+
+The focused UI element is 0 document Wikipedia, the free encyclopedia Value: https://en.wikipedia.org/wiki/Main_Page.
+Note: this is tab b1af0d87, in the background of window 5902020, read through its Browser Connection alone: act on it as 5902020:b1af0d87; its Element Indexes are not the Window's
+Note: --interactive left out 337 of the 784 Elements; their Element Indexes still work

@@ -333,7 +333,7 @@ func parseBatchStep(tokens []string) (protocol.Step, error) {
 			shot = true
 		}
 		args = windowArgs{Screenshot: shot, Root: sh.Root, Depth: sh.Depth, Interactive: sh.Interactive, Skeleton: sh.Skeleton,
-			Compact: sh.Compact, MaxChars: sh.MaxChars, Out: sh.Out, Full: sh.Full, Diff: diff}
+			Compact: sh.Compact, MaxChars: sh.MaxChars, Out: sh.Out, Full: sh.Full, Visible: sh.Visible, Diff: diff}
 	case "find":
 		fa, pos, err := parseFindTokens(rest)
 		if err == nil && len(pos) > 0 {
