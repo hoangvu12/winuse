@@ -186,7 +186,7 @@ commands:
                                click: headless on a Page and for ctrl or
                                shift on a multi-select list item, as MK
                                flags with --post, else --headed)
-  type-text <window> [--post | --into <element index | name: | id:>] [--interval-ms <n>] <text>
+  type-text <window> [--post | --into <element index | name: | id:>] [--interval-ms <n>] <text> | --stdin | --file <path>
                                type Unicode text into the Window's focused
                                Element (headless into a classic edit control
                                such as Notepad's or a Win32 dialog's).
@@ -203,7 +203,12 @@ commands:
                                the Window, pauses that many milliseconds
                                (0 to 1000) between characters when the text
                                is typed key by key (--headed, --post), for
-                               Apps that drop fast input
+                               Apps that drop fast input. --stdin (piped
+                               input) or --file <path> (- is stdin), after
+                               those flags, reads the text instead, off the
+                               command line: UTF-8 (UTF-16 with its byte
+                               order mark), one trailing newline dropped;
+                               not in a batch step
   press-key <window> <key> [--post] [--force]
                                press a key or key combination by Codex's key
                                names, e.g. Return, Tab, Control_L+a, Numpad_0
@@ -221,13 +226,15 @@ commands:
                                chord holding one of them are refused with
                                nothing sent unless --force (also per batch
                                step); the Windows key is never sent
-  set-value <window> <element index | name: | id: | @x,y> <value>
+  set-value <window> <element index | name: | id: | @x,y> <value> | --stdin | --file <path>
                                set an Element's value directly (a settable
                                edit, a numeric range, on|off for a check
                                box or other toggle, an item's name for a
                                combo box or list, or an option's label or
                                value for a Page's list); @x,y sets the Element
-                               under a point of the latest screenshot
+                               under a point of the latest screenshot.
+                               --stdin or --file <path> reads the value
+                               instead, as type-text's does
   perform-secondary-action <window> <element index | name: | id: | @x,y> <action>
                                perform one of the Element's Secondary Actions
                                (`
@@ -417,10 +424,12 @@ const usageTail = `);
                                in %TEMP%\winuse) and print the path and size;
                                a clipboard without that format fails and says
                                what it holds
-  clipboard-set <text> | --image <png> | --file <path>...
+  clipboard-set <text> | --stdin | --text-file <path> | --image <png> | --file <path>...
                                replace the clipboard's content with the text
                                (literal, like type-text's), a PNG image or a
-                               list of existing files
+                               list of existing files; --stdin and
+                               --text-file read the text as type-text's
+                               --stdin and --file do (--file copies files)
   clipboard-clear             empty the clipboard
   list-displays               list the displays, one per line: its number (0
                                is the primary display), its rectangle "x,y WxH"
@@ -583,10 +592,12 @@ var commandGroups = []struct {
 			"winuse click 4242 id:okButton --observe"}},
 		{"set-value", "fill a field, set a toggle, pick an item", []string{
 			`winuse set-value 4242 id:searchBox "invoice 2026"`,
-			`winuse set-value 4242 "name:Notify me" on`}},
+			`winuse set-value 4242 "name:Notify me" on`,
+			"winuse set-value 4242 id:notes --file notes.txt"}},
 		{"type-text", "type text into the focused or a named field", []string{
 			"winuse type-text 4242 hello world",
-			"winuse type-text 4242 --into id:searchBox invoice 2026"}},
+			"winuse type-text 4242 --into id:searchBox invoice 2026",
+			"winuse type-text 4242 --into id:body --file letter.txt"}},
 		{"press-key", "press a key or a chord", []string{
 			"winuse press-key 4242 Return",
 			"winuse press-key 4242 Control_L+s"}},
@@ -669,6 +680,7 @@ var commandGroups = []struct {
 			"winuse clipboard-get --format image --out shot.png"}},
 		{"clipboard-set", "replace the clipboard: text, an image, files", []string{
 			"winuse clipboard-set some text",
+			"winuse clipboard-set --text-file notes.txt",
 			"winuse clipboard-set --file report.pdf"}},
 		{"clipboard-clear", "empty the clipboard", []string{
 			"winuse clipboard-clear"}},

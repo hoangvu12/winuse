@@ -202,7 +202,8 @@ JSON line with `delivery` and `retry` fields (topic `troubleshooting`).
 
 - PowerShell reads a bare `>` as a redirect: quote `invoke-menu` paths.
   PowerShell 5.1 strips double quotes inside arguments: put longer
-  JavaScript in a file, `winuse eval <window> --file x.js`.
+  JavaScript in a file, `winuse eval <window> --file x.js`, and quoted or
+  long text too, `type-text`/`set-value ... --file x.txt` (topic `input`).
 - Send control keys with `press-key`, never inside `type-text`.
 - Never copy a value between Apps through the clipboard: it replaces what
   the user copied. Read it from the Window State and `set-value` or

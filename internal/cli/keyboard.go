@@ -38,7 +38,7 @@ const maxIntervalMS = 1000
 
 // The keyboard commands' usage lines.
 const (
-	typeTextUsage = "usage: winuse type-text <window> [--post | --into <element>] [--interval-ms <n>] <text>"
+	typeTextUsage = "usage: winuse type-text <window> [--post | --into <element>] [--interval-ms <n>] <text> | --stdin | --file <path>"
 	pressKeyUsage = "usage: winuse press-key <window> <key> [--post] [--force]"
 )
 
@@ -69,8 +69,10 @@ func parsePressKeyArgs(args []string) (window, key string, err error) {
 // or --into and the Element Reference after it (desktop-parity ticket
 // 23), and --interval-ms and its milliseconds, before or after either.
 // Each comes at most once; anything after them is text, flag-looking or
-// not.
-func typeTextFlags(rest []string) (a protocol.TypeTextArgs, text []string, err error) {
+// not. Last, --stdin or --file <path> (textsource.go) stands for the text:
+// src says so, and what follows it is returned as text for the caller to
+// refuse.
+func typeTextFlags(rest []string) (a protocol.TypeTextArgs, src textSource, text []string, err error) {
 	routed, paced := false, false
 	for len(rest) > 0 {
 		switch {
@@ -79,50 +81,92 @@ func typeTextFlags(rest []string) (a protocol.TypeTextArgs, text []string, err e
 			rest = rest[1:]
 		case rest[0] == intoFlag && !routed:
 			if len(rest) < 2 {
-				return a, nil, errors.New("--into takes an element index, name:<text> or id:<id> reference, then the text")
+				return a, src, nil, errors.New("--into takes an element index, name:<text> or id:<id> reference, then the text")
 			}
 			if isPointToken(rest[1]) {
-				return a, nil, errors.New("--into takes an element index or name:/id: reference, not @x,y coordinates")
+				return a, src, nil, errors.New("--into takes an element index or name:/id: reference, not @x,y coordinates")
 			}
 			a.IntoIndex, a.IntoRef, err = parseElementRefToken(rest[1])
 			if err != nil {
-				return a, nil, err
+				return a, src, nil, err
 			}
 			routed = true
 			rest = rest[2:]
 		case rest[0] == intervalFlag && !paced:
 			if len(rest) < 2 {
-				return a, nil, fmt.Errorf("--interval-ms takes milliseconds from 0 to %d, then the text", maxIntervalMS)
+				return a, src, nil, fmt.Errorf("--interval-ms takes milliseconds from 0 to %d, then the text", maxIntervalMS)
 			}
 			n, perr := strconv.Atoi(rest[1])
 			if perr != nil || n < 0 || n > maxIntervalMS {
-				return a, nil, fmt.Errorf("--interval-ms takes milliseconds from 0 to %d, got %q", maxIntervalMS, rest[1])
+				return a, src, nil, fmt.Errorf("--interval-ms takes milliseconds from 0 to %d, got %q", maxIntervalMS, rest[1])
 			}
 			a.IntervalMS, paced = n, true
 			rest = rest[2:]
 		default:
-			return a, rest, nil
+			s, n, serr := takeTextSource(rest, fileFlag)
+			if serr != nil {
+				return a, src, nil, serr
+			}
+			return a, s, rest[n:], nil
 		}
 	}
-	return a, rest, nil
+	return a, src, rest, nil
+}
+
+// typeTextSourceEnd is a sourceEnd for type-text's text position (headed.go):
+// past type-text's own flags, how far a --stdin or --file <path> there
+// reaches, or -1 when the text is literal.
+func typeTextSourceEnd(region []string) int {
+	for i := 0; i < len(region); {
+		switch region[i] {
+		case postFlag:
+			i++
+		case intoFlag, intervalFlag:
+			i += 2
+		default:
+			_, n, err := takeTextSource(region[i:], fileFlag)
+			if n == 0 || err != nil {
+				return -1
+			}
+			return i + n
+		}
+	}
+	return -1
+}
+
+// errTextAndSource refuses literal text given with --stdin or --file.
+func errTextAndSource(cmd string, src textSource, text []string) error {
+	return fmt.Errorf("%s takes the text or %s, not both; %q follows %s (%s's own flags go before it)", cmd, src.flag, strings.Join(text, " "), src.flag, cmd)
 }
 
 // typeTextRequest builds type-text's request from its arguments and the
 // global --headed flag (ADR 0011: text into a focused classic edit control
 // is Headless unless headed). A --post right after the Window posts the
 // text instead, and --into <element> there types into that Element;
-// anywhere later either is text.
+// anywhere later either is text. --stdin or --file <path> there, after
+// those flags, reads the text instead (textsource.go).
 func typeTextRequest(args []string, headed bool) (protocol.TypeTextArgs, error) {
 	var req protocol.TypeTextArgs
+	var src textSource
 	if len(args) >= 2 {
-		flags, text, err := typeTextFlags(args[1:])
+		flags, s, text, err := typeTextFlags(args[1:])
 		if err != nil {
 			return protocol.TypeTextArgs{}, err
 		}
-		req = flags
+		if s.given() && len(text) > 0 {
+			return protocol.TypeTextArgs{}, errTextAndSource("type-text", s, text)
+		}
+		req, src = flags, s
 		args = append([]string{args[0]}, text...)
 	}
-	window, text, err := parseTypeTextArgs(args)
+	var window, text string
+	var err error
+	if src.given() {
+		window = args[0]
+		text, err = src.read()
+	} else {
+		window, text, err = parseTypeTextArgs(args)
+	}
 	if err != nil {
 		return protocol.TypeTextArgs{}, err
 	}

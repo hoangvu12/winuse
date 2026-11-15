@@ -8,6 +8,8 @@ package cli
 // Batch step, and clipboard-set's text — the token is text like any
 // other, so an agent typing the literal "--headed" never has it silently
 // eaten. Put the flag before the command (or before the text) there.
+// When --stdin or --file stands for the text (textsource.go), there is no
+// literal text, and the flags after it are flags.
 // Commands that are always Headed, and the Desktop commands, accept the
 // flag and ignore it.
 //
@@ -93,11 +95,11 @@ func trailingFlagLen(args []string) int {
 func stripCommandFlags(cmd string, args []string, flagLen func([]string) int) (rest, taken []string) {
 	switch cmd {
 	case "type-text":
-		return stripFlagsBefore(args, typeTextTextAfter(args, flagLen), flagLen) // <window> [--into <element>] <text...>
+		return stripFlagsAroundText(args, typeTextTextAfter(args, flagLen), flagLen, typeTextSourceEnd) // <window> [--into <element>] <text...>
 	case "set-value":
-		return stripFlagsBefore(args, 2, flagLen) // <window> <element> <value...>
+		return stripFlagsAroundText(args, 2, flagLen, textSourceLen(fileFlag)) // <window> <element> <value...>
 	case "clipboard-set":
-		return stripFlagsBefore(args, 0, flagLen) // <text...>, a Desktop command with no headed form
+		return stripFlagsAroundText(args, 0, flagLen, textSourceLen(textFileFlag)) // <text...>, a Desktop command with no headed form
 	case "batch":
 		return stripFlagsBatch(args, flagLen)
 	case "launch-app":
@@ -116,6 +118,34 @@ func stripFlagsBefore(args []string, n int, flagLen func([]string) int) (rest, t
 		if n >= 0 && seen >= n {
 			rest = append(rest, args[i:]...)
 			break
+		}
+		if k := flagLen(args[i:]); k > 0 {
+			taken = append(taken, args[i:i+k]...)
+			i += k - 1
+			continue
+		}
+		rest = append(rest, args[i])
+		seen++
+	}
+	return rest, taken
+}
+
+// stripFlagsAroundText is stripFlagsBefore for a command whose text may
+// come from --stdin or --file (textsource.go): when sourceEnd finds one at
+// the start of the literal-text position, there is no literal text, so
+// flags after it are taken as anywhere else.
+func stripFlagsAroundText(args []string, n int, flagLen func([]string) int, sourceEnd func([]string) int) (rest, taken []string) {
+	rest = make([]string, 0, len(args))
+	seen := 0
+	for i := 0; i < len(args); i++ {
+		if seen >= n {
+			region := args[i:]
+			end := sourceEnd(region)
+			if end < 0 {
+				return append(rest, region...), taken
+			}
+			more, flags := stripFlagsBefore(region[end:], -1, flagLen)
+			return append(append(rest, region[:end]...), more...), append(taken, flags...)
 		}
 		if k := flagLen(args[i:]); k > 0 {
 			taken = append(taken, args[i:i+k]...)

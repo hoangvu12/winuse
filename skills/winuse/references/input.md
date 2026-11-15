@@ -1,6 +1,6 @@
 # Fields, keys, text, menus, scrolling and the clipboard
 
-Read when: typing is refused or not verified, combo boxes and lists, keys and chords, `type-text --into`, `select-text`, Posted Keys, `--interval-ms`, `invoke-menu`, scrolling, or the clipboard.
+Read when: typing is refused or not verified, combo boxes and lists, keys and chords, `type-text --into`, text from a file or stdin (`--file`, `--stdin`), `select-text`, Posted Keys, `--interval-ms`, `invoke-menu`, scrolling, or the clipboard.
 
 This is one topic of the winuse skill. `winuse skill input` prints it, and `winuse skill` prints the core, SKILL.md, which holds the safety rules, the Esc stop and recovery.
 
@@ -145,6 +145,24 @@ key by key, with `--headed` or `--post`; it sits right after the Window
 with `--post` or `--into`. A route that puts the text in at once ignores
 it, and a `Note:` after `ok` says so.
 
+### Text from a file or stdin
+
+```
+winuse type-text <window> [--into <ref>] --file <path>   # or --stdin; --file - is stdin
+winuse set-value <window> <ref> --file <path>            # or --stdin
+winuse clipboard-set --text-file <path>                  # or --stdin (its --file copies files)
+```
+
+The flag stands where the text would, after `--post`, `--into` and
+`--interval-ms`, and keeps the text off the command line: use it for text
+with double quotes (PowerShell 5.1 strips them), long text and private
+text the user gave you. The file is UTF-8 (UTF-16 with its byte order mark, as Windows
+PowerShell's `>` writes, also works); one trailing newline is dropped, so
+end with two to type one. `--stdin` takes piped input, never the
+terminal; Windows PowerShell pipes non-ASCII text as `?`, so use a file
+there. Text after the flag is refused, and Batch steps take neither
+(`batch -` reads the whole Batch from stdin).
+
 ## Run a menu command
 
 ```
@@ -195,7 +213,7 @@ foreground.
 winuse clipboard-get                                  # the clipboard's text
 winuse clipboard-get --format files                   # copied files, one path per line
 winuse clipboard-get --format image [--out <path>]    # saves the image as a PNG, prints its path and size
-winuse clipboard-set <text>                           # or --image <png>, or --file <path>...
+winuse clipboard-set <text>                           # or --stdin, --text-file <path>, --image <png>, --file <path>...
 winuse clipboard-clear
 ```
 

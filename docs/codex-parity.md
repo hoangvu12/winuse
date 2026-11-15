@@ -160,7 +160,7 @@ it and winuse's code refuses it (see cross-cutting).
 | Parameter | Codex | winuse `type-text` | Status |
 |---|---|---|---|
 | `window` | the Window with the focused Element | `<window>`; text into a focused classic edit box, `--into` a named field, Page typing, typing into a Chromium or Electron Window without a Browser Connection (window messages, read back where the field has a value, ticket 20) and `--post` need no foreground; anything else types Headed only with `--headed`, and is refused with nothing sent without it (ticket 21) | intentionally different |
-| `text` | one string, typed into the current focus as Unicode | every argument after the Window joins into the text (CLI sugar); injected as Unicode key events, one UTF-16 unit per event, newline/tab as real Return/Tab keys | matched |
+| `text` | one string, typed into the current focus as Unicode | every argument after the Window joins into the text (CLI sugar), or `--stdin`/`--file <path>` reads it (UTF-8, one trailing newline dropped, learn-from 06); injected as Unicode key events, one UTF-16 unit per event, newline/tab as real Return/Tab keys | matched |
 
 ### scroll
 
@@ -177,7 +177,7 @@ it and winuse's code refuses it (see cross-cutting).
 |---|---|---|---|
 | `window` | the Window holding the Element | `<window>` | matched |
 | `element_index` | the Element to write | the Element Index, a `name:`/`id:` reference, or `@x,y` (the target Window's own Element under the point of the latest screenshot, ticket 11) | matched (extended) |
-| `value` | the string to set | the value; numeric Elements (RangeValue) take it parsed as a number; a combo box or list with no writable value takes an item's name | matched |
+| `value` | the string to set | the value (or `--stdin`/`--file <path>`, learn-from 06); numeric Elements (RangeValue) take it parsed as a number; a combo box or list with no writable value takes an item's name | matched |
 | (delivery) | activates the Window, focuses the Element, then writes | by Element Index or reference **Headless**: no activation and no focus (UIA SetFocus moves the desktop foreground), a text write read back live; `--headed` keeps Codex's activate-and-focus order; `@x,y` is Headless on the Element under the point (ticket 11) | intentionally different |
 
 Non-settable Elements fail with Codex's `Cannot set a value for an
