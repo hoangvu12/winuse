@@ -121,6 +121,9 @@ winuse drag <window> <element> <element|@x,y>
   leave-this-page) prints `ok` and a `Note:` line with its text; do not
   repeat it. Every Page Action then fails naming the dialog until you
   answer it with `dialog` (a prompt's text goes after `accept`).
+- In a web app, Escape can open a "discard changes?" prompt inside the
+  Page instead of closing what you meant. Close a dialog, panel or menu
+  with its own close or Cancel control (`click <window> name:Cancel`).
 - A click or key that opens a new Tab adds
   `Note: a new Tab opened: <tab> "<title>" <url>`; read and act on it as
   `<window>:<tab>` (see `winuse skill tabs`).

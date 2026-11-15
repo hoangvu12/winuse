@@ -211,5 +211,10 @@ of existing files (paths from your working directory). For a long text in
 a field with no Headless route, `clipboard-set` it, then paste with
 `press-key <window> Control_L+v`, which takes the key routes above.
 
+Never move a value between Apps through the clipboard (Copy in one,
+Paste in the other): it replaces what the user copied. Read the value from
+the Window State and `set-value` or `type-text` it. When you must paste,
+as above, `clipboard-get` first and put the user's text back after.
+
 A clipboard whose owner stopped responding is refused with nothing sent;
 wait until that program responds, then retry.
