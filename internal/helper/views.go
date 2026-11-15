@@ -61,7 +61,9 @@ func (a windowRef) view(ref string) wstate.View {
 func (a windowRef) regionCut(shared map[string]bool) findCut {
 	c := findCut{maxChars: a.maxChars(), narrow: "Narrow the region with a deeper --root, --depth or --interactive, or raise --max-chars"}
 	if !a.Full {
-		c.shared = shared
+		// A region prints its rows around its controls unless --interactive
+		// or --depth leaves them out; then the hints name them.
+		c.shared, c.hints, c.inRow = shared, true, a.Interactive || a.Depth > 0
 	}
 	return c
 }

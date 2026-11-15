@@ -91,6 +91,15 @@ type Element struct {
 	// MoreChildren is the number of children a skeleton read left unread
 	// below its depth (desktop-parity 04), rendered as "(+N children)".
 	MoreChildren int `json:"moreChildren,omitempty"`
+
+	// Hint and RowText are what the reader knew of the Element besides its
+	// line (learn-from 04): a Page Element's icon, image, test id or field
+	// name from the DOM ("icon trash, data-testid=del"), and the text of
+	// the row, list item or card it sits in. Never part of Codex's line:
+	// only a view prints them, through Hints, and only on a control that
+	// is unnamed or whose role and name another control shares.
+	Hint    string `json:"hint,omitempty"`
+	RowText string `json:"rowText,omitempty"`
 }
 
 // Tree is one Window State: the header data plus the depth-first Element

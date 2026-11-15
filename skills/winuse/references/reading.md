@@ -32,6 +32,22 @@ and the Secondary Actions it offers besides a click. The last line names the
 focused Element, where typed text lands. The tree includes the web content
 of Electron apps and browser Windows (see `winuse skill browser`).
 
+A control with no name, or whose role and name another control shares,
+can end with a `Hint:` that tells it apart:
+
+```
+		12 button Hint: icon trash
+		14 button Delete Hint: in Blue mug
+		19 button Delete Hint: in Red mug
+```
+
+On a Page it names the control's icon, image, test id or field name.
+`in <text>` is the row, list item or card it sits in, printed where the
+lines around it do not show it: in `find`, `--interactive`, `--depth`, an
+`--observe` diff and an ambiguous reference's candidates. Pick the control
+by its Element Index: a hint is not a name, and `name:` never matches it.
+`--full` prints no hint.
+
 Start with the tree (a few hundred tokens); take a screenshot (image
 tokens) for canvas apps, visual layout questions, or a tree that looks
 sparse or stale. When a tree stays nearly empty, a note says so; trust it
@@ -81,7 +97,7 @@ winuse get-window-state <window> --root 42 --depth 2 --interactive
 winuse get-window-state <window> --interactive --compact   # a full read, printing only what you act on
 winuse get-window-state <window> --max-chars 20000 # stop the tree before 20000 characters, with a note
 winuse get-window-state <window> --out state.txt   # write it to a file, uncut; prints the path and the notes
-winuse get-window-state <window> --full            # Codex's text byte for byte: every ID, no cap
+winuse get-window-state <window> --full            # Codex's text byte for byte: every ID, no cap, no hint
 ```
 
 By default a read, `find` and `--root` stop before 28000 characters

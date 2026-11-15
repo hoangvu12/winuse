@@ -258,9 +258,20 @@ func setOf(s ...string) map[string]bool {
 // marksOf is clickables.js run over a snapshot document. passwords adds
 // the password fields of every document in the snapshot, shadow trees
 // included (clickables.js sees its own document's light tree only): a
-// field the snapshot shows to be a password never shows its value.
-func marksOf(s *domSnapshot, d *snapDoc) *Marks {
+// field the snapshot shows to be a password never shows its value. nodes
+// is the document's accessibility tree: its unnamed or duplicate controls,
+// and the clickables found, get their hints (hints.go).
+func marksOf(s *domSnapshot, d *snapDoc, nodes []AXNode) *Marks {
 	v := newDocView(s, d)
+	m := v.marks(s, d)
+	if m != nil {
+		m.Hints = v.hints(hintTargets(nodes, m.Clickables))
+	}
+	return m
+}
+
+// marks is marksOf without the hints.
+func (v *docView) marks(s *domSnapshot, d *snapDoc) *Marks {
 	if v == nil || v.n == 0 {
 		return nil
 	}
