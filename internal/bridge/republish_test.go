@@ -11,9 +11,10 @@ import (
 	"github.com/hoangvu12/winuse/internal/bridge"
 )
 
-// TestSameHostImage: a running host under a new name (the user renamed the
-// running winuse.exe to replace it) is still the host its bridge file
-// names; another program at a reused pid is not.
+// TestSameHostImage: a running host under a new name (the user, winuse
+// update or install.ps1 renamed the running winuse.exe to replace it) is
+// still the host its bridge file names; another program at a reused pid is
+// not.
 func TestSameHostImage(t *testing.T) {
 	for _, c := range []struct {
 		recorded, now string
@@ -22,7 +23,13 @@ func TestSameHostImage(t *testing.T) {
 		{`C:\w\winuse.exe`, `c:\W\WINUSE.EXE`, true},
 		{`C:\w\winuse.exe`, `C:\w\winuse.old.exe`, true},
 		{`C:\w\winuse.exe`, `C:\elsewhere\winuse-0.1.exe`, true},
+		// install.ps1 (GetRandomFileName) and winuse update (hex) rename
+		// the running file aside; the host keeps running from it.
+		{`C:\w\winuse.exe`, `C:\w\winuse.exe.old-ojyi33tp.p0p`, true},
+		{`C:\w\winuse.exe`, `C:\w\winuse.exe.old-1a2b3c4d`, true},
 		{`C:\w\winuse.exe`, `C:\Windows\notepad.exe`, false},
+		{`C:\w\winuse.exe`, `C:\w\winuse.txt`, false},
+		{`C:\w\winuse.exe`, `C:\w\notwinuse.exe.old-1a2b3c4d`, false},
 		{`C:\w\host.exe`, `C:\w\winuse.exe`, false},
 	} {
 		if got := bridge.SameHostImage(c.recorded, c.now); got != c.want {

@@ -376,11 +376,12 @@ func (m *Manager) ExtInstall(ctx context.Context, name string) (string, error) {
 
 // ExtOpen answers `winuse browser ext install [browser] --open` after the
 // install (browser-ux 02): for each browser the extension is not yet
-// connected to, it opens <scheme>://extensions in that browser (a new Tab
-// of the running browser, which takes the foreground: only on request),
-// then one Explorer window with the extension folder selected, so the user
-// can drag the folder onto the page or copy its path. Nothing is clicked
-// for the user.
+// connected to, it names <scheme>://extensions for the user to type in
+// that browser's address bar, then opens one Explorer window with the
+// extension folder selected, so the user can drag the folder onto the page
+// or copy its path. The browser itself is not started: Chromium drops its
+// own pages from the command line and opens an empty New Tab window
+// instead. Nothing is clicked for the user.
 func (m *Manager) ExtOpen(ctx context.Context, name string) (string, error) {
 	targets, err := m.extTargets(name)
 	if err != nil {
@@ -388,20 +389,16 @@ func (m *Manager) ExtOpen(ctx context.Context, name string) (string, error) {
 	}
 	s := m.sys
 	var out strings.Builder
-	opened := 0
+	waiting := 0
 	for _, b := range targets {
 		if len(s.liveBridges(b.Name)) > 0 {
 			continue // already connected: nothing to load
 		}
-		page := Scheme(b.Name) + "://extensions"
-		if _, err := s.Start(b.Path, []string{page}); err != nil {
-			fmt.Fprintf(&out, "note: could not open %s in %s (%v); the user types it in the address bar\n", page, b.Display(), err)
-			continue
-		}
-		fmt.Fprintf(&out, "ok opened %s in %s\n", page, b.Display())
-		opened++
+		fmt.Fprintf(&out, "note: the user opens %s in %s's address bar (%s ignores its own pages on the command line, so winuse cannot open it)\n",
+			Scheme(b.Name)+"://extensions", b.Display(), b.Display())
+		waiting++
 	}
-	if opened == 0 {
+	if waiting == 0 {
 		return out.String(), nil
 	}
 	explorer := filepath.Join(os.Getenv("WINDIR"), "explorer.exe")

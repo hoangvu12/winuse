@@ -47,6 +47,12 @@ type System struct {
 	// CloseApp asks every process with this image name to close, the
 	// clean way (taskkill without /F).
 	CloseApp func(exe string) error
+	// InspectOpen reports whether a top-level window of this image name
+	// shows the inspect page (its active Tab's title is "Inspect with ...
+	// Developer Tools"), where the user or an agent can turn on the
+	// remote-debugging toggle: connect waits for the toggle only then. Nil
+	// means none.
+	InspectOpen func(exe string) bool
 	// FreePort is the first free loopback port from 9222 up.
 	FreePort func() int
 	// AppPort is a free ephemeral loopback port, for an App launched with

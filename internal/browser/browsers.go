@@ -148,6 +148,16 @@ func InspectURL(name string) string {
 	return Scheme(name) + "://inspect/#remote-debugging"
 }
 
+// IsInspectTitle reports whether a browser window's title is its inspect
+// page's: "Inspect with Chrome Developer Tools - Brave", "Inspect with Edge
+// Developer Tools - Microsoft Edge". A browser in another UI language
+// titles it otherwise, and connect then reports InspectClosed at once
+// instead of waiting for the toggle; a connect after the toggle is on
+// still connects.
+func IsInspectTitle(title string) bool {
+	return strings.HasPrefix(title, "Inspect with ") && strings.Contains(title, "Developer Tools")
+}
+
 // Scheme is the browser's internal-page scheme.
 func Scheme(name string) string {
 	switch name {

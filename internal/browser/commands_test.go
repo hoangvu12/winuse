@@ -223,18 +223,20 @@ func TestStopClosesOnlyBrowsersWinuseStarted(t *testing.T) {
 	}
 }
 
-func TestConnectOpensTheInspectPageAndWaitsForTheToggle(t *testing.T) {
+// TestConnectWaitsForTheToggleOnAnOpenInspectPage: with a Brave window on
+// the inspect page, connect waits there for the toggle and starts nothing.
+func TestConnectWaitsForTheToggleOnAnOpenInspectPage(t *testing.T) {
 	f := newFake(t)
-	path := f.install("brave")
+	f.install("brave")
 	f.process("brave", 300)
 	s := f.serve(300)
 	f.unlisten(s.Port())
-	f.onStart = func(call startCall) int {
+	f.inspect["brave.exe"] = true
+	f.onInspect = func() {
 		// The user turns the toggle on: Brave writes DevToolsActivePort and
 		// listens, with /json/version disabled.
 		f.toggle("brave", s.Port(), "/devtools/browser/fake")
 		f.listen(s.Port(), "", 300)
-		return 300
 	}
 	m := NewManager(f.sys)
 	defer m.Close()
@@ -245,24 +247,81 @@ func TestConnectOpensTheInspectPageAndWaitsForTheToggle(t *testing.T) {
 	if out != "ok brave connected: your real profile through the inspect toggle\n" {
 		t.Errorf("out = %q", out)
 	}
-	starts := f.startCalls()
-	if len(starts) != 1 || starts[0].path != path || !slices.Equal(starts[0].args, []string{"brave://inspect/#remote-debugging"}) {
-		t.Errorf("starts = %+v", starts)
+	if starts := f.startCalls(); len(starts) != 0 {
+		t.Errorf("starts = %+v, want none", starts)
 	}
 	if c := m.held("brave"); c == nil || c.Mode != ModeToggle {
 		t.Errorf("held = %+v", c)
 	}
 }
 
+// TestConnectStartsNothingWithoutAnInspectPage: Chromium drops its own
+// pages from the command line and opens an empty New Tab window instead,
+// so connect never starts the browser; with no window on the inspect page
+// it fails at once and says how to open one.
+func TestConnectStartsNothingWithoutAnInspectPage(t *testing.T) {
+	f := newFake(t)
+	path := f.install("brave")
+	f.process("brave", 300)
+	m := NewManager(f.sys)
+	defer m.Close()
+	_, err := m.Connect(context.Background(), "brave")
+	p := problemOf(t, err, InspectClosed)
+	if starts := f.startCalls(); len(starts) != 0 {
+		t.Errorf("starts = %+v, want none", starts)
+	}
+	if !strings.HasPrefix(p.Sentence(), "remote debugging is off in Brave, and no Brave window shows brave://inspect/#remote-debugging;") {
+		t.Errorf("sentence = %q", p.Sentence())
+	}
+	want := `open brave://inspect/#remote-debugging in a Brave window of your own, never in one of the user's tabs: winuse launch-app "` + path +
+		`" opens a new window; set-value its address bar to brave://inspect/#remote-debugging and press-key Return; then turn on "Allow remote debugging for this browser instance" (winuse perform-secondary-action <window> id:remote-debugging-enabled Toggle) and run winuse browser connect brave`
+	if p.Next() != want {
+		t.Errorf("next = %q", p.Next())
+	}
+}
+
+func TestConnectAsksForAClosedBrowser(t *testing.T) {
+	f := newFake(t)
+	f.install("chrome")
+	m := NewManager(f.sys)
+	defer m.Close()
+	_, err := m.Connect(context.Background(), "chrome")
+	p := problemOf(t, err, InspectClosed)
+	if p.Sentence() != "Chrome is not running, so its remote debugging is off" ||
+		p.Next() != "ask the user to open Chrome, then run winuse browser connect chrome again" {
+		t.Errorf("problem = %q / %q", p.Sentence(), p.Next())
+	}
+	if starts := f.startCalls(); len(starts) != 0 {
+		t.Errorf("starts = %+v, want none", starts)
+	}
+}
+
 func TestConnectReportsTheToggleStillOff(t *testing.T) {
 	f := newFake(t)
 	f.install("chrome")
+	f.process("chrome", 300)
+	f.inspect["chrome.exe"] = true
 	m := NewManager(f.sys)
 	defer m.Close()
 	_, err := m.Connect(context.Background(), "chrome")
 	p := problemOf(t, err, ToggleOff)
 	if p.Next() != `turn on "Allow remote debugging for this browser instance" at chrome://inspect/#remote-debugging, then run winuse browser connect chrome` {
 		t.Errorf("next = %q", p.Next())
+	}
+}
+
+func TestIsInspectTitle(t *testing.T) {
+	for title, want := range map[string]bool{
+		"Inspect with Chrome Developer Tools - Brave":         true,
+		"Inspect with Chrome Developer Tools - Google Chrome": true,
+		"Inspect with Edge Developer Tools - Microsoft Edge":  true,
+		"New Tab - Brave": false,
+		"Inspect with care - a blog post - Google Chrome":        false,
+		"How to use Inspect with Chrome Developer Tools - Brave": false,
+	} {
+		if got := IsInspectTitle(title); got != want {
+			t.Errorf("IsInspectTitle(%q) = %v", title, got)
+		}
 	}
 }
 

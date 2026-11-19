@@ -443,29 +443,29 @@ func TestExtInstallRegistersBraveUnderChromesKeyToo(t *testing.T) {
 	problemOf(t, err, ExtNotRegistered)
 }
 
-// TestExtOpen (browser-ux 02): --open opens the extensions page in each
-// browser still waiting for the extension, then shows the folder in
-// Explorer once; a connected browser gets nothing.
+// TestExtOpen (browser-ux 02): --open names the extensions page for each
+// browser still waiting for the extension, without starting the browser
+// (Chromium would open an empty New Tab window, not the page), then shows
+// the folder in Explorer once; a connected browser gets nothing.
 func TestExtOpen(t *testing.T) {
 	f := newExtFake(t)
-	brave := f.install("brave")
+	f.install("brave")
 	m := NewManager(f.sys)
 	out, err := m.ExtOpen(context.Background(), "brave")
 	if err != nil {
 		t.Fatal(err)
 	}
 	calls := f.startCalls()
-	if len(calls) != 2 || calls[0].path != brave || strings.Join(calls[0].args, " ") != "brave://extensions" ||
-		!strings.HasSuffix(calls[1].path, `explorer.exe`) || strings.Join(calls[1].args, " ") != "/select,"+f.sys.ExtensionDir() {
-		t.Errorf("starts = %+v", calls)
+	if len(calls) != 1 || !strings.HasSuffix(calls[0].path, `explorer.exe`) || strings.Join(calls[0].args, " ") != "/select,"+f.sys.ExtensionDir() {
+		t.Errorf("starts = %+v, want Explorer alone", calls)
 	}
-	if !strings.Contains(out, "ok opened brave://extensions in Brave\n") || !strings.Contains(out, "drag it onto the extensions page") {
+	if !strings.Contains(out, "note: the user opens brave://extensions in Brave's address bar") || !strings.Contains(out, "drag it onto the extensions page") {
 		t.Errorf("output = %q", out)
 	}
 
 	f.connect("brave", "ab12cd34", nil)
 	out, err = m.ExtOpen(context.Background(), "brave")
-	if err != nil || out != "" || len(f.startCalls()) != 2 {
+	if err != nil || out != "" || len(f.startCalls()) != 1 {
 		t.Errorf("connected: %q, %v, starts %+v", out, err, f.startCalls())
 	}
 }

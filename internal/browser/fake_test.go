@@ -47,6 +47,11 @@ type fakeMachine struct {
 
 	onStart func(call startCall) (pid int)
 	onClose func(exe string)
+
+	// inspect: the images with a window on the inspect page; onInspect
+	// runs when connect looks (the user turning the toggle on there).
+	inspect   map[string]bool
+	onInspect func()
 }
 
 func newFake(t *testing.T) *fakeMachine {
@@ -57,6 +62,7 @@ func newFake(t *testing.T) *fakeMachine {
 		ports:   map[int]fakePort{},
 		images:  map[uint32]string{},
 		running: map[string]bool{},
+		inspect: map[string]bool{},
 		now:     time.Date(2026, 11, 2, 9, 0, 0, 0, time.UTC),
 		free:    9301,
 	}
@@ -114,6 +120,15 @@ func newFake(t *testing.T) *fakeMachine {
 				return on(call), nil
 			}
 			return 4242, nil
+		},
+		InspectOpen: func(exe string) bool {
+			f.mu.Lock()
+			open, on := f.inspect[exe], f.onInspect
+			f.mu.Unlock()
+			if open && on != nil {
+				on()
+			}
+			return open
 		},
 		CloseApp: func(exe string) error {
 			f.mu.Lock()

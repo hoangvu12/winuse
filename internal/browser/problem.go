@@ -50,6 +50,8 @@ const (
 	NoWindowEndpoint // no endpoint belongs to the process that owns the Window
 	SeveralEndpoints // two debugging endpoints belong to that one process
 
+	InspectClosed // connect: the toggle is off and no window shows the inspect page
+
 	kindEnd // one past the last kind (tests)
 )
 
@@ -64,8 +66,9 @@ type Problem struct {
 	URL     string
 	Dir     string
 	Profile string // NoSuchProfile: the profile folder asked for
-	Detail  string // NotInstalled: installed browsers; NoSuchProfile: the profiles there; Refused, Unreachable: the error
+	Detail  string // NotInstalled: installed browsers; NoSuchProfile: the profiles there; Refused, Unreachable: the error; InspectClosed: the browser's exe
 	Pinned  bool   // NotInstalled: the browser came from the pin
+	Running bool   // InspectClosed: the browser runs
 	Mode    Mode   // ProfileBusy, NotStarted: launch or clone
 	PID     int    // NotStarted; NoWindowEndpoint, SeveralEndpoints: the Window's browser process
 }
@@ -134,6 +137,12 @@ func (p *Problem) Sentence() string {
 		return fmt.Sprintf("%s stopped answering on port %d (%s)", p.name(), p.Port, p.Detail)
 	case ToggleOff:
 		return "remote debugging is still off in " + p.name()
+	case InspectClosed:
+		if !p.Running {
+			return p.name() + " is not running, so its remote debugging is off"
+		}
+		return fmt.Sprintf("remote debugging is off in %s, and no %s window shows %s; winuse cannot open it for you, since %s ignores its own pages on the command line (it opens an empty New Tab window instead), so nothing was opened",
+			p.name(), p.name(), InspectURL(p.Browser), p.name())
 	case ProfileBusy:
 		return fmt.Sprintf("a %s is already using winuse's %s profile at %s but does not answer as a debugging connection", p.name(), p.Mode, p.Dir)
 	case NoUserData:
@@ -230,6 +239,16 @@ func (p *Problem) Next() string {
 		return "run winuse browser status" + b + " again; if the browser closed, winuse browser launch" + b
 	case ToggleOff:
 		return "turn on \"Allow remote debugging for this browser instance\" at " + InspectURL(p.Browser) + ", then run winuse browser connect" + b
+	case InspectClosed:
+		if !p.Running {
+			return "ask the user to open " + p.name() + ", then run winuse browser connect" + b + " again"
+		}
+		launch := p.Browser
+		if p.Detail != "" {
+			launch = `"` + p.Detail + `"`
+		}
+		return "open " + InspectURL(p.Browser) + " in a " + p.name() + " window of your own, never in one of the user's tabs: winuse launch-app " + launch +
+			" opens a new window; set-value its address bar to " + InspectURL(p.Browser) + " and press-key Return; then turn on \"Allow remote debugging for this browser instance\" (winuse perform-secondary-action <window> id:remote-debugging-enabled Toggle) and run winuse browser connect" + b
 	case ProfileBusy:
 		return "close that " + p.name() + " window, then run winuse browser " + string(p.Mode) + b + " again"
 	case NoUserData:

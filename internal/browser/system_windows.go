@@ -49,6 +49,7 @@ func Live() *System {
 		Start:        startDetached,
 		Foreground:   foregroundOwner,
 		CloseApp:     closeApp,
+		InspectOpen:  inspectOpen,
 		FreePort:     freeDebugPort,
 		AppPort:      ephemeralPort,
 		ParentPID:    parentPID,
@@ -295,6 +296,36 @@ func processRunning(exe string) bool {
 	e.Size = uint32(unsafe.Sizeof(e))
 	for err = windows.Process32First(snap, &e); err == nil; err = windows.Process32Next(snap, &e) {
 		if strings.EqualFold(windows.UTF16ToString(e.ExeFile[:]), exe) {
+			return true
+		}
+	}
+	return false
+}
+
+// inspectOpen reports whether a top-level window of image exe shows the
+// inspect page: Chromium titles a browser window after its active Tab, and
+// <browser>://inspect is "Inspect with Chrome Developer Tools" (checked
+// live on Chrome and Brave; IsInspectTitle also takes a fork that names its
+// own tools there). It reads window titles only; a test binary reads
+// nothing (win.LiveDesktopGuard).
+func inspectOpen(exe string) bool {
+	if win.LiveDesktopGuard() != nil {
+		return false
+	}
+	ws, err := win.Collect()
+	if err != nil {
+		return false
+	}
+	return anyInspectWindow(ws, exe)
+}
+
+// anyInspectWindow is inspectOpen's test on a window list.
+func anyInspectWindow(ws []win.WindowInfo, exe string) bool {
+	for _, w := range ws {
+		if w.Owner != 0 || !strings.EqualFold(filepath.Base(w.ExePath), exe) {
+			continue
+		}
+		if IsInspectTitle(w.Title) {
 			return true
 		}
 	}

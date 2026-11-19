@@ -231,11 +231,13 @@ func (m *Manager) tookForeground(before foregroundSnapshot, pid int) bool {
 }
 
 // Connect answers `winuse browser connect [browser]`: use the user's
-// running browser and real profile through its inspect toggle. It opens
-// <browser>://inspect/#remote-debugging in that browser (a new tab, or the
-// browser starts), waits for the user to turn on "Allow remote debugging
-// for this browser instance", then connects; Chrome 144+ asks the user to
-// approve the connection, once per helper. It pins the browser.
+// running browser and real profile through its inspect toggle. When the
+// toggle is off and a window of that browser shows
+// <browser>://inspect/#remote-debugging, it waits for "Allow remote
+// debugging for this browser instance" to come on; with no such window it
+// fails at once with InspectClosed, which says how to open one. Then it
+// connects; Chrome 144+ asks the user to approve the connection, once per
+// helper. It pins the browser, and it never starts or opens anything.
 func (m *Manager) Connect(ctx context.Context, name string) (string, error) {
 	b, err := m.pick(name, true)
 	if err != nil {
@@ -250,8 +252,14 @@ func (m *Manager) Connect(ctx context.Context, name string) (string, error) {
 		return "", prob
 	}
 	if ep == nil {
-		if _, err := m.sys.Start(b.Path, []string{InspectURL(b.Name)}); err != nil {
-			return "", fmt.Errorf("opening %s: %w", InspectURL(b.Name), err)
+		// winuse cannot open the inspect page for the user: Chromium drops
+		// its own pages (chrome://, brave://, edge://) from the command line,
+		// on a cold start and when handing the URL to a running instance,
+		// and opens an empty New Tab window instead, one more for every
+		// connect. So nothing is started: the toggle can come on only in an
+		// inspect page someone opened, and connect waits for it only then.
+		if m.sys.InspectOpen == nil || !m.sys.InspectOpen(b.Exe()) {
+			return "", &Problem{Kind: InspectClosed, Browser: b.Name, Running: m.sys.running(b), Detail: b.Path}
 		}
 		m.sys.poll(ctx, connectWait, 500*time.Millisecond, func() bool {
 			ep, prob = m.sys.probeDir(ctx, d)
