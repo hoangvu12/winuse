@@ -140,9 +140,9 @@ Run `winuse browser status` to see how winuse is connected. winuse works
 in the browser you already use first, with your logins and tabs:
 
 - `winuse browser ext install <browser> --open` sets up the winuse
-  extension and opens the browser's extensions page and the extension
-  folder. Turn on Developer mode and drag the folder onto the page (or
-  use Load unpacked), once per browser. `winuse browser ext status
+  extension and shows the extension folder. Open `<browser>://extensions`,
+  turn on Developer mode and drag the folder onto the page (or use Load
+  unpacked), once per browser. `winuse browser ext status
   <browser> --wait 120` waits until it connects.
 - `winuse browser connect` uses your running browser after its remote
   debugging switch is on and the connection is allowed; an agent you

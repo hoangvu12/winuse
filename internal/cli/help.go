@@ -412,8 +412,11 @@ const usageTail = `);
                                running browser cleanly so logins copy, and
                                reopens its tabs in the clone
   browser connect [browser]   use your running browser through its inspect
-                               toggle: you turn on remote debugging, and
-                               Chrome asks once to allow the connection
+                               toggle: you turn on remote debugging at
+                               <browser>://inspect/#remote-debugging (winuse
+                               cannot open that page; connect waits for the
+                               toggle while a window shows it), and Chrome
+                               asks once to allow the connection
   browser stop [browser]      close a browser winuse launched or cloned,
                                keeping its profile
   browser ext install [browser|all] [--open]
@@ -421,7 +424,8 @@ const usageTail = `);
                                running browser with your logins and no
                                prompts, and print the one step the user does
                                (Developer mode, Load unpacked); --open also
-                               opens the extensions page and the folder
+                               shows the folder in Explorer (the user types
+                               the extensions page's address themselves)
   browser ext status [browser] [--wait <seconds>]
                                say whether the extension is connected, or in
                                one sentence what is missing and what to run;

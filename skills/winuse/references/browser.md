@@ -35,11 +35,12 @@ Always work in the user's own browser and profile, with their logins and
 tabs, in this order:
 
 1. **The winuse extension.** `winuse browser ext install <browser> --open`
-   registers winuse and opens the browser's extensions page and an Explorer
-   window with the extension folder. Before you run it, tell the user the
-   steps it prints (they cannot see your terminal): turn on "Developer
-   mode", then drag the folder onto the page or click "Load unpacked" and
-   choose it. Then `winuse browser ext status <browser> --wait 120` waits
+   registers winuse and opens an Explorer window with the extension folder.
+   It cannot open the browser's extensions page (browsers ignore their own
+   pages on the command line). Before you run it, tell the user the steps
+   it prints (they cannot see your terminal): open
+   `<browser>://extensions`, turn on "Developer mode", then drag the folder
+   onto the page or click "Load unpacked" and choose it. Then `winuse browser ext status <browser> --wait 120` waits
    until it connects (exit 0), or prints what is still missing.
    If the user asks you to do it, do it with winuse in that Window:
    `find <window> --name "Load unpacked"`, click it, then in the folder
@@ -47,9 +48,16 @@ tabs, in this order:
    (Select Folder). Turn on Developer mode the same way when it is off.
 2. **`winuse browser connect <browser>`**, when the extension cannot be
    loaded (a policy blocks unpacked extensions, or the user declines it).
-   It opens `<browser>://inspect/#remote-debugging`. Turn on "Allow remote
-   debugging for this browser instance" there (`find` it, then `set-value
-   <window> <element> on`). Chrome 144+ then shows an "Allow remote
+   winuse cannot open `<browser>://inspect/#remote-debugging` (the browser
+   ignores its own pages on the command line), and `connect` starts
+   nothing: open it yourself, once, in a window of your own, never in one
+   of the user's tabs. `winuse launch-app "<browser exe>"` opens a new
+   window; `set-value` its address bar to the inspect address and
+   `press-key Return`. Turn on "Allow remote debugging for this browser
+   instance" there with `perform-secondary-action <window>
+   id:remote-debugging-enabled Toggle`, then run `connect`. A `connect` while
+   a window shows the page waits for the toggle; without one it fails at
+   once, and its hint says all this. Chrome 144+ then shows an "Allow remote
    debugging?" prompt for the connection: `connect` waits 20 seconds and
    says so. The user asked you to use their browser, so allow it
    yourself rather than stopping: `winuse list-windows --app <browser>`
