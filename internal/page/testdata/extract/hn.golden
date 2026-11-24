@@ -1,0 +1,10 @@
+list: <table class="itemlist">: 6 of 6 rows (complete)
+[
+{"title":"Show HN: A tiny widget compiler","url":"https://widgets.example/compiler","points":312,"comments":128,"date":"3 hours ago"},
+{"title":"The history of the humble widget","url":"https://history.example/widget","points":201,"comments":57,"date":"4 hours ago"},
+{"title":"Why widgets fail in production","url":"https://blog.example/widgets-fail","points":156,"comments":88,"date":"5 hours ago"},
+{"title":"Widget prices fall for the third year","url":"https://news.example/prices","points":98,"comments":23,"date":"6 hours ago"},
+{"title":"Ask HN: How do you test your widgets?","url":"https://hn.example/item?id=106","points":77,"comments":64,"date":"7 hours ago"},
+{"title":"A visual guide to widget layouts","url":"https://design.example/layouts","points":45,"comments":12,"date":"8 hours ago"}
+]
+hint: if this is the wrong list, pass --root <index> of the list or of one item, from winuse get-window-state 301

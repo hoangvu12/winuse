@@ -23,6 +23,7 @@ import (
 // (json.go, desktop-parity ticket 07); runCommand runs it either way.
 func Main(args []string) int {
 	args, asJSON, command := extractJSON(hoistGlobalFlags(args))
+	activeJSON = asJSON // note.go: a command with a JSON answer of its own asks for it
 	if asJSON {
 		return runJSON(command, func() int { return runCommand(args) })
 	}
@@ -90,6 +91,8 @@ func runCommand(args []string) (code int) {
 		return closeAppCmd(args[1:]) // closeapp.go, desktop-parity ticket 10
 	case "zoom":
 		return zoomCmd(args[1:], headed)
+	case "extract":
+		return extractCmd(args[1:]) // extract.go, bladebro ideas ticket 26
 	case "click":
 		return clickCmd(args[1:], headed)
 	case "type-text":
@@ -148,6 +151,8 @@ func runCommand(args []string) (code int) {
 		return notificationDismissCmd(args[1:])
 	case "open-shell":
 		return openShellCmd(args[1:], headed) // desktop-parity tickets 09 and 18
+	case "note":
+		return noteCmd(args[1:]) // note.go, ADR 0024
 	case "skill":
 		return skillCmd(args[1:])
 	case "status":
