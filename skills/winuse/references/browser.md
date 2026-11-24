@@ -155,6 +155,13 @@ winuse drag <window> <element> <element|@x,y>
   `with an empty body; Chrome shows its error page` means the Tab shows
   Chrome's own page for it. On a 429 or 503, wait before you retry, and
   never in a tight loop.
+- To load pages faster in a Tab of your own, block their images, fonts
+  and media: `winuse tab new <window> <url> --block images,fonts,media`,
+  or `winuse navigate <window>:<tab> <url> --block images` on a Tab you
+  opened (any Tab of a browser winuse launched or cloned); `--block none`
+  turns it off. The text and alt text stay, so reads are the same. It
+  matches file extensions, so images whose URLs have none still load.
+  On the user's own Tabs it is refused. More in topic `tabs`.
 - After an Action that loads or changes the Page, `wait` for what you
   expect (10 seconds by default, `--timeout <seconds>` up to 300), then
   read the Window State. A Page Element goes stale when the Page navigates

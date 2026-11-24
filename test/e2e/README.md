@@ -970,6 +970,24 @@ set WINUSE_E2E=1
 go test -tags e2e -v -timeout 10m -run "TestHTTPStatus$" ./test/e2e
 ```
 
+## The asset blocking test
+
+`asset_blocking_test.go` (bladebro-ideas ticket 28) checks `--block`.
+`TestAssetBlocking` starts Chrome or Edge headless on a throwaway profile
+and blocks in process (`page.BlockAssets`, as the helper does:
+`Network.setBlockedURLs` with `urlPatterns`, no `Network.enable`). A
+fixture page's images, web font and video are served after 800 ms; the
+blocking Tab's load event must come sooner than a plain Tab's, the server
+must never see its images, font or video, its HTML, stylesheet and script
+still load, an image without a file extension still loads, and after
+`--block none` the images load again. The note on a blocking Tab's reads
+is checked offline (`internal/helper/assets_test.go`).
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -timeout 10m -run "TestAssetBlocking$" ./test/e2e
+```
+
 ## The occlusion flag test
 
 `browser_occlusion_test.go` (ticket 04 of `.scratch/headless-max/`)

@@ -462,8 +462,15 @@ const usageTail = `);
   tab list <window>           list the Tabs of a browser Window with a Browser
                                Connection, one per line: * for the active
                                Tab, its id, title and URL
-  tab new <window> [url]      open a Tab in the background of that Window and
-                               print its id; work in it as <window>:<tab>
+  tab new <window> [url] [--block images,fonts,media|none]
+                               open a Tab in the background of that Window and
+                               print its id; work in it as <window>:<tab>.
+                               --block keeps those files from loading in it
+                               (faster loads; text and alt text stay) for the
+                               Tab's life; it matches file extensions, so
+                               images whose URLs have no file extension still
+                               load. Reads of it end with Note: ... are
+                               blocked in this Tab
   tab close <window> <tab>    close a Tab by its id from tab list (4 or more
                                characters of it); the last Tab is refused,
                                run close-window to close the Window
@@ -471,12 +478,16 @@ const usageTail = `);
                                Page commands act on the active Tab); headless,
                                --headed switches with real keys
   navigate <window> <url> [--wait load|domcontentloaded|none]
+                               [--block images,fonts,media|none]
                                open a URL in the Window's active Tab, wait for
                                it to load (default load), and print the URL it
                                ended on; never type into the address bar. A
                                Page that answered 4xx or 5xx (also after
                                back, forward and reload) adds
-                               Note: the Page answered HTTP <code> <reason>
+                               Note: the Page answered HTTP <code> <reason>.
+                               --block sets what a Tab target blocks (as tab
+                               new --block), only on a Tab winuse opened or
+                               in a browser it launched or cloned
   back <window> [--wait ...]  go one page back in the Tab's history
   forward <window> [--wait ...]
                                go one page forward in the Tab's history
@@ -831,6 +842,7 @@ var commandGroups = []struct {
 		{"tab", "list, open, switch and close Tabs", []string{
 			"winuse tab list 4242",
 			"winuse tab new 4242 https://example.com",
+			"winuse tab new 4242 https://example.com --block images,fonts,media",
 			"winuse click 4242:1a2b3c4d 7"}},
 		{"navigate", "open a URL in the Tab and wait for the load", []string{
 			"winuse navigate 4242 https://example.com",

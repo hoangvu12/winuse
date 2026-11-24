@@ -14,7 +14,7 @@ var PageCommands = []string{"navigate", "back", "forward", "reload", "upload", "
 func PageUsage(cmd string) string {
 	switch cmd {
 	case "navigate":
-		return "usage: winuse navigate <window> <url> [--wait load|domcontentloaded|none]"
+		return "usage: winuse navigate <window> <url> [--wait load|domcontentloaded|none] [--block images,fonts,media|none]"
 	case "upload":
 		return "usage: winuse upload <window> [<element index | name: | id:>] <file>...   (without an element: the file chooser a click opened)"
 	case "dialog":
@@ -38,6 +38,10 @@ type NavigateArgs struct {
 	Window string `json:"window"`
 	URL    string `json:"url,omitempty"`
 	Wait   string `json:"wait,omitempty"`
+	// Block is navigate's --block on a Tab target winuse opened: the asset
+	// classes to block from now on, canonical (ParseBlock), or "none"
+	// (bladebro-ideas 28).
+	Block string `json:"block,omitempty"`
 }
 
 // UploadArgs are upload's arguments: the file input (an Element Index or a

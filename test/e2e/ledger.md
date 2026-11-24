@@ -159,6 +159,7 @@ says why; no cell contains `|`.
 | `TestReadGoldens` | read prints the expected Markdown for saved pages (table, article, search, misleading main, docs, a wall) | user | starts Edge or Chrome; browsers are not the fixture | - | - |
 | `TestReadCommand` | winuse read prints a Page as Markdown, with --root, --max-chars, --out, and refuses a native Window | user | starts Edge or Chrome; browsers are not the fixture | - | - |
 | `TestHTTPStatus` | The main document's HTTP status reads right for 200, 404, 429, 503, a redirect chain and an empty-body error page | user | starts Edge or Chrome; browsers are not the fixture | - | - |
+| `TestAssetBlocking` | Blocking images, fonts and media in a Tab brings its load event sooner, never fetches them, keeps HTML, CSS and script, and ends with --block none | user | starts Edge or Chrome; browsers are not the fixture | - | - |
 | `TestPageActionEffects` | A Page click says what it did: no change, text only, a change in a shadow root (--json effect) and a navigation | user | starts Edge or Chrome; browsers are not the fixture | - | - |
 | `TestPostedKeysIntoClassicEdit` | Posted keys reach a covered classic Edit | runner | - | 2026-11-07, lane runs 42367421412 and 42367782401 | passed |
 | `TestPostedKeysRefusedOnBlockedAndMinimizedWindows` | Posted keys are refused on blocked and minimized Windows | runner | - | 2026-11-07, lane runs 42367421412 and 42367782401 | passed |

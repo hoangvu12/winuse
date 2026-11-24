@@ -22,7 +22,7 @@ import (
 
 // tabUsage is the tab command's usage block.
 const tabUsage = `usage: winuse tab list <window>
-       winuse tab new <window> [url]
+       winuse tab new <window> [url] [--block images,fonts,media|none]
        winuse tab close <window> <tab>
        winuse tab switch <window> <tab>`
 
@@ -33,6 +33,13 @@ func parseTabArgs(args []string) (string, protocol.TabArgs, error) {
 		return "", protocol.TabArgs{}, errors.New("tab needs a subcommand: list, new, close or switch")
 	}
 	sub, rest := args[0], args[1:]
+	block := ""
+	if sub == "new" {
+		var err error
+		if rest, block, err = takeBlock(rest); err != nil { // page.go, bladebro-ideas 28
+			return "", protocol.TabArgs{}, err
+		}
+	}
 	for _, a := range rest {
 		if strings.HasPrefix(a, "--") {
 			return "", protocol.TabArgs{}, fmt.Errorf("tab %s has no option %s", sub, a)
@@ -48,7 +55,7 @@ func parseTabArgs(args []string) (string, protocol.TabArgs, error) {
 		if len(rest) < 1 || len(rest) > 2 {
 			return "", protocol.TabArgs{}, errors.New("tab new takes a window reference and at most one URL")
 		}
-		a := protocol.TabArgs{Window: rest[0]}
+		a := protocol.TabArgs{Window: rest[0], Block: block}
 		if len(rest) == 2 {
 			a.URL = rest[1]
 		}
@@ -113,6 +120,10 @@ func parseBatchTabStep(kind string, rest []string) (protocol.Step, error) {
 	var a protocol.TabArgs
 	switch sub {
 	case "new":
+		var err error
+		if rest, a.Block, err = takeBlock(rest); err != nil { // page.go, bladebro-ideas 28
+			return protocol.Step{}, err
+		}
 		if len(rest) > 1 {
 			return protocol.Step{}, errors.New("a batch tab new Action takes at most one URL")
 		}

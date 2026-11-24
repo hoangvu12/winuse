@@ -8,7 +8,7 @@ This is one topic of the winuse skill. `winuse skill tabs` prints it, and `winus
 
 ```
 winuse tab list <window>            # * marks the active Tab, then its id, title and URL
-winuse tab new <window> [url]       # open a Tab in the background and print its id
+winuse tab new <window> [url]       # open a Tab in the background and print its id (--block: below)
 winuse tab switch <window> <tab>
 winuse tab close <window> <tab>
 ```
@@ -50,6 +50,27 @@ winuse wait 4242:1a2b3c4d text "Saved"
 - A screenshot of a background Tab may not come; the output then says so
   and the tree is still current.
 - The Agent Cursor does not show Actions in a background Tab.
+
+### Block images, fonts and media
+
+```
+winuse tab new 4242 https://example.com --block images,fonts,media   # ok 1a2b3c4d
+winuse navigate 4242:1a2b3c4d https://example.com/2 --block images   # change what it blocks
+winuse navigate 4242:1a2b3c4d https://example.com/3 --block none     # stop blocking
+```
+
+- Pages load sooner and send less; their text and the images' alt text
+  stay, so the Window State and `read` say the same.
+- It lasts for the Tab's life, for every agent working in it, until
+  `--block none`. Reads, `--observe` and screenshots of the Tab end with
+  `Note: images, fonts and media are blocked in this Tab` (naming the
+  classes that are on). Check there before you trust how a Page looks.
+- It matches file extensions (`.png`, `.woff2`, `.mp4` ...), so images
+  whose URLs have no file extension still load.
+- Only on Tabs that are yours: a Tab `tab new` opened, or any Tab of a
+  browser winuse launched or cloned. On the user's Tabs, or on a Window
+  named alone, it is refused with nothing sent: open a Tab with `tab new`.
+- Leave it off when the task is about how the Page looks.
 
 Through the extension your new Tabs gather in a tab group named after you
 (`WINUSE_AGENT`, else your Harness's name) in your Agent Cursor's colour. These are

@@ -364,6 +364,10 @@ type Services struct {
 	// of its Tab targets. Created by defaultServices.
 	tabHolds  *tabHolds
 	tabStates *tabStateStore
+
+	// assetBlocks are the Tabs tab new opened and what each blocking Tab
+	// blocks (assets.go, bladebro-ideas 28). Created by defaultServices.
+	assetBlocks *assetBlocks
 }
 
 // CommandsWith builds the command registry over the given services.
@@ -922,6 +926,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.tabStates == nil {
 		s.tabStates = newTabStateStore()
+	}
+	if s.assetBlocks == nil {
+		s.assetBlocks = newAssetBlocks()
 	}
 	if s.WindowThread == nil {
 		s.WindowThread = win.WindowThreadID

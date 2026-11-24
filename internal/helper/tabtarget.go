@@ -168,7 +168,7 @@ func (s Services) tabTargeted(name string, cmd Command) Command {
 		if rerr := refuseOnTab(name, args, a.Window); rerr != nil {
 			return "", rerr
 		}
-		bt, rerr := s.resolveTabTarget(ctx, window, tabRef)
+		bt, rerr := s.resolveTabTarget(ctx, window, tabRef, s.refuseBlock(name, args))
 		if rerr != nil {
 			if name == "get-window-state" {
 				return "", rerr
@@ -180,9 +180,13 @@ func (s Services) tabTargeted(name string, cmd Command) Command {
 		var e *Error
 		if name == "get-window-state" {
 			// Worded for the Tab already, and the rest is the Page's own text.
-			return s.tabWindowState(ctx, bt, plain)
+			out, e = s.tabWindowState(ctx, bt, plain)
+			return s.endWithBlockNote(bt, out, e)
 		}
 		out, e = cmd(ctx, plain)
+		if blockReads[name] || observeOf(ctx) != nil {
+			out, e = s.endWithBlockNote(bt, out, e) // assets.go: a blocking Tab says so
+		}
 		return bt.retargetOut(out), bt.retargetErr(e)
 	}
 }
@@ -270,8 +274,10 @@ func tabHeadedRefusal(ref string) *Error {
 
 // resolveTabTarget finds the Tab a Tab target names among the Tabs of the
 // Window's browser (any of its windows), attaches its session and holds
-// it. Nothing reaches the Page's input.
-func (s Services) resolveTabTarget(ctx context.Context, window, tabRef string) (*bgTab, *Error) {
+// it. Nothing reaches the Page's input. check, when not nil, may refuse
+// the Tab once it is found, before anything is sent to it (assets.go's
+// --block on a Tab that is not winuse's).
+func (s Services) resolveTabTarget(ctx context.Context, window, tabRef string, check func(*bgTab) *Error) (*bgTab, *Error) {
 	bc, rerr := s.browserWindow(ctx, window, "Tabs", "Tab targets")
 	if rerr != nil {
 		return nil, rerr
@@ -294,6 +300,11 @@ func (s Services) resolveTabTarget(ctx context.Context, window, tabRef string) (
 			Hint: "list the Tabs and their ids: winuse tab list " + bc.id(), Exit: 1, Code: code}
 	}
 	bt := &bgTab{browserConn: bc, tab: tab, active: tab.Active != nil && *tab.Active}
+	if check != nil {
+		if rerr := check(bt); rerr != nil {
+			return nil, rerr
+		}
+	}
 	if tab.Internal {
 		return bt, nil // a browser page is never attached; navigate leaves it
 	}
@@ -307,6 +318,7 @@ func (s Services) resolveTabTarget(ctx context.Context, window, tabRef string) (
 	}
 	bt.session = session
 	s.tabHolds.hold(ctx, bc.conn, session, tab.TargetID)
+	s.keepBlocking(ctx, bt) // assets.go: a blocking Tab's session may be new
 	return bt, nil
 }
 
