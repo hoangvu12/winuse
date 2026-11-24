@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "source": "hand-authored from ticket 13's probe of a WPF DataGrid (1000 rows x 4 columns, about 30 rows realized; cut to 3 here): RowCount counts every row, only the realized rows are children, each row starts with its row header, and a cell's text sits in a text child; replace with winuse record-tree <window> <file> --table",
+  "role": "data grid",
+  "table": true,
+  "rowCount": 1000,
+  "headers": ["Id", "Name", "Price", "Stock"],
+  "children": [
+    {"role": "header", "children": [
+      {"role": "header item", "name": "Id"},
+      {"role": "header item", "name": "Name"},
+      {"role": "header item", "name": "Price"},
+      {"role": "header item", "name": "Stock"}
+    ]},
+    {"role": "data item", "name": "WpfHost.Row", "children": [
+      {"role": "header item"},
+      {"role": "custom", "column": 0, "children": [{"role": "text", "name": "0"}]},
+      {"role": "custom", "column": 1, "children": [{"role": "text", "name": "Item 0"}]},
+      {"role": "custom", "column": 2, "children": [{"role": "text", "name": "0.00"}]},
+      {"role": "custom", "column": 3, "children": [{"role": "text", "name": "0"}]}
+    ]},
+    {"role": "data item", "name": "WpfHost.Row", "children": [
+      {"role": "header item"},
+      {"role": "custom", "column": 0, "children": [{"role": "text", "name": "1"}]},
+      {"role": "custom", "column": 1, "children": [{"role": "text", "name": "Item 1"}]},
+      {"role": "custom", "column": 2, "children": [{"role": "text", "name": "1.50"}]},
+      {"role": "custom", "column": 3, "children": [{"role": "text", "name": "7"}]}
+    ]},
+    {"role": "data item", "name": "WpfHost.Row", "children": [
+      {"role": "header item"},
+      {"role": "custom", "column": 0, "children": [{"role": "text", "name": "2"}]},
+      {"role": "custom", "column": 1, "children": [{"role": "text", "name": "Item 2"}]},
+      {"role": "custom", "column": 2, "children": [{"role": "text", "name": "3.00"}]},
+      {"role": "custom", "column": 3, "children": [{"role": "text", "name": "14"}]}
+    ]},
+    {"role": "scroll bar", "name": "Vertical Scroll Bar", "children": [{"role": "thumb"}]}
+  ]
+}

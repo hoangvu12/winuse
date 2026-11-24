@@ -126,8 +126,8 @@ winuse extract <window> --as table|list|jsonld # force a mode; --limit N (defaul
   `no list found: the Page looks like a <Cloudflare|...> wall; ask the user to handle it`:
   stop and ask the user, as the safety rules say.
 - It only reads, in an isolated world the Page cannot see, and prints no
-  Element Indexes. It takes `<window>:<tab>`. Pages only: on a native
-  Window, use `get-window-state` or `find`.
+  Element Indexes. It takes `<window>:<tab>`. On a native Window it reads
+  the Window's list or grid instead (`winuse skill reading`).
 
 ### Act on a Page
 
