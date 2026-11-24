@@ -8,8 +8,8 @@
 // wall kind (a Cloudflare interstitial, a bare Turnstile, DataDome,
 // PerimeterX, reCAPTCHA, Akamai, a 429), and two that are no wall (a long
 // docs page about rate limits, a login form with a Turnstile widget), plus
-// read's article and docs pages. read.js names the same wall on each, as
-// it carries the same check.
+// read's article and docs pages. read.js and extract.js name the same
+// wall on each, as they carry the same check.
 //
 // TestNavigateNotesAWall runs the real `winuse navigate` onto a wall in a
 // browser `winuse browser launch` started: ok with the Note, the --json
@@ -82,6 +82,10 @@ func TestWallCheck(t *testing.T) {
 			md, err := page.ReadMarkdown(ctx, conn.Client, sess, "", 0, page.ReadOptions{})
 			if err != nil || md.Block != tc.want {
 				t.Errorf("read.js on %s named %q, %v; want %q", tc.page, md.Block, err, tc.want)
+			}
+			ex, err := page.Extract(ctx, conn.Client, sess, nil, page.ExtractOptions{})
+			if err != nil || ex.Wall != tc.want {
+				t.Errorf("extract.js on %s named %q, %v; want %q", tc.page, ex.Wall, err, tc.want)
 			}
 		})
 	}

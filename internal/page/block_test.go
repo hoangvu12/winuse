@@ -2,9 +2,9 @@ package page
 
 // The wall check (.scratch/bladebro-ideas ticket 05) over a fake browser:
 // block.js runs alone in an isolated world of the main frame, never through
-// Runtime.evaluate or Runtime.enable, and read.js carries the same check
-// (one copy, put in by read.go). What block.js finds on real pages is
-// test/e2e's TestWallCheck.
+// Runtime.evaluate or Runtime.enable, and read.js and extract.js carry the
+// same check (one copy, put in by read.go and extract.go). What block.js
+// finds on real pages is test/e2e's TestWallCheck.
 
 import (
 	"context"
@@ -54,15 +54,20 @@ func TestBlockKindOnAnOrdinaryPageOrAFailure(t *testing.T) {
 	}
 }
 
-func TestReadCarriesTheSameWallCheck(t *testing.T) {
-	if !strings.Contains(readMarkdownJS, blockJS) {
-		t.Error("read.js does not carry block.js")
-	}
-	if strings.Contains(readMarkdownJS, blockMarker) {
-		t.Error("read.js still has the marker block.js replaces")
-	}
-	if strings.Count(readMarkdownJS, "winuse:block */") != 1 {
-		t.Error("read.js carries block.js more than once, or a second wall check")
+func TestReadAndExtractCarryTheSameWallCheck(t *testing.T) {
+	for name, js := range map[string]string{"read.js": readMarkdownJS, "extract.js": extractJS} {
+		if !strings.Contains(js, blockJS) {
+			t.Errorf("%s does not carry block.js", name)
+		}
+		if strings.Contains(js, blockMarker) {
+			t.Errorf("%s still has the marker block.js replaces", name)
+		}
+		if strings.Count(js, "winuse:block */") != 1 {
+			t.Errorf("%s carries block.js more than once", name)
+		}
+		if strings.Contains(js, "'rate-limit'") && strings.Count(js, "'rate-limit'") != strings.Count(blockJS, "'rate-limit'") {
+			t.Errorf("%s has a wall check of its own beside block.js", name)
+		}
 	}
 	if !strings.Contains(blockJS, "Apache License 2.0") || !strings.Contains(blockJS, "detect_block.js") {
 		t.Error("block.js lost its attribution")

@@ -9,7 +9,8 @@
 //   - src/mcp/server/js/auto_extract.js  (list detection, item fields, the
 //     redirect unwrapping and the page's result count)
 //   - src/adapters/js/jsonld.js          (schema.org JSON-LD)
-//   - src/page/js/detect_block.js        (the generic block-wall check)
+//   - src/page/js/detect_block.js        (the generic block-wall check,
+//                                         block.js, put in by extract.go)
 // Changed for winuse (ticket 12's findings): the site adapters and site
 // branches are gone; items group loosely (same tag and class, or most
 // children shared); sibling rows of one record merge (two rows per story);
@@ -75,23 +76,11 @@ function num(s) {
 }
 const NUM = '(\\d[\\d.,]*(?:[kKmM]\\b)?)';
 
-// ---- the block wall (detect_block.js, its generic part) ----
-function wall() {
-  const body = document.body;
-  const t = body ? (body.innerText || '') : '';
-  const title = document.title || '';
-  if (t.length < 1500) {
-    if (/just a moment|attention required|checking your browser/i.test(title) ||
-        document.querySelector('#challenge-form,#challenge-running,#cf-challenge-running,.cf-browser-verification')) return 'Cloudflare';
-    if (document.querySelector('iframe[src*="captcha-delivery"]')) return 'DataDome';
-    if (document.querySelector('#px-captcha') || /press (?:&|and) hold/i.test(t)) return 'PerimeterX';
-    if (document.querySelector('iframe[src*="recaptcha"],.g-recaptcha') &&
-        /(?:prove|verify|confirm)[^.]{0,30}(?:human|not a robot)|unusual traffic/i.test(t)) return 'reCAPTCHA';
-    if (/access denied/i.test(t + ' ' + title) && /reference|akamai/i.test(t)) return 'Akamai';
-  }
-  if (t.length < 800 && /too many requests|rate limit/i.test(t + ' ' + title)) return 'rate-limit';
-  return '';
-}
+// ---- the block wall ----
+// wall is block.js (detect_block.js, its generic part), the one wall check
+// navigate's Note and read use too; extract.go puts it in place of the
+// marker. Called with no document, it checks this one.
+const wall = /* winuse:block.js */ null;
 
 // ---- what the page says it holds ----
 const NOUNS = 'results?|items?|listings?|products?|entries|matches|hits|questions|repositories|repos|packages|articles|posts|jobs|stories|videos|users|issues|pull requests|recipes|threads|topics|courses|books|homes|properties|companies|people';

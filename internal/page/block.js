@@ -13,11 +13,14 @@
 //     winuse prints them (Cloudflare, DataDome, PerimeterX, reCAPTCHA,
 //     Akamai, rate-limit), "" for none;
 //   - it is one function expression over a document (the current one when
-//     none is given), so read.js embeds it and the navigation check calls
-//     it alone;
+//     none is given), so read.js and extract.js embed it and the
+//     navigation check calls it alone;
 //   - every sign needs a small page: the Cloudflare title and challenge
-//     form too, under 1500 characters of text; the reCAPTCHA wording also
-//     takes "not a robot" and "verify you are human";
+//     form too, under 1500 characters of text;
+//   - a few more signs: the Cloudflare titles "attention required" and
+//     "checking your browser" and its older challenge elements, PerimeterX's
+//     "press & hold" wording, and the reCAPTCHA wording "not a robot",
+//     "verify you are human" and "unusual traffic";
 //   - it never clicks, types or waits.
 function (d) {
   /* winuse:block */
@@ -53,7 +56,7 @@ function (d) {
   // Cloudflare: the interstitial's title or challenge form; its challenge
   // script on a nearly empty page; an unsolved Turnstile on a nearly empty
   // page with no field to fill (a login or contact form embeds one too).
-  if (bl < 1500 && (title.indexOf('just a moment') >= 0 || title.indexOf('attention required') >= 0 || has('#challenge-form'))) return 'Cloudflare';
+  if (bl < 1500 && (any(title, ['just a moment', 'attention required', 'checking your browser']) || has('#challenge-form,#challenge-running,#cf-challenge-running,.cf-browser-verification'))) return 'Cloudflare';
   if (bl < 800 && has('script[src*="challenge-platform"]')) return 'Cloudflare';
   if (bl < 800 && has('.cf-turnstile') && !has('input:not([type=hidden]):not([type=submit]):not([type=button]),textarea,select')) {
     var token = d.querySelector('input[name="cf-turnstile-response"]');
@@ -61,11 +64,12 @@ function (d) {
   }
   // DataDome: its captcha frame, or a frame and its name.
   if (bl < 1200 && (has('iframe[src*="captcha-delivery"]') || has('iframe') && text.indexOf('datadome') >= 0)) return 'DataDome';
-  // PerimeterX: its captcha box or script.
-  if (bl < 1500 && has('#px-captcha,script[src*="px-captcha"]')) return 'PerimeterX';
-  // reCAPTCHA: the widget with wording that asks to prove a human.
+  // PerimeterX: its captcha box or script, or its press-and-hold wording.
+  if (bl < 1500 && (has('#px-captcha,script[src*="px-captcha"]') || any(text, ['press & hold', 'press and hold']))) return 'PerimeterX';
+  // reCAPTCHA: the widget with wording that asks to prove a human (or
+  // Google's "unusual traffic" page).
   if (bl < 1500 && has('.g-recaptcha,iframe[src*="recaptcha"]') &&
-      (any(title, ['prove', 'humanity', 'robot']) || any(text, ['prove your humanity', 'are you human', 'not a robot', 'verify you are human', 'verify you are a human']))) return 'reCAPTCHA';
+      (any(title, ['prove', 'humanity', 'robot']) || any(text, ['prove your humanity', 'are you human', 'not a robot', 'verify you are human', 'verify you are a human', 'unusual traffic']))) return 'reCAPTCHA';
   // Akamai: access denied with its reference number.
   if (bl < 1000 && text.indexOf('access denied') >= 0 && (text.indexOf('reference') >= 0 || text.indexOf('akamai') >= 0)) return 'Akamai';
   // A rate limit: a real 429 page is tiny, so docs that mention one are not.
