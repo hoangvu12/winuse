@@ -148,7 +148,7 @@ func diffParts(before []Element, t *Tree, v View, changes []Change, what string)
 			b.WriteString(" (was: " + clip(lineBody(c.Index, &old), wasLimit) + ")")
 		}
 		b.WriteByte('\n')
-		lines = append(lines, PrintedLine{c.Index, b.String()})
+		lines = append(lines, PrintedLine{Index: c.Index, Text: b.String(), Role: e.Role})
 	}
 
 	var tl strings.Builder

@@ -217,10 +217,185 @@ func TestRenderViewFoldsBeforeTheCut(t *testing.T) {
 }
 
 func TestCutTinyCapKeepsHeaderAndTail(t *testing.T) {
-	lines := []PrintedLine{{0, "\t0 window W\n"}, {1, "\t\t1 button B\n"}}
+	lines := []PrintedLine{{Index: 0, Text: "\t0 window W\n", Role: "window"}, {Index: 1, Text: "\t\t1 button B\n", Role: "button"}}
 	out := Cut("Window: \"W\", App: a.exe.\n", lines, "Note: tail\n", 10, "Narrow it")
-	want := "Window: \"W\", App: a.exe.\n\nNote: tail\nNote: --max-chars 10 stopped the output after the header: 2 more Element lines (from Element 0 on) are not printed; their Element Indexes still work. Narrow it\n"
+	want := "Window: \"W\", App: a.exe.\n\nNote: tail\nNote: --max-chars 10 stopped the output after the header: 2 more Element lines (from Element 0 on: 1 button, 1 window) are not printed; their Element Indexes still work. Narrow it\n"
 	if out != want {
 		t.Errorf("got:\n%q\nwant:\n%q", out, want)
+	}
+}
+
+// TestCutNoteByRole (bladebro-ideas 08): the cut note says what the lines
+// it left out are, by role, the most first and then by name, so a page
+// gives the same text every time; past five roles the rest are "other".
+// A heading's level is its state, not its role.
+func TestCutNoteByRole(t *testing.T) {
+	line := func(i int, role string) PrintedLine {
+		return PrintedLine{Index: i, Text: "\t" + strconv.Itoa(i) + " " + role + " x\n", Role: role}
+	}
+	head := "Window: \"W\", App: a.exe.\n"
+	lines := []PrintedLine{line(0, "window"), line(1, "link"), line(2, "button"), line(3, "link"), line(4, "edit"), line(5, "button"), line(6, "link"), line(7, "heading")}
+	if out := Cut(head, lines, "", 10, "Narrow it"); !strings.Contains(out, " 8 more Element lines (from Element 0 on: 3 link, 2 button, 1 edit, 1 heading, 1 window) are not printed;") {
+		t.Errorf("five roles, all named:\n%s", out)
+	}
+	lines = append(lines, line(8, "text"), line(9, "image"), line(10, "link"))
+	if out := Cut(head, lines, "", 10, "Narrow it"); !strings.Contains(out, " 11 more Element lines (from Element 0 on: 4 link, 2 button, 1 edit, 1 heading, 3 other) are not printed;") {
+		t.Errorf("seven roles: the four first, then the rest as other:\n%s", out)
+	}
+	// Only the lines left out count, and the note still fits the cap.
+	for _, max := range []int{400, 450, 500} {
+		out := Cut(head, lines, "", max, "Narrow it")
+		if n := utf8.RuneCountInString(out); n > max {
+			t.Errorf("--max-chars %d printed %d characters:\n%s", max, n, out)
+		}
+	}
+	tree := &Tree{Title: "W", App: "a.exe", FocusedIndex: -1, Elements: []Element{
+		{Depth: 0, Role: "window", Name: "W"}, {Depth: 1, Role: "heading", Name: "Title", Level: 1}, {Depth: 1, Role: "heading", Name: "Part", Level: 2}}}
+	if out := RenderView(tree, View{MaxChars: 1, Ref: "7"}); !strings.Contains(out, "(from Element 0 on: 2 heading, 1 window)") {
+		t.Errorf("a heading counts by its role:\n%s", out)
+	}
+}
+
+// newsTree is a Page's Window State with its chrome around the story: a
+// banner holding a navigation of 30 links, the main content, a small
+// complementary, and a footer of 30 links.
+//
+//	0 document; 1 banner, 2 link Home, 3 navigation, 4-33 links;
+//	34 main, 35 heading, 36-55 text, 56 button Share;
+//	57 complementary, 58-59 links; 60 footer, 61-90 links
+func newsTree() *Tree {
+	els := []Element{
+		{Depth: 0, Role: "document", Name: "News"},
+		{Depth: 1, Role: "banner"},
+		{Depth: 2, Role: "link", Name: "Home"},
+		{Depth: 2, Role: "navigation", Name: "Sections"},
+	}
+	for i := 0; i < 30; i++ {
+		els = append(els, Element{Depth: 3, Role: "link", Name: "Section number " + strconv.Itoa(i) + " of the site"})
+	}
+	els = append(els, Element{Depth: 1, Role: "main"}, Element{Depth: 2, Role: "heading", Name: "The story", Level: 1})
+	for i := 0; i < 20; i++ {
+		els = append(els, Element{Depth: 2, Role: "text", Name: "Paragraph " + strconv.Itoa(i) + " of the story, with enough words to cost room in the read."})
+	}
+	els = append(els, Element{Depth: 2, Role: "button", Name: "Share"},
+		Element{Depth: 1, Role: "complementary"}, Element{Depth: 2, Role: "link", Name: "Related one"}, Element{Depth: 2, Role: "link", Name: "Related two"},
+		Element{Depth: 1, Role: "footer"})
+	for i := 0; i < 30; i++ {
+		els = append(els, Element{Depth: 2, Role: "link", Name: "Footer link " + strconv.Itoa(i) + " about the site"})
+	}
+	return &Tree{Title: "News", App: "chrome.exe", FocusedIndex: -1, Elements: els}
+}
+
+// newsCap is a cap newsTree fits only with its chrome folded: the folded
+// read and room for the cut's own note. It fails the test when folding
+// unnamed containers alone would fit.
+func newsCap(t *testing.T, tree *Tree) int {
+	t.Helper()
+	folded, _ := renderView(tree, View{Compact: true, landmarks: true, Ref: "7"}, SharedIDs(tree.Elements))
+	cap := utf8.RuneCountInString(folded) + 700
+	if out := RenderView(tree, View{Compact: true, MaxChars: cap, Ref: "7"}); !strings.Contains(out, "stopped the output") && !strings.Contains(out, "Elements folded") {
+		t.Fatalf("the test tree must need its landmarks folded to fit %d:\n%s", cap, out)
+	}
+	return cap
+}
+
+// TestRenderViewFoldsLandmarksBeforeTheCut (bladebro-ideas 08): a Page
+// read that does not fit even with its unnamed containers folded folds
+// its chrome landmarks (navigation, banner, footer, complementary) of 3
+// or more Elements into one line each, which names the landmark, counts
+// what it holds and says how to read it; the content prints whole, and
+// every index keeps working.
+func TestRenderViewFoldsLandmarksBeforeTheCut(t *testing.T) {
+	tree := newsTree()
+	cap := newsCap(t, tree)
+	out := RenderView(tree, View{MaxChars: cap, Ref: "7"})
+	if strings.Contains(out, "stopped the output") {
+		t.Errorf("folding the chrome fits the read, so nothing is cut:\n%s", out)
+	}
+	for _, want := range []string{
+		"\t\t1 banner (+32 Elements folded; --root 1 shows them)\n",
+		"\t\t60 footer (+30 Elements folded; --root 60 shows them)\n",
+		"\t\t35 heading (level 1) The story\n",
+		"\t\t56 button Share\n",
+		"\t\t58 link Related one\n", // two links: too few to fold
+		"Note: folding unnamed containers (as --compact does) and Page landmarks to fit --max-chars " + strconv.Itoa(cap) +
+			" left out 64 of the 91 Elements; their Element Indexes still work; read a part whole with winuse get-window-state 7 --root <element>\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("no %q:\n%s", want, out)
+		}
+	}
+	got := lineIndexes(t, out)
+	for _, i := range []int{2, 3, 4, 33, 61, 90} {
+		if _, ok := got[i]; ok {
+			t.Errorf("Element %d of a folded landmark still prints:\n%s", i, out)
+		}
+	}
+	// A read that fits, or one with no cap, folds nothing.
+	whole := RenderView(tree, View{Ref: "7"})
+	if strings.Contains(whole, "folded") || !strings.Contains(whole, "\t\t1 banner\n") || !strings.Contains(whole, "\t\t\t3 navigation Sections\n") {
+		t.Errorf("no cap, no fold:\n%s", whole)
+	}
+	if out := RenderView(tree, View{MaxChars: utf8.RuneCountInString(whole) + 500, Ref: "7"}); out != whole {
+		t.Errorf("a read that fits must print whole:\n%s", out)
+	}
+	// A Tab target takes no --root: the line says only what it folded.
+	if out := RenderView(tree, View{MaxChars: cap}); !strings.Contains(out, "\t\t1 banner (+32 Elements folded)\n") {
+		t.Errorf("without a Window to name:\n%s", out)
+	}
+}
+
+// TestRenderViewLandmarkFoldRules: only a Page with main content (a main
+// or dialog landmark) folds, and never a landmark that holds the focus or
+// an Element whose line changed since the Agent's earlier read.
+func TestRenderViewLandmarkFoldRules(t *testing.T) {
+	tree := newsTree()
+	cap := newsCap(t, tree)
+	read := func(tree *Tree, v View) string {
+		if v.MaxChars == 0 {
+			v.MaxChars = cap
+		}
+		v.Ref = "7"
+		return RenderView(tree, v)
+	}
+	// Room for one landmark left open (about 1,200 characters of links),
+	// so the other's fold line is not cut.
+	roomy := cap + 1300
+	const banner, footer = "\t\t1 banner (+32 Elements folded", "\t\t60 footer (+30 Elements folded"
+
+	noMain := newsTree()
+	noMain.Elements[34].Role = "group"
+	if out := read(noMain, View{}); strings.Contains(out, "Elements folded") || !strings.Contains(out, "stopped the output") {
+		t.Errorf("no main content: nothing folds, the read is cut:\n%s", out)
+	}
+	dialog := newsTree()
+	dialog.Elements[34].Role = "dialog"
+	if out := read(dialog, View{}); !strings.Contains(out, banner) || !strings.Contains(out, footer) {
+		t.Errorf("a dialog is main content too:\n%s", out)
+	}
+
+	focused := newsTree()
+	focused.FocusedIndex = 10 // a link in the navigation inside the banner
+	out := read(focused, View{MaxChars: roomy})
+	if strings.Contains(out, banner) || strings.Contains(out, "3 navigation Sections (+") || !strings.Contains(out, footer) {
+		t.Errorf("the focus keeps its landmarks open:\n%s", out)
+	}
+
+	before := append([]Element(nil), tree.Elements...)
+	before[70].Name = "Footer link that was"
+	out = read(tree, View{Before: before, MaxChars: roomy})
+	if !strings.Contains(out, banner) || strings.Contains(out, footer) {
+		t.Errorf("a changed link keeps its footer open:\n%s", out)
+	}
+	if out := read(tree, View{Before: append([]Element(nil), tree.Elements...)}); !strings.Contains(out, banner) || !strings.Contains(out, footer) {
+		t.Errorf("nothing changed, both fold:\n%s", out)
+	}
+	// An earlier read of another page: every line changed, so none counts.
+	other := []Element{{Role: "document", Name: "Other page"}}
+	for i := 0; i < 90; i++ {
+		other = append(other, Element{Depth: 1, Role: "text", Name: "Other " + strconv.Itoa(i)})
+	}
+	if out := read(tree, View{Before: other}); !strings.Contains(out, banner) || !strings.Contains(out, footer) {
+		t.Errorf("after another page, both fold:\n%s", out)
 	}
 }

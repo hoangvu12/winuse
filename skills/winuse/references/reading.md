@@ -124,14 +124,28 @@ winuse get-window-state <window> --full            # Codex's text byte for byte:
 
 By default a read, `find` and `--root` stop before 28000 characters
 (under the Harness's 30000-character cap on a command's output) with a
-note naming the first Element not printed, and leave out the IDs two or
-more Elements share, which `id:` refuses as ambiguous; a unique ID always
-prints. A full read that would pass the cap first folds its unnamed
-containers, as `--compact` does, and says so in a note; it cuts only what
-still does not fit (on Chromium and Electron Windows, where a third of the
-Elements can be such wrappers, that fits far more). A read that fits
+note naming the first Element not printed and counting the rest by role
+(`(from Element 412 on: 30 link, 8 button, 3 edit)`), and leave out the
+IDs two or more Elements share, which `id:` refuses as ambiguous; a
+unique ID always prints. A full read that would pass the cap first folds
+its unnamed containers, as `--compact` does, and says so in a note; it
+cuts only what still does not fit (on Chromium and Electron Windows, where
+a third of the Elements can be such wrappers, that fits far more). A read that fits
 prints whole. `--max-chars N` sets the cap, `--max-chars 0` lifts it, and
 `--out <file>` writes the whole read to the file.
+
+A Page's landmarks print as `main`, `navigation`, `banner`, `footer` and
+`complementary` lines. On a Page with a `main` or `dialog`, a read still
+too long once folded folds each `navigation`, `banner`, `footer` and
+`complementary` of 3 or more Elements to one line, so the cut drops site
+chrome before content:
+
+```
+		3 navigation Sections (+42 Elements folded; --root 3 shows them)
+```
+
+The folded Elements' indexes still work. One that holds the focus, or an
+Element changed since your last read, stays open.
 
 On a full read, `--interactive`, `--depth N` and `--compact` (folds
 unnamed containers) print less, but the Window State is kept whole:

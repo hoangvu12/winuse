@@ -157,7 +157,7 @@ func TestFindLimit(t *testing.T) {
 	trees.found.Count = 2
 	out, e = runCommand(t, cmds, "find", protocol.FindArgs{Window: "101", Role: "button", MaxChars: intPtr(470)})
 	if e != nil || len(out) > 470 || !strings.Contains(out, "\t3 button Save ID: save\n") ||
-		!strings.Contains(out, "stopped the output after Element 3: 1 more Element lines (from Element 4 on) are not printed; their Element Indexes still work. Narrow the filters, pass --limit, or raise --max-chars\n") {
+		!strings.Contains(out, "stopped the output after Element 3: 1 more Element lines (from Element 4 on: 1 button) are not printed; their Element Indexes still work. Narrow the filters, pass --limit, or raise --max-chars\n") {
 		t.Errorf("--max-chars 470 (%d characters): %q, %+v", len(out), out, e)
 	}
 }
@@ -242,5 +242,38 @@ func TestFindDropsSharedIDs(t *testing.T) {
 	}
 	if _, e := runCommand(t, cmds, "find", protocol.FindArgs{Window: "101", Full: true, MaxChars: intPtr(100)}); e == nil {
 		t.Error("--full with --max-chars was accepted")
+	}
+}
+
+// TestRenderStateFoldsOnlyUnchangedLandmarks (bladebro-ideas 08): a plain
+// read past its cap folds a Page's chrome, but not a landmark that holds
+// an Element whose line changed since the Agent's earlier Window State of
+// the Window: the read compares with it even without --diff.
+func TestRenderStateFoldsOnlyUnchangedLandmarks(t *testing.T) {
+	tree := &wstate.Tree{Title: "News", App: "chrome.exe", FocusedIndex: -1,
+		Elements: []wstate.Element{{Role: "document", Name: "News"}, {Depth: 1, Role: "banner"}}}
+	for i := 0; i < 30; i++ {
+		tree.Elements = append(tree.Elements, wstate.Element{Depth: 2, Role: "link", Name: "Section number " + strconv.Itoa(i) + " of the site"})
+	}
+	tree.Elements = append(tree.Elements, wstate.Element{Depth: 1, Role: "main"})
+	for i := 0; i < 60; i++ {
+		tree.Elements = append(tree.Elements, wstate.Element{Depth: 2, Role: "text", Name: "Paragraph " + strconv.Itoa(i) + " of the story, long enough to cost room in the read."})
+	}
+	a := windowRef{Window: "7", MaxChars: intPtr(utf8.RuneCountInString(wstate.RenderView(tree, wstate.View{})) / 2)}
+	const folded = "\t\t1 banner (+30 Elements folded; --root 1 shows them)\n"
+
+	out, e := renderState(tree, a, "7", nil, "")
+	if e != nil || !strings.Contains(out, folded) {
+		t.Errorf("a first read folds the banner: %+v\n%s", e, out)
+	}
+	before := append([]wstate.Element(nil), tree.Elements...)
+	out, e = renderState(tree, a, "7", before, "")
+	if e != nil || !strings.Contains(out, folded) || strings.Contains(out, "Changed since") {
+		t.Errorf("nothing changed: the banner folds, and the read is no diff: %+v\n%s", e, out)
+	}
+	before[5].Name = "Section that was"
+	out, e = renderState(tree, a, "7", before, "")
+	if e != nil || strings.Contains(out, "banner (+") || !strings.Contains(out, "\t\t5 link Section number 3 of the site\n") {
+		t.Errorf("a changed link keeps the banner open: %+v\n%s", e, out)
 	}
 }

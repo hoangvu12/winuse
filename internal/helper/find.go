@@ -139,7 +139,7 @@ func (c findCut) line(tabs, index int, e wstate.Element, h wstate.Hint) wstate.P
 	if hint := h.Text(c.inRow); c.hints && hint != "" {
 		text += " Hint: " + hint
 	}
-	return wstate.PrintedLine{Index: index, Text: strings.Repeat("\t", tabs) + text + "\n"}
+	return wstate.PrintedLine{Index: index, Text: strings.Repeat("\t", tabs) + text + "\n", Role: e.Role}
 }
 
 // hintAt is hs[i], or the zero Hint.

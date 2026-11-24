@@ -1038,14 +1038,17 @@ func getWindowState(s Services, ctx context.Context, args json.RawMessage) (stri
 	})
 }
 
-// baselineOf is what a --diff read of w compares with: the Agent's latest
-// Window State of w, taken before the read replaces it (nil: none), and
-// the Window's name in the diff's text. Nothing without --diff.
+// baselineOf is what a read of w compares with: the Agent's latest Window
+// State of w, taken before the read replaces it (nil: none), which --diff
+// prints the changes since and a read past its cap uses to keep changed
+// Page landmarks open (bladebro-ideas 08); and, with --diff, the Window's
+// name in the diff's text.
 func (s Services) baselineOf(ctx context.Context, w win.WindowInfo, a windowRef) ([]wstate.Element, string) {
+	before := s.storedState(ctx, w.ID)
 	if !a.Diff {
-		return nil, ""
+		return before, ""
 	}
-	return s.storedState(ctx, w.ID), "window " + strconv.FormatUint(w.ID, 10)
+	return before, "window " + strconv.FormatUint(w.ID, 10)
 }
 
 // stateSettle is the Chromium settle budget of a get-window-state under
