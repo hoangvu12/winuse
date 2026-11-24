@@ -155,7 +155,11 @@ func (s Services) tabTargeted(name string, cmd Command) Command {
 		}
 		window, tabRef, ok := splitTabRef(a.Window)
 		if !ok {
-			return cmd(ctx, args)
+			out, e := cmd(ctx, args)
+			if blockReads[name] || observeOf(ctx) != nil {
+				out, e = s.endWithWindowBlockNote(ctx, a.Window, out, e) // assets.go: the Window shows a blocking Tab
+			}
+			return out, e
 		}
 		if first, _, twice := strings.Cut(window, ":"); twice {
 			// 301:301:ab12cd34: the Window named twice. Refused rather than
@@ -186,11 +190,11 @@ func (s Services) tabTargeted(name string, cmd Command) Command {
 		if name == "get-window-state" {
 			// Worded for the Tab already, and the rest is the Page's own text.
 			out, e = s.tabWindowState(ctx, bt, plain)
-			return s.endWithBlockNote(bt, out, e)
+			return s.endWithBlockNote(bt.tab.TargetID, out, e)
 		}
 		out, e = cmd(ctx, plain)
 		if blockReads[name] || observeOf(ctx) != nil {
-			out, e = s.endWithBlockNote(bt, out, e) // assets.go: a blocking Tab says so
+			out, e = s.endWithBlockNote(bt.tab.TargetID, out, e) // assets.go: a blocking Tab says so
 		}
 		return bt.retargetOut(out), bt.retargetErr(e)
 	}

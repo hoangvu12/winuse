@@ -22,8 +22,10 @@ package helper
 //     session the helper attached anew (the extension's idle detach, a
 //     reconnect) blocks too. `--block none` ends it. A helper that died
 //     leaves nothing: the browser drops the block with the session.
-//   - Disclosure. get-window-state (its screenshot included), read and
-//     --observe on a blocking Tab end with protocol.BlockNote.
+//   - Disclosure. The reads (get-window-state, its screenshot included,
+//     find, read and extract) and --observe on a blocking Tab end with
+//     protocol.BlockNote, on the Tab target and through the Window ID of a
+//     Window that shows the Tab (endWithWindowBlockNote).
 
 import (
 	"context"
@@ -72,6 +74,16 @@ func (b *assetBlocks) set(target string, classes []string) {
 		return
 	}
 	b.on[target] = append([]string(nil), classes...)
+}
+
+// any says some Tab blocks something.
+func (b *assetBlocks) any() bool {
+	if b == nil {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.on) > 0
 }
 
 // classes is what a Tab blocks, nil for nothing.
@@ -159,14 +171,38 @@ func (s Services) keepBlocking(ctx context.Context, bt *bgTab) {
 }
 
 // blockReads are the commands whose output a blocking Tab's note ends:
-// the reads (a screenshot is get-window-state's). --observe adds any
-// Action.
-var blockReads = map[string]bool{"get-window-state": true, "read": true}
+// the reads (a screenshot is get-window-state's; find takes no Tab
+// target, only a Window). --observe adds any Action.
+var blockReads = map[string]bool{"get-window-state": true, "find": true, "read": true, "extract": true}
+
+// endWithWindowBlockNote is endWithBlockNote for a command that named a
+// Window: the Tab the browser Window shows now, when it blocks. With no
+// Tab blocking anywhere it reads nothing.
+func (s Services) endWithWindowBlockNote(ctx context.Context, ref string, out string, e *Error) (string, *Error) {
+	if !s.assetBlocks.any() || s.Pages == nil {
+		return out, e
+	}
+	m, ok := s.Pages.(pageTabMatcher)
+	if !ok {
+		return out, e
+	}
+	w, rerr := resolveWindow(s, ref)
+	if rerr != nil || s.Pages.Browser(w) == "" {
+		return out, e
+	}
+	tctx, cancel := context.WithTimeout(ctx, pageProbeBudget)
+	defer cancel()
+	target, err := m.PageActiveTab(tctx, w)
+	if err != nil {
+		return out, e
+	}
+	return s.endWithBlockNote(target, out, e)
+}
 
 // endWithBlockNote ends a read's output (or, under a failure, a Batch's
-// observation) with the blocking Tab's note line.
-func (s Services) endWithBlockNote(bt *bgTab, out string, e *Error) (string, *Error) {
-	note := protocol.BlockNote(s.assetBlocks.classes(bt.tab.TargetID))
+// observation) with the note line of the Tab target blocks, if it does.
+func (s Services) endWithBlockNote(target string, out string, e *Error) (string, *Error) {
+	note := protocol.BlockNote(s.assetBlocks.classes(target))
 	if note == "" {
 		return out, e
 	}

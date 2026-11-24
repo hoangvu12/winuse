@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/hoangvu12/winuse/internal/cdp/cdptest"
+	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
 )
 
@@ -99,6 +100,35 @@ func TestExtractCountsPastTheCeilingAsALowerBound(t *testing.T) {
 	out, e := r.run(t, "extract", protocol.ExtractArgs{Window: "301", Limit: 2})
 	if e != nil || !strings.HasPrefix(out, `list: <ol> "Results": 2 of 2000+ rows (partial: capped at 2)`) {
 		t.Errorf("extract past the ceiling: %q %+v", out, e)
+	}
+}
+
+// TestBlockNoteOnEveryReadOfTheTab (bladebro-ideas 28): extract on a
+// blocking Tab ends with the note, and so does a read through the Window ID
+// of a Window that shows a blocking Tab (get-window-state, read, extract).
+func TestBlockNoteOnEveryReadOfTheTab(t *testing.T) {
+	r := extractRig(t, twoRows())
+	(&readPage{md: map[string]any{"markdown": "# Docs", "main": "main", "title": "Docs", "url": "https://docs.test/"}}).handle(r.browser.Srv, func(string) any { return nil })
+	r.svc.assetBlocks = newAssetBlocks()
+	r.cmds = CommandsWith(r.svc)
+	r.svc.assetBlocks.set(tDocs, []string{"images"}) // a Tab of a browser winuse launched may block
+	const note = "Note: images are blocked in this Tab\n"
+	for _, tc := range []struct {
+		cmd  string
+		args any
+	}{
+		{"extract", protocol.ExtractArgs{Window: "301:" + page.TabID(tDocs)}},
+		{"get-window-state", protocol.GetWindowArgs{Window: "301"}},
+		{"read", protocol.ReadArgs{Window: "301"}},
+		{"extract", protocol.ExtractArgs{Window: "301"}},
+	} {
+		if out, e := r.run(t, tc.cmd, tc.args); e != nil || !strings.HasSuffix(out, note) || strings.Count(out, note) != 1 {
+			t.Errorf("%s %+v: %q %+v", tc.cmd, tc.args, out, e)
+		}
+	}
+	r.svc.assetBlocks.set(tDocs, nil)
+	if out, e := r.run(t, "extract", protocol.ExtractArgs{Window: "301"}); e != nil || strings.Contains(out, "blocked") {
+		t.Errorf("a Window whose Tab blocks nothing: %q %+v", out, e)
 	}
 }
 
