@@ -224,6 +224,60 @@ func TestNameResolvesAPageControlOverItsOwnLabel(t *testing.T) {
 	}
 }
 
+// TestNameResolvesAPageClickableOverItsOwnLabel: a Page Element marked
+// clickable (a div with a click handler) is the control a name: reference
+// means when its own text sits inside it, as a button would be
+// (recap-trial 03). Two clickables, or a clickable and a control inside
+// it, stay ambiguous.
+func TestNameResolvesAPageClickableOverItsOwnLabel(t *testing.T) {
+	els := []Element{
+		{Depth: 0, Role: "document", Name: "Shop"},
+		{Depth: 1, Role: "clickable", Name: "Add to basket"},
+		{Depth: 2, Role: "group"},
+		{Depth: 3, Role: "text", Name: "Add to basket"},
+		{Depth: 1, Role: "clickable", Name: "Gift wrap"},
+		{Depth: 2, Role: "image", Name: "Gift wrap"},
+		{Depth: 1, Role: "clickable", Name: "Size"},
+		{Depth: 2, Role: "clickable", Name: "Size"},
+		{Depth: 1, Role: "clickable", Name: "Colour"},
+		{Depth: 1, Role: "clickable", Name: "Colour"},
+		{Depth: 1, Role: "clickable", Name: "Help"},
+		{Depth: 2, Role: "link", Name: "Help", URL: "/help"},
+		{Depth: 1, Role: "clickable", Name: "Reviews"},
+		{Depth: 1, Role: "text", Name: "Reviews"},
+	}
+	for _, tc := range []struct {
+		ref  string
+		want int
+	}{
+		{"name:Add to basket", 1},
+		{"name:Gift wrap", 4},
+	} {
+		if i, err := ResolveElementRef(els, tc.ref); err != nil || i != tc.want {
+			t.Errorf("ResolveElementRef(%q) = %d, %v, want %d, nil", tc.ref, i, err, tc.want)
+		}
+	}
+	for _, tc := range []struct {
+		ref  string
+		want []int
+	}{
+		{"name:Size", []int{6, 7}},      // a clickable inside a clickable
+		{"name:Colour", []int{8, 9}},    // two clickables
+		{"name:Help", []int{10, 11}},    // a link inside the clickable
+		{"name:Reviews", []int{12, 13}}, // a text beside it
+	} {
+		var amb *AmbiguousRefError
+		if i, err := ResolveElementRef(els, tc.ref); !errors.As(err, &amb) || !slices.Equal(amb.Matches, tc.want) {
+			t.Errorf("ResolveElementRef(%q) = %d, %v, want ambiguous among %v", tc.ref, i, err, tc.want)
+		}
+	}
+	// The rule is name: resolution's alone: a clickable is still not
+	// ActedOn, so the --interactive views are unchanged.
+	if els[1].ActedOn() || els[1].Interactive() {
+		t.Errorf("a clickable reads as ActedOn/Interactive; the rule must stay inside name: resolution")
+	}
+}
+
 // TestNameStaysAmbiguousUnlessTheLabelIsTheControlsOwn: exact, never a
 // guess. Only a control and a non-interactive Element inside it collapse;
 // every other pair, and three matches, fail with the candidates.
