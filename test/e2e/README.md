@@ -975,7 +975,7 @@ go test -tags e2e -v -timeout 10m -run "TestHTTPStatus$" ./test/e2e
 `asset_blocking_test.go` (bladebro-ideas ticket 28) checks `--block`.
 `TestAssetBlocking` starts Chrome or Edge headless on a throwaway profile
 and blocks in process (`page.BlockAssets`, as the helper does:
-`Network.setBlockedURLs` with `urlPatterns`, no `Network.enable`). A
+`Network.enable`, then `Network.setBlockedURLs` with `urlPatterns`). A
 fixture page's images, web font and video are served after 800 ms; the
 blocking Tab's load event must come sooner than a plain Tab's, the server
 must never see its images, font or video, its HTML, stylesheet and script

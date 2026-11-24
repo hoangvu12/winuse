@@ -1,8 +1,9 @@
 package page
 
 // Offline tests of asset blocking (bladebro-ideas ticket 28) over a
-// cdptest fake: one Network.setBlockedURLs with urlPatterns on the Tab's
-// session, no domain turned on, nothing paused. No browser runs.
+// cdptest fake: Network.enable and one Network.setBlockedURLs with
+// urlPatterns on the Tab's session (Network.disable after --block none),
+// nothing paused. No browser runs.
 
 import (
 	"context"
@@ -63,11 +64,30 @@ func TestBlockAssetsSendsURLPatterns(t *testing.T) {
 	if len(sets) != 1 || sessions[0] != "S1" || !reflect.DeepEqual(sets[0], want) {
 		t.Errorf("sent %v on %v, want %v on S1", sets, sessions, want)
 	}
-	// Nothing pauses and no domain is turned on: no Fetch, no enable.
+	// Network on in that session first (the block needs it), then the
+	// patterns; nothing pauses (no Fetch) and no other domain goes on.
+	if got := sessionMethods(f); strings.Join(got, " ") != "S1 Network.enable S1 Network.setBlockedURLs" {
+		t.Errorf("sent %v", got)
+	}
+}
+
+// sessionMethods are the fake's requests as "<session> <method>", in order.
+func sessionMethods(f *fakeTab) []string {
+	var out []string
 	for _, m := range f.srv.Received() {
-		if strings.HasPrefix(m.Method, "Fetch.") || strings.HasSuffix(m.Method, ".enable") {
-			t.Errorf("%s was sent", m.Method)
-		}
+		out = append(out, m.SessionID+" "+m.Method)
+	}
+	return out
+}
+
+// --block none empties the list, then turns Network off again.
+func TestBlockAssetsNoneTurnsNetworkOff(t *testing.T) {
+	f := newFakeTab(t)
+	if err := BlockAssets(context.Background(), f.c, "S3", nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := sessionMethods(f); strings.Join(got, " ") != "S3 Network.setBlockedURLs S3 Network.disable" {
+		t.Errorf("sent %v", got)
 	}
 }
 

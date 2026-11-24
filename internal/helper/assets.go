@@ -10,10 +10,13 @@ package helper
 //     launched or cloned. On any other Tab it is refused before the Tab is
 //     attached or held, with nothing sent; on a Window (whose Tab may be
 //     the user's) navigate refuses it too. The hint names tab new.
-//   - How. page.BlockAssets: Network.setBlockedURLs with urlPatterns on the
-//     Tab's session. It pauses nothing, so nothing can hang; no domain is
-//     turned on. tab new with --block opens the Tab on about:blank, blocks,
-//     then navigates it, so its first load is already blocked.
+//   - How. page.BlockAssets: Network.enable, then Network.setBlockedURLs
+//     with urlPatterns, on the Tab's session (the block does nothing without
+//     the Network domain on). It pauses nothing, so nothing can hang. This
+//     is the only place winuse turns Network on, and only in a blocking Tab
+//     that is winuse's; --block none turns it off again. tab new with
+//     --block opens the Tab on about:blank, blocks, then navigates it, so
+//     its first load is already blocked.
 //   - How long. For the Tab's life: the classes are kept by target id and
 //     sent again on every command on the Tab target (resolveTabTarget), so a
 //     session the helper attached anew (the extension's idle detach, a
@@ -214,8 +217,12 @@ func (s Services) checkNavBlock(ctx context.Context, cmd string, a protocol.Navi
 
 // blockBeforeNavigate sets a Tab target's block on its session before the
 // navigation, so the new document loads under it. A browser page through
-// the extension has no session to block on.
+// the extension has no session to block on. --block none on a Tab that
+// blocks nothing sends nothing: Network was never turned on there.
 func (s Services) blockBeforeNavigate(ctx context.Context, pw *pageWin, classes []string) *Error {
+	if len(classes) == 0 && len(s.assetBlocks.classes(pw.tab.TargetID)) == 0 {
+		return nil
+	}
 	if pw.session == "" {
 		if pw.conn.Mode == browser.ModeExtension {
 			return nothingSent(Fail(fmt.Sprintf("--block cannot reach the Tab of window %d while it shows a browser page (%s)", pw.w.ID, pw.tab.URL),

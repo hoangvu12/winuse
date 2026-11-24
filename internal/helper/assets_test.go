@@ -5,8 +5,10 @@ package helper
 // about:blank, blocks, then goes to the URL; navigate --block changes what
 // a Tab winuse opened blocks; the user's Tabs are refused with nothing
 // sent; and reads, --observe and screenshots of a blocking Tab end with
-// the note. Network.setBlockedURLs with urlPatterns is the only call: no
-// Network.enable, no Fetch. No browser runs.
+// the note. The block is Network.enable then Network.setBlockedURLs with
+// urlPatterns, on the blocking Tab's session only (never the user's Tabs),
+// and --block none ends with Network.disable; no Fetch, no Runtime.enable.
+// No browser runs.
 
 import (
 	"context"
@@ -80,14 +82,42 @@ func (r *bgRig) methodOrder() []string {
 	return out
 }
 
-// noDomainsOn fails when any domain was turned on or a request paused.
-func (r *bgRig) noDomainsOn(t *testing.T) {
+// networkOnlyOn fails when Network was turned on in any session but the
+// blocking Tabs' (the fake's session id is the target id), or turned on
+// there only after the block; when Runtime was turned on; or when a request
+// paused.
+func (r *bgRig) networkOnlyOn(t *testing.T, blocking ...string) {
 	t.Helper()
-	for _, m := range r.methodOrder() {
-		if m == "Network.enable" || m == "Runtime.enable" || strings.HasPrefix(m, "Fetch.") {
-			t.Errorf("%s was sent", m)
+	enabled := map[string]bool{}
+	for _, c := range r.ext.Commands() {
+		switch {
+		case c.Method == "Network.enable":
+			if indexOf(blocking, c.SessionID) < 0 {
+				t.Errorf("Network.enable on session %q, which blocks nothing", c.SessionID)
+			}
+			enabled[c.SessionID] = true
+		case c.Method == "Network.setBlockedURLs" && !enabled[c.SessionID] && !strings.Contains(string(c.Params), `"urlPatterns":[]`):
+			t.Errorf("session %q blocked before Network.enable", c.SessionID)
+		case c.Method == "Runtime.enable" || strings.HasPrefix(c.Method, "Fetch."):
+			t.Errorf("%s was sent", c.Method)
 		}
 	}
+	for _, s := range blocking {
+		if !enabled[s] {
+			t.Errorf("Network.enable was not sent on %q", s)
+		}
+	}
+}
+
+// networkCalls counts the Network methods sent, setBlockedURLs included.
+func (r *bgRig) networkCalls() int {
+	n := 0
+	for _, m := range r.methodOrder() {
+		if strings.HasPrefix(m, "Network.") {
+			n++
+		}
+	}
+	return n
 }
 
 // usersTabUntouched is noUserImpact for a test that ran tab new, whose
@@ -125,6 +155,15 @@ func indexOf(list []string, s string) int {
 	return -1
 }
 
+func lastIndexOf(list []string, s string) int {
+	for i := len(list) - 1; i >= 0; i-- {
+		if list[i] == s {
+			return i
+		}
+	}
+	return -1
+}
+
 // TestTabNewBlockBlocksBeforeTheLoad: tab new --block opens the Tab on
 // about:blank, blocks on its session, and only then sends it to the URL,
 // so the first load is already blocked.
@@ -153,13 +192,16 @@ func TestTabNewBlockBlocksBeforeTheLoad(t *testing.T) {
 	if b, n := indexOf(order, "Network.setBlockedURLs"), indexOf(order, "Page.navigate"); b < 0 || n < 0 || b > n {
 		t.Errorf("setBlockedURLs at %d, Page.navigate at %d: %v", b, n, order)
 	}
+	if en, b := indexOf(order, "Network.enable"), indexOf(order, "Network.setBlockedURLs"); en < 0 || en > b {
+		t.Errorf("Network.enable at %d, setBlockedURLs at %d: %v", en, b, order)
+	}
 	r.mu.Lock()
 	went := r.navigated[newTabTarget]
 	r.mu.Unlock()
 	if went != "https://news.test/" {
 		t.Errorf("the new Tab went to %q", went)
 	}
-	r.noDomainsOn(t)
+	r.networkOnlyOn(t, newTabTarget)
 	r.usersTabUntouched(t)
 
 	// Without a URL there is nothing to navigate: the Tab blocks on
@@ -226,7 +268,7 @@ func TestBlockingTabReadsEndWithTheNote(t *testing.T) {
 	if out, e := r.as(t, "claude", "get-window-state", protocol.GetWindowArgs{Window: "301:e200"}); e != nil || strings.Contains(out, "blocked") {
 		t.Errorf("a Tab that blocks nothing: %q %+v", out, e)
 	}
-	r.noDomainsOn(t)
+	r.networkOnlyOn(t, newTabTarget)
 	r.usersTabUntouched(t)
 }
 
@@ -268,14 +310,23 @@ func TestNavigateBlockOnATabWinuseOpened(t *testing.T) {
 	if last := calls[len(calls)-1]; last.session != newTabTarget || len(last.patterns) != 0 {
 		t.Errorf("--block none sent %+v", last)
 	}
-	n := len(calls)
+	// Network goes off again after the emptied list.
+	order = r.methodOrder()
+	if d, b := lastIndexOf(order, "Network.disable"), lastIndexOf(order, "Network.setBlockedURLs"); d < 0 || d < b {
+		t.Errorf("--block none did not end with Network.disable: %v", order)
+	}
+	n := r.networkCalls()
 	if out, e := r.as(t, "claude", "get-window-state", protocol.GetWindowArgs{Window: ref}); e != nil || strings.Contains(out, "blocked") {
 		t.Errorf("read after --block none: %q %+v", out, e)
 	}
-	if got := len(r.blockCalls(t)); got != n {
-		t.Errorf("a Tab that blocks nothing got %d more calls", got-n)
+	// --block none on a Tab that blocks nothing sends nothing.
+	if out, e := r.as(t, "claude", "navigate", protocol.NavigateArgs{Window: ref, URL: "https://news.test/4", Block: "none"}); e != nil || out != "ok https://news.test/4\n" {
+		t.Errorf("navigate --block none again: %q %+v", out, e)
 	}
-	r.noDomainsOn(t)
+	if got := r.networkCalls(); got != n {
+		t.Errorf("a Tab that blocks nothing got %d more Network calls", got-n)
+	}
+	r.networkOnlyOn(t, newTabTarget)
 	r.usersTabUntouched(t)
 }
 
@@ -317,6 +368,9 @@ func TestBlockRefusedOnTheUsersTabs(t *testing.T) {
 	if went != 0 {
 		t.Errorf("navigated: %v", r.navigated)
 	}
+	if n := r.networkCalls(); n != 0 {
+		t.Errorf("%d Network calls: %v", n, r.methodOrder())
+	}
 	r.noUserImpact(t)
 
 	// back, forward and reload take no --block.
@@ -342,6 +396,7 @@ func TestBlockOnALaunchedBrowsersTab(t *testing.T) {
 		if calls := r.blockCalls(t); len(calls) != 1 || calls[0].session != bgShop || !samePatterns(calls[0].patterns, fontPatterns) {
 			t.Errorf("%s: blocked %+v", mode, calls)
 		}
+		r.networkOnlyOn(t, bgShop)
 		r.svc.Pages.(*livePages).browsers.(pageConns).conn.Mode = browser.ModeExtension // the rig's cleanup
 	}
 }

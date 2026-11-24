@@ -4,7 +4,7 @@
 //
 // TestAssetBlocking blocks images, fonts and media in process, through
 // internal/page as the helper blocks them (page.BlockAssets:
-// Network.setBlockedURLs with urlPatterns, and no Network.enable), in a
+// Network.enable, then Network.setBlockedURLs with urlPatterns), in a
 // headless Chrome or Edge on a throwaway profile (startIsolatedBrowser). A
 // fixture page holds images, a web font and a video, each served after
 // assetDelay. In one Tab nothing is blocked; in another the block is set
