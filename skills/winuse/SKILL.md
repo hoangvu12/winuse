@@ -172,6 +172,7 @@ act on again. In full: topic `reading`.
 | Run a classic menu bar command | `invoke-menu <window> "File > Save As..."` |
 | Scroll a list or page | `scroll <window> <ref> down 5`, `scroll <window> <ref> into-view` |
 | Expand, select, open a context menu | `perform-secondary-action <window> <ref> Expand\|Select\|ContextMenu` |
+| Read a Page's text | `read <window>` (Markdown of the main content), not `eval` with `innerText` |
 | Wait for an effect | `wait <window> text "Saved"`, `wait <window> <ref> enabled`, `wait window "Save As"` |
 | Several routine steps in one call | `batch <window> click id:a then type-text --into id:b hi then press-key Return` |
 | Close a Window politely | `close-window <window>` (says when it stayed open, e.g. to ask about saving) |

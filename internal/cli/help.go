@@ -103,8 +103,12 @@ act and see the effect in one call: <action> ... --observe[=diff|full]
   command or anywhere after it outside type-text's text and set-value's
   value. When the Action opened one new Window (a menu, a dialog), it is
   read too and printed whole after, under a line naming its Window ID;
-  several new Windows are a note. A failed Action prints none; a read that
-  fails is a note and the Action's result stands.
+  several new Windows are a note. On a browser Window or a Tab the read
+  first waits for the Page to settle (no DOM change for 110 ms and no
+  request finishing for 280 ms, up to 1 s), so a late render or a route
+  change shows; a Page still changing then is read anyway, with a note. A
+  failed Action prints none; a read that fails is a note and the Action's
+  result stands.
 
 commands:
   list-windows [--details] [--app <name>] [--shell]
@@ -481,22 +485,29 @@ const usageTail = `);
                                (alert, confirm, prompt, or leave the page);
                                text answers a prompt. While one shows, every
                                other Page Action fails and says so
-  wait <window> selector <css> | text <text> | url <url or pattern> | load [domcontentloaded] | download
-                               wait until an element shows, the text appears,
-                               the URL matches (* is a wildcard), or the page
-                               loads (10 s by default, --timeout <seconds> up
-                               to 300; in a batch, the Batch's budget bounds
-                               it); wait download prints the path of the
-                               file a click downloaded, on a browser winuse
-                               launched or cloned
+  wait <window> selector <css> | text <text> | url <url or pattern> | load [domcontentloaded] | idle | js <expression> | download
+                               wait until an element shows, the text appears
+                               (open shadow roots and same-origin frames
+                               too), the URL matches (* is a wildcard), the
+                               page loads, the page settles (idle: no DOM
+                               change and no request finishing for a moment),
+                               or a JavaScript expression is true (js: a
+                               syntax error fails at once, a timeout names
+                               the last error it threw); selector and text
+                               take --gone to wait until it is gone (10 s by
+                               default, --timeout <seconds> up to 300; in a
+                               batch, the Batch's budget bounds it); wait
+                               download prints the path of the file a click
+                               downloaded, on a browser winuse launched or
+                               cloned
   wait <window> <element index | name: | id:> enabled | disabled | gone | value <value> | checked | unchecked | expanded | collapsed
                                wait until an Element of the Window's latest
                                Window State reaches that state (gone: the
                                Element is gone, its Window closed too); text
                                on a Window that is no browser waits in its
-                               UI Automation tree. Both read the Window
-                               without changing its Element Indexes, and fail
-                               when it closes
+                               UI Automation tree, --gone there too. Both
+                               read the Window without changing its Element
+                               Indexes, and fail when it closes
   wait window <app or title> [--gone]
                                wait until a Window of that App, or whose title
                                holds the text, shows, and print its line;
@@ -504,6 +515,20 @@ const usageTail = `);
                                read and poll, take --timeout like the Page's,
                                and never hold up an Action
   wait <milliseconds>         pause, up to 300000 (300 s)
+  read <window> [--root <element>] [--urls full] [--max-chars N | --out <file>]
+                               print the Page's main content as Markdown, with
+                               no Element Indexes, leaving the Window State as
+                               it is; --root reads a Page Element's subtree
+                               (an Element Index, name: or id: from your
+                               latest read). Same-site links print as paths,
+                               others as a shortened domain and path, images
+                               as their alt text; --urls full prints them
+                               whole. Cut at 28000 characters with a "(cut at
+                               N of M characters)" line (--max-chars N, 0 for
+                               none), or --out writes it whole to a file. A
+                               short Page that looks like a CAPTCHA or block
+                               wall gets a Note. Pages only: read a native
+                               Window with get-window-state
   eval <window> <expression> | --file <path or -> [--max <n>]
                                run a JavaScript expression in the Page and
                                print its value (JSON for objects, cut at 4000
@@ -605,10 +630,10 @@ screenshot's pixels) name an Element of the Window's latest Window State.
 A Tab target, <window>:<tab> (a tab id from tab list or tab new), names a Tab
 of that browser shown or not: get-window-state, click, set-value, scroll,
 hover, drag, select-text, type-text, press-key, upload, navigate, back,
-forward, reload, dialog, wait, eval and batch read and act on that Tab
-through its Browser Connection, headless, without switching the Tab the
-user sees; its Element Indexes are its own, and --headed, --post and @x,y
-are refused
+forward, reload, dialog, wait, eval, read, extract and batch read and act
+on that Tab through its Browser Connection, headless, without switching
+the Tab the user sees; its Element Indexes are its own, and --headed,
+--post and @x,y are refused
 `
 
 // Usage is the full reference, `winuse help all` (it grows as tickets
@@ -785,6 +810,10 @@ var commandGroups = []struct {
 			"winuse forward 4242"}},
 		{"reload", "reload the Tab's page", []string{
 			"winuse reload 4242"}},
+		{"read", "the Page's main content as Markdown", []string{
+			"winuse read 4242",
+			"winuse read 4242:1a2b3c4d --root 57 --urls full",
+			"winuse read 4242 --out page.md"}},
 		{"eval", "run JavaScript in the Page, print the value", []string{
 			"winuse eval 4242 document.title",
 			"winuse eval 4242 --file x.js --max 20000"}},

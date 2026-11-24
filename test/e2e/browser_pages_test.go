@@ -140,6 +140,7 @@ func runBrowserPages(t *testing.T, sys *browser.System, b browser.Browser, srv *
 	t.Run("upload", p.upload)
 	t.Run("download", p.download)
 	t.Run("navigation-wait-eval", p.navigation)
+	t.Run("settle-and-waits", p.settleAndWaits) // page_settle_test.go, bladebro-ideas 07
 }
 
 // TestBrowserPagesExtension runs a short subset through the winuse
@@ -973,6 +974,7 @@ func pagesHandler(dir string) http.Handler {
 		w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 		io.WriteString(w, downloadBody)
 	})
+	settleHandlers(mux) // page_settle_test.go: /e2e-slow and /e2e-ws
 	mux.Handle("/", http.FileServer(http.Dir(dir)))
 	return mux
 }

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>winuse e2e settle</title>
+</head>
+<body>
+<!-- The settle and the waits of bladebro-ideas 07 (page_settle_test.go):
+     a late render after a fetch, a client-side route change, a websocket
+     that stays open (quiet, or writing to the DOM on every message), text
+     in an open shadow root and a same-origin frame, a spinner that goes,
+     and a flag a script sets late. -->
+<main id="main">
+  <h1>e2e settle home</h1>
+  <button id="fetch" type="button" aria-label="e2e fetch render">fetch render</button>
+  <button id="route" type="button" aria-label="e2e route">route</button>
+  <button id="ticker" type="button" aria-label="e2e ticker">ticker</button>
+  <button id="spin" type="button" aria-label="e2e spin">spin</button>
+  <button id="ready" type="button" aria-label="e2e ready later">ready later</button>
+  <ul id="list"></ul>
+</main>
+<e2e-shadow></e2e-shadow>
+<iframe id="same" title="e2e same frame" srcdoc="<p>e2e frame text</p>"></iframe>
+<p id="ws-state">socket closed</p>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  customElements.define('e2e-shadow', class extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: 'open' }).innerHTML = '<span>e2e shadow text</span>';
+    }
+  });
+
+  // A fetch that answers after 150 ms, then a render in three steps over
+  // 100 ms: --observe must show the last step.
+  $('fetch').addEventListener('click', async () => {
+    const r = await fetch('/e2e-slow?ms=150');
+    await r.text();
+    for (let i = 1; i <= 3; i++) {
+      await new Promise(res => setTimeout(res, 50));
+      const li = document.createElement('li');
+      li.textContent = i === 3 ? 'e2e rendered' : 'e2e step ' + i;
+      $('list').appendChild(li);
+    }
+  });
+
+  // A client-side route change: pushState, a fetch, then the new view.
+  $('route').addEventListener('click', async () => {
+    history.pushState({}, '', '/page-settle-b');
+    $('main').innerHTML = '<p>e2e route loading</p>';
+    const r = await fetch('/e2e-slow?ms=120');
+    await r.text();
+    $('main').innerHTML = '<h1>e2e route b</h1>';
+  });
+
+  // The websocket stays open and sends a message every 50 ms. Quiet, it
+  // only counts them (no DOM change); with the ticker on, each message
+  // rewrites a line, so the DOM never settles.
+  window.e2eMessages = 0;
+  window.e2eTicker = false;
+  const ws = new WebSocket(location.origin.replace(/^http/, 'ws') + '/e2e-ws');
+  ws.onopen = () => { $('ws-state').textContent = 'socket open'; };
+  ws.onmessage = (m) => {
+    window.e2eMessages++;
+    if (window.e2eTicker) $('ws-state').textContent = 'tick ' + m.data;
+  };
+  $('ticker').addEventListener('click', () => { window.e2eTicker = !window.e2eTicker; });
+
+  $('spin').addEventListener('click', () => {
+    const s = document.createElement('div');
+    s.className = 'spinner';
+    s.textContent = 'e2e spinning';
+    document.body.appendChild(s);
+    setTimeout(() => s.remove(), 600);
+  });
+
+  window.e2eReady = false;
+  $('ready').addEventListener('click', () => setTimeout(() => { window.e2eReady = true; }, 500));
+</script>
+</body>
+</html>

@@ -73,7 +73,7 @@ func TestParsePageArgsRefusals(t *testing.T) {
 		{"dialog", []string{"dismiss", "x"}, "text answers a prompt, so it goes with accept"},
 		{"wait", nil, "wait needs what to wait for"},
 		{"wait", []string{"selector"}, "wait selector needs a value"},
-		{"wait", []string{"idle"}, `not "idle"`},
+		{"wait", []string{"networkidle"}, `not "networkidle"`},
 		{"wait", []string{"download", "x"}, "wait download takes no value"},
 		{"wait", []string{"text", "x", "--timeout", "301"}, "at most 300"},
 		{"wait", []string{"text", "x", "--timeout", "0"}, "above 0"},
@@ -181,7 +181,7 @@ func TestBatchPageSteps(t *testing.T) {
 }
 
 func TestPageCommandUsageErrorsExit2(t *testing.T) {
-	for _, args := range [][]string{{"navigate"}, {"navigate", "301"}, {"back", "301", "x"}, {"dialog", "301", "maybe"}, {"wait", "301", "idle"}, {"eval", "301"}, {"upload", "301"}} {
+	for _, args := range [][]string{{"navigate"}, {"navigate", "301"}, {"back", "301", "x"}, {"dialog", "301", "maybe"}, {"wait", "301", "networkidle"}, {"eval", "301"}, {"upload", "301"}} {
 		path := filepath.Join(t.TempDir(), "stderr")
 		f, _ := os.Create(path)
 		oldErr, oldOut := os.Stderr, os.Stdout

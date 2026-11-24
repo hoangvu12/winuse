@@ -315,6 +315,9 @@ func (s Services) waitTreeText(ctx context.Context, a protocol.WaitArgs, want ti
 		return "", Fail("this winuse helper cannot read a tree for a wait", "")
 	}
 	what := fmt.Sprintf("text %q in window %d", a.Value, w.ID)
+	if a.Gone {
+		what = fmt.Sprintf("text %q to be gone in window %d", a.Value, w.ID)
+	}
 	_, end, e := pollUntil(ctx, s.Sleep, want, treeWaitPoll, stopped, func() (struct{}, bool, *Error) {
 		if !s.WindowOpen(w.ID) {
 			return struct{}{}, false, waitWindowClosed(what)
@@ -322,7 +325,7 @@ func (s Services) waitTreeText(ctx context.Context, a protocol.WaitArgs, want ti
 		tree, err := peeker.PeekTree(ctx, w.ID, w.Title, win.AppExeName(w), s.Budget)
 		switch {
 		case err == nil:
-			return struct{}{}, treeHasText(tree, a.Value), nil
+			return struct{}{}, treeHasText(tree, a.Value) != a.Gone, nil
 		case errors.Is(err, uia.ErrWindowGone):
 			return struct{}{}, false, waitWindowClosed(what)
 		case ctx.Err() != nil, errors.Is(err, uia.ErrWorkerGone), transientTreeRead(err):
