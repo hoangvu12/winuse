@@ -214,7 +214,10 @@ An Element Reference takes one of four forms.
   right or middle clicks aim at the point itself, with `--headed`.
 
 Matching is exact and case-sensitive. A name or ID that matches several
-Elements fails and lists the candidates.
+Elements fails and lists the candidates. One pair is a single control: a
+`name:` matching just a control and a non-interactive Element inside it
+(its label, such as `56 button Open` with `57 text Open` under it) acts on
+the control.
 
 An Element Index and an `@x,y` point are valid only for the Window State
 and screenshot that printed them; a stale index fails and asks for a fresh
