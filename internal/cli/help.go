@@ -555,6 +555,19 @@ const usageTail = `);
                                short Page that looks like a CAPTCHA or block
                                wall gets a Note. Pages only: read a native
                                Window with get-window-state
+  logs <window> [--clear] [--max-chars N | --out <file>]
+                               print the Tab's log, newest last: the requests
+                               that failed and the CSP or security errors its
+                               Page logged, each with its time, source, level
+                               and text (winuse keeps the last 50 per Tab,
+                               from before it attached too). Cut at 28000
+                               characters, keeping the newest (--max-chars N,
+                               0 for none), or --out writes them all to a
+                               file. --clear empties it after printing; --json
+                               answers with JSON.
+                               A Page Action that made requests fail stays ok
+                               and adds "Note: 2 failed requests: 404
+                               /api/save, ..." Pages only
   eval <window> <expression> | --file <path or -> [--max <n>]
                                run a JavaScript expression in the Page and
                                print its value (JSON for objects, cut at 4000
@@ -680,7 +693,7 @@ screenshot's pixels) name an Element of the Window's latest Window State.
 A Tab target, <window>:<tab> (a tab id from tab list or tab new), names a Tab
 of that browser shown or not: get-window-state, click, set-value, scroll,
 hover, drag, select-text, type-text, press-key, upload, navigate, back,
-forward, reload, dialog, wait, eval, read, extract and batch read and act
+forward, reload, dialog, wait, eval, read, extract, logs and batch read and act
 on that Tab through its Browser Connection, headless, without switching
 the Tab the user sees; its Element Indexes are its own, and --headed,
 --post and @x,y are refused
@@ -736,11 +749,11 @@ var commandGroups = []struct {
 		{"list-windows", "the visible Windows: Window ID, App, title", []string{
 			"winuse list-windows",
 			"winuse list-windows --app notepad --details"}},
-		{"get-window", "re-resolve one Window and print its line", []string{
+		{"get-window", "re-resolve one Window, print its line", []string{
 			"winuse get-window 4242"}},
 		{"list-apps", "running and recent Apps, with their Windows", []string{
 			"winuse list-apps"}},
-		{"launch-app", "start an App and print the Window it opened", []string{
+		{"launch-app", "start an App, print the Window it opened", []string{
 			"winuse launch-app notepad",
 			`winuse launch-app "C:\Tools\app.exe" --arg --verbose --cwd C:\work`}},
 		{"close-app", "ask every Window of an App to close", []string{
@@ -768,7 +781,7 @@ var commandGroups = []struct {
 			`winuse run 4242:1a2b3c4d "open the Wikipedia article about Kurt Godel" --set "Kurt Godel"`,
 			`winuse run 4242 "fill in the form and submit it" --set "Ada Lovelace" --set ada@example.com`,
 			`winuse run Settings "open the About page"`}},
-		{"jev", "the Jev server, key and model pick and run use", []string{
+		{"jev", "the Jev server, key and model", []string{
 			"winuse jev",
 			"winuse jev set --key - --base-url https://api.codiv.ai",
 			"winuse jev check"}},
@@ -865,6 +878,10 @@ var commandGroups = []struct {
 			"winuse read 4242",
 			"winuse read 4242:1a2b3c4d --root 57 --urls full",
 			"winuse read 4242 --out page.md"}},
+		{"logs", "failed requests and CSP errors", []string{
+			"winuse logs 4242",
+			"winuse logs 4242:1a2b3c4d --clear",
+			"winuse --json logs 4242"}},
 		{"eval", "run JavaScript in the Page, print the value", []string{
 			"winuse eval 4242 document.title",
 			"winuse eval 4242 --file x.js --max 20000"}},
@@ -924,7 +941,7 @@ var commandGroups = []struct {
 			"winuse help click",
 			"winuse click --help",
 			"winuse help all"}},
-		{"record-tree", "record a tree fixture (winuse's own tests)", []string{
+		{"record-tree", "record a tree fixture for tests", []string{
 			"winuse record-tree 4242 notepad.json",
 			"winuse record-tree 4242 services.json --table"}},
 	}},
