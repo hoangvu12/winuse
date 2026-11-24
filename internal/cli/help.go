@@ -150,7 +150,7 @@ commands:
                                command that ends a process. Windows' own
                                processes (explorer, dwm, csrss, ...) and
                                administrator Apps are refused, nothing sent
-  get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--visible] [--compact] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]
+  get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--visible] [--compact] [--urls] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]
                                print a Window's State: its Element tree as text,
                                and with --screenshot a screenshot saved to a file
                                whose path is printed (sized to the model's
@@ -188,7 +188,13 @@ commands:
                                lines around it do not show it); a hint is
                                not a name: name: never matches it. --full
                                prints Codex's text byte for byte: every ID,
-                               no cap, no hint.
+                               no cap, no hint, no URL.
+                               A Page heading says its level, as in
+                               "heading (level 2) Install". --urls ends a
+                               Page link's line with "URL: /path" (on the
+                               Page's own site; elsewhere the domain and
+                               path, cut at 60 characters); find and --diff
+                               lines always carry it.
                                --diff prints only the Element Indexes whose
                                line changed since your last read of the
                                Window (~ changed, * new, - gone), as

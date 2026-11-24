@@ -97,7 +97,7 @@ func checkObserve(name string, o *protocol.Observe) *Error {
 // observeRef is the read o asks for, as get-window-state's arguments: its budgets
 // and their defaults (views.go) are the read's.
 func observeRef(o *protocol.Observe) windowRef {
-	return windowRef{Interactive: o.Interactive, Depth: o.Depth, Compact: o.Compact, MaxChars: o.MaxChars, Out: o.Out, Full: o.Full}
+	return windowRef{Interactive: o.Interactive, Depth: o.Depth, Compact: o.Compact, MaxChars: o.MaxChars, Out: o.Out, Full: o.Full, URLs: o.URLs}
 }
 
 // observed is the registry's wrapper of the ObservableCommands: with
