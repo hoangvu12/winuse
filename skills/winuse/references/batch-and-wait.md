@@ -123,9 +123,11 @@ instead of two: `batch 101 click name:Save then wait text Saved`.
   wait starts. `gone` also succeeds when its Window closes; any other wait
   whose Window closes fails with `the Window closed`. A wait for something
   the Element cannot show, such as `value` without `Value:`, fails at once.
-- `text` matches the Window State as printed, where each Element is one
-  line: a line break or a run of blanks in your text matches one space, so
-  `wait 101 text $'Opens at 9:30.\nNo flash'` finds a two-line paragraph.
+- On a native Window, `text` matches the Window State as printed, where
+  each Element is one line: a line break or a run of blanks in your text
+  matches one space, so `wait 101 text $'Opens at 9:30.\nNo flash'` finds
+  a two-line paragraph. On a Page, `text` matches the Page's rendered text
+  as it is, its line breaks included: wait for one line of it.
   `value <v>` treats LF, CRLF and CR alike, as `set-value` does (Notepad
   stores CR only); otherwise it compares exactly.
 - A wait only reads: it does not renumber your indexes, and an Action can
