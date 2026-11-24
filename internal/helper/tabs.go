@@ -233,8 +233,15 @@ func tabNew(s Services) Command {
 				url = ""
 			}
 			id, err := page.NewTab(ctx, tw.conn, tw.tabs.WindowID, url, s.agentTabGroup(ctx))
-			if id != "" && s.assetBlocks != nil {
-				s.assetBlocks.markOpened(id) // winuse's own Tab: --block may go there later
+			if id != "" {
+				if s.assetBlocks != nil {
+					s.assetBlocks.markOpened(id) // winuse's own Tab: --block may go there later
+				}
+				// Being winuse's, it captures its JavaScript exceptions
+				// (page/exceptions.go): the listener goes in at its first
+				// Page Action (with --block before its first load), nothing
+				// is sent now.
+				page.WatchLog(ctx, tw.conn.Client, "", id).Capture(ctx, "")
 			}
 			var other *page.OtherWindowError
 			switch {

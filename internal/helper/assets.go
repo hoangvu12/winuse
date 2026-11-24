@@ -262,6 +262,9 @@ func (s Services) blockNewTab(ctx context.Context, tw tabWindow, targetID, url s
 	if url == "" {
 		return nil
 	}
+	// The exception listener (page/exceptions.go) goes in on about:blank
+	// too, so the page the Tab loads has it.
+	page.WatchLog(ctx, tw.conn.Client, session, targetID).Capture(ctx, session)
 	_, err = page.Navigate(ctx, tw.conn.Client, session, page.NavURL(url))
 	var nav *page.NavigateError
 	if err == nil || errors.As(err, &nav) || errors.Is(err, page.ErrDownloadStarted) {

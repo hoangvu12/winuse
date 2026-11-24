@@ -18,7 +18,8 @@ package page
 // that attaches it again replays what the ring already holds. An entry the
 // ring holds, or one older than a full ring's oldest, is dropped; so is
 // anything stamped at or before the newest entry the last Clear emptied.
-// Ticket 30 adds the Page's JavaScript exceptions to the same ring with Add.
+// The Page's JavaScript exceptions join the same ring with Add, where the
+// Tab captures them (exceptions.go, ticket 30).
 //
 // Entries join the ring on the CDP reader goroutine (cdp.Client.Listen), in
 // wire order: whatever the browser logged before it answered a command is
@@ -68,7 +69,8 @@ const logEnableAgain = enableAgain
 type LogEntry struct {
 	Time time.Time // when the browser logged it
 	// Source is the Log domain's: network (a failed request), security (a
-	// CSP or mixed-content error), and so on; ticket 30 adds exception.
+	// CSP or mixed-content error), and so on; exception for a JavaScript
+	// exception (exceptions.go).
 	Source string
 	Level  string // verbose, info, warning or error
 	Text   string
@@ -97,6 +99,12 @@ type TabLog struct {
 	seq      uint64
 	cleared  time.Time // the newest entry's time at the last Clear, browser's clock
 	sessions map[string]*logSession
+
+	// Exception capture (exceptions.go): on for the Tab's life once on,
+	// the Tab's random event name, and the listener's install per session.
+	capture  bool
+	event    string
+	captures map[string]*captureSession
 }
 
 // logSession is one session of the Tab with Log on.
@@ -199,6 +207,7 @@ func UnwatchLog(c *cdp.Client, session string) {
 		l.mu.Lock()
 		s := l.sessions[session]
 		delete(l.sessions, session)
+		delete(l.captures, session)
 		l.mu.Unlock()
 		if s != nil {
 			s.stop()
@@ -277,9 +286,9 @@ func capRunes(s string, n int) string {
 // Add puts an entry in the Tab's ring, unless the ring holds it already, it
 // is older than a full ring's oldest, or it is no newer than the newest
 // entry the last Clear emptied. An entry with no time is stamped now.
-// Ticket 30's exception records join through here too. The Log domain's
-// entries come through the reader goroutine, so Add never calls the
-// browser.
+// Exception records (exceptions.go) join through here too. The Log
+// domain's entries come through the reader goroutine, so Add never calls
+// the browser.
 func (l *TabLog) Add(e LogEntry) {
 	if l == nil {
 		return

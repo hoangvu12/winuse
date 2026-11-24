@@ -572,19 +572,26 @@ const usageTail = `);
                                short Page that looks like a CAPTCHA or block
                                wall gets a Note. Pages only: read a native
                                Window with get-window-state
-  logs <window> [--clear] [--max-chars N | --out <file>]
+  logs <window> [--capture] [--clear] [--max-chars N | --out <file>]
                                print the Tab's log, newest last: the requests
                                that failed and the CSP or security errors its
-                               Page logged, each with its time, source, level
-                               and text (winuse keeps the last 50 per Tab,
-                               from before it attached too). Cut at 28000
-                               characters, keeping the newest (--max-chars N,
-                               0 for none), or --out writes them all to a
-                               file. --clear empties it after printing; --json
-                               answers with JSON.
-                               A Page Action that made requests fail stays ok
-                               and adds "Note: 2 failed requests: 404
-                               /api/save, ..." Pages only
+                               Page logged, and the JavaScript exceptions it
+                               threw with their stacks, each with its time,
+                               source, level and text (winuse keeps the last
+                               50 per Tab). Exceptions are captured in Tabs
+                               tab new opened and in launched or cloned
+                               browsers; --capture turns that on in one of
+                               your Tabs while it is open, for pages it loads
+                               from then on (reload covers the current one).
+                               Cut at 28000 characters, keeping the newest
+                               (--max-chars N, 0 for none), or --out writes
+                               them all to a file. --clear empties it after
+                               printing; --json answers with JSON.
+                               A Page Action that made requests fail or the
+                               Page throw stays ok and adds "Note: 2 failed
+                               requests: 404 /api/save, ..." or "Note: the
+                               Page threw: TypeError: ... (app.js:120)".
+                               Pages only
   eval <window> <expression> | --file <path or -> [--max <n>]
                                run a JavaScript expression in the Page and
                                print its value (JSON for objects, cut at 4000
@@ -899,6 +906,7 @@ var commandGroups = []struct {
 		{"logs", "failed requests and CSP errors", []string{
 			"winuse logs 4242",
 			"winuse logs 4242:1a2b3c4d --clear",
+			"winuse logs 4242 --capture",
 			"winuse --json logs 4242"}},
 		{"eval", "run JavaScript in the Page, print the value", []string{
 			"winuse eval 4242 document.title",

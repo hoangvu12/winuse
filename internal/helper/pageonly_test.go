@@ -219,6 +219,9 @@ func (r *winRig) handlers(s *cdptest.Server) {
 		reply := r.evalReply
 		r.mu.Unlock()
 		r.note("eval", m.Params)
+		if f, ok := reply.(func() any); ok {
+			reply = f() // an answer that changes as the test goes
+		}
 		return reply, nil
 	})
 	s.Handle("Page.createIsolatedWorld", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
