@@ -278,7 +278,8 @@ func TestEachWindowUsesItsOwnBrowserProcess(t *testing.T) {
 				id := strconv.FormatUint(w.ID, 10)
 				want := launchedTabs
 				if w.ID == userWindow.ID {
-					want = userTabs
+					// The extension's tab shows where navigate took it.
+					want = strings.Replace(userTabs, "https://mail.example/", "https://w401.test/", 1)
 				}
 				if out, e := r2.run(t, "tab-list", protocol.TabArgs{Window: id}); e != nil || out != want {
 					t.Errorf("after the restart, tab list %s = %q, %+v", id, out, e)
