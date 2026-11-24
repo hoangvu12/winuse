@@ -11,7 +11,9 @@ package page
 // the input, waits for the DOM to stay quiet for EffectQuiet, up to
 // EffectBound (and to the bound while a load is pending), then says what
 // changed. It never sends input, and nothing in the Page's own world sees
-// it: no Runtime.enable, no binding, no global of the Page's.
+// it: no Runtime.enable, no binding, no global of the Page's. ArmScroll is
+// the same watch for a wheel (ticket 03): it reads the scrollers under the
+// wheel point before and after, and waits until they stop moving too.
 
 import (
 	"context"
@@ -48,6 +50,40 @@ type Effect struct {
 	// and whether the clicked element left the document.
 	Blocker string
 	Gone    bool
+	// Scroll is where a wheel's watch (ArmScroll) saw the scrollers before
+	// the wheel and once the scroll settled; nil for any other watch, and
+	// when the watch could not read them.
+	Scroll *ScrollReport
+}
+
+// ScrollReport is a wheel's scroll check (.scratch/bladebro-ideas ticket
+// 03, after bladebro's ScrollReport and scroll_probe_expr,
+// bb/src/action/verdict.rs:113-147): the Page's own scroll position before
+// the wheel and after it settled.
+type ScrollReport struct {
+	Before ScrollPos `json:"before"`
+	After  ScrollPos `json:"after"`
+}
+
+// ScrollPos is one read of the scrollers, in CSS px: the top document's
+// scroll offsets with their ranges, and the deepest vertical (V) and
+// horizontal (H) scroller under the wheel point (nil for none), found
+// before the wheel and read again after it.
+type ScrollPos struct {
+	Y    float64      `json:"y"`
+	MaxY float64      `json:"maxY"`
+	X    float64      `json:"x"`
+	MaxX float64      `json:"maxX"`
+	V    *ScrollerPos `json:"v"`
+	H    *ScrollerPos `json:"h"`
+}
+
+// ScrollerPos is a nested scroller's offset on its axis and its range; El
+// names it as a blocker is named (<div id="list">).
+type ScrollerPos struct {
+	El  string  `json:"el"`
+	At  float64 `json:"at"`
+	Max float64 `json:"max"`
 }
 
 // The watch's timing; tests shrink it.
@@ -65,8 +101,12 @@ const effectWorld = "winuse-effect"
 
 // effectArmJS starts the watch in the isolated world: px, py is the click
 // point in CSS px of the Tab's viewport, or null for a key. It keeps its
-// state in the world's own global, which the Page cannot see.
-const effectArmJS = `function(px, py) {
+// state in the world's own global, which the Page cannot see. With wheel
+// set (ArmScroll) px, py is the wheel point, and the watch also notes the
+// scrollers there (bladebro-ideas 03): the top document's, and the deepest
+// vertical and horizontal one under the point, walking up through shadow
+// hosts and same-origin frames.
+const effectArmJS = `function(px, py, wheel) {
   /* winuse:effect-arm */
   const S = {n: 0, added: 0, removed: 0, text: 0, attrs: 0, last: performance.now(), observers: [], blind: false, budget: 20000};
   const opts = {subtree: true, childList: true, characterData: true, attributes: true};
@@ -143,6 +183,41 @@ const effectArmJS = `function(px, py) {
   const editable = n => !!n && (n.isContentEditable || n.tagName === 'TEXTAREA' || n.tagName === 'SELECT' ||
     (n.tagName === 'INPUT' && !/^(button|submit|reset|image|checkbox|radio|file|color|range|hidden)$/i.test(n.type)));
   const holdsHit = n => { for (let c = S.hit; c; c = c.parentNode || c.host) if (c === n) return true; return false; };
+  const desc = n => {
+    let s = '<' + n.tagName.toLowerCase();
+    if (n.id) s += ' id="' + String(n.id).slice(0, 40) + '"';
+    else if (typeof n.className === 'string' && n.className.trim()) s += ' class="' + n.className.trim().split(/\s+/).slice(0, 3).join(' ').slice(0, 60) + '"';
+    return s + '>';
+  };
+  // The scrollers (after bladebro's scroll_probe_expr, bb/src/action/verdict.rs:113-147).
+  const up = n => {
+    if (n.parentElement) return n.parentElement;
+    const r = n.getRootNode ? n.getRootNode() : null;
+    if (r && r.host) return r.host;
+    if (r && r !== document && r.defaultView) { try { return r.defaultView.frameElement; } catch (e) {} }
+    return null;
+  };
+  const room = (n, y) => y ? n.scrollHeight - n.clientHeight : n.scrollWidth - n.clientWidth;
+  const scrolls1 = (n, y) => {
+    const doc = n.ownerDocument;
+    if (room(n, y) <= 1) return false;
+    if (n === doc.scrollingElement) return doc !== document; // the top document's is the Page's own
+    if (n === doc.documentElement || n === doc.body) return false;
+    const o = doc.defaultView.getComputedStyle(n)[y ? 'overflowY' : 'overflowX'];
+    return o === 'auto' || o === 'scroll' || o === 'overlay';
+  };
+  const name = n => {
+    const d = n.ownerDocument;
+    if (d !== document && n === d.scrollingElement) { try { const f = d.defaultView.frameElement; if (f) return desc(f); } catch (e) {} }
+    return desc(n);
+  };
+  const at = (n, y) => n ? {el: name(n), at: y ? n.scrollTop : n.scrollLeft, max: Math.max(0, room(n, y))} : null;
+  S.pos = () => {
+    const se = document.scrollingElement || document.documentElement;
+    const vh = se && se.clientHeight > 0 ? se.clientHeight : innerHeight, vw = se && se.clientWidth > 0 ? se.clientWidth : innerWidth;
+    return {y: scrollY, maxY: Math.max(0, (se ? se.scrollHeight : 0) - vh), x: scrollX, maxX: Math.max(0, (se ? se.scrollWidth : 0) - vw), v: at(S.sv, true), h: at(S.sh, false)};
+  };
+  S.desc = desc;
   S.count = count;
   S.hitAt = hitAt;
   S.snap = () => {
@@ -164,16 +239,28 @@ const effectArmJS = `function(px, py) {
   S.hit = px == null ? null : hitAt(px, py);
   S.a0 = active();
   S.before = S.snap();
+  if (wheel) {
+    S.wheel = true;
+    for (let n = S.hit, i = 0; n && i < 80 && !(S.sv && S.sh); i++, n = up(n)) {
+      if (!S.sv && scrolls1(n, true)) S.sv = n;
+      if (!S.sh && scrolls1(n, false)) S.sh = n;
+    }
+    S.sb = S.pos();
+    S.pk = JSON.stringify(S.sb);
+  }
   globalThis.__winuseEffect = S;
   return {ok: true};
 }`
 
 // effectPollJS reports how many mutations the watch counted and how long
-// ago the last one (or the arm) was, in ms.
+// ago the last one (or the arm) was, in ms. A wheel's watch counts a
+// scroller that moved since the last poll as activity too, so a smooth
+// scroll is read once it settled.
 const effectPollJS = `function() {
   /* winuse:effect-poll */
   const S = globalThis.__winuseEffect;
   if (!S) return null;
+  if (S.wheel) { const k = JSON.stringify(S.pos()); if (k !== S.pk) { S.pk = k; S.last = performance.now(); } }
   return {n: S.n, ago: performance.now() - S.last};
 }`
 
@@ -190,14 +277,10 @@ const effectReadJS = `function() {
     out.gone = !S.hit.isConnected;
     const hit = out.gone ? null : S.hitAt(S.px, S.py);
     const within = n => { for (let c = n; c; c = c.parentNode || c.host) if (c === S.hit) return true; return false; };
-    if (hit && !within(hit) && !(hit.contains && hit.contains(S.hit))) {
-      let s = '<' + hit.tagName.toLowerCase();
-      if (hit.id) s += ' id="' + String(hit.id).slice(0, 40) + '"';
-      else if (typeof hit.className === 'string' && hit.className.trim()) s += ' class="' + hit.className.trim().split(/\s+/).slice(0, 3).join(' ').slice(0, 60) + '"';
-      out.by = s + '>';
-    }
+    if (hit && !within(hit) && !(hit.contains && hit.contains(S.hit))) out.by = S.desc(hit);
     out.blind = S.blind;
   }
+  if (S.wheel) out.scroll = {before: S.sb, after: S.pos()};
   return out;
 }`
 
@@ -209,13 +292,21 @@ type effectRead struct {
 	Attrs   int    `json:"attrs"`
 	State   bool   `json:"state"`
 	Gone    bool   `json:"gone"`
-	By      string `json:"by"`
-	Blind   bool   `json:"blind"`
+	By      string        `json:"by"`
+	Blind   bool          `json:"blind"`
+	Scroll  *ScrollReport `json:"scroll"`
 }
 
-// effect classifies what the read saw. A watch that could not see the
-// click point (a cross-origin frame) and saw nothing does not know.
+// effect classifies what the read saw, with a wheel's scroll report. A
+// watch that could not see the click point (a cross-origin frame) and saw
+// nothing does not know.
 func (r effectRead) effect() Effect {
+	e := r.kind()
+	e.Scroll = r.Scroll
+	return e
+}
+
+func (r effectRead) kind() Effect {
 	switch {
 	case r.Added+r.Removed+r.Attrs > 0 || r.State:
 		return Effect{Kind: EffectChanged, Added: r.Added, Removed: r.Removed}
@@ -252,6 +343,22 @@ type EffectWatch struct {
 // key. It never fails: a watch it could not arm reads as EffectUnknown.
 // The session's Page events must be on (NewInput turns them on).
 func ArmEffect(ctx context.Context, c *cdp.Client, session string, at *Point) *EffectWatch {
+	var args []any
+	if at != nil {
+		args = []any{at.X, at.Y}
+	}
+	return armEffect(ctx, c, session, args)
+}
+
+// ArmScroll arms a wheel's watch at the wheel point (bladebro-ideas 03):
+// the same watch, which also reads the scrollers before the wheel, counts
+// their movement as activity while it waits, and reports them again in its
+// read (Effect.Scroll). It never fails either: unarmed, Scroll stays nil.
+func ArmScroll(ctx context.Context, c *cdp.Client, session string, at Point) *EffectWatch {
+	return armEffect(ctx, c, session, []any{at.X, at.Y, true})
+}
+
+func armEffect(ctx context.Context, c *cdp.Client, session string, args []any) *EffectWatch {
 	w := &EffectWatch{c: c, session: session}
 	if c == nil || !c.Alive() {
 		return w
@@ -283,10 +390,6 @@ func ArmEffect(ctx context.Context, c *cdp.Client, session string, at *Point) *E
 		return w
 	}
 	w.world = iw.ExecutionContextID
-	var args []any
-	if at != nil {
-		args = []any{at.X, at.Y}
-	}
 	var ok struct {
 		OK bool `json:"ok"`
 	}

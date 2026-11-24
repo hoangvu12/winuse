@@ -665,7 +665,25 @@ func (s Services) pageScroll(ctx context.Context, w win.WindowInfo, index int, o
 		run.aim = page.AimOptions{Scroll: true, Visible: true}
 		run.intoView = true
 		if !headed {
-			return s.runPage(ctx, run)
+			// The box before the scroll, to say when it was already in view
+			// (bladebro-ideas 03, pagescroll.go).
+			var before page.Rect
+			var read bool
+			run.check = func(ctx context.Context) error {
+				var err error
+				before, err = o.Rect(ctx)
+				read = err == nil
+				return nil
+			}
+			out, rerr := s.runPage(ctx, run)
+			if rerr != nil || out != okOutput || !read {
+				return out, rerr
+			}
+			after, err := o.Rect(ctx)
+			if note := intoViewNote(index, before, after, err == nil); note != "" {
+				return okWith(note), nil
+			}
+			return out, nil
 		}
 		if rerr := s.pageFresh(ctx, w, index, o); rerr != nil {
 			return "", nothingSent(rerr)
@@ -684,10 +702,11 @@ func (s Services) pageScroll(ctx context.Context, w win.WindowInfo, index int, o
 	run.aim = page.AimOptions{Scroll: true, Visible: true, HitTest: true}
 	if !headed {
 		dx, dy := pageWheelDelta(plan.dir, plan.steps)
+		sw := &pageScrollWatch{dx: dx, dy: dy} // pagescroll.go: say when nothing moved (bladebro-ideas 03)
 		run.act = func(ctx context.Context, in *page.Input, aim page.Aim) error {
-			return in.Wheel(ctx, aim.Point, dx, dy)
+			return sw.wheel(ctx, o, in, aim.Point, func() error { return in.Wheel(ctx, aim.Point, dx, dy) })
 		}
-		return s.runPage(ctx, run)
+		return sw.finish(s.runPage(ctx, run))
 	}
 	if rerr := s.pageFresh(ctx, w, index, o); rerr != nil {
 		return "", nothingSent(rerr)
@@ -747,6 +766,8 @@ func (s Services) pageScrollAt(ctx context.Context, ref string, x, y, dx, dy int
 	if !ok {
 		return "", nil, false
 	}
+	cx, cy := float64(dx)*page.WheelPxPerStep/wheelNotch, float64(dy)*page.WheelPxPerStep/wheelNotch
+	sw := &pageScrollWatch{dx: cx, dy: cy} // pagescroll.go: say when nothing moved (bladebro-ideas 03)
 	out, rerr = s.runPageInput(ctx, w, o, pageInput{
 		noun:   "scroll",
 		label:  "scroll",
@@ -761,9 +782,10 @@ func (s Services) pageScrollAt(ctx context.Context, ref string, x, y, dx, dy int
 				return err
 			}
 			p := page.ToCSS(l, t, dpr, at.Left, at.Top)
-			return in.WheelWith(ctx, p, float64(dx)*page.WheelPxPerStep/wheelNotch, float64(dy)*page.WheelPxPerStep/wheelNotch, mods.CDP())
+			return sw.wheel(ctx, o, in, p, func() error { return in.WheelWith(ctx, p, cx, cy, mods.CDP()) })
 		},
 	})
+	out, rerr = sw.finish(out, rerr)
 	return out, rerr, true
 }
 

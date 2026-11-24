@@ -208,6 +208,12 @@ winuse drag <window> <element> <element|@x,y>
   `--observe` only the navigation note prints; the diff shows the rest.
   `--json` gives the same as an `effect` field (`navigated`, `changed`,
   `text`, `none` or `unknown`).
+- A Page `scroll` that moved nothing says why, still with `ok`:
+  `Note: nothing scrolled; the Page is at its bottom` (or top, an edge, or
+  `does not scroll`), or `<div id="list"> is at its end` for the scroller
+  under the wheel. Stop scrolling that way. One that reached the end says
+  `Note: the Page is now at its bottom`. `scroll <el> into-view` on an
+  Element already on screen says `was already in view`.
 - A click or key that opens a JavaScript dialog (alert, confirm, prompt,
   leave-this-page) prints `ok` and a `Note:` line with its text; do not
   repeat it. Every Page Action then fails naming the dialog until you

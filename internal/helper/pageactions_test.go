@@ -86,6 +86,7 @@ type pageRig struct {
 	inputs    []string
 	scrolled  int
 	scrolls   [][5]int32
+	rects     [][]float64    // the rect script's answers in turn (the last repeats); none answers null
 	textField map[string]any // select-text's textFieldJS answer
 	selection map[string]any // selectTextJS answer override; nil echoes the span
 	// handoff, when set, is the node the field hands its focus to after
@@ -203,6 +204,13 @@ func (r *pageRig) handlers() {
 			return map[string]any{"result": map[string]any{"type": "object", "subtype": "null"}}, nil
 		case strings.Contains(p.Fn, "winuse:label"):
 			v = map[string]any{"role": "", "name": r.handoffName}
+		case strings.Contains(p.Fn, "winuse:rect"):
+			if len(r.rects) > 0 {
+				v = r.rects[0]
+				if len(r.rects) > 1 {
+					r.rects = r.rects[1:]
+				}
+			}
 		case strings.Contains(p.Fn, "winuse:textfield"):
 			v = r.textField
 		case strings.Contains(p.Fn, "winuse:selecttext"):
