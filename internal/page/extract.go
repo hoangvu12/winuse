@@ -20,8 +20,8 @@ import (
 //go:embed extract.js
 var extractSource string
 
-// extractJS is extract.js with block.js, the shared wall check, in it.
-var extractJS = withBlockCheck(extractSource)
+// extractJS is extract.js with wall.js, the shared wall check, in it.
+var extractJS = withWallCheck(extractSource)
 
 // extractWorld is the isolated world extract.js runs in.
 const extractWorld = "winuse-extract"

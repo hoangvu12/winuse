@@ -83,7 +83,7 @@ func TestReadPrintsThePagesMainContent(t *testing.T) {
 func TestReadCutsAtMaxCharsAndSaysSo(t *testing.T) {
 	r := newWinRig(t)
 	body := strings.Repeat("word ", 400) // 2000 characters
-	p := &readPage{md: map[string]any{"markdown": body, "main": "main", "title": "Docs", "url": "https://docs.test/", "block": "Cloudflare"}}
+	p := &readPage{md: map[string]any{"markdown": body, "main": "main", "title": "Docs", "url": "https://docs.test/", "wall": "Cloudflare"}}
 	p.handle(r.browser.Srv, func(string) any { return nil })
 
 	n := 500
@@ -111,7 +111,7 @@ func TestReadCutsAtMaxCharsAndSaysSo(t *testing.T) {
 	}
 
 	// The default cap is the other reads' (28000 characters).
-	delete(p.md, "block")
+	delete(p.md, "wall")
 	p.md["markdown"] = strings.Repeat("x", defaultMaxChars+10)
 	out, _ = r.run(t, "read", protocol.ReadArgs{Window: "301"})
 	if got := utf8.RuneCountInString(out); got > defaultMaxChars || !strings.Contains(out, " of 28010 characters") {
@@ -127,7 +127,7 @@ func TestReadCutsAtMaxCharsAndSaysSo(t *testing.T) {
 func TestReadOutWritesTheWholeMarkdown(t *testing.T) {
 	r := newWinRig(t)
 	body := strings.Repeat("word ", 10000)
-	p := &readPage{md: map[string]any{"markdown": body, "main": "main", "title": "Docs", "url": "https://docs.test/", "block": "Cloudflare"}}
+	p := &readPage{md: map[string]any{"markdown": body, "main": "main", "title": "Docs", "url": "https://docs.test/", "wall": "Cloudflare"}}
 	p.handle(r.browser.Srv, func(string) any { return nil })
 	file := filepath.Join(t.TempDir(), "page.md")
 
@@ -154,7 +154,7 @@ func TestReadOutWritesTheWholeMarkdown(t *testing.T) {
 // A wall read's note names is the response's wall field too (--json).
 func TestReadRecordsTheWall(t *testing.T) {
 	r := newWinRig(t)
-	p := &readPage{md: map[string]any{"markdown": "Checking your browser", "main": "body", "title": "Just a moment", "url": "https://shop.test/", "block": "Cloudflare"}}
+	p := &readPage{md: map[string]any{"markdown": "Checking your browser", "main": "body", "title": "Just a moment", "url": "https://shop.test/", "wall": "Cloudflare"}}
 	p.handle(r.browser.Srv, func(string) any { return nil })
 	if _, e, f := runFields(t, r.cmds, "read", protocol.ReadArgs{Window: "301"}); e != nil || f.Wall != "Cloudflare" {
 		t.Errorf("read of a wall: %+v %+v", f, e)

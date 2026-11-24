@@ -70,7 +70,7 @@ func pageRead(s Services) Command {
 					return "", false, readError(err, pw.w, pw.name)
 				}
 				head := fmt.Sprintf("Page: %s - %s (main content: %s; --root <element> reads another part)", page.Collapse(md.Title), md.URL, md.Main)
-				recordWall(ctx, md.Block)
+				recordWall(ctx, md.Wall)
 				out, rerr := renderMarkdown(head, md, a)
 				return out, false, rerr
 			},
@@ -117,7 +117,7 @@ func (s Services) readRoot(ctx context.Context, a protocol.ReadArgs, opts page.R
 		}
 		return "", readError(err, w, o.Browser)
 	}
-	recordWall(ctx, md.Block)
+	recordWall(ctx, md.Wall)
 	return renderMarkdown(fmt.Sprintf("Element %d (%s):", index, md.Main), md, a)
 }
 
@@ -133,8 +133,8 @@ func renderMarkdown(head string, md page.Markdown, a protocol.ReadArgs) (string,
 	}
 	total := utf8.RuneCountInString(text)
 	tail := ""
-	if md.Block != "" {
-		tail = protocol.WallNote(md.Block) + "\n"
+	if md.Wall != "" {
+		tail = protocol.WallNote(md.Wall) + "\n"
 	}
 	if a.Out != "" {
 		if err := writeFileAtomic(a.Out, []byte(text+"\n")); err != nil {

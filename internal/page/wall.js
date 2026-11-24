@@ -1,5 +1,5 @@
-// block.js - names the wall a short challenge or block page shows, for the
-// Note after navigate, back, forward and reload, and for `winuse read`.
+// wall.js - names the wall a short challenge or block page shows, for the
+// note after navigate, back, forward and reload, and for `winuse read`.
 //
 // Derived from bladebro src/page/js/detect_block.js (bladebro 4.8.3,
 // https://github.com/dondai44423/bladebro at d50ee9e), Copyright the
@@ -24,7 +24,7 @@
 //     (which winuse's first read.js check caught too);
 //   - it never clicks, types or waits.
 function (d) {
-  /* winuse:block */
+  /* winuse:wall */
   d = d || document;
   var body = d.body;
   if (!body) return '';

@@ -9,7 +9,7 @@
 // tickets 12 and 25):
 //   - the site-specific branches (product page, Reddit post, GitHub repo)
 //     and the template slots are removed; it is one function expression
-//     that returns {markdown, main, scoped, block, title, url};
+//     that returns {markdown, main, scoped, wall, title, url};
 //   - the main content is ranked (every element scored by its text, links
 //     counting half, navigation, headers, footers and asides counting
 //     nothing; main, article and role=main are preferred) instead of taking
@@ -23,8 +23,8 @@
 //   - data tables render as Markdown tables with their header row and every
 //     row (winuse discloses its own cut); layout tables render as lines;
 //   - block elements break lines; lists indent by depth;
-//   - a short page with a challenge or block sign is named (block) by
-//     block.js, the port of bladebro's detect_block.js that read.go puts
+//   - a short page with a challenge or block sign is named (wall) by
+//     wall.js, the port of bladebro's detect_block.js that read.go puts
 //     in here;
 //   - no budget here: winuse cuts the Markdown and says where.
 //
@@ -388,9 +388,9 @@ function (opts) {
 
   // ---- a block or challenge page ----
 
-  // blockKind is block.js, the one wall check navigate's Note uses too;
+  // wallKind is wall.js, the one wall check navigate's note uses too;
   // read.go puts it in place of the marker.
-  var blockKind = /* winuse:block.js */ null;
+  var wallKind = /* winuse:wall.js */ null;
 
   var scoped = (typeof Element !== 'undefined') && (this instanceof Element);
   if (!scores) scores = {set: function () {}, get: function () { return 0; }};
@@ -401,5 +401,5 @@ function (opts) {
     main = doc.body;
     md = toMd(main, h1);
   }
-  return {markdown: md, main: desc(main), scoped: scoped, block: scoped ? '' : blockKind(doc), title: doc.title || '', url: here.href || ''};
+  return {markdown: md, main: desc(main), scoped: scoped, wall: scoped ? '' : wallKind(doc), title: doc.title || '', url: here.href || ''};
 }

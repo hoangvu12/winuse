@@ -2,9 +2,9 @@ package helper
 
 // The wall note after navigate, back, forward and reload
 // (.scratch/bladebro-ideas ticket 05), over the fake launched Chrome
-// (winRig): the Page's block.js answer becomes one note line, the command
+// (winRig): the Page's wall.js answer becomes one note line, the command
 // stays ok, nothing more is sent to the Page, and --wait none (whose
-// document may still be the old one) is not checked. What block.js finds
+// document may still be the old one) is not checked. What wall.js finds
 // on real pages is test/e2e's TestWallCheck. No browser runs.
 
 import (
@@ -18,7 +18,7 @@ import (
 	"github.com/hoangvu12/winuse/internal/protocol"
 )
 
-// wallPage answers the wall check (block.js, by its marker) with kind, or
+// wallPage answers the wall check (wall.js, by its marker) with kind, or
 // with a throw; other functions get the fake's empty answer.
 type wallPage struct {
 	mu     sync.Mutex
@@ -44,7 +44,7 @@ func (p *wallPage) handle(s *cdptest.Server) {
 	s.Handle("Runtime.callFunctionOn", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
 		var call map[string]any
 		json.Unmarshal(m.Params, &call)
-		if fn, _ := call["functionDeclaration"].(string); !strings.Contains(fn, "/* winuse:block */") {
+		if fn, _ := call["functionDeclaration"].(string); !strings.Contains(fn, "/* winuse:wall */") {
 			return map[string]any{}, nil
 		}
 		p.mu.Lock()

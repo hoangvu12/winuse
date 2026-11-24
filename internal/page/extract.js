@@ -10,7 +10,7 @@
 //     redirect unwrapping and the page's result count)
 //   - src/adapters/js/jsonld.js          (schema.org JSON-LD)
 //   - src/page/js/detect_block.js        (the generic block-wall check,
-//                                         block.js, put in by extract.go)
+//                                         wall.js, put in by extract.go)
 // Changed for winuse (ticket 12's findings): the site adapters and site
 // branches are gone; items group loosely (same tag and class, or most
 // children shared); sibling rows of one record merge (two rows per story);
@@ -78,10 +78,10 @@ function num(s) {
 const NUM = '(\\d[\\d.,]*(?:[kKmM]\\b)?)';
 
 // ---- the block wall ----
-// wall is block.js (detect_block.js, its generic part), the one wall check
+// wall is wall.js (detect_block.js, its generic part), the one wall check
 // navigate's Note and read use too; extract.go puts it in place of the
 // marker. Called with no document, it checks this one.
-const wall = /* winuse:block.js */ null;
+const wall = /* winuse:wall.js */ null;
 
 // ---- what the page says it holds ----
 const NOUNS = 'results?|items?|listings?|products?|entries|matches|hits|questions|repositories|repos|packages|articles|posts|jobs|stories|videos|users|issues|pull requests|recipes|threads|topics|courses|books|homes|properties|companies|people';

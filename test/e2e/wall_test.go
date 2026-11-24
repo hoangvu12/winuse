@@ -2,7 +2,7 @@
 
 // The wall check (.scratch/bladebro-ideas ticket 05).
 //
-// TestWallCheck runs block.js (page.BlockKind, in process, as the helper
+// TestWallCheck runs wall.js (page.WallKind, in process, as the helper
 // runs it after a navigation) on the pages in testdata/wall in a headless
 // Chrome or Edge on a throwaway profile (headlessBrowser): one page per
 // wall kind (a Cloudflare interstitial, a bare Turnstile, DataDome,
@@ -76,18 +76,18 @@ func TestWallCheck(t *testing.T) {
 			if err != nil {
 				t.Fatalf("attaching %s: %v", tc.page, err)
 			}
-			kind, err := page.BlockKind(ctx, conn.Client, sess)
+			kind, err := page.WallKind(ctx, conn.Client, sess)
 			if err != nil || kind != tc.want {
-				t.Errorf("BlockKind on %s: %q, %v; want %q", tc.page, kind, err, tc.want)
+				t.Errorf("WallKind on %s: %q, %v; want %q", tc.page, kind, err, tc.want)
 			}
 			// The check after a Page Action that navigated (it waits for the
 			// body first) names the same wall.
-			if kind, err := page.BlockKindOnceLoaded(ctx, conn.Client, sess); err != nil || kind != tc.want {
-				t.Errorf("BlockKindOnceLoaded on %s: %q, %v; want %q", tc.page, kind, err, tc.want)
+			if kind, err := page.WallKindOnceLoaded(ctx, conn.Client, sess); err != nil || kind != tc.want {
+				t.Errorf("WallKindOnceLoaded on %s: %q, %v; want %q", tc.page, kind, err, tc.want)
 			}
 			md, err := page.ReadMarkdown(ctx, conn.Client, sess, "", 0, page.ReadOptions{})
-			if err != nil || md.Block != tc.want {
-				t.Errorf("read.js on %s named %q, %v; want %q", tc.page, md.Block, err, tc.want)
+			if err != nil || md.Wall != tc.want {
+				t.Errorf("read.js on %s named %q, %v; want %q", tc.page, md.Wall, err, tc.want)
 			}
 			ex, err := page.Extract(ctx, conn.Client, sess, nil, page.ExtractOptions{})
 			if err != nil || ex.Wall != tc.want {

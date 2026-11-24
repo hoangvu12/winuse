@@ -728,20 +728,20 @@ const wallCheckBound = 2 * time.Second
 const chromeErrorPage = "chrome-error://"
 
 // pageWallNote is the wall note line (bladebro-ideas 05) for the Page a
-// navigation landed on: page.BlockKind, one isolated-world call, names a
+// navigation landed on: page.WallKind, one isolated-world call, names a
 // short challenge or block page. "" for an ordinary Page, or when the check
 // fails (the navigation landed; the note only informs). winuse never
 // clicks or solves anything there: the note sends the agent to the user. A
 // Page Action whose effect navigated (bladebro-ideas 06) adds it the same
 // way.
 func pageWallNote(ctx context.Context, c page.Caller, session string) string {
-	return wallNoteBy(ctx, c, session, page.BlockKind)
+	return wallNoteBy(ctx, c, session, page.WallKind)
 }
 
 // pageWallNoteOnceLoaded is pageWallNote once the Page's document has its
 // body: a Page Action's effect watch sees a navigation at its commit.
 func pageWallNoteOnceLoaded(ctx context.Context, c page.Caller, session string) string {
-	return wallNoteBy(ctx, c, session, page.BlockKindOnceLoaded)
+	return wallNoteBy(ctx, c, session, page.WallKindOnceLoaded)
 }
 
 func wallNoteBy(ctx context.Context, c page.Caller, session string, check func(context.Context, page.Caller, string) (string, error)) string {

@@ -30,7 +30,7 @@ type effectWorld struct {
 	armed   bool
 	armedAt time.Time // a quiet Page has been quiet since the arm
 	armArgs []any
-	wall    string // what the wall check (block.js, bladebro-ideas 05) answers; "" none
+	wall    string // what the wall check (wall.js, bladebro-ideas 05) answers; "" none
 	walls   int    // how many times it ran
 	loaded  int    // how many of those waited for the document's body
 }
@@ -77,7 +77,7 @@ func (r *pageRig) effectWorld(t *testing.T, final map[string]any, onPoll func(c 
 			v = map[string]any{"dom": quiet, "net": quiet, "loading": false}
 		case strings.Contains(p.Fn, "winuse:effect-read"):
 			v = final
-		case strings.Contains(p.Fn, "/* winuse:block */"):
+		case strings.Contains(p.Fn, "/* winuse:wall */"):
 			ew.mu.Lock()
 			ew.walls++
 			if p.Await && strings.Contains(p.Fn, "DOMContentLoaded") {

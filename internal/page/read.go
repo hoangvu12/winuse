@@ -18,8 +18,8 @@ import (
 //go:embed read.js
 var readSource string
 
-// readMarkdownJS is read.js with block.js, the shared wall check, in it.
-var readMarkdownJS = withBlockCheck(readSource)
+// readMarkdownJS is read.js with wall.js, the shared wall check, in it.
+var readMarkdownJS = withWallCheck(readSource)
 
 // readWorld names the isolated world read.js runs in.
 const readWorld = "winuse-read"
@@ -38,9 +38,9 @@ type Markdown struct {
 	Text   string `json:"markdown"`
 	Main   string `json:"main"`   // the element rendered, as tag#id or tag.class
 	Scoped bool   `json:"scoped"` // an Element given was rendered, not the picked main content
-	// Block names the wall a short Page looks like (Cloudflare, DataDome,
+	// Wall names the wall a short Page looks like (Cloudflare, DataDome,
 	// PerimeterX, reCAPTCHA, hCaptcha, Akamai, rate-limit), "" for none.
-	Block string `json:"block"`
+	Wall  string `json:"wall"`
 	Title string `json:"title"`
 	URL   string `json:"url"`
 }

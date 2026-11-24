@@ -8,7 +8,7 @@ package protocol
 // rule: the agent stops and asks the user, and never clicks or solves
 // anything.
 
-// WallKinds are the walls winuse names (page/block.js).
+// WallKinds are the walls winuse names (page/wall.js).
 var WallKinds = []string{"Cloudflare", "DataDome", "PerimeterX", "reCAPTCHA", "hCaptcha", "Akamai", "rate-limit"}
 
 const (
