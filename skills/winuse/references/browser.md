@@ -216,6 +216,12 @@ winuse drag <window> <element> <element|@x,y>
   `--observe` only the navigation note prints; the diff shows the rest.
   `--json` gives the same as an `effect` field (`navigated`, `changed`,
   `text`, `none` or `unknown`).
+- A Page `scroll` that moved nothing says why, still with `ok`:
+  `Note: nothing scrolled; the Page is at its bottom` (or top, an edge, or
+  `does not scroll`), or `<div id="list"> is at its end` for the scroller
+  under the wheel. Stop scrolling that way. One that reached the end says
+  `Note: the Page is now at its bottom`. `scroll <el> into-view` on an
+  Element already on screen says `was already in view`.
 - A Page Action during which requests failed or the Page logged a CSP or
   security error stays `ok` and adds a note, such as
   `Note: 2 failed requests: 404 /api/save, 500 /api/user` (paths on the
@@ -249,6 +255,11 @@ winuse drag <window> <element> <element|@x,y>
   `winuse wait <window> download` prints the file's path when done.
   Downloads land in `Downloads\winuse` (shown by `winuse browser status`),
   only on a browser winuse launched or cloned.
+- To learn where a link goes, read with `--urls` or `find <window> --role
+  link`, not `eval`: a link's line then ends with `URL: /path` on the
+  Page's own site, or the domain and path elsewhere. A heading's line says
+  its level, so `find <window> --role heading` is the Page's outline (see
+  `winuse skill reading`).
 - To read a Page's text (an article, docs, search results, a table), use
   `read`, not `eval` with `innerText`. It prints the main content as
   Markdown with headings, lists, links and tables with their headers,

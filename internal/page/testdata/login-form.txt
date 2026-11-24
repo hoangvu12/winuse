@@ -8,7 +8,7 @@ Window: "Sign in - Google Chrome", App: chrome.exe.
 				6 button Back
 				7 edit (settable, string) Address and search bar Value: https://example.test/
 			8 document Sign in Value: https://example.test/
-				9 heading Sign in to Example
+				9 heading (level 1) Sign in to Example
 				10 edit (settable, string) Email Value: ada@example.com
 				11 edit (settable, string) Password
 				12 check box Remember me off Secondary Actions: Toggle

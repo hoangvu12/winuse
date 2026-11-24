@@ -303,3 +303,39 @@ the same information as one more field, the last on the line:
   +0.0%, `--interactive` +0.64%, a `find` of every control +2.1%. The Page
   hint pass costs about 0.2 ms on the 200-clickable benchmark page and
   0.7 ms with 400 duplicate controls, against a 19-24 ms Page read.
+
+## Amendment: heading levels and link URLs on Page lines (bladebro-ideas 01, 2026-11-24)
+
+getFullAXTree already carries a heading's `level` and a link's `url`; the
+Page lines printed neither, so agents ran `eval` to learn where a link
+goes, and `find --role heading` could not show an outline.
+
+- **Heading level: a state word.** A Page heading's line ends its states
+  with `level N`: `heading (level 1) Sign in to Example`,
+  `heading (disabled, level 2) ...`. It is in every view, `--full`
+  included, like `password`: there are no Codex Page lines to match, a
+  UIA heading has no level, so native Windows print exactly as before.
+  `find --role heading` is the Page's outline.
+- **Link URL: a field, only where asked.** `...[ URL: <url>][ Hint: ...]`,
+  after the rest of Codex's line and before a hint. The URL is shortened
+  by `page.LinkURL`, the rule `read` uses (`internal/page/read.js`
+  shortURL): the Page's own host prints the path, query and fragment (only
+  `#fragment` for a place on the same Page); another host prints its
+  domain without `www.` and the path. Every URL is cut at 60 characters
+  with `…`. A `javascript:` URL prints nothing; a `data:` URL prints
+  `data:…`.
+- **Where it prints.** Not in a default read: `--urls` adds it to a read,
+  `--root` or `--observe`. `find`, a `--diff`/`--observe` diff line and an
+  ambiguous reference's candidates always print it, as they print the
+  whole hint: their lines have no tree around them, and they are short.
+  `--full` prints none and refuses `--urls`; `find --full` prints none.
+  `--compact` keeps an unnamed link's line when it prints a URL.
+- **Diffs.** `wstate.Diff` compares lines with their URL, so a link whose
+  address changed is a changed line, and the diff line shows both.
+- **Why opt-in** (estimated in
+  `.scratch/bladebro-ideas/issues/01-page-link-urls-and-heading-levels.md`):
+  on three link-heavy real pages (Hacker News, a GitHub repository, an
+  MDN reference page) a URL on every link would add about 40-50% to the
+  read's characters, more in tokens, since URLs tokenize densely. `read`
+  measured full URLs at half its output (ticket 12). The agent that needs
+  addresses asks with `--urls` or `find --role link`.

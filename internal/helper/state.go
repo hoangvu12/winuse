@@ -979,6 +979,9 @@ type windowRef struct {
 	// Visible prints only the Elements on screen: a Page's scrolled-away
 	// Elements are left out (wstate.View.Visible).
 	Visible bool `json:"visible,omitempty"`
+	// URLs prints a Page link's URL after its line (--urls,
+	// bladebro-ideas 01; wstate.View.URLs). Not with Full.
+	URLs bool `json:"urls,omitempty"`
 	// MarkOffscreen prints every Element and marks the off-screen ones
 	// (wstate.View.MarkOffscreen): winuse run's read; no CLI flag.
 	MarkOffscreen bool `json:"mark_offscreen,omitempty"`
