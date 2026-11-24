@@ -119,6 +119,12 @@ _Avoid_: Sent state, side effect
 The coding-agent program the user runs (Claude Code, Pi, ...) that drives winuse on the model's behalf.
 _Avoid_: Client, agent, host
 
+### Notes
+
+**Note**:
+One line of text an Agent or the user leaves for a site or an App with `winuse note add`, which later Agents see once, at the top of their first Window State of that site or App (ADR 0024). Its key is worked out by winuse from a Window ID, a URL or domain, or an exe name: a site is its registrable domain (`localhost` and IP addresses keep their port), an App is its exe file name. winuse never writes one and never acts on one; a Note informs the agent and grants no permission.
+_Avoid_: Memory, knowledge, hint (a hint is part of a failure)
+
 ### Agents
 
 **Agent**:
