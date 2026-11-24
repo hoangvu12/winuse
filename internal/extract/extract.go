@@ -56,6 +56,12 @@ type Result struct {
 	// Virtualized says the container shows only part of its rows (native
 	// lists, ticket 27).
 	Virtualized bool
+	// AtLeast says Found is a lower bound: the backend stopped before the
+	// end and could not read the total (printed "M+").
+	AtLeast bool
+	// Stopped is why the backend stopped reading before the end or the
+	// limit ("stopped at the time limit"), a partial reason; "" for none.
+	Stopped string
 	// Wall names a block wall the page shows instead of its content
 	// (Cloudflare, DataDome, ...); the Result then holds no rows.
 	Wall string
@@ -143,11 +149,14 @@ func header(r Result, n int, cut string) string {
 		b.WriteString(" " + strconv.Quote(r.Label))
 	}
 	var why []string
-	if r.Found > len(r.Rows) && r.Limit > 0 {
+	if r.Limit > 0 && len(r.Rows) >= r.Limit && (r.Found > len(r.Rows) || r.AtLeast) {
 		why = append(why, fmt.Sprintf("capped at %d", r.Limit))
 	}
 	if r.Virtualized {
 		why = append(why, "virtualized")
+	}
+	if r.Stopped != "" {
+		why = append(why, r.Stopped)
 	}
 	if r.PageSays != nil && r.PageSays.Total > r.Found {
 		why = append(why, "page says "+group(r.PageSays.Total)+" "+r.PageSays.Noun)
@@ -159,7 +168,11 @@ func header(r Result, n int, cut string) string {
 	if len(why) > 0 {
 		state = "(partial: " + strings.Join(why, " / ") + ")"
 	}
-	fmt.Fprintf(&b, ": %d of %d rows %s", n, r.Found, state)
+	total := strconv.Itoa(r.Found)
+	if r.AtLeast {
+		total += "+"
+	}
+	fmt.Fprintf(&b, ": %d of %s rows %s", n, total, state)
 	return b.String()
 }
 

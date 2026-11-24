@@ -56,9 +56,11 @@ func NavURL(u string) string { return tabURL(u) }
 
 // NavigateError is a navigation the browser refused or could not finish
 // (Page.navigate's errorText, such as net::ERR_NAME_NOT_RESOLVED).
+// LoaderID is the error page's loader, when the browser gave one.
 type NavigateError struct {
-	URL  string
-	Text string
+	URL      string
+	Text     string
+	LoaderID string
 }
 
 func (e *NavigateError) Error() string {
@@ -123,7 +125,7 @@ func Navigate(ctx context.Context, c *cdp.Client, session, url string) (string, 
 		return "", ErrDownloadStarted
 	}
 	if r.ErrorText != "" {
-		return "", &NavigateError{URL: url, Text: r.ErrorText}
+		return "", &NavigateError{URL: url, Text: r.ErrorText, LoaderID: r.LoaderID}
 	}
 	return r.LoaderID, nil
 }

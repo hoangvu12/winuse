@@ -59,6 +59,12 @@ type winRig struct {
 	// quiet.
 	settleDOM, settleNet float64
 	settles              int
+	// statuses is the HTTP status each address answers (bladebro-ideas 02),
+	// 200 when not listed; an address with "empty" in it answers with an
+	// empty body, so the Tab shows Chrome's error page with unreachable
+	// set.
+	statuses    map[string]int
+	unreachable string
 }
 
 var (
@@ -109,7 +115,11 @@ func (r *winRig) sent(method string) []string {
 
 func (r *winRig) handlers(s *cdptest.Server) {
 	frame := func() any {
-		return map[string]any{"frameTree": map[string]any{"frame": map[string]any{"id": "F1", "loaderId": r.loader, "url": r.url}}}
+		f := map[string]any{"id": "F1", "loaderId": r.loader, "url": r.url}
+		if r.unreachable != "" {
+			f["unreachableUrl"] = r.unreachable
+		}
+		return map[string]any{"frameTree": map[string]any{"frame": f}}
 	}
 	s.Handle("Page.getFrameTree", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
 		r.mu.Lock()
@@ -127,9 +137,13 @@ func (r *winRig) handlers(s *cdptest.Server) {
 		if strings.Contains(p.URL, "nowhere") {
 			return map[string]any{"frameId": "F1", "loaderId": "LX", "errorText": "net::ERR_NAME_NOT_RESOLVED"}, nil
 		}
-		r.loader, r.url = "L2", p.URL
 		r.entries = append(r.entries[:r.cur+1], page.HistoryEntry{ID: 8 + r.cur, URL: p.URL})
 		r.cur++
+		if strings.Contains(p.URL, "empty") {
+			r.loader, r.url, r.unreachable = "L5", "chrome-error://chromewebdata/", p.URL
+			return map[string]any{"frameId": "F1", "loaderId": "L5", "errorText": "net::ERR_HTTP_RESPONSE_CODE_FAILURE"}, nil
+		}
+		r.loader, r.url, r.unreachable = "L2", p.URL, ""
 		return map[string]any{"frameId": "F1", "loaderId": "L2"}, nil
 	})
 	s.Handle("Page.getNavigationHistory", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
@@ -147,7 +161,7 @@ func (r *winRig) handlers(s *cdptest.Server) {
 		defer r.mu.Unlock()
 		for i, e := range r.entries {
 			if e.ID == p.EntryID {
-				r.cur, r.url = i, e.URL
+				r.cur, r.url, r.unreachable = i, e.URL, ""
 			}
 		}
 		return nil, nil
@@ -172,6 +186,18 @@ func (r *winRig) handlers(s *cdptest.Server) {
 		case p.Expression == "location.href":
 			defer r.mu.Unlock()
 			return map[string]any{"result": map[string]any{"type": "string", "value": r.url}}, nil
+		case strings.Contains(p.Expression, "winuse:http-status"):
+			defer r.mu.Unlock()
+			doc := r.url
+			if r.unreachable != "" {
+				doc = r.unreachable
+			}
+			code, ok := r.statuses[doc]
+			if !ok {
+				code = 200
+			}
+			r.calls = append(r.calls, "http-status "+string(m.Params))
+			return map[string]any{"result": map[string]any{"type": "number", "value": code}}, nil
 		case strings.Contains(p.Expression, "winuse:settle"):
 			defer r.mu.Unlock()
 			r.settles++
@@ -331,6 +357,100 @@ func TestHistoryEndsAndReload(t *testing.T) {
 		t.Errorf("reload with a URL: %+v", e)
 	}
 	r.passiveOnly(t)
+}
+
+// TestNavigateNotesAnHTTPError: a Page that answers 4xx or 5xx with a body
+// stays ok, with a note naming the status (bladebro-ideas 02); a 2xx has
+// none.
+func TestNavigateNotesAnHTTPError(t *testing.T) {
+	r := newWinRig(t)
+	r.statuses = map[string]int{
+		"https://new.test/missing": 404,
+		"https://new.test/limited": 429,
+		"https://new.test/broken":  500,
+		"https://new.test/down":    503,
+		"https://new.test/odd":     499,
+	}
+	for _, c := range []struct{ url, note string }{
+		{"https://new.test/missing", "Note: the Page answered HTTP 404 Not Found"},
+		{"https://new.test/limited", "Note: the Page answered HTTP 429 Too Many Requests"},
+		{"https://new.test/broken", "Note: the Page answered HTTP 500 Internal Server Error"},
+		{"https://new.test/down", "Note: the Page answered HTTP 503 Service Unavailable"},
+		{"https://new.test/odd", "Note: the Page answered HTTP 499"},
+	} {
+		out, e := r.run(t, "navigate", protocol.NavigateArgs{Window: "301", URL: c.url})
+		if e != nil || out != "ok "+c.url+"\n"+c.note+"\n" {
+			t.Errorf("navigate %s: %q %+v", c.url, out, e)
+		}
+	}
+	if out, e := r.run(t, "navigate", protocol.NavigateArgs{Window: "301", URL: "https://new.test/fine"}); e != nil || out != "ok https://new.test/fine\n" {
+		t.Errorf("a 200: %q %+v", out, e)
+	}
+	// The status is read in an isolated world, never with a domain turned
+	// on.
+	if len(r.sent("http-status")) == 0 {
+		t.Error("the status was never read")
+	}
+	for _, m := range r.browser.Methods() {
+		if m == "Runtime.enable" || m == "Network.enable" {
+			t.Errorf("%s was sent", m)
+		}
+	}
+	r.passiveOnly(t)
+}
+
+// TestHistoryAndReloadNoteAnHTTPError: back, forward and reload onto a
+// 4xx/5xx Page carry the same note.
+func TestHistoryAndReloadNoteAnHTTPError(t *testing.T) {
+	r := newWinRig(t)
+	r.statuses = map[string]int{"https://docs.test/": 503, "https://two.test/gone": 410}
+	if _, e := r.run(t, "navigate", protocol.NavigateArgs{Window: "301", URL: "https://two.test/gone"}); e != nil {
+		t.Fatal(e.Error())
+	}
+	if out, e := r.run(t, "back", protocol.NavigateArgs{Window: "301"}); e != nil || out != "ok https://docs.test/\nNote: the Page answered HTTP 503 Service Unavailable\n" {
+		t.Errorf("back: %q %+v", out, e)
+	}
+	if out, e := r.run(t, "forward", protocol.NavigateArgs{Window: "301"}); e != nil || out != "ok https://two.test/gone\nNote: the Page answered HTTP 410 Gone\n" {
+		t.Errorf("forward: %q %+v", out, e)
+	}
+	if out, e := r.run(t, "reload", protocol.NavigateArgs{Window: "301"}); e != nil || out != "ok https://two.test/gone\nNote: the Page answered HTTP 410 Gone\n" {
+		t.Errorf("reload: %q %+v", out, e)
+	}
+}
+
+// TestNavigateToAnEmptyHTTPError: a 4xx/5xx with an empty body fails
+// Page.navigate with ERR_HTTP_RESPONSE_CODE_FAILURE and the Tab shows
+// Chrome's error page; it is reported as delivered and landed, ok, with
+// the status and the address asked for.
+func TestNavigateToAnEmptyHTTPError(t *testing.T) {
+	r := newWinRig(t)
+	r.statuses = map[string]int{"https://new.test/empty429": 429}
+	out, e := r.run(t, "navigate", protocol.NavigateArgs{Window: "301", URL: "https://new.test/empty429"})
+	if e != nil || out != "ok https://new.test/empty429\nNote: the Page answered HTTP 429 Too Many Requests with an empty body; Chrome shows its error page\n" {
+		t.Errorf("empty 429: %q %+v", out, e)
+	}
+	// Reloading Chrome's error page reads the status again.
+	if out, e := r.run(t, "reload", protocol.NavigateArgs{Window: "301"}); e != nil || !strings.Contains(out, "HTTP 429 Too Many Requests with an empty body") {
+		t.Errorf("reload of the error page: %q %+v", out, e)
+	}
+	// No 4xx/5xx to read: the failure stays the browser's, delivered.
+	_, e = r.run(t, "navigate", protocol.NavigateArgs{Window: "301", URL: "https://new.test/empty-unknown"})
+	if e == nil || e.Msg != "the browser could not open https://new.test/empty-unknown: net::ERR_HTTP_RESPONSE_CODE_FAILURE" || !strings.Contains(e.Hint, "error page") || strings.Contains(e.Msg, "nothing was sent") {
+		t.Errorf("empty without a status: %+v", e)
+	}
+}
+
+// TestNavigateWaitNoneReadsNoStatus: with --wait none the new document may
+// not have committed yet, so its status is not read.
+func TestNavigateWaitNoneReadsNoStatus(t *testing.T) {
+	r := newWinRig(t)
+	r.statuses = map[string]int{"https://new.test/missing": 404}
+	if out, e := r.run(t, "navigate", protocol.NavigateArgs{Window: "301", URL: "https://new.test/missing", Wait: "none"}); e != nil || out != "ok https://new.test/missing\n" {
+		t.Errorf("--wait none: %q %+v", out, e)
+	}
+	if got := r.sent("http-status"); len(got) != 0 {
+		t.Errorf("the status was read: %v", got)
+	}
 }
 
 func TestPageOnlyCommandsNeedABrowserConnection(t *testing.T) {

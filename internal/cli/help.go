@@ -59,7 +59,10 @@ global options:
                                "error" with its code, message, hint, delivery
                                and retry; a Page click or press-key adds
                                "effect": navigated, changed, text, none or
-                               unknown. Exit codes are unchanged
+                               unknown, navigate, back, forward and reload
+                               add "http_status" when the Page answered 4xx
+                               or 5xx, and a read's Notes go in "notes",
+                               never in "out". Exit codes are unchanged
   --help, -h                  print the command's usage and examples instead
                                of running it, as winuse help <command> does
 
@@ -192,7 +195,14 @@ commands:
                                --observe=diff does after an Action; with no
                                earlier read, or past 60% changed, the whole
                                Window State prints with a note. It takes the
-                               budgets above, not --root or --skeleton
+                               budgets above, not --root or --skeleton.
+                               Your first read of a site or App prints its
+                               Notes above the Window: line (the newest 10,
+                               then a note list line; a browser Window's
+                               site, then the browser's), once per agent;
+                               they count toward --max-chars and shrink
+                               first. --diff, --observe and find print none;
+                               WINUSE_NOTES=off hides them
   find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N | --full]
                                search the Window's whole live tree, past the
                                Window State's caps: print the matching
@@ -241,24 +251,32 @@ commands:
                                model jev-latest; status masks the key; --key -
                                reads it from stdin; check sends one question
                                and prints the model and round trip
-  record-tree <window> <file> record a Window's real tree to a fixture file
+  record-tree <window> <file> [--table]
+                               record a Window's real tree to a fixture file;
+                               --table records its list or grid as extract
+                               reads it
   zoom <window> <x>,<y>,<w>,<h>
                                save a full-resolution crop of a region of the
                                Window's latest screenshot and print its path
   extract <window>[:<tab>] [--root <element>] [--as list|table|jsonld] [--limit N] [--max-chars N | --out <file>]
-                               a browser Page's repeated items as rows: a
-                               header line naming the container and "N of M
-                               rows (complete)" or "(partial: capped at N /
-                               page says N results)", then a JSON array, one
-                               row per line. Without --root it picks the
-                               list, a table with headers or the page's
-                               JSON-LD, and says "no list found" on an
-                               article or a page with no list; --root takes
-                               the list, an ancestor or one item of it.
-                               --as forces a mode; --limit (default 50, up to
-                               1000); stops before 28000 characters; --out
-                               writes the array to a file. Prints no Element
-                               Indexes and reads in an isolated world
+                               a browser Page's repeated items, or a native
+                               Window's list or grid, as rows: a header line
+                               naming the container and "N of M rows
+                               (complete)" or "(partial: capped at N /
+                               virtualized / page says N results)", then a
+                               JSON array, one row per line. Without --root
+                               it picks the list, a table with headers or the
+                               page's JSON-LD (on a native Window: its only
+                               table or grid, else its longest list), and
+                               says "no list found" when there is none;
+                               --root takes the list, an ancestor or one item
+                               of it. --as forces a mode (Pages only);
+                               --limit (default 50 on a Page, 500 on a native
+                               Window, up to 1000); stops before 28000
+                               characters; --out writes the array to a file.
+                               Prints no Element Indexes; a Page is read in
+                               an isolated world, a native list never
+                               scrolled
   click <window> <element index | name: | id: | @x,y> [options]
                                click an Element of a Window by Element Index,
                                name: or id: reference, or at @x,y
@@ -471,7 +489,13 @@ const usageTail = `);
   navigate <window> <url> [--wait load|domcontentloaded|none]
                                open a URL in the Window's active Tab, wait for
                                it to load (default load), and print the URL it
-                               ended on; never type into the address bar
+                               ended on; never type into the address bar. A
+                               Page that answered 4xx or 5xx (also after
+                               back, forward and reload) adds
+                               Note: the Page answered HTTP <code> <reason>;
+                               a short Page that looks like a CAPTCHA or
+                               block wall adds a Note too: ask the user to
+                               handle it
   back <window> [--wait ...]  go one page back in the Tab's history
   forward <window> [--wait ...]
                                go one page forward in the Tab's history
@@ -763,9 +787,10 @@ var commandGroups = []struct {
 			"winuse jev check"}},
 		{"zoom", "a full-resolution crop of the latest screenshot", []string{
 			"winuse zoom 4242 100,80,400,300"}},
-		{"extract", "a Page's list, table or JSON-LD as JSON rows", []string{
+		{"extract", "a Page's or a Window's list or table as JSON rows", []string{
 			"winuse extract 4242",
 			"winuse extract 4242 --root 57 --limit 200",
+			"winuse extract Explorer --out files.json",
 			"winuse extract 4242:1a2b3c4d --as table --out rows.json"}},
 	}},
 	{"Act in a Window (Headless unless --headed)", []commandHelp{
@@ -917,7 +942,8 @@ var commandGroups = []struct {
 			"winuse click --help",
 			"winuse help all"}},
 		{"record-tree", "record a tree fixture for tests", []string{
-			"winuse record-tree 4242 notepad.json"}},
+			"winuse record-tree 4242 notepad.json",
+			"winuse record-tree 4242 services.json --table"}},
 	}},
 }
 

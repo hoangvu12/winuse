@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hoangvu12/winuse/internal/browser"
+	"github.com/hoangvu12/winuse/internal/notes"
 	"github.com/hoangvu12/winuse/internal/pipe"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/shot"
@@ -175,6 +176,8 @@ func Main() int {
 		// What a Headed Action left open (polite.go): every visible
 		// top-level Window, popup menus included.
 		AllWindows: win.Collect,
+		// The Notes a Window State shows (windownotes.go, ADR 0024).
+		NoteStore: notes.Default,
 	}
 	if overlay != nil {
 		svc.Overlay = overlay
