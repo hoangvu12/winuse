@@ -57,9 +57,11 @@ global options:
   --json                      print one JSON line instead of the text:
                                {"ok","command","out"} and, on a failure,
                                "error" with its code, message, hint, delivery
-                               and retry; navigate, back, forward and reload
-                               add "http_status" when the Page answered 4xx
-                               or 5xx. Exit codes are unchanged
+                               and retry; a Page click or press-key adds
+                               "effect": navigated, changed, text, none or
+                               unknown, and navigate, back, forward and
+                               reload add "http_status" when the Page
+                               answered 4xx or 5xx. Exit codes are unchanged
   --help, -h                  print the command's usage and examples instead
                                of running it, as winuse help <command> does
 
@@ -245,6 +247,20 @@ commands:
   zoom <window> <x>,<y>,<w>,<h>
                                save a full-resolution crop of a region of the
                                Window's latest screenshot and print its path
+  extract <window>[:<tab>] [--root <element>] [--as list|table|jsonld] [--limit N] [--max-chars N | --out <file>]
+                               a browser Page's repeated items as rows: a
+                               header line naming the container and "N of M
+                               rows (complete)" or "(partial: capped at N /
+                               page says N results)", then a JSON array, one
+                               row per line. Without --root it picks the
+                               list, a table with headers or the page's
+                               JSON-LD, and says "no list found" on an
+                               article or a page with no list; --root takes
+                               the list, an ancestor or one item of it.
+                               --as forces a mode; --limit (default 50, up to
+                               1000); stops before 28000 characters; --out
+                               writes the array to a file. Prints no Element
+                               Indexes and reads in an isolated world
   click <window> <element index | name: | id: | @x,y> [options]
                                click an Element of a Window by Element Index,
                                name: or id: reference, or at @x,y
@@ -580,6 +596,30 @@ const usageTail = `);
                                its line; read it with get-window-state.
                                Without --headed nothing is sent; one open
                                already is printed with nothing sent
+  note add <target> [--app] <text> | --stdin | --file <path>
+                               leave a Note, one line of at most 200
+                               characters, for the next agents on a site or
+                               App. The target is a Window ID (a browser
+                               Window means its Page's site, --app the
+                               browser itself), a <window>:<tab> Tab target,
+                               a URL or domain (kept as its registrable
+                               domain: gist.github.com is github.com;
+                               localhost and IP addresses keep their port)
+                               or an exe name (excel.exe). A free-form name
+                               is refused and the Windows it matches listed;
+                               the same text twice on one key is refused.
+                               Stored in %LOCALAPPDATA%\winuse\notes.json,
+                               shared by every agent; a Note informs, it
+                               never grants permission
+  note list [<target> [--app]]
+                               a target's Notes, numbered, with author and
+                               age; with no target, every key and its count
+  note remove <target> [--app] <n>
+                               remove Note n of note list, such as one that
+                               proved wrong
+  note clear <target> [--app]
+                               remove every Note of a target. With --json,
+                               each note command answers JSON
   skill [<topic> | list | all]
                                print the agent skill this binary was built
                                with: its core (SKILL.md), one topic of it,
@@ -621,10 +661,10 @@ screenshot's pixels) name an Element of the Window's latest Window State.
 A Tab target, <window>:<tab> (a tab id from tab list or tab new), names a Tab
 of that browser shown or not: get-window-state, click, set-value, scroll,
 hover, drag, select-text, type-text, press-key, upload, navigate, back,
-forward, reload, dialog, wait, eval and batch read and act on that Tab
-through its Browser Connection, headless, without switching the Tab the
-user sees; its Element Indexes are its own, and --headed, --post and @x,y
-are refused
+forward, reload, dialog, wait, eval, read, extract and batch read and act
+on that Tab through its Browser Connection, headless, without switching
+the Tab the user sees; its Element Indexes are its own, and --headed,
+--post and @x,y are refused
 `
 
 // Usage is the full reference, `winuse help all` (it grows as tickets
@@ -715,6 +755,10 @@ var commandGroups = []struct {
 			"winuse jev check"}},
 		{"zoom", "a full-resolution crop of the latest screenshot", []string{
 			"winuse zoom 4242 100,80,400,300"}},
+		{"extract", "a Page's list, table or JSON-LD as JSON rows", []string{
+			"winuse extract 4242",
+			"winuse extract 4242 --root 57 --limit 200",
+			"winuse extract 4242:1a2b3c4d --as table --out rows.json"}},
 	}},
 	{"Act in a Window (Headless unless --headed)", []commandHelp{
 		{"click", "click an Element, or at an @x,y point", []string{
@@ -835,6 +879,12 @@ var commandGroups = []struct {
 			"winuse --headed open-shell start"}},
 	}},
 	{"winuse itself", []commandHelp{
+		{"note", "Notes left for later agents", []string{
+			`winuse note add 4242 "the comment box is a placeholder: click it before typing"`,
+			`winuse note add 4242 --app "Ctrl+L focuses the address bar"`,
+			`winuse note add excel.exe "Save As takes about 3 s to open"`,
+			"winuse note list github.com",
+			"winuse note remove github.com 2"}},
 		{"skill", "the agent guide; skill list for its topics", []string{
 			"winuse skill",
 			"winuse skill list",

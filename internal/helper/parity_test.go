@@ -23,8 +23,9 @@ var cliOnlyCommands = map[string]bool{"version": true, "skill": true, "trace": t
 	"pick": true, "jev": true, "run": true} // pick reads and acts through the helper's own commands (cli/pick.go)
 
 // groupCommands take a subcommand: "browser status" is the wire command
-// browser-status, "browser ext install" browser-ext-install.
-var groupCommands = map[string]bool{"browser": true, "tab": true}
+// browser-status, "browser ext install" browser-ext-install, "note add"
+// note-add.
+var groupCommands = map[string]bool{"browser": true, "tab": true, "note": true}
 
 // wireName turns a documented command line's words into its wire name.
 func wireName(words []string) string {

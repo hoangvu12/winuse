@@ -1,6 +1,6 @@
 # Browser Windows
 
-Read when: any website, browser Window or Electron or WebView2 App: connecting to the user's browser, `navigate`, Page waits, `eval`, uploads, downloads, JavaScript dialogs, `browser attach`.
+Read when: any website, browser Window or Electron or WebView2 App: connecting to the user's browser, `navigate`, Page waits, `eval`, `extract`, uploads, downloads, JavaScript dialogs, `browser attach`.
 
 This is one topic of the winuse skill. `winuse skill browser` prints it, and `winuse skill` prints the core, SKILL.md, which holds the safety rules, the Esc stop and recovery.
 
@@ -101,6 +101,34 @@ The Agent Cursor shows Page Actions too: it glides to the Page Element,
 presses when the input reaches the Page, and stays just above the browser
 Window, so the user sees it only while that Window is uncovered.
 
+### Read a Page's lists and tables as data
+
+```
+winuse extract <window>                        # the Page's main list, table or JSON-LD as JSON rows
+winuse extract <window> --root <element>       # the list, an ancestor of it, or one item of it
+winuse extract <window> --as table|list|jsonld # force a mode; --limit N (default 50), --out rows.json
+```
+
+- Use `extract` instead of `eval` or reading the Window State when you
+  want the rows of search results, a product grid, a table or a feed. The
+  first line names the container and the count, then a JSON array, one
+  row per line:
+  `list: <ol id="results"> "Search results": 10 of 10 rows (complete)`.
+  `(partial: capped at 50 / page says 1,234 results)` says rows are
+  missing: raise `--limit`, or the page itself shows only some (load more
+  or go to its next page).
+- Without `--root` it picks the container itself. If that is the wrong
+  one, read `get-window-state` and pass `--root` the Element Index of the
+  list, of an ancestor, or of one item; one item gathers its alike
+  siblings. A table with headers prints its cells by header.
+- An article or a page with no repeated items prints `no list found`;
+  read it instead. A block page prints
+  `no list found: the Page looks like a <Cloudflare|...> wall; ask the user to handle it`:
+  stop and ask the user, as the safety rules say.
+- It only reads, in an isolated world the Page cannot see, and prints no
+  Element Indexes. It takes `<window>:<tab>`. Pages only: on a native
+  Window, use `get-window-state` or `find`.
+
 ### Act on a Page
 
 ```
@@ -152,6 +180,18 @@ winuse drag <window> <element> <element|@x,y>
   picking a suggestion.
 - A covered, disabled, hidden or off-screen Page Element is refused with
   nothing sent, naming any covering Element, such as a cookie banner.
+- A Page `click` or `press-key` watches the Page until it settles (up to
+  1 s) and says what it saw, still with `ok` since the input was delivered:
+  `Note: the Page navigated to <url>`; `Note: the Page is navigating to
+  <url> and had not loaded when winuse looked` (then `wait <window> load`);
+  `Note: the Page changed (text only)`; or `Note: no change seen in the
+  Page; the click was delivered, so read the Page before repeating it`,
+  which names an Element that now covers the click point or is gone. Do not
+  repeat a click on that note alone: read the Page first, because a late
+  reaction or a repeat can act twice. Other changes print no note. Under
+  `--observe` only the navigation note prints; the diff shows the rest.
+  `--json` gives the same as an `effect` field (`navigated`, `changed`,
+  `text`, `none` or `unknown`).
 - A click or key that opens a JavaScript dialog (alert, confirm, prompt,
   leave-this-page) prints `ok` and a `Note:` line with its text; do not
   repeat it. Every Page Action then fails naming the dialog until you

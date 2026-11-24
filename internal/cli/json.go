@@ -5,6 +5,7 @@ package cli
 // JSON line on stdout instead of its text:
 //
 //	{"ok":true,"command":"click","out":"..."}
+//	{"ok":true,"command":"click","out":"...","effect":"navigated"}
 //	{"ok":false,"command":"click","out":"","error":{"code":"STALE_REF","message":"...","hint":"...","delivery":"not_delivered","retry":"safe"}}
 //	{"ok":true,"command":"navigate","out":"ok ...\nNote: the Page answered HTTP 404 Not Found\n","http_status":404}
 //
@@ -36,10 +37,13 @@ var lastResponse *protocol.Response
 
 // jsonLine is the one line --json prints.
 type jsonLine struct {
-	OK      bool       `json:"ok"`
-	Command string     `json:"command"`
-	Out     string     `json:"out"`
-	Error   *jsonError `json:"error,omitempty"`
+	OK      bool   `json:"ok"`
+	Command string `json:"command"`
+	Out     string `json:"out"`
+	// Effect is what a Headless Page click or key did (bladebro-ideas
+	// ticket 06): navigated, changed, text, none or unknown.
+	Effect string     `json:"effect,omitempty"`
+	Error  *jsonError `json:"error,omitempty"`
 	// HTTPStatus is the 4xx/5xx a navigation's Page answered, from its
 	// note (bladebro-ideas 02).
 	HTTPStatus int `json:"http_status,omitempty"`
@@ -120,6 +124,9 @@ func runJSON(command string, run func() int) int {
 func jsonLineFor(command string, code int, stdout, stderr string, resp *protocol.Response) jsonLine {
 	line := jsonLine{OK: code == 0, Command: command, Out: stdout}
 	if line.OK {
+		if resp != nil && resp.OK {
+			line.Effect = resp.Effect
+		}
 		if navCommands[command] {
 			line.HTTPStatus = protocol.HTTPStatusIn(stdout)
 		}
