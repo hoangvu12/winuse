@@ -265,6 +265,9 @@ func (m *Manager) dial(ctx context.Context, ep Endpoint) (*Connection, error) {
 		pd = &pendingDial{ep: ep, done: make(chan struct{})}
 		m.dials[key] = pd
 		go m.runDial(pd)
+		if m.approves(ep) {
+			go m.approve(pd) // approve.go: press Allow in the prompt this dial raises
+		}
 	}
 	m.mu.Unlock()
 	return m.await(ctx, pd)

@@ -236,8 +236,9 @@ func (m *Manager) tookForeground(before foregroundSnapshot, pid int) bool {
 // <browser>://inspect/#remote-debugging, it waits for "Allow remote
 // debugging for this browser instance" to come on; with no such window it
 // fails at once with InspectClosed, which says how to open one. Then it
-// connects; Chrome 144+ asks the user to approve the connection, once per
-// helper. It pins the browser, and it never starts or opens anything.
+// connects; Chrome 144+ asks to approve the connection, once per helper,
+// and the manager presses Allow itself while its dial waits (approve.go).
+// It pins the browser, and it never starts or opens anything.
 func (m *Manager) Connect(ctx context.Context, name string) (string, error) {
 	b, err := m.pick(name, true)
 	if err != nil {

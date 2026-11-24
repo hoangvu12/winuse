@@ -58,13 +58,14 @@ tabs, in this order:
    id:remote-debugging-enabled Toggle`, then run `connect`. A `connect` while
    a window shows the page waits for the toggle; without one it fails at
    once, and its hint says all this. Chrome 144+ then shows an "Allow remote
-   debugging?" prompt for the connection: `connect` waits 20 seconds and
-   says so. The user asked you to use their browser, so allow it
-   yourself rather than stopping: `winuse list-windows --app <browser>`
-   finds the prompt's Window, then `winuse click <window> name:Allow`. If
-   that is refused, retry with `--headed`. If the prompt still ignores it,
-   ask the user to click Allow; never work around the prompt otherwise.
-   Then `winuse browser status <browser>`.
+   debugging?" prompt for the connection, and winuse presses its Allow
+   itself, Headless, while its own connection waits: you do nothing. Only
+   when `connect` still says the browser is waiting for approval (the
+   press did not take): `winuse list-windows --app <browser>` finds the
+   prompt's Window, then `winuse click <window> name:Allow`, `--headed`
+   if that is refused. If the prompt still ignores it, ask the user to
+   click Allow; never work around the prompt otherwise. Then
+   `winuse browser status <browser>`.
 
 Only when the user asks for a separate browser, or after both routes
 failed (tell the user which and why), use a browser of winuse's own:

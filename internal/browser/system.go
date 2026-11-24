@@ -76,6 +76,12 @@ type System struct {
 	// Dial opens the WebSocket to a verified endpoint; handshake bounds the
 	// opening handshake (the Chrome 144+ approval prompt holds it).
 	Dial func(ctx context.Context, wsURL string, handshake time.Duration) (cdp.Transport, error)
+	// ApprovePrompt presses Allow in the "Allow remote debugging?" prompt
+	// of the browser process pid, and reports whether it pressed it. The
+	// manager calls it only while its own dial to that process waits on the
+	// handshake (approve.go). The helper sets it (it owns UI Automation);
+	// nil never approves, and the user or an agent clicks Allow.
+	ApprovePrompt func(ctx context.Context, pid uint32) bool
 
 	// Extension finds the extension bridge connected to the pinned browser
 	// (any browser when pin is ""), or nil. Live sets it to
