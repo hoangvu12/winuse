@@ -32,6 +32,7 @@ type effectWorld struct {
 	armArgs []any
 	wall    string // what the wall check (block.js, bladebro-ideas 05) answers; "" none
 	walls   int    // how many times it ran
+	loaded  int    // how many of those waited for the document's body
 }
 
 func (r *pageRig) effectWorld(t *testing.T, final map[string]any, onPoll func(c *cdptest.Conn, n int)) *effectWorld {
@@ -48,6 +49,7 @@ func (r *pageRig) effectWorld(t *testing.T, final map[string]any, onPoll func(c 
 		var p struct {
 			Fn        string `json:"functionDeclaration"`
 			ContextID int    `json:"executionContextId"`
+			Await     bool   `json:"awaitPromise"`
 			Args      []struct {
 				Value any `json:"value"`
 			} `json:"arguments"`
@@ -78,6 +80,9 @@ func (r *pageRig) effectWorld(t *testing.T, final map[string]any, onPoll func(c 
 		case strings.Contains(p.Fn, "/* winuse:block */"):
 			ew.mu.Lock()
 			ew.walls++
+			if p.Await && strings.Contains(p.Fn, "DOMContentLoaded") {
+				ew.loaded++
+			}
 			v = ew.wall
 			ew.mu.Unlock()
 		case strings.Contains(p.Fn, "winuse:aim"):
@@ -217,6 +222,13 @@ func TestPageActionThatNavigatedOntoAWall(t *testing.T) {
 	if n := r.pressed(); n != 1 {
 		t.Errorf("%d presses sent: %v", n, r.sent())
 	}
+	// The watch answers at the commit, before the new body may be parsed:
+	// the check waits for it.
+	ew.mu.Lock()
+	if ew.loaded != 1 {
+		t.Errorf("%d of %d wall checks waited for the new document's body, want 1", ew.loaded, ew.walls)
+	}
+	ew.mu.Unlock()
 
 	r = newPageRig(t)
 	ew = r.effectWorld(t, map[string]any{}, navigatedTo("https://site.test/search?q=x"))

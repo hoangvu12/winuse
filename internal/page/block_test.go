@@ -37,6 +37,22 @@ func TestBlockKindRunsTheWallCheckInAnIsolatedWorld(t *testing.T) {
 	}
 }
 
+// After a Page Action that navigated, the check runs once the new document
+// has its body: the watch saw the commit, when the body may still be on
+// its way (bladebro-ideas 05).
+func TestBlockKindOnceLoadedWaitsForTheBody(t *testing.T) {
+	f := &readCaller{reply: map[string]any{"result": map[string]any{"type": "string", "value": "DataDome"}}}
+	kind, err := BlockKindOnceLoaded(context.Background(), f, "S")
+	if err != nil || kind != "DataDome" {
+		t.Fatalf("got %q, %v; want DataDome", kind, err)
+	}
+	call := f.params["Runtime.callFunctionOn"]
+	fn, _ := call["functionDeclaration"].(string)
+	if call["awaitPromise"] != true || !strings.Contains(fn, blockJS) || !strings.Contains(fn, "DOMContentLoaded") {
+		t.Errorf("the check ran with %v, want block.js awaited until DOMContentLoaded", call)
+	}
+}
+
 func TestBlockKindOnAnOrdinaryPageOrAFailure(t *testing.T) {
 	f := &readCaller{reply: map[string]any{"result": map[string]any{"type": "string", "value": ""}}}
 	if kind, err := BlockKind(context.Background(), f, "S"); err != nil || kind != "" {

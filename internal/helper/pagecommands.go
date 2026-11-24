@@ -734,9 +734,19 @@ const chromeErrorPage = "chrome-error://"
 // Page Action whose effect navigated (bladebro-ideas 06) adds it the same
 // way.
 func pageWallNote(ctx context.Context, c page.Caller, session string) string {
+	return wallNoteBy(ctx, c, session, page.BlockKind)
+}
+
+// pageWallNoteOnceLoaded is pageWallNote once the Page's document has its
+// body: a Page Action's effect watch sees a navigation at its commit.
+func pageWallNoteOnceLoaded(ctx context.Context, c page.Caller, session string) string {
+	return wallNoteBy(ctx, c, session, page.BlockKindOnceLoaded)
+}
+
+func wallNoteBy(ctx context.Context, c page.Caller, session string, check func(context.Context, page.Caller, string) (string, error)) string {
 	cctx, cancel := context.WithTimeout(ctx, wallCheckBound)
 	defer cancel()
-	kind, err := page.BlockKind(cctx, c, session)
+	kind, err := check(cctx, c, session)
 	if err != nil || kind == "" {
 		return ""
 	}

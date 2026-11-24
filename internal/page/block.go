@@ -39,14 +39,35 @@ func withBlockCheck(js string) string {
 // returns the wall it names, "" for none (an ordinary page, or a value
 // that is no name).
 func BlockKind(ctx context.Context, c Caller, session string) (string, error) {
+	return blockKind(ctx, c, session, blockJS, false)
+}
+
+// BlockKindOnceLoaded is BlockKind once the document has its body
+// (DOMContentLoaded): a Page Action's effect watch says it navigated at
+// the commit, when the new body may still be on its way. ctx bounds the
+// wait; a document replaced meanwhile fails the call.
+func BlockKindOnceLoaded(ctx context.Context, c Caller, session string) (string, error) {
+	return blockKind(ctx, c, session, blockOnceLoadedJS, true)
+}
+
+// blockOnceLoadedJS runs block.js at once on a parsed document, else at
+// its DOMContentLoaded.
+var blockOnceLoadedJS = `function () {
+  const check = ` + blockJS + `;
+  if (document.readyState !== 'loading') return check(document);
+  return new Promise(done => document.addEventListener('DOMContentLoaded', () => done(check(document)), {once: true}));
+}`
+
+func blockKind(ctx context.Context, c Caller, session, fn string, await bool) (string, error) {
 	ctxID, err := isolatedWorld(ctx, c, session, "", blockWorld)
 	if err != nil {
 		return "", err
 	}
 	res, err := c.CallSession(ctx, session, "Runtime.callFunctionOn", map[string]any{
-		"functionDeclaration": blockJS,
+		"functionDeclaration": fn,
 		"executionContextId":  ctxID,
 		"returnByValue":       true,
+		"awaitPromise":        await,
 		"silent":              true,
 	})
 	if err != nil {

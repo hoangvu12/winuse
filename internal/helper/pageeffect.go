@@ -140,10 +140,11 @@ func (pe *pageEffect) finish(ctx context.Context, windowID uint64, out string, r
 	}
 	recordEffect(ctx, pe.e.Kind)
 	// A navigation that landed gets the wall check (bladebro-ideas 05), its
-	// Note after the effect's.
+	// note after the effect's, once the new document has its body: the
+	// watch saw the commit.
 	wall := ""
 	if pe.e.Kind == page.EffectNavigated && !pe.e.Pending && pe.o != nil && pe.o.Client != nil {
-		wall = pageWallNote(ctx, pe.o.Client, pe.o.TopSession())
+		wall = pageWallNoteOnceLoaded(ctx, pe.o.Client, pe.o.TopSession())
 	}
 	if out != okOutput {
 		return out + wall, nil

@@ -80,6 +80,11 @@ func TestWallCheck(t *testing.T) {
 			if err != nil || kind != tc.want {
 				t.Errorf("BlockKind on %s: %q, %v; want %q", tc.page, kind, err, tc.want)
 			}
+			// The check after a Page Action that navigated (it waits for the
+			// body first) names the same wall.
+			if kind, err := page.BlockKindOnceLoaded(ctx, conn.Client, sess); err != nil || kind != tc.want {
+				t.Errorf("BlockKindOnceLoaded on %s: %q, %v; want %q", tc.page, kind, err, tc.want)
+			}
 			md, err := page.ReadMarkdown(ctx, conn.Client, sess, "", 0, page.ReadOptions{})
 			if err != nil || md.Block != tc.want {
 				t.Errorf("read.js on %s named %q, %v; want %q", tc.page, md.Block, err, tc.want)
