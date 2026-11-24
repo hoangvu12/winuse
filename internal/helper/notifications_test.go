@@ -137,6 +137,23 @@ func TestToastsInStackedBanners(t *testing.T) {
 	}
 }
 
+// A toast's text lines print joined by spaces, so a --text filter with a
+// line break (LF, CRLF or CR) or a run of blanks matches as printed
+// (bladebro-ideas 21).
+func TestNotificationTextFilterMatchesAsPrinted(t *testing.T) {
+	n := notification{App: "Signal", Title: "Mum", Text: "Call me when you can"}
+	for text, want := range map[string]bool{
+		"call me\nwhen":   true,
+		"Call me\r\nwhen": true,
+		"me\rwhen  you":   true,
+		"call mewhen":     false,
+	} {
+		if got := notificationMatches(n, "", text); got != want {
+			t.Errorf("--text %q: %v, want %v", text, got, want)
+		}
+	}
+}
+
 func TestListNotifications(t *testing.T) {
 	d := newToastDesk(t)
 	cmds := d.cmds()
