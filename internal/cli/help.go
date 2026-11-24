@@ -105,8 +105,12 @@ act and see the effect in one call: <action> ... --observe[=diff|full]
   command or anywhere after it outside type-text's text and set-value's
   value. When the Action opened one new Window (a menu, a dialog), it is
   read too and printed whole after, under a line naming its Window ID;
-  several new Windows are a note. A failed Action prints none; a read that
-  fails is a note and the Action's result stands.
+  several new Windows are a note. On a browser Window or a Tab the read
+  first waits for the Page to settle (no DOM change for 110 ms and no
+  request finishing for 280 ms, up to 1 s), so a late render or a route
+  change shows; a Page still changing then is read anyway, with a note. A
+  failed Action prints none; a read that fails is a note and the Action's
+  result stands.
 
 commands:
   list-windows [--details] [--app <name>] [--shell]
@@ -241,6 +245,20 @@ commands:
   zoom <window> <x>,<y>,<w>,<h>
                                save a full-resolution crop of a region of the
                                Window's latest screenshot and print its path
+  extract <window>[:<tab>] [--root <element>] [--as list|table|jsonld] [--limit N] [--max-chars N | --out <file>]
+                               a browser Page's repeated items as rows: a
+                               header line naming the container and "N of M
+                               rows (complete)" or "(partial: capped at N /
+                               page says N results)", then a JSON array, one
+                               row per line. Without --root it picks the
+                               list, a table with headers or the page's
+                               JSON-LD, and says "no list found" on an
+                               article or a page with no list; --root takes
+                               the list, an ancestor or one item of it.
+                               --as forces a mode; --limit (default 50, up to
+                               1000); stops before 28000 characters; --out
+                               writes the array to a file. Prints no Element
+                               Indexes and reads in an isolated world
   click <window> <element index | name: | id: | @x,y> [options]
                                click an Element of a Window by Element Index,
                                name: or id: reference, or at @x,y
@@ -469,22 +487,29 @@ const usageTail = `);
                                (alert, confirm, prompt, or leave the page);
                                text answers a prompt. While one shows, every
                                other Page Action fails and says so
-  wait <window> selector <css> | text <text> | url <url or pattern> | load [domcontentloaded] | download
-                               wait until an element shows, the text appears,
-                               the URL matches (* is a wildcard), or the page
-                               loads (10 s by default, --timeout <seconds> up
-                               to 300; in a batch, the Batch's budget bounds
-                               it); wait download prints the path of the
-                               file a click downloaded, on a browser winuse
-                               launched or cloned
+  wait <window> selector <css> | text <text> | url <url or pattern> | load [domcontentloaded] | idle | js <expression> | download
+                               wait until an element shows, the text appears
+                               (open shadow roots and same-origin frames
+                               too), the URL matches (* is a wildcard), the
+                               page loads, the page settles (idle: no DOM
+                               change and no request finishing for a moment),
+                               or a JavaScript expression is true (js: a
+                               syntax error fails at once, a timeout names
+                               the last error it threw); selector and text
+                               take --gone to wait until it is gone (10 s by
+                               default, --timeout <seconds> up to 300; in a
+                               batch, the Batch's budget bounds it); wait
+                               download prints the path of the file a click
+                               downloaded, on a browser winuse launched or
+                               cloned
   wait <window> <element index | name: | id:> enabled | disabled | gone | value <value> | checked | unchecked | expanded | collapsed
                                wait until an Element of the Window's latest
                                Window State reaches that state (gone: the
                                Element is gone, its Window closed too); text
                                on a Window that is no browser waits in its
-                               UI Automation tree. Both read the Window
-                               without changing its Element Indexes, and fail
-                               when it closes
+                               UI Automation tree, --gone there too. Both
+                               read the Window without changing its Element
+                               Indexes, and fail when it closes
   wait window <app or title> [--gone]
                                wait until a Window of that App, or whose title
                                holds the text, shows, and print its line;
@@ -607,10 +632,10 @@ screenshot's pixels) name an Element of the Window's latest Window State.
 A Tab target, <window>:<tab> (a tab id from tab list or tab new), names a Tab
 of that browser shown or not: get-window-state, click, set-value, scroll,
 hover, drag, select-text, type-text, press-key, upload, navigate, back,
-forward, reload, dialog, wait, eval and batch read and act on that Tab
-through its Browser Connection, headless, without switching the Tab the
-user sees; its Element Indexes are its own, and --headed, --post and @x,y
-are refused
+forward, reload, dialog, wait, eval, read, extract and batch read and act
+on that Tab through its Browser Connection, headless, without switching
+the Tab the user sees; its Element Indexes are its own, and --headed,
+--post and @x,y are refused
 `
 
 // Usage is the full reference, `winuse help all` (it grows as tickets
@@ -701,6 +726,10 @@ var commandGroups = []struct {
 			"winuse jev check"}},
 		{"zoom", "a full-resolution crop of the latest screenshot", []string{
 			"winuse zoom 4242 100,80,400,300"}},
+		{"extract", "a Page's list, table or JSON-LD as JSON rows", []string{
+			"winuse extract 4242",
+			"winuse extract 4242 --root 57 --limit 200",
+			"winuse extract 4242:1a2b3c4d --as table --out rows.json"}},
 	}},
 	{"Act in a Window (Headless unless --headed)", []commandHelp{
 		{"click", "click an Element, or at an @x,y point", []string{

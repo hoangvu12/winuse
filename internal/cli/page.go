@@ -139,7 +139,8 @@ func waitTimeout(a protocol.WaitArgs) time.Duration {
 
 // parseWaitArgs parses what to wait for after the Window, its value and
 // --timeout: a Page predicate, or an Element Reference and its state
-// (desktop-parity ticket 03, wait.go).
+// (desktop-parity ticket 03, wait.go). --gone (bladebro-ideas 07) turns a
+// selector or text wait around: until it is gone.
 func parseWaitArgs(tokens []string) (protocol.WaitArgs, error) {
 	var a protocol.WaitArgs
 	var rest []string
@@ -147,6 +148,9 @@ func parseWaitArgs(tokens []string) (protocol.WaitArgs, error) {
 		t := tokens[i]
 		secs := ""
 		switch {
+		case t == "--gone":
+			a.Gone = true
+			continue
 		case t == "--timeout":
 			if i+1 >= len(tokens) {
 				return a, errors.New("--timeout needs a number of seconds")
@@ -166,14 +170,21 @@ func parseWaitArgs(tokens []string) (protocol.WaitArgs, error) {
 		a.TimeoutMS = ms
 	}
 	if len(rest) == 0 {
-		return a, errors.New("wait needs what to wait for: selector, text, url, load, download, or an element and its state")
+		return a, errors.New("wait needs what to wait for: selector, text, url, load, idle, js, download, or an element and its state")
 	}
 	a.For = strings.ToLower(rest[0])
 	value := strings.Join(rest[1:], " ")
+	if a.Gone && a.For != "selector" && a.For != "text" {
+		return a, fmt.Errorf("--gone goes with wait selector and wait text, not wait %s (an Element waits for gone as its state: wait <window> <element> gone)", rest[0])
+	}
 	switch a.For {
-	case "selector", "text", "url":
+	case "selector", "text", "url", "js":
 		if value == "" {
 			return a, fmt.Errorf("wait %s needs a value", a.For)
+		}
+	case "idle":
+		if value != "" {
+			return a, errors.New("wait idle takes no value")
 		}
 	case "load":
 		if len(rest) > 2 {
@@ -186,7 +197,7 @@ func parseWaitArgs(tokens []string) (protocol.WaitArgs, error) {
 	default:
 		index, ref, err := parseElementRefToken(rest[0])
 		if err != nil {
-			return a, fmt.Errorf("wait for selector, text, url, load, download, or an element (an element index, name: or id:) and its state, not %q", rest[0])
+			return a, fmt.Errorf("wait for selector, text, url, load, idle, js, download, or an element (an element index, name: or id:) and its state, not %q", rest[0])
 		}
 		a.ElementIndex, a.Ref = index, ref
 		return parseElementWait(a, rest[0], rest[1:])

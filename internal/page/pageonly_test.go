@@ -498,21 +498,49 @@ func TestWaitLoad(t *testing.T) {
 }
 
 func TestWaitExprQuotesTheValue(t *testing.T) {
-	expr, err := WaitExpr(WaitText, `a "quote" ); alert(1); (`)
-	if err != nil || !strings.Contains(expr, `includes("a \"quote\" ); alert(1); (")`) {
+	expr, err := WaitExpr(WaitText, `a "quote" ); alert(1); (`, false)
+	if err != nil || !strings.Contains(expr, `const want = "a \"quote\" ); alert(1); (";`) {
 		t.Errorf("text expr %q %v", expr, err)
 	}
 	for _, kind := range []string{WaitSelector, WaitURL} {
-		if expr, err := WaitExpr(kind, "x"); err != nil || !strings.Contains(expr, `"x"`) {
+		if expr, err := WaitExpr(kind, "x", false); err != nil || !strings.Contains(expr, `"x"`) {
 			t.Errorf("%s: %q %v", kind, expr, err)
 		}
 	}
-	if expr, _ := WaitExpr(WaitLoadKind, "domcontentloaded"); expr != `/* winuse:wait-load */ document.readyState !== 'loading'` {
+	if expr, _ := WaitExpr(WaitLoadKind, "domcontentloaded", false); expr != `/* winuse:wait-load */ document.readyState !== 'loading'` {
 		t.Errorf("load expr %q", expr)
 	}
-	for _, bad := range [][2]string{{"selector", " "}, {"text", ""}, {"load", "none"}, {"idle", "x"}} {
-		if _, err := WaitExpr(bad[0], bad[1]); err == nil {
+	for _, bad := range [][2]string{{"selector", " "}, {"text", ""}, {"load", "none"}, {"networkidle", "x"}, {"js", ""}} {
+		if _, err := WaitExpr(bad[0], bad[1], false); err == nil {
 			t.Errorf("%v accepted", bad)
+		}
+	}
+}
+
+// TestWaitExprGone: --gone turns the selector and text predicates around,
+// and goes with nothing else.
+func TestWaitExprGone(t *testing.T) {
+	for _, kind := range []string{WaitSelector, WaitText} {
+		shows, _ := WaitExpr(kind, "x", false)
+		gone, err := WaitExpr(kind, "x", true)
+		if err != nil || !strings.Contains(gone, "return !shows()") || !strings.Contains(shows, "return shows()") {
+			t.Errorf("%s --gone: %q %v", kind, gone, err)
+		}
+	}
+	for _, kind := range []string{WaitURL, WaitLoadKind, WaitJS} {
+		if _, err := WaitExpr(kind, "x", true); err == nil || !strings.Contains(err.Error(), "--gone") {
+			t.Errorf("%s --gone accepted: %v", kind, err)
+		}
+	}
+}
+
+// TestWaitTextPierces: wait text looks past document.body.innerText into
+// open shadow roots and same-origin frames.
+func TestWaitTextPierces(t *testing.T) {
+	expr, _ := WaitExpr(WaitText, "x", false)
+	for _, part := range []string{"shadowRoot", "contentDocument"} {
+		if !strings.Contains(expr, part) {
+			t.Errorf("wait text does not read %s", part)
 		}
 	}
 }
@@ -693,5 +721,68 @@ func TestSafeFileName(t *testing.T) {
 		if got := SafeFileName(in); got != want {
 			t.Errorf("%q: %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestPollJS: wait js polls the agent's predicate. A syntax error fails at
+// once; a predicate that throws keeps the wait going, and a timeout says
+// the last error it threw; a promise is awaited.
+func TestPollJS(t *testing.T) {
+	old := pollEvery
+	pollEvery = 5 * time.Millisecond
+	t.Cleanup(func() { pollEvery = old })
+	f := newFakeTab(t)
+	var mu sync.Mutex
+	n := 0
+	throwUntil := 0
+	f.srv.Handle("Runtime.evaluate", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		var p struct {
+			Expression   string `json:"expression"`
+			AwaitPromise bool   `json:"awaitPromise"`
+		}
+		json.Unmarshal(m.Params, &p)
+		if !p.AwaitPromise {
+			t.Errorf("wait js does not await its promise")
+		}
+		if strings.Contains(p.Expression, "app.ready ===") {
+			return map[string]any{"result": map[string]any{"type": "object"}, "exceptionDetails": map[string]any{"text": "Uncaught",
+				"exception": map[string]any{"description": "SyntaxError: Unexpected token '='"}}}, nil
+		}
+		// The wrapper catches what the predicate throws and returns it.
+		n++
+		if n <= throwUntil {
+			return map[string]any{"result": map[string]any{"type": "object", "value": map[string]any{"threw": "TypeError: Cannot read properties of undefined (reading 'ready')"}}}, nil
+		}
+		return map[string]any{"result": map[string]any{"type": "object", "value": map[string]any{"ok": n >= 3}}}, nil
+	})
+	expr, err := WaitExpr(WaitJS, "window.app.ready", false)
+	if err != nil || !strings.Contains(expr, "window.app.ready") {
+		t.Fatalf("js expr %q %v", expr, err)
+	}
+	throwUntil = 2
+	if err := Poll(context.Background(), f.c, "S", expr, nil); err != nil || n != 3 {
+		t.Errorf("a predicate that threw twice, then held: %v after %d", err, n)
+	}
+
+	bad, _ := WaitExpr(WaitJS, "app.ready === = 1", false)
+	var ee *EvalError
+	if err := Poll(context.Background(), f.c, "S", bad, nil); !errors.As(err, &ee) || !strings.Contains(ee.Msg, "SyntaxError") {
+		t.Errorf("syntax error: %v", err)
+	}
+
+	mu.Lock()
+	n, throwUntil = -1000, 1<<30
+	mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	var timeout *WaitTimeoutError
+	err = Poll(ctx, f.c, "S", expr, nil)
+	if !errors.As(err, &timeout) || !strings.Contains(timeout.Error(), "TypeError: Cannot read properties of undefined") {
+		t.Errorf("timeout: %v", err)
+	}
+	if _, err := WaitExpr(WaitJS, "  ", false); err == nil {
+		t.Error("an empty predicate accepted")
 	}
 }

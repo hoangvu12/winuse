@@ -34,6 +34,14 @@ package helper
 // several new Windows none is read and a note says so. The read shares
 // the observation's budget and takes its own view (its own cap); a read
 // that fails, or a Window that closed meanwhile, is a note.
+//
+// The Page settles first (bladebro-ideas 07, ADR 0021 amendment): on a
+// browser Window or a Tab target, the read waits for the Page to stop
+// changing (page.Settle: a DOM-quiet window and a window in which no
+// request finished), up to page.SettleBound. A Page still changing then is
+// read anyway, with a note saying so and why. A settle that cannot run (no
+// Browser Connection, a browser page, a dialog) is skipped: the read says
+// what it finds.
 
 import (
 	"context"
@@ -44,6 +52,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/hoangvu12/winuse/internal/cdp"
+	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
@@ -269,8 +279,12 @@ func (s Services) observe(ctx context.Context, args json.RawMessage, o *protocol
 	var tree *wstate.Tree
 	var what string
 	var rerr *Error
+	settled := ""
 	if bt := tabTargetOf(ctx); bt != nil {
 		what = fmt.Sprintf("tab %s of window %d", bt.short(), bt.w.ID)
+		if bt.session != "" && !bt.tab.Internal {
+			settled = s.settleNote(ctx, bt.conn.Client, bt.session)
+		}
 		if st, ok := s.tabStates.get(AgentOf(ctx).ID, tabKeyOf(bt)); ok {
 			before = st.elements
 		}
@@ -282,6 +296,7 @@ func (s Services) observe(ctx context.Context, args json.RawMessage, o *protocol
 		}
 		what = "window " + strconv.FormatUint(w.ID, 10)
 		v.Ref = strconv.FormatUint(w.ID, 10) // the notes' --root commands
+		settled = s.settleWindow(ctx, w)
 		before = s.storedState(ctx, w.ID)
 		tree, rerr = readWindowTree(s, uia.WithSettle(ctx, stateSettle(ctx)), w)
 		if rerr == nil {
@@ -289,7 +304,7 @@ func (s Services) observe(ctx context.Context, args json.RawMessage, o *protocol
 		}
 	}
 	if rerr != nil {
-		return observeNote(a.Window, rerr), nil
+		return observeNote(a.Window, rerr) + settled, nil
 	}
 	text := wstate.RenderView(tree, v)
 	if o.Mode == protocol.ObserveDiff {
@@ -298,14 +313,42 @@ func (s Services) observe(ctx context.Context, args json.RawMessage, o *protocol
 	if o.Out != "" {
 		out, werr := writeStateOut(text, tree, o.Out, "Observed Window State")
 		if werr != nil {
-			return observeNote(a.Window, werr), nil
+			return observeNote(a.Window, werr) + settled, nil
 		}
-		return out, nil // the read is in the file: the opened Window gets its own
+		return out + settled, nil // the read is in the file: the opened Window gets its own
 	}
 	if tabTargetOf(ctx) != nil {
-		return text, nil
+		return text + settled, nil
 	}
-	return text, tree
+	return text + settled, tree
+}
+
+// settleWindow settles the Page a browser Window shows before --observe
+// reads it, and returns the note for a Page that did not settle ("" for
+// any other Window, or a settle that could not run).
+func (s Services) settleWindow(ctx context.Context, w win.WindowInfo) string {
+	if s.Pages == nil || s.Pages.Browser(w) == "" || s.live() == nil {
+		return ""
+	}
+	pw, rerr := s.pageWindow(ctx, strconv.FormatUint(w.ID, 10))
+	if rerr != nil || pw.tab.Internal || pw.session == "" {
+		return ""
+	}
+	return s.settleNote(ctx, pw.conn.Client, pw.session)
+}
+
+// settleNote settles a Page (page.Settle, up to page.SettleBound) and
+// returns the note for one that did not settle.
+func (s Services) settleNote(ctx context.Context, c *cdp.Client, session string) string {
+	var stopped func() bool
+	if s.Esc != nil {
+		stopped = s.Esc.Stopped
+	}
+	r, err := page.Settle(ctx, c, session, page.SettleBound, stopped)
+	if err != nil || r.Settled {
+		return ""
+	}
+	return notePrefix + r.Note() + "\n"
 }
 
 // storedState is the Agent's latest Window State of hwnd, every Element

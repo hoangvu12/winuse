@@ -122,8 +122,8 @@ func (c *Client) HeadlessClick(ctx context.Context, hwnd uint64, index int) (str
 // Value-pattern write back (setToggle verifies a toggle write itself, and
 // selectItem the item it picks in a combo or list). An item whose Value
 // is its name (File Explorer's files) may be rebuilt by the write and
-// read "" afterwards: renamed.go finds it under its new name instead,
-// unless a sibling was named so before the write.
+// read "" or its old name afterwards: renamed.go finds it under its new
+// name instead, unless a sibling was named so before the write.
 func (c *Client) SetValueHeadless(ctx context.Context, hwnd uint64, index int, value string) error {
 	return c.onElement(ctx, hwnd, index, func(th *thread, el comPtr) error {
 		parent := th.parentOf(el)
@@ -131,12 +131,13 @@ func (c *Client) SetValueHeadless(ctx context.Context, hwnd uint64, index int, v
 			defer release(parent)
 		}
 		namedBefore := parent == nil || th.childNamed(parent, value)
+		old := currentString(el, propValueValue)
 		selected, err := th.writeValue(el, value, false)
 		if err != nil || selected {
 			return err
 		}
 		err = verifyValue(el, value)
-		if renamedInPlace(err, namedBefore, func() bool { return th.childNamed(parent, value) }) {
+		if renamedInPlace(err, old, namedBefore, func() bool { return th.childNamed(parent, value) }) {
 			return nil
 		}
 		return err

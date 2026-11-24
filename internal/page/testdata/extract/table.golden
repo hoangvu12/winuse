@@ -1,0 +1,16 @@
+table: <table class="wikitable"> "Largest cities by population": 12 of 12 rows (complete)
+[
+{"Rank":"1","City":"Tokyo","Country":"Japan","Population":"37,400,068","Source":"Census 2025","url":"https://wiki.example/wiki/Tokyo"},
+{"Rank":"2","City":"Delhi","Country":"India","Population":"28,514,000","Source":"Census 2025","url":"https://wiki.example/wiki/Delhi"},
+{"Rank":"3","City":"Shanghai","Country":"China","Population":"25,582,000","Source":"Census 2025","url":"https://wiki.example/wiki/Shanghai"},
+{"Rank":"4","City":"Sao Paulo","Country":"Brazil","Population":"21,650,000","Source":"Census 2025","url":"https://wiki.example/wiki/Sao_Paulo"},
+{"Rank":"5","City":"Mexico City","Country":"Mexico","Population":"21,581,000","Source":"Census 2025","url":"https://wiki.example/wiki/Mexico_City"},
+{"Rank":"6","City":"Cairo","Country":"Egypt","Population":"20,076,000","Source":"Census 2025","url":"https://wiki.example/wiki/Cairo"},
+{"Rank":"7","City":"Mumbai","Country":"India","Population":"19,980,000","Source":"Census 2025","url":"https://wiki.example/wiki/Mumbai"},
+{"Rank":"8","City":"Beijing","Country":"China","Population":"19,618,000","Source":"Census 2025","url":"https://wiki.example/wiki/Beijing"},
+{"Rank":"9","City":"Dhaka","Country":"Bangladesh","Population":"19,578,000","Source":"Census 2025","url":"https://wiki.example/wiki/Dhaka"},
+{"Rank":"10","City":"Osaka","Country":"Japan","Population":"19,281,000","Source":"Census 2025","url":"https://wiki.example/wiki/Osaka"},
+{"Rank":"11","City":"New York","Country":"United States","Population":"18,819,000","Source":"Census 2025","url":"https://wiki.example/wiki/New_York"},
+{"Rank":"12","City":"Karachi","Country":"Pakistan","Population":"15,400,000","Source":"Census 2025","url":"https://wiki.example/wiki/Karachi"}
+]
+hint: if this is the wrong table, pass --root <index> of the table or of one item, from winuse get-window-state 301

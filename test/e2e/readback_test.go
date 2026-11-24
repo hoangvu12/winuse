@@ -4,7 +4,9 @@
 // ticket 24, from the 2026-11-03 Task Suite run): a multi-line value in
 // Windows 11 Notepad, whose editor reads CRLF back as CR, and the rename
 // of a file in File Explorer, whose list item is rebuilt by the write and
-// reads "" afterwards. Both must print a plain ok. The test launches its
+// reads "" afterwards. Both must print a plain ok, and the Notepad value
+// must satisfy `wait value` and `wait text` with LF line breaks
+// (bladebro-ideas 21). The test launches its
 // own Notepad on a temp file and its own Explorer window on a temp
 // folder, and closes both. User-run only (see the package comment and
 // test/e2e/README.md).
@@ -58,6 +60,19 @@ func TestMultiLineSetValueIntoNotepadReadsBack(t *testing.T) {
 	stdout, stderr, exit := runWinuse(t, []string{"set-value", window, "name:Text editor", value}, "WINUSE_HELPER_IDLE="+e2eIdle)
 	if exit != 0 || stdout != "ok\n" {
 		t.Errorf("multi-line set-value into Notepad: exit %d, stdout %q, stderr %q; want a plain ok", exit, stdout, stderr)
+	}
+
+	// The waits match it too (bladebro-ideas 21): the editor stores CR
+	// only, and a value wait with LF line breaks holds; a text wait with a
+	// line break matches the space the Window State prints for it.
+	lf := strings.ReplaceAll(value, "\r\n", "\n")
+	stdout, stderr, exit = runWinuse(t, []string{"wait", window, "name:Text editor", "value", lf, "--timeout", "5"}, "WINUSE_HELPER_IDLE="+e2eIdle)
+	if exit != 0 || stdout != "ok\n" {
+		t.Errorf("wait value with LF line breaks over Notepad's CR: exit %d, stdout %q, stderr %q; want a plain ok", exit, stdout, stderr)
+	}
+	stdout, stderr, exit = runWinuse(t, []string{"wait", window, "text", "Opens at 9:30.\nNo flash", "--timeout", "5"}, "WINUSE_HELPER_IDLE="+e2eIdle)
+	if exit != 0 || stdout != "ok\n" {
+		t.Errorf("wait text with a line break: exit %d, stdout %q, stderr %q; want a plain ok", exit, stdout, stderr)
 	}
 }
 

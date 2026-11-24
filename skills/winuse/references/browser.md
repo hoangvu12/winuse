@@ -1,6 +1,6 @@
 # Browser Windows
 
-Read when: any website, browser Window or Electron or WebView2 App: connecting to the user's browser, `navigate`, Page waits, `eval`, uploads, downloads, JavaScript dialogs, `browser attach`.
+Read when: any website, browser Window or Electron or WebView2 App: connecting to the user's browser, `navigate`, Page waits, `eval`, `extract`, uploads, downloads, JavaScript dialogs, `browser attach`.
 
 This is one topic of the winuse skill. `winuse skill browser` prints it, and `winuse skill` prints the core, SKILL.md, which holds the safety rules, the Esc stop and recovery.
 
@@ -101,12 +101,43 @@ The Agent Cursor shows Page Actions too: it glides to the Page Element,
 presses when the input reaches the Page, and stays just above the browser
 Window, so the user sees it only while that Window is uncovered.
 
+### Read a Page's lists and tables as data
+
+```
+winuse extract <window>                        # the Page's main list, table or JSON-LD as JSON rows
+winuse extract <window> --root <element>       # the list, an ancestor of it, or one item of it
+winuse extract <window> --as table|list|jsonld # force a mode; --limit N (default 50), --out rows.json
+```
+
+- Use `extract` instead of `eval` or reading the Window State when you
+  want the rows of search results, a product grid, a table or a feed. The
+  first line names the container and the count, then a JSON array, one
+  row per line:
+  `list: <ol id="results"> "Search results": 10 of 10 rows (complete)`.
+  `(partial: capped at 50 / page says 1,234 results)` says rows are
+  missing: raise `--limit`, or the page itself shows only some (load more
+  or go to its next page).
+- Without `--root` it picks the container itself. If that is the wrong
+  one, read `get-window-state` and pass `--root` the Element Index of the
+  list, of an ancestor, or of one item; one item gathers its alike
+  siblings. A table with headers prints its cells by header.
+- An article or a page with no repeated items prints `no list found`;
+  read it instead. A block page prints
+  `no list found: the Page looks like a <Cloudflare|...> wall; ask the user to handle it`:
+  stop and ask the user, as the safety rules say.
+- It only reads, in an isolated world the Page cannot see, and prints no
+  Element Indexes. It takes `<window>:<tab>`. Pages only: on a native
+  Window, use `get-window-state` or `find`.
+
 ### Act on a Page
 
 ```
 winuse navigate <window> <url>                 # open a URL in the Window's Tab (or <window>:<tab>'s), wait for the load, print the URL
 winuse back <window>                           # also forward and reload
 winuse wait <window> selector <css>            # also text <text>, url <url or *pattern*>, load
+winuse wait <window> selector .spinner --gone  # until it is gone (selector and text take --gone)
+winuse wait <window> idle                      # until the Page settles: no DOM change, no request finishing
+winuse wait <window> js "window.app?.ready"    # until the expression is true (a promise is awaited)
 winuse read <window> [--root <element>]        # the Page's main content (or one Element's) as Markdown
 winuse eval <window> <expression>              # run JavaScript in the Page, print the value
 winuse eval <window> --file x.js [--max 20000] # the expression from a file (- for stdin); a longer cut
@@ -121,7 +152,13 @@ winuse drag <window> <element> <element|@x,y>
 - After an Action that loads or changes the Page, `wait` for what you
   expect (10 seconds by default, `--timeout <seconds>` up to 300), then
   read the Window State. A Page Element goes stale when the Page navigates
-  or the node goes away.
+  or the node goes away. `--observe` already waits up to 1 s for the Page
+  to settle before it reads, and says so in a `Note:` when the Page was
+  still changing; wait only for what takes longer.
+- `wait text` reads the Page's rendered text, its open shadow roots' and
+  its same-origin frames'. `wait js` takes any expression: a syntax error
+  fails at once, and a timeout names the last error it threw. Prefer
+  `selector` or `text` when they say it: they need no script of yours.
 - `set-value` fills a text field, picks a list option by label or value,
   and turns a check box, switch or radio button `on` or `off` (turn another
   radio button on to turn one off).
