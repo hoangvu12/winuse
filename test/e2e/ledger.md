@@ -80,6 +80,7 @@ says why; no cell contains `|`.
 | `TestContextMenuOnACoveredEdit` | A covered Edit's context menu opens and is read without the foreground | runner | - | 2026-11-07, lane runs 42367421412 and 42367782401 | passed |
 | `TestContextMenuOnACoveredBrowserPage` | A covered browser page's context menu opens and is read | user | starts Edge or Chrome; browsers are not the fixture | - | - |
 | `TestElementScrollByStepsAndIntoView` | Element scroll moves by steps and into view | runner | - | 2026-11-07, lane runs 42367421412 and 42367782401 | passed |
+| `TestElementScrollThroughListItems` | A list with no Scroll pattern scrolls an item per step through its items' ScrollItem, and refuses at its end with nothing sent | runner | - | - | - |
 | `TestCloseAppClosesTwoWindowsWithOneCommand` | close-app closes both Windows of an App in one command and leaves other Apps | runner | - | 2026-11-07, lane runs 42367421412 and 42367782401 | passed |
 | `TestCloseAppForceEndsAnAppThatStaysOpen` | close-app --force ends an App that ignores the close | runner | - | 2026-11-07, lane runs 42367421412 and 42367782401 | passed |
 | `TestEscStopsTheLongBatch` | The physical Esc key stops a long Batch | user | needs a person to press the physical Esc key (WINUSE_E2E_HUMAN) | - | - |

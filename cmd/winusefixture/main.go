@@ -47,9 +47,10 @@ func main() {
 	ignoreClose := flag.Bool("ignore-close", false, "keep the main window open on WM_CLOSE, as an App asking to save does")
 	hangOnClick := flag.Uint("hang-on-click", 0, "milliseconds the UI thread stops answering after Click Me is invoked, as a hung App")
 	hugeList := flag.Uint("huge-list", 0, "also open a Window with a list box of this many items and a button after it")
+	listWithoutScroll := flag.Bool("list-without-scroll", false, "the Item List offers no Scroll pattern; its items keep ScrollItem")
 	flag.Parse()
 	if *state == "" {
-		fmt.Fprintln(os.Stderr, "usage: winusefixture -state <path> [-origin x,y] [-activate-on-restore] [-allow-foreground pid] [-ignore-close] [-hang-on-click ms] [-huge-list n] (or set WINUSE_FIXTURE_STATE)")
+		fmt.Fprintln(os.Stderr, "usage: winusefixture -state <path> [-origin x,y] [-activate-on-restore] [-allow-foreground pid] [-ignore-close] [-hang-on-click ms] [-huge-list n] [-list-without-scroll] (or set WINUSE_FIXTURE_STATE)")
 		os.Exit(2)
 	}
 	origin, err := parseOrigin(*originArg)
@@ -58,7 +59,7 @@ func main() {
 		os.Exit(2)
 	}
 	os.Exit(fixture.Main(*state, origin, fixture.Options{ActivateOnRestore: *activateOnRestore, AllowForeground: uint32(*allowForeground), IgnoreClose: *ignoreClose,
-		HangOnClick: time.Duration(*hangOnClick) * time.Millisecond, HugeList: int(*hugeList)}))
+		HangOnClick: time.Duration(*hangOnClick) * time.Millisecond, HugeList: int(*hugeList), ListWithoutScroll: *listWithoutScroll}))
 }
 
 // parseOrigin parses "x,y" (signed: monitors left of or above the primary

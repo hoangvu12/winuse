@@ -89,6 +89,19 @@ type Options struct {
 	// HugeList, when above 0, opens the huge-list Window (hugelist.go)
 	// with that many list box items beside the main window.
 	HugeList int
+	// ListWithoutScroll makes the Item List offer no Scroll pattern, while
+	// its items keep ScrollItem: the shape of a list an App draws itself
+	// (recap-trial ticket 02), which winuse scrolls an item at a time.
+	ListWithoutScroll bool
+}
+
+// providerHasPattern is HasPattern as the running App's provider reports
+// it: the Item List drops Scroll under ListWithoutScroll.
+func providerHasPattern(e Elem, p Pattern) bool {
+	if a := appState(); a != nil && a.opts.ListWithoutScroll && e == ElemItemList && p == PatternScroll {
+		return false
+	}
+	return HasPattern(e, p)
 }
 
 // Main runs the fixture app: creates the windows, pumps messages until the

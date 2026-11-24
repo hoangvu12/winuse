@@ -350,6 +350,15 @@ func valueError(err error, w win.WindowInfo, index int) *Error {
 			"use winuse click to focus the Element, then winuse type-text to type into it instead")
 	case errors.Is(err, uia.ErrRangeValue):
 		return Fail(err.Error(), "this Element takes a numeric value (a slider or spinner); pass a number")
+	case errors.Is(err, uia.ErrRangeBounds):
+		return Fail(err.Error(), "pass a number between the bounds the message names")
+	case errors.Is(err, uia.ErrRangeReadOnly), errors.Is(err, uia.ErrRangeRefused):
+		scroll := "winuse scroll"
+		if index >= 0 {
+			scroll = fmt.Sprintf("winuse scroll %d %d down", w.ID, index)
+		}
+		return Fail(err.Error(),
+			"a scroll bar that does not take a value still moves its list or page by scrolling, e.g. "+scroll)
 	case errors.Is(err, uia.ErrToggleValue):
 		return Fail(err.Error(), "this Element is a check box or toggle; pass on or off")
 	case errors.Is(err, uia.ErrToggleUnreadable):

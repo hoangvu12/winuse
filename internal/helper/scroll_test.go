@@ -179,6 +179,15 @@ func TestElementScrollFailureWording(t *testing.T) {
 			wantHint: "winuse --headed scroll 101 2 down",
 		},
 		{
+			name: "a list already at its end",
+			args: elementScroll(2, "down", 10),
+			setup: func(s *headlessSpy) {
+				s.scroll.err = fmt.Errorf("%w: no item lies further down", uia.ErrScrollEnd)
+			},
+			wantMsg:  "the list is already at its end: no item lies further down; nothing was sent",
+			wantHint: "winuse scroll 101 2 up",
+		},
+		{
 			name:     "no ScrollItem",
 			args:     elementScroll(2, "into-view"),
 			setup:    func(s *headlessSpy) { s.scroll.intoErr = uia.ErrNoScrollItem },

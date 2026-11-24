@@ -414,35 +414,35 @@ func comQueryInterface(this, riid, ppv uintptr) uintptr {
 	// Patterns only on elements that offer them.
 	switch kind {
 	case ifaceInvoke:
-		if !HasPattern(node.elem, PatternInvoke) {
+		if !providerHasPattern(node.elem, PatternInvoke) {
 			return hrFail(eNoInterface)
 		}
 	case ifaceValue:
-		if !HasPattern(node.elem, PatternValue) {
+		if !providerHasPattern(node.elem, PatternValue) {
 			return hrFail(eNoInterface)
 		}
 	case ifaceToggle:
-		if !HasPattern(node.elem, PatternToggle) {
+		if !providerHasPattern(node.elem, PatternToggle) {
 			return hrFail(eNoInterface)
 		}
 	case ifaceExpandCollapse:
-		if !HasPattern(node.elem, PatternExpandCollapse) {
+		if !providerHasPattern(node.elem, PatternExpandCollapse) {
 			return hrFail(eNoInterface)
 		}
 	case ifaceSelection:
-		if !HasPattern(node.elem, PatternSelection) {
+		if !providerHasPattern(node.elem, PatternSelection) {
 			return hrFail(eNoInterface)
 		}
 	case ifaceSelectionItem:
-		if !HasPattern(node.elem, PatternSelectionItem) {
+		if !providerHasPattern(node.elem, PatternSelectionItem) {
 			return hrFail(eNoInterface)
 		}
 	case ifaceScroll:
-		if !HasPattern(node.elem, PatternScroll) {
+		if !providerHasPattern(node.elem, PatternScroll) {
 			return hrFail(eNoInterface)
 		}
 	case ifaceScrollItem:
-		if !HasPattern(node.elem, PatternScrollItem) {
+		if !providerHasPattern(node.elem, PatternScrollItem) {
 			return hrFail(eNoInterface)
 		}
 	case ifaceWindow:
@@ -485,42 +485,42 @@ func getPatternProvider(this, patternId, ppv uintptr) uintptr {
 	switch patternId {
 	case 10000: // UIA_InvokePatternId
 		kind = ifaceInvoke
-		if !HasPattern(node.elem, PatternInvoke) {
+		if !providerHasPattern(node.elem, PatternInvoke) {
 			return hrOK()
 		}
 	case 10001: // UIA_SelectionPatternId
 		kind = ifaceSelection
-		if !HasPattern(node.elem, PatternSelection) {
+		if !providerHasPattern(node.elem, PatternSelection) {
 			return hrOK()
 		}
 	case 10002: // UIA_ValuePatternId
 		kind = ifaceValue
-		if !HasPattern(node.elem, PatternValue) {
+		if !providerHasPattern(node.elem, PatternValue) {
 			return hrOK()
 		}
 	case 10004: // UIA_ScrollPatternId
 		kind = ifaceScroll
-		if !HasPattern(node.elem, PatternScroll) {
+		if !providerHasPattern(node.elem, PatternScroll) {
 			return hrOK()
 		}
 	case 10005: // UIA_ExpandCollapsePatternId
 		kind = ifaceExpandCollapse
-		if !HasPattern(node.elem, PatternExpandCollapse) {
+		if !providerHasPattern(node.elem, PatternExpandCollapse) {
 			return hrOK()
 		}
 	case 10010: // UIA_SelectionItemPatternId
 		kind = ifaceSelectionItem
-		if !HasPattern(node.elem, PatternSelectionItem) {
+		if !providerHasPattern(node.elem, PatternSelectionItem) {
 			return hrOK()
 		}
 	case 10015: // UIA_TogglePatternId
 		kind = ifaceToggle
-		if !HasPattern(node.elem, PatternToggle) {
+		if !providerHasPattern(node.elem, PatternToggle) {
 			return hrOK()
 		}
 	case 10017: // UIA_ScrollItemPatternId
 		kind = ifaceScrollItem
-		if !HasPattern(node.elem, PatternScrollItem) {
+		if !providerHasPattern(node.elem, PatternScrollItem) {
 			return hrOK()
 		}
 	case 10009: // UIA_WindowPatternId
@@ -596,7 +596,7 @@ func getPropertyValue(this, propId, pv uintptr) uintptr {
 			v.setBSTR(a.state.DialogFileName)
 		}
 	case propValueIsReadOnly:
-		if HasPattern(e, PatternValue) {
+		if providerHasPattern(e, PatternValue) {
 			v.setBool(false)
 		}
 	case propToggleToggleState:
@@ -619,23 +619,23 @@ func getPropertyValue(this, propId, pv uintptr) uintptr {
 			v.setBool(a.state.SelectedItem == Name(e, ""))
 		}
 	case propIsInvokeAvailable:
-		v.setBool(HasPattern(e, PatternInvoke))
+		v.setBool(providerHasPattern(e, PatternInvoke))
 	case propIsValueAvailable:
-		v.setBool(HasPattern(e, PatternValue))
+		v.setBool(providerHasPattern(e, PatternValue))
 	case propIsToggleAvailable:
-		v.setBool(HasPattern(e, PatternToggle))
+		v.setBool(providerHasPattern(e, PatternToggle))
 	case propIsExpandCollapseAvailable:
-		v.setBool(HasPattern(e, PatternExpandCollapse))
+		v.setBool(providerHasPattern(e, PatternExpandCollapse))
 	case propIsScrollAvailable:
-		v.setBool(HasPattern(e, PatternScroll))
+		v.setBool(providerHasPattern(e, PatternScroll))
 	case propIsScrollItemAvailable:
-		v.setBool(HasPattern(e, PatternScrollItem))
+		v.setBool(providerHasPattern(e, PatternScrollItem))
 	case propIsSelectionItemAvailable:
-		v.setBool(HasPattern(e, PatternSelectionItem))
+		v.setBool(providerHasPattern(e, PatternSelectionItem))
 	case propIsSelectionAvailable:
-		v.setBool(HasPattern(e, PatternSelection))
+		v.setBool(providerHasPattern(e, PatternSelection))
 	case propIsWindowAvailable:
-		v.setBool(e == providerRootElem(node.dialog) && HasPattern(e, PatternWindow))
+		v.setBool(e == providerRootElem(node.dialog) && providerHasPattern(e, PatternWindow))
 	case propScrollHScrollable:
 		// The list never scrolls horizontally.
 		v.setBool(false)

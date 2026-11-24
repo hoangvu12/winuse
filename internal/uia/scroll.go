@@ -10,8 +10,10 @@ package uia
 // scroll container itself. Each step is one SmallIncrement or
 // SmallDecrement on that axis. The scroll percent on the axis is read
 // before and after: no change at all fails as delivered ("it may already be
-// at the end"), a partial move is ok. Into view is one ScrollIntoView,
-// read back through the Element's IsOffscreen property.
+// at the end"), a partial move is ok. With no Scroll pattern on the axis up
+// the chain, a list whose items offer ScrollItem scrolls an item per step
+// (scrollitems.go). Into view is one ScrollIntoView, read back through the
+// Element's IsOffscreen property.
 //
 // The decisions (direction words, the steps bound, the amounts, the
 // percent verdict and the run over the steps) are pure functions tested
@@ -47,6 +49,20 @@ func (d ScrollDirection) String() string {
 		return fmt.Sprintf("ScrollDirection(%d)", int(d))
 	}
 	return scrollDirectionWords[d]
+}
+
+// Opposite is the direction back the way it came: up for down, left for
+// right.
+func (d ScrollDirection) Opposite() ScrollDirection {
+	switch d {
+	case ScrollUp:
+		return ScrollDown
+	case ScrollDown:
+		return ScrollUp
+	case ScrollLeft:
+		return ScrollRight
+	}
+	return ScrollLeft
 }
 
 // Vertical reports whether the direction scrolls the vertical axis.
@@ -210,6 +226,14 @@ func (c *Client) ScrollElement(ctx context.Context, hwnd uint64, index int, dir 
 	}
 	return c.onElement(ctx, hwnd, index, func(th *thread, el comPtr) error {
 		pat, err := th.nearestScroller(el, dir)
+		if errors.Is(err, ErrNotScrollable) {
+			// No Scroll pattern on the axis: a list whose items offer
+			// ScrollItem scrolls an item at a time (scrollitems.go).
+			if list := th.itemList(hwnd, el, dir.Vertical()); list != nil {
+				defer release(list)
+				return th.scrollList(hwnd, list, dir, steps)
+			}
+		}
 		if err != nil {
 			return err
 		}
@@ -262,7 +286,8 @@ func (th *thread) nearestScroller(el comPtr, dir ScrollDirection) (comPtr, error
 	if dir.Vertical() {
 		axis = scrollCurrentV
 	}
-	notScrollable := fmt.Errorf("%w %s", ErrNotScrollable, dir.axisWord())
+	notScrollable := fmt.Errorf("%w %s: no Scroll pattern on that axis, and no list around it with ScrollItem items out of view",
+		ErrNotScrollable, dir.axisWord())
 
 	var walker comPtr
 	if hr := call(th.auto, uiaGetRawViewWalker, uintptr(unsafe.Pointer(&walker))); hr.Failed() || walker == nil {

@@ -105,3 +105,45 @@ func TestElementScrollByStepsAndIntoView(t *testing.T) {
 		}
 	}
 }
+
+// TestElementScrollThroughListItems (recap-trial ticket 02): a list with no
+// Scroll pattern whose items keep ScrollItem, the shape of a list an App
+// draws itself, scrolls Headless an item per step through its items, named
+// by the list or by an item, and refuses with nothing sent at its end.
+func TestElementScrollThroughListItems(t *testing.T) {
+	optIn(t)
+	fix := startFixture(t, "-list-without-scroll")
+	st := fix.waitState(t, 15*time.Second, func(s *fixture.State) bool { return s.WindowID != 0 })
+	window := strconv.FormatUint(st.WindowID, 10)
+	if _, stderr, exit := runGetWindowState(t, window); exit != 0 {
+		t.Fatalf("get-window-state: exit %d, stderr:\n%s", exit, stderr)
+	}
+	cover := coverWindow(t, window)
+	list := strconv.Itoa(mainElementIndexes()[fixture.ElemItemList])
+	firstVisible := func(want int) {
+		t.Helper()
+		fix.waitState(t, 5*time.Second, func(s *fixture.State) bool { return s.ListFirstVisible == want })
+	}
+
+	stdout, stderr, exit := runElementScroll(t, window, list, "down", "2")
+	assertActionOK(t, "scroll the list down 2 through its items", stdout, stderr, exit)
+	firstVisible(2)
+	assertForeground(t, "scroll through items", cover)
+
+	stdout, stderr, exit = runElementScroll(t, window, "id:"+fixture.AutomationID(fixture.ElemItemCharlie), "down", "10")
+	assertActionOK(t, "scroll down 10 by an item, to the end", stdout, stderr, exit)
+	firstVisible(3)
+
+	before := fix.waitState(t, time.Second, func(*fixture.State) bool { return true })
+	stdout, stderr, exit = runElementScroll(t, window, list, "down")
+	if exit == 0 || stdout != "" || !strings.Contains(stderr, "the list is already at its end") || !strings.Contains(stderr, "nothing was sent") {
+		t.Errorf("scroll down at the end: exit %d, stdout %q, stderr %q", exit, stdout, stderr)
+	}
+	if st := fix.waitState(t, time.Second, func(*fixture.State) bool { return true }); st.Generation != before.Generation {
+		t.Errorf("a refused scroll changed the fixture (generation %d -> %d)", before.Generation, st.Generation)
+	}
+
+	stdout, stderr, exit = runElementScroll(t, window, list, "up", "3")
+	assertActionOK(t, "scroll the list up 3 through its items", stdout, stderr, exit)
+	firstVisible(0)
+}
