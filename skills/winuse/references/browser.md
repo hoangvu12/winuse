@@ -121,6 +121,12 @@ winuse drag <window> <element> <element|@x,y>
 
 - Open a URL with `navigate`; keys sent into the address bar do nothing
   Headless.
+- `Note: the Page answered HTTP 404 Not Found` (or 429, 503 ...) after
+  `navigate`, `back`, `forward` or `reload` means the Page you see is the
+  site's error page, not the content: the navigation still says `ok`.
+  `with an empty body; Chrome shows its error page` means the Tab shows
+  Chrome's own page for it. On a 429 or 503, wait before you retry, and
+  never in a tight loop.
 - After an Action that loads or changes the Page, `wait` for what you
   expect (10 seconds by default, `--timeout <seconds>` up to 300), then
   read the Window State. A Page Element goes stale when the Page navigates

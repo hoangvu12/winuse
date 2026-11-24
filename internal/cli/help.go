@@ -57,7 +57,9 @@ global options:
   --json                      print one JSON line instead of the text:
                                {"ok","command","out"} and, on a failure,
                                "error" with its code, message, hint, delivery
-                               and retry. Exit codes are unchanged
+                               and retry; navigate, back, forward and reload
+                               add "http_status" when the Page answered 4xx
+                               or 5xx. Exit codes are unchanged
   --help, -h                  print the command's usage and examples instead
                                of running it, as winuse help <command> does
 
@@ -455,7 +457,10 @@ const usageTail = `);
   navigate <window> <url> [--wait load|domcontentloaded|none]
                                open a URL in the Window's active Tab, wait for
                                it to load (default load), and print the URL it
-                               ended on; never type into the address bar
+                               ended on; never type into the address bar. A
+                               Page that answered 4xx or 5xx (also after
+                               back, forward and reload) adds
+                               Note: the Page answered HTTP <code> <reason>
   back <window> [--wait ...]  go one page back in the Tab's history
   forward <window> [--wait ...]
                                go one page forward in the Tab's history
