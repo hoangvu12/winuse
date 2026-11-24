@@ -191,6 +191,7 @@ func readWindowTree(s Services, ctx context.Context, w win.WindowInfo) (*wstate.
 		}
 		return fallback(page.Reason(err))
 	}
+	noteReadURL(ctx, r.raw.URL) // the site whose Notes the Window State shows (windownotes.go)
 	return merged.Tree, nil
 }
 

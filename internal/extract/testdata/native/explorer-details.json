@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "source": "hand-authored from ticket 13's probe of Explorer's details view (Windows 11 25H2): the grid counts only the rows on screen, the ItemContainer counts every item, column headers carry a trailing space, dates carry U+200E and U+200F, and a folder's empty Size cell reads its column's name; replace with winuse record-tree <window> <file> --table",
+  "role": "list",
+  "name": "Items View",
+  "table": true,
+  "rowCount": 3,
+  "headers": ["Name", "Date modified", "Type", "Size "],
+  "items": 470,
+  "children": [
+    {"role": "header", "children": [
+      {"role": "split button", "name": "Name"},
+      {"role": "split button", "name": "Date modified"},
+      {"role": "split button", "name": "Type"},
+      {"role": "split button", "name": "Size "}
+    ]},
+    {"role": "list item", "name": "Documents", "children": [
+      {"role": "image"},
+      {"role": "edit", "name": "Name", "value": "Documents", "column": 0},
+      {"role": "edit", "name": "Date modified", "value": "‎11/‎20/‎2026 ‏‎9:14 AM", "column": 1},
+      {"role": "edit", "name": "Type", "value": "File folder", "column": 2},
+      {"role": "edit", "name": "Size", "column": 3}
+    ]},
+    {"role": "list item", "name": "notes.txt", "children": [
+      {"role": "image"},
+      {"role": "edit", "name": "Name", "value": "notes.txt", "column": 0},
+      {"role": "edit", "name": "Date modified", "value": "‎11/‎21/‎2026 ‏‎8:02 PM", "column": 1},
+      {"role": "edit", "name": "Type", "value": "Text Document", "column": 2},
+      {"role": "edit", "name": "Size", "value": "2 KB", "column": 3}
+    ]},
+    {"role": "list item", "name": "photo.jpg", "children": [
+      {"role": "image"},
+      {"role": "edit", "name": "Name", "value": "photo.jpg", "column": 0},
+      {"role": "edit", "name": "Date modified", "value": "‎11/‎22/‎2026 ‏‎7:45 AM", "column": 1},
+      {"role": "edit", "name": "Type", "value": "JPG File", "column": 2},
+      {"role": "edit", "name": "Size", "value": "1,204 KB", "column": 3}
+    ]},
+    {"role": "scroll bar", "name": "Vertical"}
+  ]
+}

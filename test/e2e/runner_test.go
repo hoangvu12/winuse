@@ -75,11 +75,12 @@ func winuseBinary(t *testing.T) string {
 }
 
 // runWinuse runs the binary with the given arguments and extra environment
-// and returns (stdout, stderr, exit code).
+// and returns (stdout, stderr, exit code). The user's Notes (ADR 0024)
+// stay hidden, so they never change a read; extraEnv can turn them on.
 func runWinuse(t *testing.T, args []string, extraEnv ...string) (string, string, int) {
 	t.Helper()
 	cmd := win.NoConsoleWindow(exec.Command(winuseBinary(t), args...))
-	cmd.Env = append(os.Environ(), extraEnv...)
+	cmd.Env = append(append(os.Environ(), "WINUSE_NOTES=off"), extraEnv...)
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

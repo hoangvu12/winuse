@@ -715,13 +715,15 @@ func (rs *runState) runCheck(t Task, scratch string, env []string, taskDir strin
 
 // taskEnv is the environment every child of the task gets: the arm's
 // winuse binary first on PATH, a helper that outlives slow agent
-// thinking, and the task's paths.
+// thinking, the task's paths, and no Notes (ADR 0024: Notes left by
+// earlier runs or the user would make runs differ).
 func (rs *runState) taskEnv(arm *armState, scratch, baseURL string) []string {
 	env := append([]string{}, os.Environ()...)
 	setEnv(&env, "PATH", arm.binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	setEnv(&env, "WINUSE_HELPER_IDLE", "10m")
 	setEnv(&env, "WINUSE_TASK_SCRATCH", scratch)
 	setEnv(&env, "WINUSE_TASK_URL", baseURL)
+	setEnv(&env, "WINUSE_NOTES", "off")
 	// A trace the user set for their own winuse is not the run's.
 	unsetEnv(&env, "WINUSE_TRACE")
 	return env

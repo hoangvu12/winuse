@@ -71,6 +71,8 @@ func windowStateScreenshot(s Services, ctx context.Context, w win.WindowInfo, a 
 	before, what := s.baselineOf(ctx, w, a)
 	tctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	var pageURL string // the merged Page's, for its Notes (windownotes.go); set before trees is sent
+	tctx = withReadURL(tctx, &pageURL)
 	trees := make(chan read, 1)
 	go func() {
 		tree, terr := readWindowTree(s, tctx, w)
@@ -90,7 +92,9 @@ func windowStateScreenshot(s Services, ctx context.Context, w win.WindowInfo, a 
 	// screenshot it actually saw (the tree is part of the same answer).
 	s.Shots.Record(AgentOf(ctx).ID, w.ID, m)
 	r := frame.Rect
-	out, rerr := renderState(t.tree, a, strconv.FormatUint(w.ID, 10), before, what)
+	out, rerr := s.stateWithNotes(ctx, a, s.stateNoteKeys(w, pageURL), func(a windowRef) (string, *Error) {
+		return renderState(t.tree, a, strconv.FormatUint(w.ID, 10), before, what)
+	})
 	if rerr != nil {
 		return "", rerr
 	}

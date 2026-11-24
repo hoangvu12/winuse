@@ -441,5 +441,6 @@ func (r *Reader) TabSession(ctx context.Context, conn *browser.Connection, targe
 		}
 	}
 	Watch(ctx, conn.Client, ts.id)
+	WatchLog(ctx, conn.Client, ts.id, targetID)
 	return ts.id, nil
 }

@@ -38,11 +38,17 @@ const jsonFlag = "--json"
 // message and hint from it.
 var lastResponse *protocol.Response
 
-// jsonLine is the one line --json prints.
+// jsonActive is set while --json captures the command's output: a read's
+// Notes then go in the line's notes field, not on stdout (notes.go).
+var jsonActive bool
+
+// jsonLine is the one line --json prints. Notes are the Notes a
+// get-window-state showed (ADR 0024), kept out of out.
 type jsonLine struct {
 	OK      bool   `json:"ok"`
 	Command string `json:"command"`
 	Out     string `json:"out"`
+	Notes   string `json:"notes,omitempty"`
 	// Effect is what a Headless Page click or key did (bladebro-ideas
 	// ticket 06): navigated, changed, text, none or unknown.
 	Effect string     `json:"effect,omitempty"`
@@ -109,7 +115,9 @@ func extractJSON(args []string) (rest []string, on bool, command string) {
 // line; the exit code is the command's.
 func runJSON(command string, run func() int) int {
 	lastResponse = nil
+	jsonActive = true
 	code, stdout, stderr, err := captureOutput(run)
+	jsonActive = false
 	if err != nil {
 		code, stdout, stderr = 1, "", fmt.Sprintf("winuse: --json: %v\n", err)
 	}
@@ -130,6 +138,9 @@ func runJSON(command string, run func() int) int {
 // printing stdout and stderr; resp is the helper's last answer, if any.
 func jsonLineFor(command string, code int, stdout, stderr string, resp *protocol.Response) jsonLine {
 	line := jsonLine{OK: code == 0, Command: command, Out: stdout, Wall: protocol.WallOf(stdout)}
+	if resp != nil {
+		line.Notes = resp.Notes
+	}
 	if line.OK {
 		if resp != nil && resp.OK {
 			line.Effect = resp.Effect

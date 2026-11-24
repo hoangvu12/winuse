@@ -1,6 +1,6 @@
 # Reading a Window
 
-Read when: you need Element References in full (stale indexes, re-found names, points), the tree's details, screenshots and `zoom`, a Chromium tree that stays thin, a slow or partial read, or a big Window (`find`, `--skeleton`, `--root`, `--interactive`, `--compact`, `--max-chars`, `--out`).
+Read when: you need Element References in full (stale indexes, re-found names, points), the tree's details, screenshots and `zoom`, a Chromium tree that stays thin, a slow or partial read, a big Window (`find`, `--skeleton`, `--root`, `--interactive`, `--compact`, `--max-chars`, `--out`), or a native list or grid as rows (`extract`).
 
 This is one topic of the winuse skill. `winuse skill reading` prints it, and `winuse skill` prints the core, SKILL.md, which holds the safety rules, the Esc stop and recovery.
 
@@ -131,6 +131,35 @@ State's own (if the tree ended at 240, `find` prints 241, 242...), and the
 earlier indexes keep working. The next full read, `--skeleton` and an
 Action's `--observe` included, renumbers from 0. In a browser Window with a Browser Connection, `find`
 reads the Window State afresh and says so; use its indexes.
+
+### Lists and grids as data
+
+```
+winuse extract <window>                  # the Window's table or grid, else its longest list, as JSON rows
+winuse extract <window> --root <element> # that list or grid, an ancestor of it, or one of its items
+winuse extract <window> --out rows.json  # every row to a file; --limit N (default 500, up to 1000)
+```
+
+Use `extract` instead of reading list items off the tree when you want
+the rows of Explorer's details view, Services, a grid or a list. The first
+line names the control and the count, then a JSON array, one row per line,
+keyed by the column headers (`"name"` for a list without columns):
+
+```
+table: list "Items View": 22 of 470 rows (partial: virtualized)
+[
+{"Name":"Documents","Date modified":"11/20/2026 9:14 AM","Type":"File folder","Size":""},
+...
+```
+
+- `(partial: virtualized)`: the App builds only the rows on screen, and
+  `extract` never scrolls it. Scroll the list (`scroll`) and extract
+  again for the next rows, or read the folder or data another way.
+- `(partial: capped at 500)`: raise `--limit`. `M+` means the App gave no
+  total. `stopped at the time limit` means a slow App ran out the read.
+- It only reads, prints no Element Indexes and picks the control itself;
+  the header names it. If that is the wrong one, pass `--root` from
+  `get-window-state`. `no list found` means the Window shows none.
 
 ## Name an Element
 
