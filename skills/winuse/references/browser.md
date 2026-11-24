@@ -177,6 +177,13 @@ winuse drag <window> <element> <element|@x,y>
 - `set-value` fills a text field, picks a list option by label or value,
   and turns a check box, switch or radio button `on` or `off` (turn another
   radio button on to turn one off).
+- `set-value` and `type-text --into` work on rich-text editors too
+  (Lexical, ProseMirror, Slate, a comment box). A placeholder box that
+  hands its focus to the real editor gets the text in that editor, with
+  `Note: the field handed its focus to edit "<name>"; the text went there`.
+  An editor that replaces itself as you type is read back, or typed on, in
+  the editor that took its place, and a note says so. Each line of the
+  value becomes a paragraph.
 - `set-value` also picks an option of a custom combobox or listbox (Radix,
   Headless UI, MUI, React Select) by its name, exactly or in any case, in
   one call: name the combobox, its button or the listbox. winuse opens it
