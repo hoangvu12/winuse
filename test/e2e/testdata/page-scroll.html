@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>winuse e2e page scroll</title>
+<style>
+  body { font: 16px sans-serif; margin: 24px; }
+  #list { height: 150px; width: 260px; overflow: auto; overscroll-behavior: contain; border: 1px solid #888; }
+  #list button { display: block; height: 30px; width: 100%; margin: 0; }
+</style>
+</head>
+<body>
+<!-- .scratch/bladebro-ideas ticket 03: a short body that does not scroll, and a nested scroller. -->
+<button id="top">e2e scroll top</button>
+<div id="list"></div>
+<script>
+  const list = document.getElementById('list');
+  for (let i = 1; i <= 40; i++) {
+    const b = document.createElement('button');
+    b.textContent = 'e2e row ' + i;
+    list.appendChild(b);
+  }
+</script>
+</body>
+</html>

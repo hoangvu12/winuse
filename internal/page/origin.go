@@ -123,7 +123,7 @@ func (o Origin) Rect(ctx context.Context) (Rect, error) {
 	return rect(ctx, c, o)
 }
 
-const rectJS = `function(){const r=this.getBoundingClientRect();return [r.left,r.top,r.width,r.height,window.devicePixelRatio]}`
+const rectJS = `function(){/* winuse:rect */const r=this.getBoundingClientRect();return [r.left,r.top,r.width,r.height,window.devicePixelRatio]}`
 
 // contentJS is an iframe element's content-box top-left in its parent's
 // viewport.
