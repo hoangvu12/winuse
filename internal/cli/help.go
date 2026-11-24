@@ -566,12 +566,14 @@ const usageTail = `);
                                latest read). Same-site links print as paths,
                                others as a shortened domain and path, images
                                as their alt text; --urls full prints them
-                               whole. Cut at 28000 characters with a "(cut at
-                               N of M characters)" line (--max-chars N, 0 for
-                               none), or --out writes it whole to a file. A
-                               short Page that looks like a CAPTCHA or block
-                               wall gets a Note. Pages only: read a native
-                               Window with get-window-state
+                               whole. The output stays within 28000
+                               characters, header included: the Markdown is
+                               cut, with a "(cut at N of M characters)" line
+                               (--max-chars N, 0 for none), or --out writes
+                               it whole to a file. A short Page that looks
+                               like a CAPTCHA or block wall gets a note.
+                               Pages only: read a native Window with
+                               get-window-state
   logs <window> [--capture] [--clear] [--max-chars N | --out <file>]
                                print the Tab's log, newest last: the requests
                                that failed and the CSP or security errors its

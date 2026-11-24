@@ -275,10 +275,12 @@ winuse drag <window> <element> <element|@x,y>
   they are. The first line names what it picked; when that is the wrong
   part, pass `--root <element>` (an Element Index, `name:` or `id:` from
   your latest read) to read that Element's subtree. Links on the same site
-  (`www.x.com` and `x.com` are one site) print as paths and others as a shortened domain and path; `--urls full`
-  prints them whole. It is cut at 28000 characters with a
-  `(cut at N of M characters)` line: `--max-chars N` (0 for no cap), or
-  `--out <file>` to write it whole. A short Page that looks like a
+  (`www.x.com` and `x.com` are one site) print as paths and others as a
+  shortened domain and path; `--urls full` prints them whole. The output
+  stays within 28000 characters, header and notes included: the Markdown
+  is cut, with a `(cut at N of M characters)` line saying how much of it
+  printed. `--max-chars N` sets the cap (0 for none), `--out <file>`
+  writes the Markdown whole. A short Page that looks like a
   CAPTCHA or block wall adds
   `Note: the Page looks like a <kind> wall; ask the user to handle it`.
   On a native Window, read with `get-window-state` instead.

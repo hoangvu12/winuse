@@ -8,9 +8,10 @@ package helper
 // (page.ReadMarkdown) runs in an isolated world. Pages only: a native
 // Window is refused, pointing at get-window-state.
 //
-// The Markdown prints within the reads' cap (defaultMaxChars, or
-// --max-chars; 0 lifts it), ending with a "(cut at N of M characters)"
-// line when it was cut; --out writes it whole to a file instead.
+// The output prints within the reads' cap (defaultMaxChars, or
+// --max-chars; 0 lifts it), header and notes included: the Markdown is cut
+// to what is left, and a "(cut at N of M characters)" line says how much
+// of it printed; --out writes it whole to a file instead.
 
 import (
 	"context"
@@ -118,39 +119,52 @@ func (s Services) readRoot(ctx context.Context, a protocol.ReadArgs, opts page.R
 	return renderMarkdown(fmt.Sprintf("Element %d (%s):", index, md.Main), md, a)
 }
 
-// renderMarkdown prints the Markdown under its header: cut at --max-chars
-// (or the default cap) with the cut line, or written to --out with a line
-// naming the file; a wall note last.
+// renderMarkdown prints the Markdown under its header, a wall note last:
+// written to --out with a line naming the file, or printed within
+// --max-chars (or the default cap). The cap bounds the whole output, so
+// the Markdown gets what the header, the cut line and the wall note leave;
+// those always print, so a cap smaller than they are prints no Markdown.
 func renderMarkdown(head string, md page.Markdown, a protocol.ReadArgs) (string, *Error) {
 	text := md.Text
 	if strings.TrimSpace(text) == "" {
 		text = "(the Page shows no text here)"
 	}
 	total := utf8.RuneCountInString(text)
-	var b strings.Builder
-	b.WriteString(head + "\n")
+	tail := ""
+	if md.Block != "" {
+		tail = protocol.WallNote(md.Block) + "\n"
+	}
 	if a.Out != "" {
 		if err := writeFileAtomic(a.Out, []byte(text+"\n")); err != nil {
 			return "", Fail("writing the Markdown to "+a.Out+" failed: "+err.Error(), "pass --out a file in a folder you can write to")
 		}
-		fmt.Fprintf(&b, "Markdown: %s (%d characters)\n", a.Out, total)
-	} else {
-		limit := defaultMaxChars
-		if a.MaxChars != nil {
-			limit = *a.MaxChars
-		}
-		b.WriteString("\n")
-		if limit > 0 && total > limit {
-			b.WriteString(strings.TrimRight(string([]rune(text)[:limit]), " \n") + "\n")
-			fmt.Fprintf(&b, "(cut at %d of %d characters; --max-chars raises the cut, 0 lifts it, --out <file> writes it whole)\n", limit, total)
-		} else {
-			b.WriteString(text + "\n")
-		}
+		return fmt.Sprintf("%s\nMarkdown: %s (%d characters)\n%s", head, a.Out, total, tail), nil
 	}
-	if md.Block != "" {
-		b.WriteString(protocol.WallNote(md.Block) + "\n")
+	limit := defaultMaxChars
+	if a.MaxChars != nil {
+		limit = *a.MaxChars
 	}
-	return b.String(), nil
+	head += "\n\n"
+	whole := head + text + "\n" + tail
+	if limit <= 0 || utf8.RuneCountInString(whole) <= limit {
+		return whole, nil
+	}
+	cutLine := func(kept int) string {
+		return fmt.Sprintf("(cut at %d of %d characters; --max-chars raises the cut, 0 lifts it, --out <file> writes it whole)\n", kept, total)
+	}
+	// The cut line with the most digits it can have: the kept count is at
+	// most total, so the room left is never overstated.
+	room := limit - utf8.RuneCountInString(head+cutLine(total)+tail) - 1 // the Markdown's own newline
+	kept := ""
+	if room > 0 {
+		kept = strings.TrimRight(string([]rune(text)[:room]), " \n")
+	}
+	n := utf8.RuneCountInString(kept)
+	body := ""
+	if n > 0 {
+		body = kept + "\n"
+	}
+	return head + body + cutLine(n) + tail, nil
 }
 
 // readError maps a read.js run that failed.
