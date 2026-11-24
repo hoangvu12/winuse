@@ -988,6 +988,28 @@ set WINUSE_E2E=1
 go test -tags e2e -v -timeout 10m -run "TestAssetBlocking$" ./test/e2e
 ```
 
+## The exception listener test
+
+`exceptions_test.go` (bladebro-ideas ticket 30) checks the JavaScript
+exceptions winuse captures without `Runtime.enable`.
+`TestExceptionListener` starts Chrome or Edge headless on a throwaway
+profile and captures in process (`page.TabLog.Capture` and
+`PullExceptions`, as the helper does). `throws`: a page that throws in a
+script file, in a timer and in an unhandled promise gives three records,
+each with a stack, the first with its file and line. `detection`: the same
+fixture in a capturing Tab and a plain one patches `dispatchEvent`,
+`addEventListener`, `CustomEvent`, `JSON.stringify` and `Object.prototype`
+getters, then throws; none of its patches sees a call, `window.onerror`
+stays null, the window's own properties and what the page's own handlers
+see (`defaultPrevented` included) match the plain Tab. `loaded before`: a
+page loaded before capture is not covered until it loads again. The notes
+and `logs --capture` are checked offline (`internal/helper/logs_test.go`).
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -timeout 10m -run "TestExceptionListener$" ./test/e2e
+```
+
 ## The occlusion flag test
 
 `browser_occlusion_test.go` (ticket 04 of `.scratch/headless-max/`)

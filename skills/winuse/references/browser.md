@@ -139,7 +139,7 @@ winuse wait <window> selector .spinner --gone  # until it is gone (selector and 
 winuse wait <window> idle                      # until the Page settles: no DOM change, no request finishing
 winuse wait <window> js "window.app?.ready"    # until the expression is true (a promise is awaited)
 winuse read <window> [--root <element>]        # the Page's main content (or one Element's) as Markdown
-winuse logs <window> [--clear]                 # the Tab's failed requests and CSP or security errors, newest last
+winuse logs <window> [--capture] [--clear]     # the Tab's failed requests, CSP errors and exceptions, newest last
 winuse eval <window> <expression>              # run JavaScript in the Page, print the value
 winuse eval <window> --file x.js [--max 20000] # the expression from a file (- for stdin); a longer cut
 winuse dialog <window> accept|dismiss [text]
@@ -222,18 +222,24 @@ winuse drag <window> <element> <element|@x,y>
   under the wheel. Stop scrolling that way. One that reached the end says
   `Note: the Page is now at its bottom`. `scroll <el> into-view` on an
   Element already on screen says `was already in view`.
-- A Page Action during which requests failed or the Page logged a CSP or
-  security error stays `ok` and adds a note, such as
+- A Page Action during which requests failed, the Page logged a CSP or
+  security error, or the Page threw a JavaScript exception stays `ok` and
+  adds a note, such as
   `Note: 2 failed requests: 404 /api/save, 500 /api/user` (paths on the
-  Page's own site, host and path on another; at most 3 named) or
-  `Note: 1 security error: Refused to load ...`. A failed save or search
-  often shows only this way: read the Page before retrying.
+  Page's own site, host and path on another; at most 3 named),
+  `Note: 1 security error: Refused to load ...` or
+  `Note: the Page threw: TypeError: x is undefined (app.js:120)`. A failed
+  save or search often shows only this way: read the Page before retrying.
   `winuse logs <window>` lists the Tab's last 50 such entries, newest
-  last, with time, source, level and text, including those from before
-  winuse attached; `--clear` empties the list after printing it, and
-  `--json` answers with JSON. JavaScript exceptions and `console` calls
-  are not in it: winuse never turns on the debugger's Runtime or Network
-  domains, which a site can detect.
+  last, with time, source, level and text (and an exception's stack),
+  including failed requests from before winuse attached; `--clear` empties
+  the list after printing it, and `--json` answers with JSON.
+- Exceptions are captured in Tabs you opened with `tab new` and in every
+  Tab of a browser winuse launched or cloned. In the user's own Tab, run
+  `winuse logs <window> --capture` first: it lasts while the Tab is open
+  and covers pages loaded after it, so `reload` to cover the current one.
+  `console` calls are never captured: winuse never turns on the debugger's
+  Runtime or Network domains, which a site can detect.
 - A click or key that opens a JavaScript dialog (alert, confirm, prompt,
   leave-this-page) prints `ok` and a `Note:` line with its text; do not
   repeat it. Every Page Action then fails naming the dialog until you
