@@ -88,8 +88,10 @@ func budgetError(a windowRef) *Error {
 // flags ask for or, with --out, writes it to that file, uncut, and prints
 // its header, the file's line and the tail (the focused Element and the
 // notes), which carry what the agent must not miss: a partial read, a
-// thin tree. With --diff it prints what changed since before, the Agent's
-// earlier Window State of what (nil: none), as --observe=diff does.
+// thin tree. before is the Agent's earlier Window State of what (nil:
+// none): a read past its cap leaves open the Page landmarks whose
+// Elements changed since (bladebro-ideas 08), and --diff prints what
+// changed, as --observe=diff does.
 func renderState(tree *wstate.Tree, a windowRef, ref string, before []wstate.Element, what string) (string, *Error) {
 	if e := budgetError(a); e != nil {
 		return "", e
@@ -100,6 +102,7 @@ func renderState(tree *wstate.Tree, a windowRef, ref string, before []wstate.Ele
 		title = "Window State diff"
 	}
 	v := a.view(ref)
+	v.Before = before
 	if a.Out == "" {
 		return render(v), nil
 	}

@@ -689,13 +689,15 @@ func (s Services) tabWindowState(ctx context.Context, bt *bgTab, args json.RawMe
 	if e := budgetError(a); e != nil {
 		return "", e
 	}
+	// The earlier read, taken before this one replaces it: --diff prints
+	// the changes, and a read past its cap keeps changed landmarks open.
 	var before []wstate.Element
 	var what string
+	if st, ok := s.tabStates.get(AgentOf(ctx).ID, tabKeyOf(bt)); ok {
+		before = st.elements
+	}
 	if a.Diff {
 		what = fmt.Sprintf("tab %s of window %d", bt.short(), bt.w.ID)
-		if st, ok := s.tabStates.get(AgentOf(ctx).ID, tabKeyOf(bt)); ok {
-			before = st.elements // taken before the read replaces it
-		}
 	}
 	tree, rerr := s.readTabTree(ctx, bt)
 	if rerr != nil {

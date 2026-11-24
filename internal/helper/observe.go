@@ -306,6 +306,7 @@ func (s Services) observe(ctx context.Context, args json.RawMessage, o *protocol
 	if rerr != nil {
 		return observeNote(a.Window, rerr) + settled, nil
 	}
+	v.Before = before // changed Page landmarks stay open (bladebro-ideas 08)
 	text := wstate.RenderView(tree, v)
 	if o.Mode == protocol.ObserveDiff {
 		text = wstate.RenderChanges(before, tree, v, what).Text

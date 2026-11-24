@@ -408,6 +408,69 @@ func TestHeadingLevelsAndLinkURLs(t *testing.T) {
 	}
 }
 
+// TestLandmarksAreLines (bladebro-ideas 08): the Page's main content and
+// its chrome landmarks are lines of their own, named or not, so a read
+// can fold the chrome and tell it from content; a contentinfo reads as
+// footer. Other landmarks stay lines only when named.
+func TestLandmarksAreLines(t *testing.T) {
+	raw := &Raw{Title: "News", URL: "https://news.test/", Main: Doc{Marks: &Marks{}}}
+	str := func(s string) *AXValue {
+		b, _ := json.Marshal(s)
+		return &AXValue{Value: b}
+	}
+	var nodes []AXNode
+	add := func(id, parent, role, name string) {
+		n := AXNode{NodeID: id, ParentID: parent, Role: str(role), BackendDOMNodeID: int64(100 + len(nodes))}
+		if name != "" {
+			n.Name = str(name)
+		}
+		for i := range nodes {
+			if nodes[i].NodeID == parent {
+				nodes[i].ChildIDs = append(nodes[i].ChildIDs, id)
+			}
+		}
+		nodes = append(nodes, n)
+	}
+	add("r", "", "RootWebArea", "News")
+	add("ban", "r", "banner", "")
+	add("home", "ban", "link", "Home")
+	add("nav", "ban", "navigation", "")
+	add("world", "nav", "link", "World")
+	add("main", "r", "main", "")
+	add("h", "main", "heading", "Story")
+	add("srch", "main", "search", "")
+	add("q", "srch", "searchbox", "Search")
+	add("reg", "main", "region", "")
+	add("p", "reg", "StaticText", "The story.")
+	add("side", "r", "complementary", "Related")
+	add("rel", "side", "link", "More")
+	add("foot", "r", "contentinfo", "")
+	add("terms", "foot", "link", "Terms")
+	raw.Main.Nodes = nodes
+
+	var got []string
+	for _, e := range Build(raw, testLimits()).Elements {
+		got = append(got, strings.Repeat(" ", e.Depth)+strings.TrimSpace(e.Role+" "+e.Name))
+	}
+	want := []string{
+		"banner",
+		" link Home",
+		" navigation",
+		"  link World",
+		"main",
+		" heading Story",
+		" edit Search",
+		" text The story.",
+		"complementary Related",
+		" link More",
+		"footer",
+		" link Terms",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
 // TestMergeKeepsTheFrameAroundTheDocument: everything outside the
 // document's UIA descendants is the frame read, in place.
 func TestMergeKeepsTheFrameAroundTheDocument(t *testing.T) {
