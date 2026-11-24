@@ -104,11 +104,8 @@ func (s Services) waitGated(cmd Command) Command {
 }
 
 // runDesktopWait runs a desktop wait in a passive Esc scope (pageWait
-// hands it over).
+// hands it over, its arguments checked by waitInput).
 func (s Services) runDesktopWait(ctx context.Context, a protocol.WaitArgs) (string, *Error) {
-	if a.TimeoutMS < 0 {
-		return "", Fail("wait: the timeout must be positive", waitUsageHint)
-	}
 	esc := s.Esc
 	if esc == nil {
 		esc = noopEscWatch{}
@@ -215,11 +212,8 @@ func waitWindowClosed(what string) *Error {
 
 // waitPause is `wait <milliseconds>`: a plain pause in pauseStep slices,
 // stopped by Esc, and failed when the request's budget ends before it.
+// Its length is waitInput's to check.
 func (s Services) waitPause(ctx context.Context, a protocol.WaitArgs, stopped func() bool) (string, *Error) {
-	limit := int(protocol.MaxWaitTimeout / time.Millisecond)
-	if a.MS <= 0 || a.MS > limit {
-		return "", Fail(fmt.Sprintf("wait: a pause is a number of milliseconds above 0 and at most %d, got %d", limit, a.MS), waitUsageHint)
-	}
 	// `wait <window>` with what to wait for left out reads as a pause:
 	// refuse a number that is an open Window's ID rather than sit out
 	// minutes.
@@ -251,10 +245,7 @@ func (s Services) waitPause(ctx context.Context, a protocol.WaitArgs, stopped fu
 // matching Windows' list-windows lines once one shows, or ok once none is
 // left.
 func (s Services) waitWindow(ctx context.Context, a protocol.WaitArgs, want time.Duration, stopped func() bool) (string, *Error) {
-	target := strings.TrimSpace(a.Value)
-	if target == "" {
-		return "", Fail("wait window: an App name or a title is required", waitUsageHint)
-	}
+	target := strings.TrimSpace(a.Value) // waitInput refused none
 	found, end, e := pollUntil(ctx, s.Sleep, want, windowWaitPoll, stopped, func() ([]win.WindowInfo, bool, *Error) {
 		ws, err := s.Windows()
 		if err != nil {
@@ -377,13 +368,7 @@ func collapsedHolds(s, want string) bool {
 // once, against the Window's latest Window State, and its live state is
 // read until it holds.
 func (s Services) waitElement(ctx context.Context, a protocol.WaitArgs, want time.Duration, stopped func() bool) (string, *Error) {
-	state := strings.ToLower(strings.TrimSpace(a.State))
-	if !slices.Contains(protocol.WaitStates, state) {
-		return "", Fail(fmt.Sprintf("wait: an element waits for one of %s, not %q", strings.Join(protocol.WaitStates, ", "), a.State), waitUsageHint)
-	}
-	if a.Value != "" && state != "value" {
-		return "", Fail("wait: only value takes a value", waitUsageHint)
-	}
+	state := strings.ToLower(strings.TrimSpace(a.State)) // waitInput checked it, and the value
 	if strings.TrimSpace(a.Window) == "" {
 		return "", Fail("wait: a window reference is required", waitUsageHint)
 	}

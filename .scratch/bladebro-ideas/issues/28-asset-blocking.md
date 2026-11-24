@@ -33,3 +33,7 @@ From: tickets 10 and 18
 - **Tests.** Fake CDP tests for the patterns and the refusal. An e2e test on
   a fixture page with images and fonts, checking that the load event
   arrives sooner and that the note shows.
+
+## Comments
+
+- 2026-11-24, implementation: `Network.setBlockedURLs` only takes effect with the Network domain on in the session. `TestAssetBlocking` (headless) showed the blocking Tab still fetching every image, the font and the video without `Network.enable`, and ticket 10 measured with it on. So `page.BlockAssets` sends `Network.enable` before the patterns, and `--block none` empties the list and sends `Network.disable` (and sends nothing on a Tab that wasn't blocking). That is the only place winuse turns Network on, and only in a blocking Tab that is winuse's. Ticket 19's "never `Network.enable`" rule is about capturing on the user's Tabs, where `--block` is refused.

@@ -59,20 +59,11 @@ func find(s Services) Command {
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("find: "+err.Error(), findUsage)
 		}
-		if a.First && a.Count || a.Limit > 0 && (a.First || a.Count) {
-			return "", Fail("find: pass one of --first, --limit and --count", findUsage)
-		}
-		if a.Limit < 0 || a.MaxChars != nil && *a.MaxChars < 0 {
-			return "", Fail("find: --limit takes a positive number and --max-chars a number (0: no cap)", findUsage)
-		}
-		if a.Full && a.MaxChars != nil {
-			return "", Fail("find: --full prints every match uncut, with every ID; it takes no --max-chars", findUsage)
+		if ferr := findInput(a); ferr != nil {
+			return "", ferr
 		}
 		if a.First {
 			a.Limit = 1
-		}
-		if a.State != "" && !wstate.ValidState(a.State) {
-			return "", Fail(fmt.Sprintf("find: unknown state %q", a.State), "a state is one of "+strings.Join(wstate.States, ", "))
 		}
 		q := wstate.Query{Role: a.Role, Name: a.Name, Text: a.Text, State: a.State}
 		w, rerr := resolveWindow(s, a.Window)
@@ -101,6 +92,26 @@ func find(s Services) Command {
 	}
 }
 
+// findInput checks find's flags alone, before the Window resolves: one of
+// --first, --limit and --count, the numbers, --full without --max-chars,
+// and a known --state. A Batch runs it on a find step while it prepares
+// (batchcheck.go).
+func findInput(a protocol.FindArgs) *Error {
+	if a.First && a.Count || a.Limit > 0 && (a.First || a.Count) {
+		return Fail("find: pass one of --first, --limit and --count", findUsage)
+	}
+	if a.Limit < 0 || a.MaxChars != nil && *a.MaxChars < 0 {
+		return Fail("find: --limit takes a positive number and --max-chars a number (0: no cap)", findUsage)
+	}
+	if a.Full && a.MaxChars != nil {
+		return Fail("find: --full prints every match uncut, with every ID; it takes no --max-chars", findUsage)
+	}
+	if a.State != "" && !wstate.ValidState(a.State) {
+		return Fail(fmt.Sprintf("find: unknown state %q", a.State), "a state is one of "+strings.Join(wstate.States, ", "))
+	}
+	return nil
+}
+
 // findCut is what find or a region read leaves out of its answer: the
 // matches past --limit, the lines past --max-chars, and the IDs the
 // walk's Elements share (speed 13). The zero findCut leaves nothing out.
@@ -111,6 +122,7 @@ type findCut struct {
 	narrow         string          // how to see the lines --max-chars cut, after "Narrow ..."; "" for find's
 	hints          bool            // print the controls' hints (learn-from 04); off with --full
 	inRow          bool            // with their row part: the lines do not show the rows' text
+	urls           bool            // print a Page link's URL (bladebro-ideas 01): find's always, a region's with --urls; off with --full
 }
 
 // newFindCut is find's cut: --limit, --max-chars or the default cap, the
@@ -120,7 +132,7 @@ func newFindCut(a protocol.FindArgs, matched int, shared map[string]bool) findCu
 	if a.Full {
 		return c
 	}
-	c.maxChars, c.shared, c.hints, c.inRow = defaultMaxChars, shared, true, true
+	c.maxChars, c.shared, c.hints, c.inRow, c.urls = defaultMaxChars, shared, true, true, true
 	if a.MaxChars != nil {
 		c.maxChars = *a.MaxChars
 	}
@@ -128,10 +140,13 @@ func newFindCut(a protocol.FindArgs, matched int, shared map[string]bool) findCu
 }
 
 // line is Element e's line at index, indented by tabs, its shared ID left
-// out and its hint h added.
+// out and its URL and hint h added.
 func (c findCut) line(tabs, index int, e wstate.Element, h wstate.Hint) wstate.PrintedLine {
 	e = e.WithoutSharedID(c.shared)
 	text := wstate.Line(index, &e)
+	if c.urls {
+		text = wstate.URLLine(index, &e)
+	}
 	if hint := h.Text(c.inRow); c.hints && hint != "" {
 		text += " Hint: " + hint
 	}
@@ -263,16 +278,8 @@ func indexList(idx []int) string {
 // Window, or its outline: --root and --skeleton. handled is false for a
 // plain read.
 func windowStateShape(s Services, ctx context.Context, w win.WindowInfo, a windowRef) (out string, rerr *Error, handled bool) {
-	if e := budgetError(a); e != nil {
-		return "", e, true
-	}
+	// getWindowState checked the flags (windowStateInput).
 	switch {
-	case a.Skeleton && a.Root != "":
-		return "", Fail("get-window-state: --skeleton reads the whole Window and --root one Element; pass one", windowStateUsage), true
-	case a.Skeleton && a.Depth != 0:
-		return "", Fail(fmt.Sprintf("get-window-state: --skeleton reads %d levels; --depth goes with a full read or --root <element>", uia.SkeletonDepth), windowStateUsage), true
-	case a.Root != "" && (a.Compact || a.Out != ""):
-		return "", Fail("get-window-state: --compact and --out shape a full read; --root takes --depth, --interactive, --max-chars and --full", windowStateUsage), true
 	case a.Skeleton:
 		tree, err := s.Trees.Capture(uia.WithSkeleton(ctx), w.ID, w.Title, win.AppExeName(w), s.Budget)
 		if err != nil {
@@ -289,7 +296,7 @@ func windowStateShape(s Services, ctx context.Context, w win.WindowInfo, a windo
 }
 
 // windowStateUsage is get-window-state's usage line.
-const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--visible] [--compact] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]"
+const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--visible] [--compact] [--urls] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]"
 
 // readRegion is get-window-state --root: the Element's subtree, read
 // afresh and added after the Window State's indexes; a Page Element's from

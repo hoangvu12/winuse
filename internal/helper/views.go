@@ -53,7 +53,7 @@ func (a windowRef) view(ref string) wstate.View {
 	if limit > 0 && a.Screenshot {
 		limit = max(limit-screenshotReserve, 1)
 	}
-	return wstate.View{Full: a.Full, Interactive: a.Interactive, Visible: a.Visible, MarkOffscreen: a.MarkOffscreen, Depth: a.Depth, Compact: a.Compact, MaxChars: limit, Ref: ref}
+	return wstate.View{Full: a.Full, Interactive: a.Interactive, Visible: a.Visible, MarkOffscreen: a.MarkOffscreen, Depth: a.Depth, Compact: a.Compact, URLs: a.URLs, MaxChars: limit, Ref: ref}
 }
 
 // regionCut is how a --root read prints its lines: a's cap and, unless
@@ -63,7 +63,7 @@ func (a windowRef) regionCut(shared map[string]bool) findCut {
 	if !a.Full {
 		// A region prints its rows around its controls unless --interactive
 		// or --depth leaves them out; then the hints name them.
-		c.shared, c.hints, c.inRow = shared, true, a.Interactive || a.Depth > 0
+		c.shared, c.hints, c.inRow, c.urls = shared, true, a.Interactive || a.Depth > 0, a.URLs
 	}
 	return c
 }
@@ -76,6 +76,8 @@ func budgetError(a windowRef) *Error {
 		return Fail("get-window-state: --depth takes a positive number and --max-chars a number (0: no cap)", windowStateUsage)
 	case a.Full && (a.Compact || a.Visible || a.MaxChars != nil || a.Root == "" && (a.Interactive || a.Depth != 0)):
 		return Fail("get-window-state: --full prints the Window State as Codex does, whole and uncut; it takes no --interactive, --visible, --depth, --compact or --max-chars (with --root, --depth and --interactive still shape the read)", windowStateUsage)
+	case a.Full && a.URLs:
+		return Fail("get-window-state: --full prints the Window State as Codex does, with no URLs; pass --urls or --full, not both", windowStateUsage)
 	case explicitCap && a.Out != "":
 		return Fail("get-window-state: pass --out or --max-chars, not both: --out writes the whole Window State to the file", windowStateUsage)
 	}

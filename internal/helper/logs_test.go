@@ -33,9 +33,10 @@ func httpFailure(code int, text string) string {
 	return fmt.Sprintf("Failed to load resource: the server responded with a status of %d (%s)", code, text)
 }
 
-// logParams is a Log.entryAdded event's params, stamped at t.
+// logParams is a Log.entryAdded event's params, stamped at t to the
+// microsecond, as Chrome stamps them.
 func logParams(t time.Time, source, level, text, url string) map[string]any {
-	e := map[string]any{"source": source, "level": level, "text": text, "timestamp": float64(t.UnixNano()) / 1e6}
+	e := map[string]any{"source": source, "level": level, "text": text, "timestamp": float64(t.UnixMicro()) / 1000}
 	if url != "" {
 		e["url"] = url
 	}
@@ -177,19 +178,29 @@ func TestLogsCaptureInTheUsersTab(t *testing.T) {
 		t.Errorf("scripts sent: %s; want the isolated buffer, then the main-world listener", got)
 	}
 
-	at := time.Now().Add(time.Second).Truncate(time.Millisecond)
-	r.evalReply = exceptionBuffer(true, map[string]any{"t": float64(at.UnixMilli()), "m": "Uncaught TypeError: x is undefined",
+	// The buffer holds an exception from before the navigate, read before
+	// it (not its doing), and one the next page threw, read after.
+	at := time.Now().Truncate(time.Millisecond)
+	before := exceptionBuffer(true, map[string]any{"t": float64(at.Add(-time.Minute).UnixMilli()), "m": "Uncaught Error: old"})
+	after := exceptionBuffer(true, map[string]any{"t": float64(at.UnixMilli()), "m": "Uncaught TypeError: x is undefined",
 		"u": "https://docs.test/static/app.js", "l": 120,
 		"s": "TypeError: x is undefined\n    at render (https://docs.test/static/app.js:120:7)"})
+	r.evalReply = func() any {
+		if len(r.sent("Page.navigate")) == 0 {
+			return before
+		}
+		return after
+	}
 	out, e = r.run(t, "navigate", protocol.NavigateArgs{Window: "301", URL: "https://docs.test/next"})
 	if want := "ok https://docs.test/next\nNote: the Page threw: TypeError: x is undefined (app.js:120)\n"; e != nil || out != want {
 		t.Errorf("navigate: %+v\n%q\nwant\n%q", e, out, want)
 	}
 	out, e = r.run(t, "logs", protocol.LogsArgs{Window: "301"})
-	header := " - 1 log entry, newest last (failed requests, CSP or security errors and JavaScript exceptions; winuse keeps the last 50 per Tab)\n"
-	entry := clock(at) + " exception error Uncaught TypeError: x is undefined https://docs.test/static/app.js:120\n" +
+	header := " - 2 log entries, newest last (failed requests, CSP or security errors and JavaScript exceptions; winuse keeps the last 50 per Tab)\n"
+	entry := clock(at.Add(-time.Minute)) + " exception error Uncaught Error: old\n" +
+		clock(at) + " exception error Uncaught TypeError: x is undefined https://docs.test/static/app.js:120\n" +
 		"    at render (https://docs.test/static/app.js:120:7)\n"
-	if e != nil || !strings.HasSuffix(out, header+entry) || strings.Count(out, "\n") != 3 {
+	if e != nil || !strings.HasSuffix(out, header+entry) || strings.Count(out, "\n") != 4 {
 		t.Errorf("logs: %+v\n%q\nwant the header ending %q, then\n%q", e, out, header, entry)
 	}
 	// Installed once: the Tab keeps it.
@@ -384,7 +395,8 @@ func TestLogsRefusals(t *testing.T) {
 }
 
 // navigate notes the requests that failed while it loaded the page: the
-// same site's by path, another site's by host and path.
+// same site's by path, another site's by host and path. The browser logs
+// them before it answers Page.navigate, and every one is in the note.
 func TestNavigateNotesFailedRequests(t *testing.T) {
 	r := newWinRig(t)
 	r.browser.Srv.Handle("Page.navigate", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
@@ -392,7 +404,9 @@ func TestNavigateNotesFailedRequests(t *testing.T) {
 			URL string `json:"url"`
 		}
 		json.Unmarshal(m.Params, &p)
-		now := time.Now()
+		// The browser's clock a little behind winuse's: the entries still
+		// count, since they joined after the mark.
+		now := time.Now().Add(-5 * time.Millisecond)
 		c.Event(m.SessionID, "Log.entryAdded", logParams(now, "network", "error", status404, "https://docs.test/api/save"))
 		c.Event(m.SessionID, "Log.entryAdded", logParams(now.Add(time.Millisecond), "network", "error", httpFailure(500, "Internal Server Error"), "https://api.docs.test/user?id=7"))
 		c.Event(m.SessionID, "Log.entryAdded", logParams(now.Add(2*time.Millisecond), "network", "error", "Failed to load resource: net::ERR_CONNECTION_REFUSED", "https://cdn.other.test/lib.js"))
@@ -413,9 +427,14 @@ func TestNavigateNotesFailedRequests(t *testing.T) {
 }
 
 // A Page click that made requests fail stays ok and says so after what
-// the click did; a warning or an entry from before is not counted.
+// the click did; a warning or an entry from before is not counted. The
+// click's entry is stamped a little before winuse's clock (the browser's
+// clock is not winuse's) and still counts.
 func TestPageClickNotesFailedRequests(t *testing.T) {
 	r := newPageRig(t)
+	// Logged before the click: Log.enable, sent as the click begins,
+	// replays it.
+	replayLog(r.srv, logParams(time.Now().Add(-time.Hour), "network", "error", status404, "https://site.test/replayed"))
 	r.srv.Handle("Page.getFrameTree", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
 		r.mu.Lock()
 		defer r.mu.Unlock()
@@ -425,8 +444,7 @@ func TestPageClickNotesFailedRequests(t *testing.T) {
 		var p map[string]any
 		json.Unmarshal(m.Params, &p)
 		if p["type"] == "mousePressed" {
-			now := time.Now()
-			c.Event("S", "Log.entryAdded", logParams(now.Add(-time.Hour), "network", "error", status404, "https://site.test/replayed"))
+			now := time.Now().Add(-5 * time.Millisecond)
 			c.Event("S", "Log.entryAdded", logParams(now, "network", "error", status404, "https://site.test/api/save"))
 			c.Event("S", "Log.entryAdded", logParams(now, "network", "warning", "slow", "https://site.test/slow"))
 		}

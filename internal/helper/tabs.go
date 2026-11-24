@@ -79,7 +79,7 @@ func tabCommands(s Services) map[string]Command {
 func tabUsageHint(cmd string) string {
 	switch cmd {
 	case "tab-new":
-		return "usage: winuse tab new <window> [url]"
+		return "usage: winuse tab new <window> [url] [--block images,fonts,media|none]"
 	case "tab-close":
 		return "usage: winuse tab close <window> <tab>"
 	case "tab-switch":
@@ -213,16 +213,34 @@ func tabNew(s Services) Command {
 		if e != nil {
 			return "", e
 		}
+		var classes []string
+		if a.Block != "" {
+			canon, err := protocol.ParseBlock(a.Block)
+			if err != nil {
+				return "", Fail("tab-new: "+err.Error(), tabUsageHint("tab-new"))
+			}
+			classes = protocol.BlockList(canon)
+		}
 		tw, e := s.tabWindow(ctx, a.Window)
 		if e != nil {
 			return "", nothingSent(e)
 		}
 		return s.tabHeadless(ctx, tw, nil, "open tab", func(ctx context.Context) (string, *Error, bool) {
-			id, err := page.NewTab(ctx, tw.conn, tw.tabs.WindowID, a.URL, s.agentTabGroup(ctx))
+			// --block (assets.go): the Tab opens on about:blank, blocks, and
+			// only then goes to the URL, so its first load is blocked too.
+			url := a.URL
+			if len(classes) > 0 {
+				url = ""
+			}
+			id, err := page.NewTab(ctx, tw.conn, tw.tabs.WindowID, url, s.agentTabGroup(ctx))
 			if id != "" {
-				// The agent's own Tab captures its JavaScript exceptions
+				if s.assetBlocks != nil {
+					s.assetBlocks.markOpened(id) // winuse's own Tab: --block may go there later
+				}
+				// Being winuse's, it captures its JavaScript exceptions
 				// (page/exceptions.go): the listener goes in at its first
-				// Page Action, nothing is sent now.
+				// Page Action (with --block before its first load), nothing
+				// is sent now.
 				page.WatchLog(ctx, tw.conn.Client, "", id).Capture(ctx, "")
 			}
 			var other *page.OtherWindowError
@@ -237,6 +255,11 @@ func tabNew(s Services) Command {
 			}
 			// The read-back found the new Tab in the Window's browser window.
 			tw.g.Memory.Remember(tw.conn.Client, tw.g, tw.tabs.WindowID)
+			if len(classes) > 0 {
+				if e := s.blockNewTab(ctx, tw, id, a.URL, classes); e != nil {
+					return "", e, true
+				}
+			}
 			return "ok " + page.TabID(id) + "\n", nil, true
 		})
 	}

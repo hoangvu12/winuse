@@ -12,13 +12,15 @@ import (
 	"testing"
 
 	"github.com/hoangvu12/winuse"
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 // makeJunction links link to the directory target with mklink /J, which
-// needs no privilege.
+// needs no privilege. cmd runs with no console window: a test runner without
+// a console would otherwise flash a Windows Terminal window.
 func makeJunction(t *testing.T, link, target string) {
 	t.Helper()
-	if out, err := exec.Command("cmd", "/c", "mklink", "/J", link, target).CombinedOutput(); err != nil {
+	if out, err := win.NoConsoleWindow(exec.Command("cmd", "/c", "mklink", "/J", link, target)).CombinedOutput(); err != nil {
 		t.Skipf("mklink /J is not available: %v: %s", err, out)
 	}
 }

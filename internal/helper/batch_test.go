@@ -225,7 +225,7 @@ func TestBatchReportMarksUncertainSteps(t *testing.T) {
 	}
 	raw, err := json.Marshal(protocol.BatchArgs{Window: "101", Steps: []protocol.Step{
 		stepOf("set-value", protocol.SetValueArgs{ElementIndex: intPtrBatch(1), Value: "x"}),
-		stepOf("eval", nil),
+		stepOf("eval", protocol.EvalArgs{Expression: "({a: 1})"}),
 		stepOf("click", protocol.ClickArgs{ElementIndex: intPtrBatch(2)}),
 		stepOf("press-key", protocol.PressKeyArgs{Key: "Tab"}),
 	}})

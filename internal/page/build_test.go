@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -326,6 +327,84 @@ func TestResultPartial(t *testing.T) {
 	nested := Result{Elements: []wstate.Element{{Role: "list", Truncated: &wstate.Truncation{Limit: "1000", OmittedChildren: 5}}}}
 	if !nested.Partial() {
 		t.Error("a nested children-cap marker must make the read partial")
+	}
+}
+
+// TestHeadingLevelsAndLinkURLs (bladebro-ideas 01): a Page heading
+// carries its level and a link its URL, as the Page's address makes it
+// short: a path on the same site, a domain and path elsewhere, cut at 60
+// characters, never a javascript: URL, a data: URL only as "data:…". A
+// tree item's level and an image's URL are not printed.
+func TestHeadingLevelsAndLinkURLs(t *testing.T) {
+	long := "https://docs.example.org/guides/" + strings.Repeat("a", 80)
+	links := []struct{ href, want string }{
+		{"https://example.test/reset", "/reset"},
+		{"https://example.test/", "/"},
+		{"https://example.test/search?q=mugs&page=2", "/search?q=mugs&page=2"},
+		{"https://example.test/login#help", "#help"},
+		{"https://example.test/about#team", "/about#team"},
+		{"http://example.test/plain", "/plain"},
+		{"https://www.github.com/", "github.com"},
+		{"https://github.com/hoangvu12/winuse/issues", "github.com/hoangvu12/winuse/issues"},
+		{long, "docs.example.org/guides/" + strings.Repeat("a", 35) + "…"},
+		{"https://example.test/" + strings.Repeat("p", 80), "/" + strings.Repeat("p", 58) + "…"},
+		{"mailto:ada@example.com", "mailto:ada@example.com"},
+		{"javascript:void(0)", ""},
+		{"JavaScript:alert(1)", ""},
+		{"data:text/html;base64,PGgxPmhpPC9oMT4=", "data:…"},
+		{"", ""},
+	}
+	raw := &Raw{Title: "Sign in", URL: "https://example.test/login", Main: Doc{Marks: &Marks{}}}
+	root := AXNode{NodeID: "r", Role: &AXValue{Value: json.RawMessage(`"RootWebArea"`)}}
+	str := func(s string) *AXValue {
+		b, _ := json.Marshal(s)
+		return &AXValue{Value: b}
+	}
+	add := func(n AXNode) {
+		n.ParentID = "r"
+		n.BackendDOMNodeID = int64(100 + len(raw.Main.Nodes))
+		root.ChildIDs = append(root.ChildIDs, n.NodeID)
+		raw.Main.Nodes = append(raw.Main.Nodes, n)
+	}
+	for i, l := range links {
+		n := AXNode{NodeID: "a" + strconv.Itoa(i), Role: str("link"), Name: str("Link " + strconv.Itoa(i))}
+		if l.href != "" {
+			n.Properties = []AXProperty{{Name: "url", Value: str(l.href)}}
+		}
+		add(n)
+	}
+	add(AXNode{NodeID: "h1", Role: str("heading"), Name: str("Top"), Properties: []AXProperty{{Name: "level", Value: &AXValue{Type: "integer", Value: json.RawMessage(`1`)}}}})
+	add(AXNode{NodeID: "h3", Role: str("heading"), Name: str("Deeper"), Properties: []AXProperty{{Name: "level", Value: &AXValue{Type: "integer", Value: json.RawMessage(`3`)}}}})
+	add(AXNode{NodeID: "ti", Role: str("treeitem"), Name: str("Folder"), Properties: []AXProperty{{Name: "level", Value: &AXValue{Type: "integer", Value: json.RawMessage(`2`)}}}})
+	add(AXNode{NodeID: "im", Role: str("image"), Name: str("Logo"), Properties: []AXProperty{{Name: "url", Value: str("https://example.test/logo.png")}}})
+	raw.Main.Nodes = append([]AXNode{root}, raw.Main.Nodes...)
+
+	res := Build(raw, testLimits())
+	byName := map[string]wstate.Element{}
+	for _, e := range res.Elements {
+		byName[e.Name] = e
+	}
+	for i, l := range links {
+		if got := byName["Link "+strconv.Itoa(i)].URL; got != l.want {
+			t.Errorf("%q prints as %q, want %q", l.href, got, l.want)
+		}
+	}
+	if byName["Top"].Level != 1 || byName["Deeper"].Level != 3 {
+		t.Errorf("heading levels %d and %d, want 1 and 3", byName["Top"].Level, byName["Deeper"].Level)
+	}
+	if byName["Folder"].Level != 0 || byName["Logo"].URL != "" {
+		t.Errorf("a tree item's level or an image's URL kept: %+v, %+v", byName["Folder"], byName["Logo"])
+	}
+
+	// Another page's links are short against its own address.
+	raw.URL = "https://github.com/hoangvu12/winuse"
+	for _, e := range Build(raw, testLimits()).Elements {
+		if e.Name == "Link 7" && e.URL != "/hoangvu12/winuse/issues" {
+			t.Errorf("same site, read from github.com: %q", e.URL)
+		}
+		if e.Name == "Link 0" && e.URL != "example.test/reset" {
+			t.Errorf("another site, read from github.com: %q", e.URL)
+		}
 	}
 }
 
