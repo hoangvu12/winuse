@@ -136,7 +136,8 @@ Permalink base: https://github.com/dondai44423/bladebro/blob/d50ee9e/
   and CSP notes plus `winuse logs`.
   - JS exceptions come from a main-world listener: on by default in
     agent-owned Tabs, opt-in (`logs --capture`) in the user's.
-  - Never `Runtime.enable` or `Network.enable`.
+  - Never `Runtime.enable`; never `Network.enable`, except on a Tab
+    where `--block` is on (ticket 28).
   - Build tickets 29–30. [19](issues/19-console-capture-decision.md)
 
 ## Priority

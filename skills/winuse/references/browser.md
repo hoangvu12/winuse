@@ -239,7 +239,8 @@ winuse drag <window> <element> <element|@x,y>
   `winuse logs <window> --capture` first: it lasts while the Tab is open
   and covers pages loaded after it, so `reload` to cover the current one.
   `console` calls are never captured: winuse never turns on the debugger's
-  Runtime or Network domains, which a site can detect.
+  Runtime domain, and never its Network domain except on a Tab where
+  `--block` is on; a site can detect both.
 - A click or key that opens a JavaScript dialog (alert, confirm, prompt,
   leave-this-page) prints `ok` and a `Note:` line with its text; do not
   repeat it. Every Page Action then fails naming the dialog until you

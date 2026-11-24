@@ -2,8 +2,8 @@ package helper
 
 // Failed requests and CSP errors (.scratch/bladebro-ideas ticket 29, after
 // tickets 11 and 19). Every Page session winuse works in has the browser's
-// Log domain on (page/logs.go): never Runtime or Network, which a Page can
-// detect. Each Tab keeps a ring of its last page.LogRingSize entries.
+// Log domain on (page/logs.go): never Runtime, and never Network except on
+// a Tab where --block is on (assets.go), both of which a Page can detect. Each Tab keeps a ring of its last page.LogRingSize entries.
 //
 // After a Page Action (runPage, runPageInput, and the page-only Actions
 // of runPageWindow), new error entries the Page logged while it ran, or

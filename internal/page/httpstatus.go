@@ -3,7 +3,8 @@ package page
 // The main document's HTTP status (bladebro-ideas ticket 02, method from
 // ticket 11): performance.getEntriesByType('navigation')[0].responseStatus,
 // read in an isolated world of the main frame once a navigation lands. It
-// needs no domain (never Runtime.enable or Network.enable), stays right
+// needs no domain (never Runtime.enable, and Network.enable never except
+// on a Tab where --block is on), stays right
 // through redirect chains, and still gives the real status on Chrome's own
 // error page for an empty-body 4xx/5xx. It gives no headers, so no
 // Retry-After.

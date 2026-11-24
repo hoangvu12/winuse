@@ -10,8 +10,9 @@ package page
 // found that a Page cannot detect it, that it replays the entries stored
 // before it was turned on with their original times, and that without
 // Runtime it reports failed requests (source network, level error) and CSP
-// and security errors only. Runtime.enable and Network.enable are never
-// sent: a Page can detect both.
+// and security errors only. Runtime.enable is never sent, and
+// Network.enable never except on a Tab where --block is on (assets.go,
+// ticket 28): a Page can detect both.
 //
 // The ring is the Tab's (its connection and target id), not a session's:
 // the extension detaches a Tab nobody drove for 5 minutes, and the session
