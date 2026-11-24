@@ -266,11 +266,12 @@ func (v View) viewHint(t *Tree, hs []Hint, i int) string {
 	return h.Text(in)
 }
 
-// HintedLine is Line with the hint after it, as find, a diff and an
-// ambiguous reference print a control without the rows around it.
+// HintedLine is Line with the URL and the hint after it, as find, a diff
+// and an ambiguous reference print a control without the rows around it.
 func HintedLine(index int, e *Element, h Hint) string {
 	var b strings.Builder
 	writeElement(&b, index, e, false)
+	writeURL(&b, e)
 	writeHint(&b, h.Text(true))
 	return b.String()
 }

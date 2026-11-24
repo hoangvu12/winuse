@@ -38,3 +38,28 @@ winuse already receives both. The CDP AX tree carries `url` on links and
 ## Out of scope
 
 URLs on native hyperlinks.
+
+## URL token cost (2026-11-24, estimated)
+
+Estimated, not measured live: this run could not start Chrome. The link
+lists of three real pages were fetched (their `<a href>`s) and shortened by
+`page.LinkURL`'s rule; links in closed menus and `<details>` were left
+out, as the AX tree leaves them out; the rest of each read was estimated
+from its structure.
+
+| Page | Links (in the tree) | Avg shortened URL | Added by ` URL: ...` | Read (est.) | Growth |
+|---|---|---|---|---|---|
+| news.ycombinator.com | 229 (229) | 24 chars (most are same-site `/item?id=...`, `/vote?...`) | ~6,600 chars | ~13,700 | ~+48% |
+| github.com/zed-industries/zed (logged out) | 226 (~155) | ~38 (same-site file paths) | ~6,800 | ~13,000 | ~+50% |
+| developer.mozilla.org `<a>` reference | 539 (~340) | ~40 (same-site doc paths) | ~15,600 | ~37,000 | ~+42% |
+
+A Wikipedia article (fourth page) was too long to list (214,616 characters
+of Markdown). Tokens grow more than characters, since URLs tokenize at
+about 3 characters a token against about 4 for prose. Ticket 12 found full
+URLs were half of `read`'s output (69% on HN).
+
+**Decision: opt-in.** `--urls` on a read, `--root` or `--observe`; `find`,
+diff lines and ambiguous candidates always carry the URL (their lines have
+no tree around them, as with hints). `--full` prints none. Heading levels
+are always shown (a `level N` state word: a few characters per heading).
+ADR 0004's amendment records the format.

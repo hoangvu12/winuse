@@ -242,6 +242,11 @@ winuse drag <window> <element> <element|@x,y>
   `winuse wait <window> download` prints the file's path when done.
   Downloads land in `Downloads\winuse` (shown by `winuse browser status`),
   only on a browser winuse launched or cloned.
+- To learn where a link goes, read with `--urls` or `find <window> --role
+  link`, not `eval`: a link's line then ends with `URL: /path` on the
+  Page's own site, or the domain and path elsewhere. A heading's line says
+  its level, so `find <window> --role heading` is the Page's outline (see
+  `winuse skill reading`).
 - To read a Page's text (an article, docs, search results, a table), use
   `read`, not `eval` with `innerText`. It prints the main content as
   Markdown with headings, lists, links and tables with their headers,
