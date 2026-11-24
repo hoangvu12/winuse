@@ -458,6 +458,7 @@ func CommandsWith(s Services) map[string]Command {
 	cmds["list-displays"] = listDisplays(s)
 	cmds["screenshot"] = displayScreenshot(s)
 	cmds["extract"] = extractCommand(s) // extract.go: a Page's or a native list's rows as JSON, reads only
+	cmds["logs"] = logsCommand(s)       // logs.go: a Tab's failed requests and CSP errors, reads only
 	// The notifications' Desktop commands (notifications.go, desktop parity
 	// ticket 18): list-notifications only reads; the two actions take the
 	// desktop lane below. open-shell (openshell.go) is Headed only.
@@ -525,6 +526,7 @@ func observationOnlyCommand(name string) bool {
 		"tab-list",      // reads a browser Window's Tabs only (tabs.go)
 		"list-displays", // a Desktop command that only reads the monitors (display.go)
 		"extract",       // reads a Page's rows in an isolated world, or a native list's (extract.go)
+		"logs",          // reads a Tab's log, which winuse keeps (logs.go)
 		StatusCommand:   // read-only probes (status.go): never waits behind an Action
 		return true
 	case "list-notifications": // a Desktop command that only reads the toast banners (notifications.go)

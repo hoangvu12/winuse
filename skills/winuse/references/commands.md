@@ -45,6 +45,7 @@ wait window <app|title> [--gone] [--timeout <s>] | wait <ms>
 eval <window> <expression> | --file <path|-> [--max <n>] | dialog <window> accept|dismiss [text]
 upload <window> [<element>] <file>...
 read <window> [--root <element>] [--urls full] [--max-chars N | --out <file>]   # a Page's main content as Markdown; Pages only
+logs <window> [--clear] [--max-chars N | --out <file>]   # the Tab's failed requests and CSP or security errors, newest last; Pages only
 tab list <window> | tab new <window> [url] | tab switch <window> <tab> | tab close <window> <tab>
 browser status | launch | connect | stop [browser]
 browser use [browser|auto]          # pin a browser (it persists); auto removes the pin
