@@ -18,11 +18,12 @@ package page
 //     adds the records to the Tab's ring as source exception, level error.
 //   - When. Capture turns it on for the Tab's life: by default in a
 //     browser winuse launched or cloned (Reader.session) and in a Tab tab
-//     new opened; in the user's own Tabs only after winuse logs --capture.
-//     It turns the Page domain on (without it Chrome runs neither script
-//     in a new document) and installs in a session once, and again after
-//     the extension's
-//     silent idle detach (enableAgain), removing the old scripts first.
+//     new opened (which installs it on about:blank before going to its
+//     URL, so its first page is covered); in the user's own Tabs only
+//     after winuse logs --capture. It turns the Page domain on (without it
+//     Chrome runs neither script in a new document) and installs in a
+//     session once, and again after the extension's silent idle detach
+//     (enableAgain), removing the old scripts first.
 //     The event name stays the Tab's, so a Page loaded under an earlier
 //     session still reaches the new buffer (exceptions_world.js asks).
 //   - Coverage. Only documents created after the install have the

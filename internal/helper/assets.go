@@ -240,36 +240,46 @@ func (s Services) blockBeforeNavigate(ctx context.Context, pw *pageWin, classes 
 	return nil
 }
 
-// blockNewTab blocks the classes in a Tab tab new just opened on
-// about:blank, then sends it to url ("" stays on about:blank). A Tab that
-// could not block is closed again, so nothing is left loading what the
-// agent asked to block.
-func (s Services) blockNewTab(ctx context.Context, tw tabWindow, targetID, url string, classes []string) *Error {
+// startNewTab readies a Tab tab new just opened on about:blank, then sends
+// it to url ("" stays on about:blank): it blocks the classes (--block),
+// and installs the exception listener (page/exceptions.go, bladebro-ideas
+// 30), so the first page the Tab loads is blocked and captured too. A Tab
+// that could not block is closed again, so nothing is left loading what
+// the agent asked to block.
+func (s Services) startNewTab(ctx context.Context, tw tabWindow, targetID, url string, classes []string) *Error {
 	short := page.TabID(targetID)
 	session, err := tw.reader.TabSession(ctx, tw.conn, targetID)
-	if err == nil {
+	if err == nil && len(classes) > 0 {
 		err = page.BlockAssets(ctx, tw.conn.Client, session, classes)
 	}
-	if err != nil {
+	switch {
+	case err != nil && len(classes) > 0:
 		if cerr := page.CloseTab(ctx, tw.conn.Client, targetID); cerr != nil {
 			return Fail(fmt.Sprintf("tab %s opened, and setting --block in it failed (%v), and closing it again failed: %v", short, err, cerr),
 				"close it: winuse tab close "+tw.id()+" "+short)
 		}
 		return Fail(fmt.Sprintf("setting --block in the new tab failed (%v), so winuse closed it again", err),
 			"retry; run winuse browser status "+tw.name+" if it keeps failing")
+	case err != nil:
+		return Fail(fmt.Sprintf("tab %s opened on about:blank, and attaching it to send it to %s failed: %v", short, url, err),
+			"read winuse tab list "+tw.id()+", then run winuse navigate "+tw.id()+":"+short+" "+url)
 	}
-	s.assetBlocks.set(targetID, classes)
+	if len(classes) > 0 {
+		s.assetBlocks.set(targetID, classes)
+	}
 	if url == "" {
 		return nil
 	}
-	// The exception listener (page/exceptions.go) goes in on about:blank
-	// too, so the page the Tab loads has it.
 	page.WatchLog(ctx, tw.conn.Client, session, targetID).Capture(ctx, session)
 	_, err = page.Navigate(ctx, tw.conn.Client, session, page.NavURL(url))
 	var nav *page.NavigateError
 	if err == nil || errors.As(err, &nav) || errors.Is(err, page.ErrDownloadStarted) {
-		return nil // the Tab shows the page, or the browser's error page, as tab new without --block would
+		return nil // the Tab shows the page, or the browser's error page
 	}
-	return Fail(fmt.Sprintf("tab %s opened and blocks %s, and sending it to %s failed: %v", short, strings.Join(classes, ", "), url, err),
+	what := "opened"
+	if len(classes) > 0 {
+		what = "opened and blocks " + strings.Join(classes, ", ")
+	}
+	return Fail(fmt.Sprintf("tab %s %s, and sending it to %s failed: %v", short, what, url, err),
 		"read winuse tab list "+tw.id()+", then run winuse navigate "+tw.id()+":"+short+" "+url)
 }

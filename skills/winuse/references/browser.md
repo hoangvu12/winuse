@@ -234,8 +234,9 @@ winuse drag <window> <element> <element|@x,y>
   last, with time, source, level and text (and an exception's stack),
   including failed requests from before winuse attached; `--clear` empties
   the list after printing it, and `--json` answers with JSON.
-- Exceptions are captured in Tabs you opened with `tab new` and in every
-  Tab of a browser winuse launched or cloned. In the user's own Tab, run
+- Exceptions are captured in Tabs you opened with `tab new` (from their
+  first page) and in every Tab of a browser winuse launched or cloned. In
+  the user's own Tab, run
   `winuse logs <window> --capture` first: it lasts while the Tab is open
   and covers pages loaded after it, so `reload` to cover the current one.
   `console` calls are never captured: winuse never turns on the debugger's

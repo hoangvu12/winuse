@@ -226,21 +226,17 @@ func tabNew(s Services) Command {
 			return "", nothingSent(e)
 		}
 		return s.tabHeadless(ctx, tw, nil, "open tab", func(ctx context.Context) (string, *Error, bool) {
-			// --block (assets.go): the Tab opens on about:blank, blocks, and
-			// only then goes to the URL, so its first load is blocked too.
-			url := a.URL
-			if len(classes) > 0 {
-				url = ""
-			}
-			id, err := page.NewTab(ctx, tw.conn, tw.tabs.WindowID, url, s.agentTabGroup(ctx))
+			// The Tab opens on about:blank and goes to the URL only once its
+			// exception listener (and --block, assets.go) is in, so its first
+			// load is captured (and blocked) too (startNewTab).
+			id, err := page.NewTab(ctx, tw.conn, tw.tabs.WindowID, "", s.agentTabGroup(ctx))
 			if id != "" {
 				if s.assetBlocks != nil {
 					s.assetBlocks.markOpened(id) // winuse's own Tab: --block may go there later
 				}
 				// Being winuse's, it captures its JavaScript exceptions
-				// (page/exceptions.go): the listener goes in at its first
-				// Page Action (with --block before its first load), nothing
-				// is sent now.
+				// (page/exceptions.go). Without a URL nothing is sent now: the
+				// listener goes in at its first Page Action.
 				page.WatchLog(ctx, tw.conn.Client, "", id).Capture(ctx, "")
 			}
 			var other *page.OtherWindowError
@@ -255,8 +251,8 @@ func tabNew(s Services) Command {
 			}
 			// The read-back found the new Tab in the Window's browser window.
 			tw.g.Memory.Remember(tw.conn.Client, tw.g, tw.tabs.WindowID)
-			if len(classes) > 0 {
-				if e := s.blockNewTab(ctx, tw, id, a.URL, classes); e != nil {
+			if a.URL != "" || len(classes) > 0 {
+				if e := s.startNewTab(ctx, tw, id, a.URL, classes); e != nil {
 					return "", e, true
 				}
 			}
