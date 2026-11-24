@@ -26,6 +26,29 @@ func fakeIsBox(n *fakeNode) bool {
 	return false
 }
 
+// A grid's RowCount alone never buys the one-request read of its whole
+// subtree: its children, counted within a bound, must agree (a header row
+// may add one, groups make fewer). A provider that understates its rows,
+// or a count that did not come back (-1), reads row by row instead.
+func TestBulkReadTrustsRowCountOnlyWhenTheChildrenAgree(t *testing.T) {
+	for _, tc := range []struct {
+		rowCount, children, limit int
+		want                      bool
+	}{
+		{12, 12, 500, true},
+		{12, 13, 500, true},     // a header row
+		{12, 3, 500, true},      // three groups
+		{12, 20000, 500, false}, // RowCount understates the rows
+		{12, -1, 500, false},    // the count did not come back in time
+		{0, 12, 500, false},     // no RowCount
+		{600, 600, 500, false},  // past the limit: row by row, stopping there
+	} {
+		if got := bulkTrusted(tc.rowCount, tc.children, tc.limit); got != tc.want {
+			t.Errorf("bulkTrusted(rowCount %d, children %d, limit %d) = %v, want %v", tc.rowCount, tc.children, tc.limit, got, tc.want)
+		}
+	}
+}
+
 func TestFindBoxesNeverReadsBelowAList(t *testing.T) {
 	big := hugeList(20000)
 	drop := node(wstate.ControlTypeList, "drop-down", node(wstate.ControlTypeListItem, "Red"), node(wstate.ControlTypeListItem, "Green"))
