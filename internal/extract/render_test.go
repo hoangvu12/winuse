@@ -56,6 +56,31 @@ func TestRenderPartialReasons(t *testing.T) {
 	}
 }
 
+// A native list the App shows only part of (ticket 27) is partial for
+// that reason alone: its rows are under the limit, so nothing was capped.
+func TestRenderVirtualizedIsNotCapped(t *testing.T) {
+	r := Result{Kind: "table", Container: "list", Label: "Items View", Rows: rows(22), Found: 470, Limit: 500, Virtualized: true}
+	got, _ := Render(r, Options{})
+	if head, _, _ := strings.Cut(got, "\n"); head != `table: list "Items View": 22 of 470 rows (partial: virtualized)` {
+		t.Errorf("header %q", head)
+	}
+}
+
+// A total the backend could not read says "at least" with a plus, and a
+// read that stopped before the end says why.
+func TestRenderAtLeastAndStopped(t *testing.T) {
+	r := Result{Kind: "list", Container: "list", Rows: rows(5), Found: 6, AtLeast: true, Limit: 5}
+	got, _ := Render(r, Options{})
+	if head, _, _ := strings.Cut(got, "\n"); head != `list: list: 5 of 6+ rows (partial: capped at 5)` {
+		t.Errorf("capped header %q", head)
+	}
+	r = Result{Kind: "table", Container: "data grid", Rows: rows(120), Found: 120, AtLeast: true, Limit: 500, Stopped: "stopped at the time limit"}
+	got, _ = Render(r, Options{})
+	if head, _, _ := strings.Cut(got, "\n"); head != `table: data grid: 120 of 120+ rows (partial: stopped at the time limit)` {
+		t.Errorf("stopped header %q", head)
+	}
+}
+
 func TestRenderNoListAndWall(t *testing.T) {
 	if got, _ := Render(Result{}, Options{RootHint: "x"}); got != "no list found\n" {
 		t.Errorf("none: %q", got)
