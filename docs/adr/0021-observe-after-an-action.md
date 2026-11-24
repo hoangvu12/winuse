@@ -185,3 +185,45 @@ reads (a whole main Window would leave the menu nothing); growing the
 request budget by a second `ObserveTimeout` (the client's budget would
 grow for every observed Action, for a read that rarely happens and is
 usually fast).
+
+## Amendment: --observe settles a Page before it reads (bladebro-ideas 07, 2026-11-24)
+
+Ticket `.scratch/bladebro-ideas/issues/07-page-settle-and-waits.md`. The
+observation read right after the Action, so a Page that reacted late (a
+client-side route change, a fetch followed by a render) showed `No change`
+and cost the agent a `wait` and another read. Real sessions spent 43% of
+their calls on fixed `sleep`s and `wait`s (ticket 14).
+
+- **The rule.** On a browser Window or a Tab target, the read first waits
+  for the Page to settle (`page.Settle`): no DOM mutation for 110 ms, and
+  no request finishing for 280 ms, counted from the settle's start
+  (bladebro's two windows, `bb/src/page/perception/wait.rs:89-179`). A
+  document still loading, or a navigation that took the probe's world
+  away, counts as busy. Every other Window reads as before.
+- **The bound.** 1 s (`page.SettleBound`), inside the observation's
+  `ObserveTimeout`. Past it the read goes ahead and prints `Note: the Page
+  had not settled after 1s (<why>), so this read may miss what it does
+  next`, where why is `its DOM kept changing`, `it kept loading
+  resources`, `its document was still loading` or `it was navigating`. A
+  quiet Page costs one 280 ms window. The bound is fixed: ticket 16 dropped
+  learned per-site timing.
+- **No Network domain.** Ticket 11 measured `Network.enable` as a
+  detectable cost in the user's Tabs, so requests are counted in the Page:
+  a PerformanceObserver on resource entries, with a MutationObserver for
+  the DOM, both in an isolated world of the main frame (the Page's script
+  never sees them) and disconnected when the settle ends. Resource entries
+  appear only once a request finishes, so the rule is "no request finished
+  for 280 ms", not an in-flight count: a request the Action started gets
+  280 ms to finish, and a slower one is not waited for. A websocket or a
+  long poll that stays open makes no entry and never holds the settle.
+- **A settle that cannot run is skipped**: no Browser Connection, a browser
+  page, a dialog, a session gone. The read then says what it finds, as
+  before.
+- **`wait <window> idle`** runs the same settle explicitly, bounded by the
+  wait's timeout (10 s by default), and fails naming what kept changing.
+
+Considered: `Network.enable` for an exact in-flight count (detectable, and
+ticket 11's measured cost); wrapping `fetch` and `XMLHttpRequest` in the
+main world (the Page's script sees it, and it changes the Page); a settle
+on every Window (UI Automation has no cheap equivalent, and a desktop App
+mostly reacts within the read's own settle, ADR 0019).
