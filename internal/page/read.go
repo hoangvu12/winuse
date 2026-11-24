@@ -39,7 +39,7 @@ type Markdown struct {
 	Main   string `json:"main"`   // the element rendered, as tag#id or tag.class
 	Scoped bool   `json:"scoped"` // an Element given was rendered, not the picked main content
 	// Block names the wall a short Page looks like (Cloudflare, DataDome,
-	// PerimeterX, reCAPTCHA, Akamai, rate-limit), "" for none.
+	// PerimeterX, reCAPTCHA, hCaptcha, Akamai, rate-limit), "" for none.
 	Block string `json:"block"`
 	Title string `json:"title"`
 	URL   string `json:"url"`

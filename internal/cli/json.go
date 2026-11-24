@@ -58,7 +58,7 @@ type jsonLine struct {
 	HTTPStatus int `json:"http_status,omitempty"`
 	// Wall names the challenge or block wall a Page Note said the Page
 	// looks like (bladebro-ideas 05, protocol.WallOf): Cloudflare,
-	// DataDome, PerimeterX, reCAPTCHA, Akamai or rate-limit.
+	// DataDome, PerimeterX, reCAPTCHA, hCaptcha, Akamai or rate-limit.
 	Wall string `json:"wall,omitempty"`
 }
 

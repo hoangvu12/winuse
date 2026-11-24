@@ -152,8 +152,8 @@ winuse drag <window> <element> <element|@x,y>
   Headless.
 - When `navigate`, `back`, `forward`, `reload`, or a Page click or key that
   navigated, lands on a short Page that looks like a CAPTCHA or block wall
-  (Cloudflare, DataDome, PerimeterX, reCAPTCHA, Akamai, or a rate limit),
-  it stays `ok` and adds
+  (Cloudflare, DataDome, PerimeterX, reCAPTCHA, hCaptcha, Akamai, or a rate
+  limit), it stays `ok` and adds
   `Note: the Page looks like a <kind> wall; ask the user to handle it`
   (`--json` adds `"wall": "<kind>"`). Stop there and ask the user, as
   Safety says: never click the challenge or try to solve it. A docs page

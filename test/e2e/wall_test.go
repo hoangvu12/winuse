@@ -6,7 +6,7 @@
 // runs it after a navigation) on the pages in testdata/wall in a headless
 // Chrome or Edge on a throwaway profile (headlessBrowser): one page per
 // wall kind (a Cloudflare interstitial, a bare Turnstile, DataDome,
-// PerimeterX, reCAPTCHA, Akamai, a 429), and two that are no wall (a long
+// PerimeterX, reCAPTCHA, hCaptcha, Akamai, a 429), and two that are no wall (a long
 // docs page about rate limits, a login form with a Turnstile widget), plus
 // read's article and docs pages. read.js and extract.js name the same
 // wall on each, as they carry the same check.
@@ -42,6 +42,7 @@ var wallCases = []struct{ page, want string }{
 	{"wall/datadome.html", "DataDome"},
 	{"wall/perimeterx.html", "PerimeterX"},
 	{"wall/recaptcha.html", "reCAPTCHA"},
+	{"wall/hcaptcha.html", "hCaptcha"},
 	{"wall/akamai.html", "Akamai"},
 	{"wall/rate-limit.html", "rate-limit"},
 	{"wall/docs-rate-limit.html", ""},

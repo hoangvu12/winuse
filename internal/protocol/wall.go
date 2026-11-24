@@ -13,7 +13,7 @@ import (
 )
 
 // WallKinds are the walls winuse names (page/block.js).
-var WallKinds = []string{"Cloudflare", "DataDome", "PerimeterX", "reCAPTCHA", "Akamai", "rate-limit"}
+var WallKinds = []string{"Cloudflare", "DataDome", "PerimeterX", "reCAPTCHA", "hCaptcha", "Akamai", "rate-limit"}
 
 const (
 	wallNoteHead = "Note: the Page looks like a "
