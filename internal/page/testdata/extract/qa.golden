@@ -1,0 +1,9 @@
+list: <div id="questions"> "All Questions": 5 of 5 rows (partial: page says 24,134,885 questions)
+[
+{"title":"How to parse JSON in Go?","url":"https://qa.example/q/101/how-to-parse-json","votes":12,"answers":3,"views":1200,"date":"Mar 2, 2026","description":"I have a JSON string and need to read it into a struct without knowing all keys."},
+{"title":"Why does my widget not render?","url":"https://qa.example/q/102/widget-not-render","votes":5,"answers":1,"views":340,"date":"Mar 3, 2026","description":"The widget shows on desktop but stays blank on a phone after the page loads."},
+{"title":"Sorting a list of widgets by price","url":"https://qa.example/q/103/sorting-widgets","votes":0,"answers":0,"views":27,"date":"Mar 4, 2026","description":"What is the fastest way to sort a long list of widgets by their price field?"},
+{"title":"Widget events fire twice on click","url":"https://qa.example/q/104/events-fire-twice","votes":31,"answers":4,"views":10300,"date":"Mar 5, 2026","description":"Every click handler on my widget runs two times, and I cannot see why."},
+{"title":"Can a widget hold another widget?","url":"https://qa.example/q/105/nested-widgets","votes":2,"answers":2,"views":98,"date":"Mar 6, 2026","description":"I want to nest one widget inside another one and keep both of them working."}
+]
+hint: if this is the wrong list, pass --root <index> of the list or of one item, from winuse get-window-state 301

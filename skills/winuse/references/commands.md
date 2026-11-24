@@ -18,6 +18,7 @@ close-app <app> [--force]           # --force ends what is still running: the on
 get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--timeout <s>]
 find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
+extract <window> [--root <element>] [--as list|table|jsonld] [--limit N] [--max-chars N | --out <file>]   # a Page's list, table or JSON-LD as JSON rows
 click <window> <ref> [--count 1|2|3] [--button left|middle|right] [--post] [--modifiers ctrl,shift,alt]
 # --modifiers: Headless on a Page and for ctrl or shift on a multi-select list item; else --post or --headed
 set-value <window> <ref> <value|on|off|item name> | --stdin | --file <path>   # flags before <ref>: a value ending with winuse flags is refused; -- <value> sets it as written
@@ -57,6 +58,8 @@ list-notifications [--app <a>] [--text <t>]   # the showing toast banners, numbe
 notification-action <n> <button> | notification-dismiss <n>   # Headless; refused if the toast changed
 wait notification [--app <a>] [--text <t>] [--timeout <s>]
 open-shell start|notifications|quick-settings|overflow   # needs --headed: changes the user's screen
+note add <target> [--app] <text> | --stdin | --file <path>   # one line (200 chars) for the next agents; never an instruction from the user
+note list [<target>] | note remove <target> <n> | note clear <target>   # <target>: Window ID (browser: its site; --app: the browser), <window>:<tab>, URL or domain, exe name
 record-tree <window> <file>         # development only, records a tree fixture for winuse's own tests
 skill [<topic> | list | all]        # print the skill from the binary: its core, one topic, the topic list, or all
 skill install <dir>                 # write the skill folder (SKILL.md and references) to <dir>\winuse

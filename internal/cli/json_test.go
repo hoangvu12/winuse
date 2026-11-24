@@ -54,6 +54,12 @@ func TestJSONLineForEachOutcome(t *testing.T) {
 			want: jsonLine{OK: true, Command: "click", Out: "clicked element 3\n"},
 		},
 		{
+			// bladebro-ideas ticket 06: what a Page click did.
+			name: "a Page click's effect", stdout: "ok\nNote: the Page changed (text only)\n",
+			resp: &protocol.Response{OK: true, Out: "ok\nNote: the Page changed (text only)\n", Effect: "text"},
+			want: jsonLine{OK: true, Command: "click", Out: "ok\nNote: the Page changed (text only)\n", Effect: "text"},
+		},
+		{
 			name: "helper failure", code: 1,
 			stderr: "element 3 is not available in the cached Window State for window 5; nothing was sent\nhint: run winuse get-window-state 5 again\n",
 			resp: &protocol.Response{Err: "element 3 is not available in the cached Window State for window 5; nothing was sent",
@@ -111,6 +117,31 @@ func TestJSONLineForEachOutcome(t *testing.T) {
 				t.Errorf("line\n got %s\nwant %s", g, w)
 			}
 		})
+	}
+}
+
+// A navigation whose Page answered 4xx/5xx carries the code in
+// http_status (bladebro-ideas 02); other commands and a 2xx never do.
+func TestJSONLineHTTPStatus(t *testing.T) {
+	out404 := "ok https://a.test/missing\nNote: the Page answered HTTP 404 Not Found\n"
+	for _, cmd := range []string{"navigate", "back", "forward", "reload"} {
+		got := jsonLineFor(cmd, 0, out404, "", &protocol.Response{OK: true, Out: out404})
+		if got.HTTPStatus != 404 || !got.OK || got.Out != out404 {
+			t.Errorf("%s: %+v", cmd, got)
+		}
+		b, _ := json.Marshal(got)
+		if !strings.Contains(string(b), `"http_status":404`) {
+			t.Errorf("%s: %s has no http_status", cmd, b)
+		}
+	}
+	if got := jsonLineFor("navigate", 0, "ok https://a.test/\n", "", nil); got.HTTPStatus != 0 {
+		t.Errorf("a 2xx navigation: %+v", got)
+	}
+	if b, _ := json.Marshal(jsonLineFor("navigate", 0, "ok https://a.test/\n", "", nil)); strings.Contains(string(b), "http_status") {
+		t.Errorf("a 2xx navigation printed %s", b)
+	}
+	if got := jsonLineFor("eval", 0, out404, "", nil); got.HTTPStatus != 0 {
+		t.Errorf("eval printing the note's text: %+v", got)
 	}
 }
 

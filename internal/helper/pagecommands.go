@@ -541,9 +541,18 @@ func (s Services) navigate(ctx context.Context, pw pageWin, cmd, target, state s
 	}
 	c, sess, id := pw.conn.Client, pw.session, pw.id()
 	var committed func(ctx context.Context) bool
+	var emptyHTTP *page.NavigateError
 	switch cmd {
 	case "navigate":
 		loader, err := page.Navigate(ctx, c, sess, target)
+		// A 4xx/5xx with an empty body: Chrome shows its own error page,
+		// so the navigation was delivered and landed there (bladebro-ideas
+		// 02); navWait reads the status, or reports the failure as before.
+		if errors.As(err, &emptyHTTP) && emptyHTTP.HTTPError() {
+			loader, err = emptyHTTP.LoaderID, nil
+		} else {
+			emptyHTTP = nil
+		}
 		if err != nil {
 			return s.navFailure(err, pw, "navigation")
 		}
@@ -553,7 +562,7 @@ func (s Services) navigate(ctx context.Context, pw pageWin, cmd, target, state s
 				l, _, err := page.MainFrame(ctx, c, sess)
 				return err == nil && l == loader
 			}
-		} else {
+		} else if emptyHTTP == nil {
 			state = page.LoadNone // a #fragment: the document stays
 		}
 	case "back", "forward":
@@ -592,17 +601,33 @@ func (s Services) navigate(ctx context.Context, pw pageWin, cmd, target, state s
 			return err == nil && l != before
 		}
 	}
-	return s.navWait(ctx, pw, cmd, state, committed, stopped)
+	return s.navWait(ctx, pw, cmd, state, committed, stopped, emptyHTTP)
 }
 
 // navWait waits for a delivered navigation's document to commit (committed:
 // nil to skip) and load (state) within the request's budget, and prints the
-// Tab's URL.
-func (s Services) navWait(ctx context.Context, pw pageWin, cmd, state string, committed func(ctx context.Context) bool, stopped func() bool) (string, bool, *Error) {
+// Tab's URL, with a note when the landed document answered 4xx or 5xx
+// (bladebro-ideas 02). emptyHTTP is a navigation Page.navigate reported as
+// an empty-body HTTP failure: it prints the note, or without a 4xx/5xx to
+// read, fails as the browser's error.
+func (s Services) navWait(ctx context.Context, pw pageWin, cmd, state string, committed func(ctx context.Context) bool, stopped func() bool, emptyHTTP *page.NavigateError) (string, bool, *Error) {
 	c, sess, id := pw.conn.Client, pw.session, pw.id()
+	landed := committed == nil
+	if committed != nil {
+		saw := committed
+		committed = func(ctx context.Context) bool {
+			ok := saw(ctx)
+			landed = landed || ok
+			return ok
+		}
+	}
 	lctx, cancel := pageWaitContext(ctx, 0)
 	defer cancel()
 	err := page.WaitLoad(lctx, c, sess, state, committed, stopped)
+	// The status of a document still on its way is the previous one's, so
+	// it is read only once the navigation landed; --wait none waits for
+	// nothing.
+	readStatus := emptyHTTP != nil || landed && state != page.LoadNone
 	var dialog *page.DialogError
 	var slow *page.LoadTimeoutError
 	switch {
@@ -611,13 +636,47 @@ func (s Services) navWait(ctx context.Context, pw pageWin, cmd, state string, co
 	case errors.As(err, &dialog):
 		return "", true, Fail("the "+cmd+" was delivered, and "+dialog.Error(), dialogHint(id)+"; do not repeat the "+cmd)
 	case errors.As(err, &slow):
-		u := page.CurrentURL(ctx, c, sess)
-		return fmt.Sprintf("ok %s (%s; winuse wait %s load waits longer)\n", u, slow.Error(), id), true, nil
+		u, note := page.CurrentURL(ctx, c, sess), ""
+		if readStatus {
+			u, note = httpStatusNote(ctx, pw, u)
+		}
+		if emptyHTTP != nil && note == "" {
+			return s.navFailure(emptyHTTP, pw, "navigation")
+		}
+		return fmt.Sprintf("ok %s (%s; winuse wait %s load waits longer)\n%s", u, slow.Error(), id, note), true, nil
 	case err != nil:
 		return "", true, Fail(fmt.Sprintf("the %s was delivered, and waiting for the page failed: %v", cmd, err),
 			"read winuse get-window-state "+id+" before repeating it")
 	}
-	return "ok " + page.CurrentURL(ctx, c, sess) + "\n", true, nil
+	u, note := page.CurrentURL(ctx, c, sess), ""
+	if readStatus {
+		u, note = httpStatusNote(ctx, pw, u)
+	}
+	if emptyHTTP != nil && note == "" {
+		return s.navFailure(emptyHTTP, pw, "navigation")
+	}
+	return "ok " + u + "\n" + note, true, nil
+}
+
+// httpStatusRead bounds the status read after a navigation.
+const httpStatusRead = 2 * time.Second
+
+// httpStatusNote reads the Tab's main document's HTTP status
+// (page.ReadHTTPStatus, no domain turned on). A 4xx/5xx gives its note
+// line; on Chrome's own error page the URL printed is the address it could
+// not show, not chrome-error://. Anything else, or a status that does not
+// read, leaves u and gives no note.
+func httpStatusNote(ctx context.Context, pw pageWin, u string) (string, string) {
+	sctx, cancel := context.WithTimeout(ctx, httpStatusRead)
+	defer cancel()
+	st, err := page.ReadHTTPStatus(sctx, pw.conn.Client, pw.session)
+	if err != nil || !st.Failed() {
+		return u, ""
+	}
+	if st.ErrorPage && st.URL != "" {
+		u = st.URL
+	}
+	return u, protocol.HTTPStatusNote(st.Code, page.StatusReason(st.Code), st.ErrorPage) + "\n"
 }
 
 // browserPagePoll is how often navigateFromBrowserPage reads the Tab while
@@ -679,7 +738,7 @@ func (s Services) navigateFromBrowserPage(ctx context.Context, pw pageWin, targe
 		case <-time.After(browserPagePoll):
 		}
 	}
-	return s.navWait(ctx, pw, "navigate", state, nil, stopped)
+	return s.navWait(ctx, pw, "navigate", state, nil, stopped, nil)
 }
 
 // navFailure maps a navigation the browser did not start or finish.

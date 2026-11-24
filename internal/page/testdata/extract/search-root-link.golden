@@ -1,0 +1,13 @@
+list: <ol id="results"> "Search results": 10 of 10 rows (partial: page says 1,234 results)
+[
+{"title":"Widgets Inc - the widget company","url":"https://widgets.example/","description":"Widgets Inc makes widgets of every size, shipped worldwide since 1999."},
+{"title":"Widget - Wikipedia","url":"https://en.wiki.example/wiki/Widget","description":"A widget is a small gadget or mechanical device whose name is unknown."},
+{"title":"Buy widgets online | Shop","url":"https://shop.example/widgets","description":"Free delivery on widgets over $25. Order today and save on bulk packs."},
+{"title":"The complete guide to widgets","url":"https://blog.example/widgets-guide","description":"Everything you need to know before you choose your next widget."},
+{"title":"Widget shortage hits stores","url":"https://news.example/widget-shortage","date":"Mar 3, 2026","description":"Retailers report empty shelves as demand for widgets soars."},
+{"title":"Which widget should I buy?","url":"https://forum.example/t/best-widget","description":"Forum thread with buyers comparing the best widgets of the year."},
+{"title":"How widgets are made (video)","url":"https://video.example/watch?v=w1","description":"A factory tour that shows every step of making a widget."},
+{"title":"Widget definition and meaning","url":"https://dict.example/widget","description":"The meaning of widget: an unnamed article considered for purposes of example."},
+{"title":"widgets - a UI widget library","url":"https://code.example/widgets","description":"An open source library of UI widgets for the web and the desktop."},
+{"title":"Widget engineer jobs","url":"https://jobs.example/widget-engineer","description":"Browse 210 open widget engineer roles near you, updated daily."}
+]

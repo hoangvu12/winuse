@@ -1,0 +1,5 @@
+jsonld: Recipe "Simple pancakes": 1 of 1 rows (complete)
+[
+{"title":"Simple pancakes","url":"https://food.example/recipes/simple-pancakes","author":"Ana Cook","prep_time":"PT10M","cook_time":"PT15M","total_time":"PT25M","yield":"4 servings","ingredients":["2 cups plain flour","2 tablespoons sugar","1 tablespoon baking powder","1 large egg, beaten","1 1/4 cups whole milk","3 tablespoons melted butter"],"steps":["Whisk the flour, sugar and baking powder in a large bowl.","Beat in the egg, the milk and the melted butter until smooth.","Pour a quarter cup of batter onto a hot greased pan.","Cook until bubbles form, then flip and cook the other side."],"rating":4.7,"reviews":312,"description":"Fluffy pancakes, ready in 25 minutes."}
+]
+hint: if this is the wrong list, pass --root <index> of the list or of one item, from winuse get-window-state 301

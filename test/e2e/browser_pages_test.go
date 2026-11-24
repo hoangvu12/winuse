@@ -140,6 +140,7 @@ func runBrowserPages(t *testing.T, sys *browser.System, b browser.Browser, srv *
 	t.Run("upload", p.upload)
 	t.Run("download", p.download)
 	t.Run("navigation-wait-eval", p.navigation)
+	t.Run("http-status", p.httpStatus)          // http_status_test.go, bladebro-ideas 02
 	t.Run("settle-and-waits", p.settleAndWaits) // page_settle_test.go, bladebro-ideas 07
 }
 
@@ -975,6 +976,7 @@ func pagesHandler(dir string) http.Handler {
 		io.WriteString(w, downloadBody)
 	})
 	settleHandlers(mux) // page_settle_test.go: /e2e-slow and /e2e-ws
+	statusHandlers(mux) // http_status_test.go: /e2e-status and /e2e-redirect
 	mux.Handle("/", http.FileServer(http.Dir(dir)))
 	return mux
 }

@@ -536,10 +536,12 @@ func (s Services) pageClick(ctx context.Context, w win.WindowInfo, index int, o 
 		}
 	}
 	if !headed {
-		run.act = func(ctx context.Context, in *page.Input, aim page.Aim) error {
+		eff := &pageEffect{noun: "click", index: index} // pageeffect.go: what the click did (bladebro-ideas 06)
+		run.act = eff.wrapAim(o, func(ctx context.Context, in *page.Input, aim page.Aim) error {
 			return in.ClickWith(ctx, aim.Point, pageMouseButton(button), count, mods.CDP())
-		}
-		return s.pageClickRun(ctx, run, o, button) // pageelements.go: chooser, download, context menu
+		})
+		out, rerr := s.pageClickRun(ctx, run, o, button) // pageelements.go: chooser, download, context menu
+		return eff.finish(ctx, w.ID, out, rerr)
 	}
 	if rerr := s.pageFresh(ctx, w, index, o); rerr != nil {
 		return "", nothingSent(rerr)
@@ -895,13 +897,17 @@ func (s Services) pageKeyTarget(ctx context.Context, w win.WindowInfo) (*page.Or
 }
 
 // pageKeys runs type-text or press-key into the Page's focused element,
-// when the Page holds the focus; handled is false otherwise.
-func (s Services) pageKeys(ctx context.Context, ref, noun, label string, act func(ctx context.Context, in *page.Input) error) (out string, rerr *Error, handled bool) {
+// when the Page holds the focus; handled is false otherwise. eff, when
+// set, watches what the input did and notes it (pageeffect.go).
+func (s Services) pageKeys(ctx context.Context, ref, noun, label string, act func(ctx context.Context, in *page.Input) error, eff *pageEffect) (out string, rerr *Error, handled bool) {
 	if bt := tabTargetOf(ctx); bt != nil {
 		// A Tab target takes keys and text in its Page whatever has the focus
 		// there (the body too: PageDown scrolls it): there is no address bar
 		// or Window route to fall back to (ADR 0017).
 		o := bt.docOrigin()
+		if eff != nil {
+			act = eff.wrapKeys(o, act)
+		}
 		var target win.Rect
 		if bt.active && page.OpenDialog(o.Client, o.TopSession()) == nil {
 			// Shown: the Agent Cursor goes to the focused element.
@@ -912,6 +918,9 @@ func (s Services) pageKeys(ctx context.Context, ref, noun, label string, act fun
 			cancel()
 		}
 		out, rerr = s.runPageInput(ctx, bt.w, o, pageInput{noun: noun, label: label, target: target, act: act, tabChecked: true})
+		if eff != nil {
+			out, rerr = eff.finish(ctx, bt.w.ID, out, rerr)
+		}
 		return out, rerr, true
 	}
 	if !s.pageCapable() {
@@ -926,7 +935,13 @@ func (s Services) pageKeys(ctx context.Context, ref, noun, label string, act fun
 		return "", nil, false
 	}
 	target, _ := s.pageScreenRect(ctx, w, o, f.Rect())
+	if eff != nil {
+		act = eff.wrapKeys(o, act)
+	}
 	out, rerr = s.runPageInput(ctx, w, o, pageInput{noun: noun, label: label, target: target, act: act, tabChecked: true})
+	if eff != nil {
+		out, rerr = eff.finish(ctx, w.ID, out, rerr)
+	}
 	return out, rerr, true
 }
 
@@ -936,15 +951,16 @@ func (s Services) pageKeys(ctx context.Context, ref, noun, label string, act fun
 func (s Services) pageTypeText(ctx context.Context, ref, text string) (string, *Error, bool) {
 	return s.pageKeys(ctx, ref, "text", "type", func(ctx context.Context, in *page.Input) error {
 		return in.TypeText(ctx, text)
-	})
+	}, nil)
 }
 
 // pagePressKey presses a key or chord into the Page's focused element,
 // modifiers included, through Input.dispatchKeyEvent.
 func (s Services) pagePressKey(ctx context.Context, ref string, chord keys.Chord) (string, *Error, bool) {
+	eff := &pageEffect{noun: "key", index: -1} // pageeffect.go: what the key did (bladebro-ideas 06)
 	return s.pageKeys(ctx, ref, "key", "press "+chord.String(), func(ctx context.Context, in *page.Input) error {
 		return in.PressKeys(ctx, chord)
-	})
+	}, eff)
 }
 
 // pageStep is the Batch's scope question for a step that would reach the

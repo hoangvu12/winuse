@@ -448,6 +448,7 @@ func CommandsWith(s Services) map[string]Command {
 	// Window screenshot, since it hides the indicator and the cursor.
 	cmds["list-displays"] = listDisplays(s)
 	cmds["screenshot"] = displayScreenshot(s)
+	cmds["extract"] = extractCommand(s) // extract.go: a Page's rows as JSON, reads only
 	// The notifications' Desktop commands (notifications.go, desktop parity
 	// ticket 18): list-notifications only reads; the two actions take the
 	// desktop lane below. open-shell (openshell.go) is Headed only.
@@ -455,6 +456,10 @@ func CommandsWith(s Services) map[string]Command {
 	cmds["notification-action"] = notificationAction(s)
 	cmds["notification-dismiss"] = notificationDismiss(s)
 	cmds["open-shell"] = openShell(s)
+	// The Notes (notes.go, ADR 0024): they read and write notes.json only.
+	for name, cmd := range noteCommands(s) {
+		cmds[name] = cmd
+	}
 
 	// The serialized registry: every control-path command runs alone, the
 	// Actions that can open a Window report it (opened.go), and so does an
@@ -510,12 +515,14 @@ func observationOnlyCommand(name string) bool {
 	case "list-windows", "get-window", "list-apps", "get-window-state", "find", "record-tree", "launch-app",
 		"tab-list",      // reads a browser Window's Tabs only (tabs.go)
 		"list-displays", // a Desktop command that only reads the monitors (display.go)
+		"extract",       // reads a Page's rows in an isolated world (extract.go)
 		StatusCommand:   // read-only probes (status.go): never waits behind an Action
 		return true
 	case "list-notifications": // a Desktop command that only reads the toast banners (notifications.go)
 		return true
 	}
-	return strings.HasPrefix(name, "browser-")
+	// The note commands touch no Window (notes.go); the store has its own lock.
+	return strings.HasPrefix(name, "browser-") || strings.HasPrefix(name, "note-")
 }
 
 // WaitingEscWatch is the Esc service's side of stopping requests that wait

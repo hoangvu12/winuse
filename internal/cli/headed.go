@@ -106,6 +106,8 @@ func stripCommandFlags(cmd string, args []string, flagLen func([]string) int) (r
 		return stripFlagsBatch(args, flagLen)
 	case "launch-app":
 		return stripFlagsLaunch(args, flagLen)
+	case "note":
+		return stripFlagsNote(args, flagLen) // note.go: note add's text is literal
 	}
 	return stripFlagsBefore(args, -1, flagLen)
 }

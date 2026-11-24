@@ -90,6 +90,7 @@ var commandTimeouts = map[string]time.Duration{
 	"wait":     BrowserTimeout,
 	"eval":     BrowserTimeout,
 	"read":     BrowserTimeout, // read.go, bladebro-ideas ticket 25
+	"extract":  BrowserTimeout, // extract.go: a Page's rows, over the same connection
 }
 
 // CommandTimeout returns a command's explicitly configured budget, if it
@@ -727,6 +728,12 @@ type Response struct {
 	// Trace is the helper's part of a trace line (desktop-parity ticket
 	// 19, trace.go), only when Request.Trace asked for it.
 	Trace *Trace `json:"trace,omitempty"`
+
+	// Effect is what a Headless Page click or key did to its Page
+	// (bladebro-ideas ticket 06): navigated, changed, text, none or
+	// unknown; "" for any other command, a Batch and a failure. Printed
+	// only under --json.
+	Effect string `json:"effect,omitempty"`
 }
 
 // ErrLineTooLarge is returned when a line exceeds MaxLine.
