@@ -77,16 +77,32 @@ func markPageLogs(ctx context.Context, c *cdp.Client, session, targetID string, 
 		return
 	}
 	rec.mu.Lock()
+	marked := rec.fill(l, session)
+	rec.mu.Unlock()
+	if marked {
+		return
+	}
+	// Mark waits for a Log.enable sent just now: outside the lock.
+	mark := l.Mark(ctx)
+	rec.mu.Lock()
 	defer rec.mu.Unlock()
+	if !rec.fill(l, session) {
+		rec.marks = append(rec.marks, logMark{log: l, mark: mark, c: c, session: session, windowID: windowID})
+	}
+}
+
+// fill reports whether the record marked l already, giving its mark the
+// session if it had none. The caller holds rec.mu.
+func (rec *logMarks) fill(l *page.TabLog, session string) bool {
 	for i, m := range rec.marks {
 		if m.log == l {
 			if m.session == "" {
 				rec.marks[i].session = session
 			}
-			return
+			return true
 		}
 	}
-	rec.marks = append(rec.marks, logMark{log: l, mark: l.Mark(), c: c, session: session, windowID: windowID})
+	return false
 }
 
 // reportLogs wraps an Action command: the error entries its Page Actions'

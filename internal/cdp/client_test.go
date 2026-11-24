@@ -175,6 +175,52 @@ func TestEventsRoutePerSessionAndMethod(t *testing.T) {
 	}
 }
 
+// A listener has seen every event the browser sent before a command's
+// answer by the time the command's Wait returns: no polling, no sleep.
+func TestListenSeesEventsBeforeTheAnswer(t *testing.T) {
+	s := newServer(t)
+	s.Handle("Log.enable", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
+		for i := 0; i < 20; i++ {
+			c.Event(m.SessionID, "Log.entryAdded", map[string]int{"n": i})
+		}
+		c.Event("S2", "Log.entryAdded", map[string]int{"n": -1})
+		c.Event(m.SessionID, "Page.loadEventFired", nil)
+		return nil, nil
+	})
+	c := dial(t, s)
+	var mu sync.Mutex
+	var got []int
+	stop := c.Listen("S1", "Log.entryAdded", func(ev Event) {
+		var p struct{ N int }
+		json.Unmarshal(ev.Params, &p)
+		mu.Lock()
+		got = append(got, p.N)
+		mu.Unlock()
+	})
+	if _, err := c.CallSession(context.Background(), "S1", "Log.enable", nil); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	n := len(got)
+	inOrder := true
+	for i, v := range got {
+		inOrder = inOrder && v == i
+	}
+	mu.Unlock()
+	if n != 20 || !inOrder {
+		t.Fatalf("when the answer came the listener had %v, want 0..19", got)
+	}
+	stop()
+	if _, err := c.CallSession(context.Background(), "S1", "Log.enable", nil); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 20 {
+		t.Errorf("after stop the listener got %d more events", len(got)-20)
+	}
+}
+
 func next(t *testing.T, s *Subscription) Event {
 	t.Helper()
 	select {

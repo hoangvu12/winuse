@@ -16,9 +16,10 @@ import (
 	"github.com/hoangvu12/winuse/internal/cdp/cdptest"
 )
 
-// logEntry is a Log.entryAdded event's params, stamped at t.
+// logEntry is a Log.entryAdded event's params, stamped at t to the
+// microsecond, as Chrome stamps them.
 func logEntry(t time.Time, source, level, text, url string) map[string]any {
-	e := map[string]any{"source": source, "level": level, "text": text, "timestamp": float64(t.UnixNano()) / 1e6}
+	e := map[string]any{"source": source, "level": level, "text": text, "timestamp": float64(t.UnixMicro()) / 1000}
 	if url != "" {
 		e["url"] = url
 	}
@@ -49,7 +50,7 @@ func noRuntimeOrNetwork(t *testing.T, srv *cdptest.Server) {
 
 func TestLogEnableReplaysTheEntriesFromBefore(t *testing.T) {
 	f := newFakeTab(t)
-	early := time.Now().Add(-time.Minute)
+	early := time.Now().Add(-time.Minute).Truncate(time.Microsecond)
 	replayOn(f.srv,
 		logEntry(early, "network", "error", notFound, "https://site.test/api/save"),
 		logEntry(early.Add(time.Second), "security", "error", "Refused to load the image 'https://x.test/a.png' because it violates the following Content Security Policy directive: \"img-src 'self'\".", ""))
@@ -59,9 +60,9 @@ func TestLogEnableReplaysTheEntriesFromBefore(t *testing.T) {
 	if len(got) != 2 || got[0].Source != "network" || got[0].URL != "https://site.test/api/save" || got[1].Source != "security" || got[1].Level != "error" {
 		t.Fatalf("entries %+v", got)
 	}
-	// The original times, not when winuse heard of them.
-	if d := got[0].Time.Sub(early); d < -time.Millisecond || d > time.Millisecond {
-		t.Errorf("time %v, want %v", got[0].Time, early)
+	// The original times to the microsecond, not when winuse heard of them.
+	if !got[0].Time.Equal(early) || !got[1].Time.Equal(early.Add(time.Second)) {
+		t.Errorf("times %v %v, want %v and a second later", got[0].Time, got[1].Time, early)
 	}
 	if TabLogOf(f.c, "T1") != l || WatchLog(context.Background(), f.c, "S", "T1") != l {
 		t.Error("a second watch or lookup found another log")
@@ -148,17 +149,23 @@ func TestTabLogIsPerTab(t *testing.T) {
 	}
 }
 
+// A mark right after the session's Log.enable went out waits for its
+// replay, so what the Page logged before is not counted after the mark.
+// What joins later counts whatever its time: the browser's clock is not
+// winuse's, and one a little behind must not lose an entry.
 func TestTabLogSinceAMark(t *testing.T) {
 	f := newFakeTab(t)
+	replayOn(f.srv, logEntry(time.Now().Add(-time.Minute), "network", "error", "replayed", ""))
 	l := WatchLog(context.Background(), f.c, "S", "T1")
-	before := time.Now().Add(-time.Second)
-	f.srv.Event("S", "Log.entryAdded", logEntry(before, "network", "error", "before", ""))
-	waitFor(t, "the first entry", func() bool { return len(l.Entries()) == 1 })
-	m := l.Mark()
-	// Replayed by a new session: old, though it arrives after the mark.
-	f.srv.Event("S", "Log.entryAdded", logEntry(before.Add(-time.Minute), "network", "error", "replayed", ""))
-	f.srv.Event("S", "Log.entryAdded", logEntry(time.Now().Add(time.Millisecond), "network", "error", "during", ""))
-	waitFor(t, "the entries", func() bool { return len(l.Entries()) == 3 })
+	m := l.Mark(context.Background()) // no Settle first
+	if got := l.Entries(); len(got) != 1 || got[0].Text != "replayed" {
+		t.Fatalf("the mark did not wait for the replay: %+v", got)
+	}
+	if got := l.Since(m); len(got) != 0 {
+		t.Errorf("the replay counted after the mark: %+v", got)
+	}
+	f.srv.Event("S", "Log.entryAdded", logEntry(time.Now().Add(-5*time.Millisecond), "network", "error", "during", ""))
+	waitFor(t, "the entry", func() bool { return len(l.Entries()) == 2 })
 	got := l.Since(m)
 	if len(got) != 1 || got[0].Text != "during" {
 		t.Errorf("since the mark: %+v", got)
@@ -210,8 +217,7 @@ func TestWatchLogWithoutASession(t *testing.T) {
 	if l == nil {
 		t.Fatal("no log")
 	}
-	m := l.Mark()
-	time.Sleep(2 * time.Millisecond)
+	m := l.Mark(context.Background())
 	replayOn(f.srv, logEntry(time.Now(), "network", "error", notFound, "https://a.test/x"))
 	if WatchLog(context.Background(), f.c, "S", "T1") != l {
 		t.Fatal("the attached Tab got another log")
