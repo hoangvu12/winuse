@@ -6,7 +6,9 @@ import "strings"
 // strings are the ones UI Automation Elements use (wstate.RoleName), so a
 // Page Element and a frame Element read alike. CDP has a few roles UIA
 // has no word for; those get a plain English word of their own: heading,
-// dialog, and clickable for an element the cursor-pointer pass found.
+// dialog, the landmarks main, navigation, banner, footer (contentinfo) and
+// complementary, and clickable for an element the cursor-pointer pass
+// found.
 
 // kind says what the renderer does with a node of a role.
 type kind int
@@ -99,27 +101,31 @@ var roleTable = map[string]roleRule{
 	"video":                {"group", keepNamed},
 	"audio":                {"group", keepNamed},
 
-	// Landmarks and groups: a line only when named.
-	"group":         {"group", keepNamed},
-	"radiogroup":    {"group", keepNamed},
-	"region":        {"group", keepNamed},
-	"section":       {"group", keepNamed},
-	"article":       {"group", keepNamed},
-	"form":          {"group", keepNamed},
-	"search":        {"group", keepNamed},
-	"navigation":    {"group", keepNamed},
-	"main":          {"group", keepNamed},
-	"banner":        {"group", keepNamed},
-	"contentinfo":   {"group", keepNamed},
-	"complementary": {"group", keepNamed},
-	"figure":        {"group", keepNamed},
-	"tabpanel":      {"group", keepNamed},
-	"details":       {"group", keepNamed},
-	"application":   {"group", keepNamed},
-	"document":      {"group", keepNamed},
-	"feed":          {"group", keepNamed},
-	"log":           {"group", keepNamed},
-	"note":          {"group", keepNamed},
+	// The main content and the chrome landmarks: always a line, named or
+	// not, so a read can fold the chrome under its budget and tell it from
+	// content (wstate.View, bladebro-ideas 08).
+	"main":          {"main", keep},
+	"navigation":    {"navigation", keep},
+	"banner":        {"banner", keep},
+	"contentinfo":   {"footer", keep},
+	"complementary": {"complementary", keep},
+
+	// Other landmarks and groups: a line only when named.
+	"group":       {"group", keepNamed},
+	"radiogroup":  {"group", keepNamed},
+	"region":      {"group", keepNamed},
+	"section":     {"group", keepNamed},
+	"article":     {"group", keepNamed},
+	"form":        {"group", keepNamed},
+	"search":      {"group", keepNamed},
+	"figure":      {"group", keepNamed},
+	"tabpanel":    {"group", keepNamed},
+	"details":     {"group", keepNamed},
+	"application": {"group", keepNamed},
+	"document":    {"group", keepNamed},
+	"feed":        {"group", keepNamed},
+	"log":         {"group", keepNamed},
+	"note":        {"group", keepNamed},
 
 	// Never lines.
 	"generic":          {"", wrapper},

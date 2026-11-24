@@ -8,7 +8,7 @@ Window: "Shop - Google Chrome", App: chrome.exe.
 				6 button Back
 				7 edit (settable, string) Address and search bar Value: https://example.test/
 			8 document Shop Value: https://example.test/
-				9 group Main
+				9 navigation Main
 					10 list
 						11 list item
 							12 link Home

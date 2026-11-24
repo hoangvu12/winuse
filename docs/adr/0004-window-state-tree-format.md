@@ -339,3 +339,50 @@ goes, and `find --role heading` could not show an outline.
   read's characters, more in tokens, since URLs tokenize densely. `read`
   measured full URLs at half its output (ticket 12). The agent that needs
   addresses asks with `--urls` or `find --role link`.
+
+## Amendment: Page landmarks, folded before the cut; the cut note by role (bladebro-ideas 08, 2026-11-24)
+
+On a big Page, site chrome (nav menus, headers, footers, sidebars) took
+much of the read, and an unnamed landmark had no line, so its links read
+like content. The cut note gave a count and an index only.
+
+- **Landmark roles.** A Page's `main`, `navigation`, `banner`,
+  `contentinfo` and `complementary` are always lines, named or not, with
+  their own role words: `main`, `navigation`, `banner`, `footer`,
+  `complementary` (a named one used to print as `group`). Other landmarks
+  (`region`, `search`, `form`, ...) stay `group` lines only when named.
+  UIA has none of these roles, so native Windows print as before.
+- **Folding: a view, only under the cap.** After the bare-container fold,
+  a full read still too long for its cap folds, on a Page with main
+  content (a `main` or `dialog` Element), each `navigation`, `banner`,
+  `footer` and `complementary` that holds 3 or more Elements, the outer
+  one of two nested:
+  `...[ (+N Elements folded; --root <index> shows them)]`, after the rest
+  of the line (no `--root` part on a Tab target, which takes none). The
+  note names the fold: `folding unnamed containers (as --compact does)
+  and Page landmarks to fit --max-chars N left out ...`. The stored Window
+  State stays whole and every folded index resolves; `--root` on a Page
+  Element prints it from the stored read.
+- **Never folded:** a landmark that holds the focused Element, main
+  content, or an Element whose line changed since the Agent's earlier
+  Window State of the Window or Tab (by `wstate.Diff`, which a plain read
+  now takes too). When more than `DiffThreshold` of the read changed, the
+  earlier read was another page and nothing counts as changed.
+- **Not the default** (measured below): a read that fits prints every
+  link, as an agent that needs a nav link should not pay a `--root` round
+  trip; so no flag turns it off. `--max-chars 0` and `--out` never fold.
+- **Diffs unchanged:** `--diff` and `--observe=diff` lines compare and
+  print the whole State; only a whole read printed in a diff's place
+  folds.
+- **The cut note by role.** `(from Element N on: 30 link, 8 button, 3
+  edit)`: the lines left out, the most first, then by role name, so a page
+  always gives the same text; past five roles the fifth is `other`. It is
+  every cut's (`find`, `--root`, diffs, native reads). A heading's
+  `level N` is its state, not its role. The output still fits the cap:
+  when the counts make the note longer, one line fewer prints.
+- **Measured** (estimated from five real pages' link lists; this run
+  could not start Chrome): the chrome's share of a read is large on
+  documentation with a sidebar (MDN about 75%) and small on articles and
+  long docs (Wikipedia about 20%, Python's `json` docs about 6%,
+  go.dev's Effective Go about 3%). See
+  `.scratch/bladebro-ideas/issues/08-fold-landmarks-and-cut-roles.md`.
