@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/keys"
 	"github.com/hoangvu12/winuse/internal/protocol"
@@ -54,11 +55,7 @@ func typeText(s Services) Command {
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("type-text: "+err.Error(), typeTextUsageHint)
 		}
-		if a.Text == "" {
-			return "", Fail("type-text: text is required",
-				"pass the text as one argument; quote it if it contains spaces")
-		}
-		interval, ierr := intervalOf(a)
+		interval, ierr := typeTextInput(a)
 		if ierr != nil {
 			return "", ierr
 		}
@@ -132,6 +129,58 @@ func typeText(s Services) Command {
 	}
 }
 
+// typeTextInput checks type-text's arguments alone, before anything
+// resolves: the text, --interval-ms, and --into's Element Reference, which
+// does not go with --post. It returns the pause between characters. A
+// Batch runs it on a type-text step while it prepares (batchcheck.go).
+func typeTextInput(a protocol.TypeTextArgs) (time.Duration, *Error) {
+	if a.Text == "" {
+		return 0, Fail("type-text: text is required",
+			"pass the text as one argument; quote it if it contains spaces")
+	}
+	interval, ierr := intervalOf(a)
+	if ierr != nil {
+		return 0, ierr
+	}
+	if typesInto(a) {
+		if a.Post {
+			return 0, Fail("type-text: --into and --post cannot be combined",
+				"--into types into the Element you name; --post posts to whatever holds the focus; pass one of them")
+		}
+		if _, terr := parseElementTarget("type-text --into", a.IntoIndex, a.IntoRef, nil, typeIntoUsageHint); terr != nil {
+			return 0, terr
+		}
+	}
+	return interval, nil
+}
+
+// pressKeyChord checks press-key's arguments alone, before anything
+// resolves: the key or chord parses, a Blocked Combo carries --force, and
+// a posted chord with a modifier is one the attached key state route can
+// post (never a Blocked Combo, --force or not). A Batch runs it on a
+// press-key step while it prepares (batchcheck.go).
+func pressKeyChord(a protocol.PressKeyArgs) (keys.Chord, *Error) {
+	chord, err := keys.Parse(a.Key)
+	if err != nil {
+		return nil, keyError(err)
+	}
+	if e := blockedComboError(chord, a.Force); e != nil {
+		return nil, e
+	}
+	if a.Post && !a.Headed && postedModifier(chord) {
+		// The attached key state route (headless-max ticket 07), planned
+		// once here so a chord it cannot post is refused before anything.
+		// A posted Alt+F4 would close the Window behind the user's back.
+		if blockedComboError(chord, false) != nil {
+			return nil, blockedPostRefusal(chord)
+		}
+		if _, err := win.PlanPostedChord(chord, ""); err != nil {
+			return nil, modifierRefusal(chord, err)
+		}
+	}
+	return chord, nil
+}
+
 // pressKey runs `winuse press-key <window> <key>`. With `headed`, the
 // Window is activated and verified in the foreground, then the key (or
 // chord, keys down in order and up in reverse) is injected.
@@ -150,32 +199,19 @@ func pressKey(s Services) Command {
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("press-key: "+err.Error(), pressKeyUsageHint)
 		}
-		chord, err := keys.Parse(a.Key)
-		if err != nil {
-			return "", keyError(err)
-		}
-		if e := blockedComboError(chord, a.Force); e != nil {
-			return "", e
+		chord, cerr := pressKeyChord(a)
+		if cerr != nil {
+			return "", cerr
 		}
 		if a.Post {
 			// Posted Keys (ADR 0011, Decision 5): WM_KEYDOWN and WM_KEYUP
 			// to the focused control, no foreground; a chord with
-			// modifiers through attached key state (postChord).
+			// modifiers through attached key state (postChord), checked
+			// and planned by pressKeyChord.
 			if a.Headed {
 				return "", postFlagsError("press-key")
 			}
 			if postedModifier(chord) {
-				// A chord with Control, Shift or Alt: the attached key
-				// state route (headless-max ticket 07), planned once here
-				// so a chord it cannot post is refused before anything. A
-				// Blocked Combo is never posted, --force or not: a posted
-				// Alt+F4 would close the Window behind the user's back.
-				if blockedComboError(chord, false) != nil {
-					return "", blockedPostRefusal(chord)
-				}
-				if _, err := win.PlanPostedChord(chord, ""); err != nil {
-					return "", modifierRefusal(chord, err)
-				}
 				return s.postKeys(ctx, a.Window, "press "+chord.String(), func(w win.WindowInfo, target uint64) (int, error) {
 					return s.postChord(w, target, chord)
 				})

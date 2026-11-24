@@ -65,6 +65,21 @@ func selectTextSpan(a protocol.SelectTextArgs) (uia.TextSpan, *Error) {
 	return span, nil
 }
 
+// selectTextInput checks select-text's arguments alone, before anything
+// resolves: the Element Reference and the span. A Batch runs it on a
+// select-text step while it prepares (batchcheck.go).
+func selectTextInput(a protocol.SelectTextArgs) (elementTarget, uia.TextSpan, *Error) {
+	target, terr := parseElementTarget("select-text", a.ElementIndex, a.Ref, nil, selectTextUsageHint)
+	if terr != nil {
+		return elementTarget{}, uia.TextSpan{}, terr
+	}
+	span, serr := selectTextSpan(a)
+	if serr != nil {
+		return elementTarget{}, uia.TextSpan{}, serr
+	}
+	return target, span, nil
+}
+
 // headlessSelectText is the routing predicate's half for select-text: an
 // Element Index or name:/id: reference with a valid span.
 func headlessSelectText(a protocol.SelectTextArgs) bool {
@@ -86,11 +101,7 @@ func selectText(s Services) Command {
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("select-text: "+err.Error(), selectTextUsageHint)
 		}
-		target, terr := parseElementTarget("select-text", a.ElementIndex, a.Ref, nil, selectTextUsageHint)
-		if terr != nil {
-			return "", terr
-		}
-		span, serr := selectTextSpan(a)
+		target, span, serr := selectTextInput(a)
 		if serr != nil {
 			return "", serr
 		}

@@ -53,10 +53,7 @@ func typesInto(a protocol.TypeTextArgs) bool {
 // the Page route, then, with headed, v1's click and type; otherwise the
 // classic edit route or the refusal.
 func (s Services) typeTextInto(ctx context.Context, a protocol.TypeTextArgs) (string, *Error) {
-	if a.Post {
-		return "", Fail("type-text: --into and --post cannot be combined",
-			"--into types into the Element you name; --post posts to whatever holds the focus; pass one of them")
-	}
+	// typeTextInput refused --post and a bad reference already.
 	target, terr := parseElementTarget("type-text --into", a.IntoIndex, a.IntoRef, nil, typeIntoUsageHint)
 	if terr != nil {
 		return "", terr

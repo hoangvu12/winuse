@@ -50,7 +50,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hoangvu12/winuse/internal/keys"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/win"
 )
@@ -94,15 +93,15 @@ func batch(commands map[string]Command, s Services) Command {
 
 		// Prepare every step before any input is sent: a step's Kind must
 		// be a batchable Action (protocol.BatchStepKinds) and its
-		// arguments well-formed JSON with the Batch's Window injected —
-		// the same rule press-key's key validation follows, so a
-		// malformed Batch never acts. A step's value-level validation
-		// (key names, secondary actions, element availability) still runs
-		// at its turn: it may depend on the live Window, and the failure
-		// then names its step. A posted step that is headed, by its own
-		// flag or the Batch's, is refused here too (postFlagsError), and so
-		// is a press-key step with a Blocked Combo and no `force` of its own
-		// (blockedStep), so the steps before it never act.
+		// arguments well-formed JSON with the Batch's Window injected, so a
+		// malformed Batch never acts. A posted step that is headed, by its
+		// own flag or the Batch's, is refused here too (postFlagsError), and
+		// so is every value its command checks from its arguments alone
+		// (checkStep, bladebro-ideas ticket 04: key names and Blocked
+		// Combos, Secondary Actions, Element Reference syntax, wait kinds,
+		// timeouts, upload's files...), naming the step and saying nothing
+		// was sent. What depends on the live Window or Page (whether an
+		// Element exists or is enabled) still fails at the step's turn.
 		//
 		// A step may name its own Window (desktop-parity ticket 24): it
 		// resolves here with the Batch's, so a step's Window that does not
@@ -149,8 +148,8 @@ func batch(commands map[string]Command, s Services) Command {
 				}
 				return "", Fail(fmt.Sprintf("batch: Action %d (%s): %s", i+1, st.Kind, e.Msg), e.Hint)
 			}
-			if e := blockedStep(st.Kind, injected); e != nil {
-				return "", Fail(fmt.Sprintf("batch: Action %d (%s): %s", i+1, st.Kind, e.Msg), e.Hint)
+			if e := checkStep(st.Kind, injected); e != nil {
+				return "", nothingSent(&Error{Msg: fmt.Sprintf("batch: Action %d (%s): %s", i+1, st.Kind, e.Msg), Hint: e.Hint, Exit: 1, Code: e.Code})
 			}
 			steps = append(steps, batchStep{kind: st.Kind, cmd: cmd, args: injected, own: st.Window, inNew: st.InNew})
 		}
@@ -488,24 +487,6 @@ func postsHeaded(raw json.RawMessage) bool {
 		Headed bool `json:"headed"`
 	}
 	return json.Unmarshal(raw, &f) == nil && f.Post && f.Headed
-}
-
-// blockedStep is blockedComboError for one prepared step: a press-key step
-// whose key parses to a Blocked Combo without the step's `force`. Other
-// steps, and keys that do not parse (refused at their turn), pass.
-func blockedStep(kind string, raw json.RawMessage) *Error {
-	if kind != "press-key" {
-		return nil
-	}
-	var a protocol.PressKeyArgs
-	if json.Unmarshal(raw, &a) != nil {
-		return nil
-	}
-	chord, err := keys.Parse(a.Key)
-	if err != nil {
-		return nil
-	}
-	return blockedComboError(chord, a.Force)
 }
 
 // withHeaded sets `headed: true` on one step's raw arguments (a Batch sent
