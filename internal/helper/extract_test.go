@@ -32,7 +32,7 @@ func extractRig(t *testing.T, reply map[string]any) *winRig {
 
 func twoRows() map[string]any {
 	return map[string]any{"kind": "list", "container": "<ol>", "label": "Results", "found": 2,
-		"rows": []any{map[string]any{"title": "A", "url": "https://a.test/"}, map[string]any{"title": "B", "url": "https://b.test/"}},
+		"rows":      []any{map[string]any{"title": "A", "url": "https://a.test/"}, map[string]any{"title": "B", "url": "https://b.test/"}},
 		"page_says": map[string]any{"total": 1234, "noun": "results"}, "wall": ""}
 }
 

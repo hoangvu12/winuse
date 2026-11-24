@@ -362,7 +362,7 @@ func TestBrowserWalkFallbackIsTodaysWholeRead(t *testing.T) {
 	}
 	for reason, frame := range map[string]func() *wstate.Tree{
 		"UI Automation shows several documents and none is named after the active Tab": several,
-		"UI Automation shows no document for the active Tab":                             noDoc,
+		"UI Automation shows no document for the active Tab":                           noDoc,
 	} {
 		s, trees := walkServices(t, &fakePages{raw: raw}, frame)
 		out, _ := runCommand(t, CommandsWith(s), "get-window-state", windowRef{Window: "301"})
