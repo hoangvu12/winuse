@@ -1,6 +1,6 @@
 # 01: `name:` matches a control and its own label
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 From: a real session on 2026-11-24, reading the user's Recap App (`recap.exe`)
 
@@ -36,3 +36,7 @@ retry by index, although the two matches are one control.
   a text that is a sibling (still ambiguous), two buttons (still
   ambiguous), a child that is a link (still ambiguous).
 - Update the skill's "Name an Element" wording only if it no longer holds.
+
+## Answer
+
+Merged as f99f35f (commit 999160a). A `name:` reference that matches exactly two Elements resolves to the first when it is acted on (`ActedOn()`) and the second is non-interactive and inside it; everything else stays ambiguous. Purely structural, desktop and Pages (`wstate.ResolveElementRef`). Checked live: `name:Transcript` and `name:Summary` select Recap's tabs. Gap: a Page Element marked only `clickable` is not `ActedOn()`, so it stays ambiguous.

@@ -1,6 +1,6 @@
 # 02: Recap's transcript list can't be scrolled Headless
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 From: a real session on 2026-11-24, reading the user's Recap App (`recap.exe`, `C:\Users\ADMIN\AppData\Local\Programs\Recap\recap.exe`)
 
@@ -152,3 +152,7 @@ RangeValue reported an unknown outcome instead of refusing.
   fixture (`scroll ... Hotel left`) climbed to the desktop and called
   ScrollIntoView on another App's top-level Chromium window, which failed
   with E_FAIL (no visible effect). The bound is in the committed code.
+
+## Answer
+
+Merged (commit cae551c). When nothing above the target has a Scroll pattern, `scroll` steps through the nearest list whose ScrollItem items reach past its edge, one item per step, checked by position, refusing at the end with nothing sent; the search stops at the Window root. `set-value` refuses a read-only or out-of-range RangeValue with nothing sent. General (AccessKit/zgx in Recap; also proven on the fixture App with `-list-without-scroll`). Checked live on Recap: `down 10` twice loaded rows 01:53 → 05:49, `up` back to the top, then refused at the end. Not built: a scroll bar sibling's Scroll pattern, stepping a writable scroll bar. `into-view` still cannot prove a move in Apps whose rows never report offscreen.
