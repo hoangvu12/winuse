@@ -286,12 +286,12 @@ const effectReadJS = `function() {
 
 // effectRead is effectReadJS's answer.
 type effectRead struct {
-	Added   int    `json:"added"`
-	Removed int    `json:"removed"`
-	Text    int    `json:"text"`
-	Attrs   int    `json:"attrs"`
-	State   bool   `json:"state"`
-	Gone    bool   `json:"gone"`
+	Added   int           `json:"added"`
+	Removed int           `json:"removed"`
+	Text    int           `json:"text"`
+	Attrs   int           `json:"attrs"`
+	State   bool          `json:"state"`
+	Gone    bool          `json:"gone"`
 	By      string        `json:"by"`
 	Blind   bool          `json:"blind"`
 	Scroll  *ScrollReport `json:"scroll"`
