@@ -415,8 +415,9 @@ const usageTail = `);
                                toggle: you turn on remote debugging at
                                <browser>://inspect/#remote-debugging (winuse
                                cannot open that page; connect waits for the
-                               toggle while a window shows it), and Chrome
-                               asks once to allow the connection
+                               toggle while a window shows it); Chrome asks
+                               once to allow the connection, and winuse
+                               presses Allow itself
   browser stop [browser]      close a browser winuse launched or cloned,
                                keeping its profile
   browser ext install [browser|all] [--open]

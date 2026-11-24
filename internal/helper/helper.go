@@ -158,8 +158,11 @@ func Main() int {
 
 	// The Browser Connections (browser merge ticket 01): one connection per
 	// browser, held for the helper's lifetime, so Chrome's approval prompt
-	// appears once per helper rather than once per command. Closed on exit.
-	browsers := browser.NewManager(browser.Live())
+	// appears once per helper rather than once per command, and winuse
+	// presses its Allow itself (approve.go). Closed on exit.
+	bsys := browser.Live()
+	bsys.ApprovePrompt = approvePrompt(trees)
+	browsers := browser.NewManager(bsys)
 	defer browsers.Close()
 
 	shots := shot.NewStore()
