@@ -727,11 +727,11 @@ const wallCheckBound = 2 * time.Second
 // wall: the wall check skips it.
 const chromeErrorPage = "chrome-error://"
 
-// pageWallNote is the wall Note line (bladebro-ideas 05) for the Page a
+// pageWallNote is the wall note line (bladebro-ideas 05) for the Page a
 // navigation landed on: page.BlockKind, one isolated-world call, names a
 // short challenge or block page. "" for an ordinary Page, or when the check
-// fails (the navigation landed; the Note is only a hint). winuse never
-// clicks or solves anything there: the Note sends the agent to the user. A
+// fails (the navigation landed; the note only informs). winuse never
+// clicks or solves anything there: the note sends the agent to the user. A
 // Page Action whose effect navigated (bladebro-ideas 06) adds it the same
 // way.
 func pageWallNote(ctx context.Context, c page.Caller, session string) string {

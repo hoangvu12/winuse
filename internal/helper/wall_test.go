@@ -1,8 +1,8 @@
 package helper
 
-// The wall Note after navigate, back, forward and reload
+// The wall note after navigate, back, forward and reload
 // (.scratch/bladebro-ideas ticket 05), over the fake launched Chrome
-// (winRig): the Page's block.js answer becomes one Note line, the command
+// (winRig): the Page's block.js answer becomes one note line, the command
 // stays ok, nothing more is sent to the Page, and --wait none (whose
 // document may still be the old one) is not checked. What block.js finds
 // on real pages is test/e2e's TestWallCheck. No browser runs.
@@ -105,7 +105,7 @@ func TestNavigationNotesAWall(t *testing.T) {
 	r.passiveOnly(t)
 }
 
-// A 429 wall gets both Notes: the HTTP status (bladebro-ideas 02) first,
+// A 429 wall gets both notes: the HTTP status (bladebro-ideas 02) first,
 // then the wall. Chrome's own error page for an empty body is no wall, so
 // it is not checked.
 func TestNavigationWallNoteFollowsTheStatusNote(t *testing.T) {
@@ -160,8 +160,8 @@ func TestNavigationRecordsTheStatusAndTheWall(t *testing.T) {
 	}
 }
 
-// A check that fails says nothing: the navigation landed, and the Note is
-// only ever a hint.
+// A check that fails says nothing: the navigation landed, and the note is
+// only ever information.
 func TestNavigationWallCheckFailureStaysQuiet(t *testing.T) {
 	r := newWinRig(t)
 	p := &wallPage{throw: true}

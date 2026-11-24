@@ -208,7 +208,7 @@ func TestPagePressKeySaysWhatItDid(t *testing.T) {
 }
 
 // A click or key that navigated onto a challenge or block wall adds the
-// wall Note (bladebro-ideas 05) after its own; one that changed the Page
+// wall note (bladebro-ideas 05) after its own; one that changed the Page
 // without navigating is not checked.
 func TestPageActionThatNavigatedOntoAWall(t *testing.T) {
 	r := newPageRig(t)

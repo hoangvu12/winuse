@@ -13,7 +13,7 @@ package helper
 //	Note: the Page changed (text only)
 //	Note: no change seen in the Page[; element N is now covered by <x> at its centre | ; element N is gone from the Page]; the click was delivered, so read the Page before repeating it
 //
-// A navigation that landed adds the wall Note (bladebro-ideas 05) after
+// A navigation that landed adds the wall note (bladebro-ideas 05) after
 // its own when the new Page looks like a challenge or block wall.
 //
 // A change to elements, attributes, a control's state, the focus or a

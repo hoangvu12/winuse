@@ -161,7 +161,7 @@ winuse drag <window> <element> <element|@x,y>
   (`--json` adds `"wall": "<kind>"`). Stop there and ask the user, as
   Safety says: never click the challenge or try to solve it. A docs page
   that mentions a rate limit, or a login form with a CAPTCHA widget, gets
-  no Note.
+  no note.
 - `Note: the Page answered HTTP 404 Not Found` (or 429, 503 ...) after
   `navigate`, `back`, `forward` or `reload` means the Page you see is the
   site's error page, not the content: the navigation still says `ok`.

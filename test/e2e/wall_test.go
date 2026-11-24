@@ -12,8 +12,8 @@
 // wall on each, as they carry the same check.
 //
 // TestNavigateNotesAWall runs the real `winuse navigate` onto a wall in a
-// browser `winuse browser launch` started: ok with the Note, the --json
-// wall field, and no Note on an ordinary page.
+// browser `winuse browser launch` started: ok with the note, the --json
+// wall field, and no note on an ordinary page.
 //
 // User-run only (see the package comment); an agent must never start it.
 
