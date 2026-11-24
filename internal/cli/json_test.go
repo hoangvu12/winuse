@@ -54,6 +54,12 @@ func TestJSONLineForEachOutcome(t *testing.T) {
 			want: jsonLine{OK: true, Command: "click", Out: "clicked element 3\n"},
 		},
 		{
+			// bladebro-ideas ticket 06: what a Page click did.
+			name: "a Page click's effect", stdout: "ok\nNote: the Page changed (text only)\n",
+			resp: &protocol.Response{OK: true, Out: "ok\nNote: the Page changed (text only)\n", Effect: "text"},
+			want: jsonLine{OK: true, Command: "click", Out: "ok\nNote: the Page changed (text only)\n", Effect: "text"},
+		},
+		{
 			name: "helper failure", code: 1,
 			stderr: "element 3 is not available in the cached Window State for window 5; nothing was sent\nhint: run winuse get-window-state 5 again\n",
 			resp: &protocol.Response{Err: "element 3 is not available in the cached Window State for window 5; nothing was sent",
