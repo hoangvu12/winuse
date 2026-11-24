@@ -49,6 +49,24 @@ lines around it do not show it: in `find`, `--interactive`, `--depth`, an
 by its Element Index: a hint is not a name, and `name:` never matches it.
 `--full` prints no hint.
 
+On a Page, a heading says its level (`heading (level 2) Install`), so
+`find <window> --role heading` lists the Page's outline. A link's address
+prints only where asked, after its line and before any hint:
+
+```
+		14 link Forgot your password? URL: /reset
+		15 link Source URL: github.com/hoangvu12/winuse
+```
+
+A link on the Page's own site prints its path (or `#fragment` for a place
+on the same Page), one elsewhere its domain and path, cut at 60
+characters with `…`; a `javascript:` link prints none and a `data:` link
+only `data:…`. `--urls` adds them to a read, `--root` or `--observe`;
+`find`, a `--diff` or `--observe` diff and an ambiguous reference's
+candidates always print them, and a diff lists a link whose address
+changed. `--full` prints none. For a link's whole address, `read
+<window> --root <element> --urls full`.
+
 Start with the tree (a few hundred tokens); take a screenshot (image
 tokens) for canvas apps, visual layout questions, or a tree that looks
 sparse or stale. When a tree stays nearly empty, a note says so; trust it
@@ -100,7 +118,8 @@ winuse get-window-state <window> --root 42 --depth 2 --interactive
 winuse get-window-state <window> --interactive --compact   # a full read, printing only what you act on
 winuse get-window-state <window> --max-chars 20000 # stop the tree before 20000 characters, with a note
 winuse get-window-state <window> --out state.txt   # write it to a file, uncut; prints the path and the notes
-winuse get-window-state <window> --full            # Codex's text byte for byte: every ID, no cap, no hint
+winuse get-window-state <window> --urls            # a Page link's line ends with its URL
+winuse get-window-state <window> --full            # Codex's text byte for byte: every ID, no cap, no hint, no URL
 ```
 
 By default a read, `find` and `--root` stop before 28000 characters

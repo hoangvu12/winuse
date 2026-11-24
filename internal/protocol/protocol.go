@@ -196,6 +196,7 @@ type Observe struct {
 	MaxChars    *int   `json:"max_chars,omitempty"`
 	Out         string `json:"out,omitempty"` // absolute (the CLI resolves it)
 	Full        bool   `json:"full,omitempty"`
+	URLs        bool   `json:"urls,omitempty"` // a Page link's URL after its line (bladebro-ideas 01)
 }
 
 // ObservableCommands are the commands that take --observe: the Actions

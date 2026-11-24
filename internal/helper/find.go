@@ -111,6 +111,7 @@ type findCut struct {
 	narrow         string          // how to see the lines --max-chars cut, after "Narrow ..."; "" for find's
 	hints          bool            // print the controls' hints (learn-from 04); off with --full
 	inRow          bool            // with their row part: the lines do not show the rows' text
+	urls           bool            // print a Page link's URL (bladebro-ideas 01): find's always, a region's with --urls; off with --full
 }
 
 // newFindCut is find's cut: --limit, --max-chars or the default cap, the
@@ -120,7 +121,7 @@ func newFindCut(a protocol.FindArgs, matched int, shared map[string]bool) findCu
 	if a.Full {
 		return c
 	}
-	c.maxChars, c.shared, c.hints, c.inRow = defaultMaxChars, shared, true, true
+	c.maxChars, c.shared, c.hints, c.inRow, c.urls = defaultMaxChars, shared, true, true, true
 	if a.MaxChars != nil {
 		c.maxChars = *a.MaxChars
 	}
@@ -128,10 +129,13 @@ func newFindCut(a protocol.FindArgs, matched int, shared map[string]bool) findCu
 }
 
 // line is Element e's line at index, indented by tabs, its shared ID left
-// out and its hint h added.
+// out and its URL and hint h added.
 func (c findCut) line(tabs, index int, e wstate.Element, h wstate.Hint) wstate.PrintedLine {
 	e = e.WithoutSharedID(c.shared)
 	text := wstate.Line(index, &e)
+	if c.urls {
+		text = wstate.URLLine(index, &e)
+	}
 	if hint := h.Text(c.inRow); c.hints && hint != "" {
 		text += " Hint: " + hint
 	}
@@ -289,7 +293,7 @@ func windowStateShape(s Services, ctx context.Context, w win.WindowInfo, a windo
 }
 
 // windowStateUsage is get-window-state's usage line.
-const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--visible] [--compact] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]"
+const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--visible] [--compact] [--urls] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]"
 
 // readRegion is get-window-state --root: the Element's subtree, read
 // afresh and added after the Window State's indexes; a Page Element's from

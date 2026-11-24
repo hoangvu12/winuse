@@ -260,6 +260,7 @@ type windowArgs struct {
 	Full     bool   `json:"full,omitempty"`
 	Out      string `json:"out,omitempty"`     // absolute
 	Visible  bool   `json:"visible,omitempty"` // only the Elements on screen
+	URLs     bool   `json:"urls,omitempty"`    // a Page link's URL after its line (bladebro-ideas 01)
 	// MarkOffscreen marks the off-screen Elements' lines: run's read only.
 	MarkOffscreen bool `json:"mark_offscreen,omitempty"`
 
@@ -273,7 +274,7 @@ type recordArgs struct {
 }
 
 // windowStateUsage is get-window-state's usage line.
-const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--visible] [--compact] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]"
+const windowStateUsage = "usage: winuse get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--visible] [--compact] [--urls] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]"
 
 // getWindowStateCmd prints the Window State: Codex's depth-first,
 // indented, numbered Element tree — with --screenshot, the screenshot line

@@ -15,7 +15,7 @@ list-windows [--details] [--app <name>] [--shell]
 list-apps | get-window <window>
 launch-app <name|exe path> [--minimized] [--cdp] [--arg <a>]... [--cwd <dir>] [--env KEY=VALUE]... [--timeout <s>]
 close-app <app> [--force]           # --force ends what is still running: the only command that ends a process
-get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--timeout <s>]
+get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--urls] [--max-chars N | --out <file>] [--timeout <s>]
 find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
 extract <window> [--root <element>] [--as list|table|jsonld] [--limit N] [--max-chars N | --out <file>]   # a Page's list, table or JSON-LD as JSON rows

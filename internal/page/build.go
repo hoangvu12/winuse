@@ -288,7 +288,8 @@ func textOf(s *docState, n *AXNode) string {
 }
 
 // element builds a node's line: role, name, description, states, value
-// and Secondary Actions, in the UIA vocabulary.
+// and Secondary Actions, in the UIA vocabulary, plus a heading's level and
+// a link's URL.
 func (b *builder) element(s *docState, n *AXNode, role, name string) wstate.Element {
 	e := wstate.Element{Role: role, Name: name, Offscreen: s.offscreen[n.BackendDOMNodeID]}
 	if h, ok := s.hints[n.BackendDOMNodeID]; ok && n.BackendDOMNodeID != 0 {
@@ -331,6 +332,16 @@ func (b *builder) element(s *docState, n *AXNode, role, name string) wstate.Elem
 	}
 	if fieldRoles[role] {
 		e.Value = b.value(s, n, role)
+	}
+	// A heading's level and a link's address (bladebro-ideas 01), which
+	// getFullAXTree already carries.
+	switch role {
+	case "heading":
+		if level, err := strconv.Atoi(prop(n, "level")); err == nil && level > 0 {
+			e.Level = level
+		}
+	case "link":
+		e.URL = LinkURL(prop(n, "url"), b.raw.URL)
 	}
 	toggle := ""
 	switch {

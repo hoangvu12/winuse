@@ -407,14 +407,17 @@ Element not printed (Codex prints the whole tree, which a Harness's
 A third prints more (learn-from 04, ADR 0004): an unnamed control, or
 one whose role and name another shares, ends its line with
 ` Hint: <icon, image, test id or field name>, in <its row's text>`
-where that tells it apart; Codex has no such field.
+where that tells it apart; Codex has no such field. A Page link's line
+can end with ` URL: <shortened address>` (bladebro-ideas 01): with
+`--urls` on a read, always in `find` and diff lines.
 `get-window-state --full` (and `find --full`) prints Codex's text byte
-for byte, with no hint, save one more state word: an Element whose
-IsPassword reads true (or, on an Edit, does not read) has its `Value:`
-withheld and `password` last in its states (reliability-council 07);
-Codex prints the Value. **matched (grammar; byte for byte under `--full`) /
-intentionally different (roles, bounds, shared IDs, the default cap,
-hints, the `password` state)**.
+for byte, with no hint and no URL, save two more state words: an Element
+whose IsPassword reads true (or, on an Edit, does not read) has its
+`Value:` withheld and `password` in its states (reliability-council 07);
+Codex prints the Value. A Page heading has `level N` last in its states
+(bladebro-ideas 01); a UIA heading has none. **matched (grammar; byte for
+byte under `--full`) / intentionally different (roles, bounds, shared IDs,
+the default cap, hints, URLs, the `password` and `level N` states)**.
 
 ### secondary actions
 
