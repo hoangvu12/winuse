@@ -4,18 +4,24 @@ package helper
 // the fake launched Chrome (winRig) and 05's Page (pageRig): `winuse logs`
 // with the entries Log.enable replays, --clear, --json, the cut and --out;
 // the note after a Page Action that saw new error entries, with same-site
-// paths and at most 3 named. Log is the only domain turned on: never
-// Runtime.enable or Network.enable. No browser runs.
+// paths and at most 3 named. JavaScript exceptions (ticket 30): on by
+// default in a launched browser and a Tab tab new opened, after --capture
+// in the user's; the listener goes in before navigate, and an exception
+// becomes a note. Log is the only domain turned on: never Runtime.enable
+// or Network.enable. No browser runs.
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/hoangvu12/winuse/internal/browser"
 	"github.com/hoangvu12/winuse/internal/cdp/cdptest"
 	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
@@ -76,7 +82,8 @@ func TestLogsPrintsWhatThePageLoggedBeforeWinuseAttached(t *testing.T) {
 	if e != nil {
 		t.Fatalf("logs: %+v", e)
 	}
-	want := "Page: https://docs.test/ - 2 log entries, newest last (failed requests and CSP or security errors; winuse keeps the last 50 per Tab)\n" +
+	// A launched browser's Tab captures its exceptions (ticket 30).
+	want := "Page: https://docs.test/ - 2 log entries, newest last (failed requests, CSP or security errors and JavaScript exceptions; winuse keeps the last 50 per Tab)\n" +
 		clock(early) + " network error " + status404 + " https://docs.test/api/save\n" +
 		clock(early.Add(time.Second)) + " security error " + csp + "\n"
 	if out != want {
@@ -92,9 +99,177 @@ func TestLogsPrintsWhatThePageLoggedBeforeWinuseAttached(t *testing.T) {
 func TestLogsWithNothingLogged(t *testing.T) {
 	r := newWinRig(t)
 	out, e := r.run(t, "logs", protocol.LogsArgs{Window: "301"})
-	want := "Page: https://docs.test/ - no log entries (failed requests and CSP or security errors show here)\n"
+	want := "Page: https://docs.test/ - no log entries (failed requests, CSP or security errors and JavaScript exceptions show here)\n"
 	if e != nil || out != want {
 		t.Errorf("logs: %q %+v, want %q", out, e, want)
+	}
+	// In the user's own browser exceptions need --capture.
+	r = newWinRig(t)
+	r.conn.Mode = browser.ModeToggle
+	out, e = r.run(t, "logs", protocol.LogsArgs{Window: "301"})
+	want = "Page: https://docs.test/ - no log entries (failed requests and CSP or security errors show here; --capture adds JavaScript exceptions)\n"
+	if e != nil || out != want {
+		t.Errorf("logs in the user's browser: %q %+v, want %q", out, e, want)
+	}
+}
+
+// addScriptIDs answers Page.addScriptToEvaluateOnNewDocument with numbered
+// identifiers, as Chrome does.
+func addScriptIDs(srv *cdptest.Server) {
+	var mu sync.Mutex
+	n := 0
+	srv.Handle("Page.addScriptToEvaluateOnNewDocument", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		n++
+		return map[string]any{"identifier": strconv.Itoa(n)}, nil
+	})
+}
+
+// scriptsSent are the addScriptToEvaluateOnNewDocument requests, each
+// with the session it went to and whether it names a world.
+func scriptsSent(srv *cdptest.Server) []string {
+	var out []string
+	for _, m := range srv.Received() {
+		if m.Method == "Page.addScriptToEvaluateOnNewDocument" {
+			var p map[string]any
+			json.Unmarshal(m.Params, &p)
+			world, _ := p["worldName"].(string)
+			out = append(out, m.SessionID+" "+world)
+		}
+	}
+	return out
+}
+
+// exceptionBuffer is the isolated world's answer to winuse's read: whether
+// the document has the listener, and its records.
+func exceptionBuffer(covered bool, records ...map[string]any) any {
+	if records == nil {
+		records = []map[string]any{}
+	}
+	data, _ := json.Marshal(map[string]any{"c": covered, "d": 0, "r": records})
+	return map[string]any{"result": map[string]any{"type": "string", "value": string(data)}}
+}
+
+// TestLogsCaptureInTheUsersTab: in the user's own browser, logs --capture
+// installs the listener (main world, and the isolated buffer), says it
+// covers pages loaded from now on and offers reload; a later Action's
+// exception becomes a note, and logs lists it with its stack.
+func TestLogsCaptureInTheUsersTab(t *testing.T) {
+	r := newWinRig(t)
+	r.conn.Mode = browser.ModeToggle
+	addScriptIDs(r.browser.Srv)
+	if out, e := r.run(t, "logs", protocol.LogsArgs{Window: "301"}); e != nil || strings.Contains(out, "capturing") {
+		t.Fatalf("logs: %q %+v", out, e)
+	}
+	if got := scriptsSent(r.browser.Srv); len(got) != 0 {
+		t.Fatalf("the user's Tab got the listener unasked: %v", got)
+	}
+
+	r.evalReply = exceptionBuffer(false)
+	out, e := r.run(t, "logs", protocol.LogsArgs{Window: "301", Capture: true})
+	want := "Page: https://docs.test/ - no log entries (failed requests, CSP or security errors and JavaScript exceptions show here)\n" +
+		"(capturing JavaScript exceptions in this Tab from now on, while it is open: they show for pages it loads from now on; winuse reload 301 covers this one)\n"
+	if e != nil || out != want {
+		t.Errorf("logs --capture: %+v\n%q\nwant\n%q", e, out, want)
+	}
+	if got := strings.Join(scriptsSent(r.browser.Srv), ","); got != docsSession+" winuse-exceptions,"+docsSession+" " {
+		t.Errorf("scripts sent: %s; want the isolated buffer, then the main-world listener", got)
+	}
+
+	at := time.Now().Add(time.Second).Truncate(time.Millisecond)
+	r.evalReply = exceptionBuffer(true, map[string]any{"t": float64(at.UnixMilli()), "m": "Uncaught TypeError: x is undefined",
+		"u": "https://docs.test/static/app.js", "l": 120,
+		"s": "TypeError: x is undefined\n    at render (https://docs.test/static/app.js:120:7)"})
+	out, e = r.run(t, "navigate", protocol.NavigateArgs{Window: "301", URL: "https://docs.test/next"})
+	if want := "ok https://docs.test/next\nNote: the Page threw: TypeError: x is undefined (app.js:120)\n"; e != nil || out != want {
+		t.Errorf("navigate: %+v\n%q\nwant\n%q", e, out, want)
+	}
+	out, e = r.run(t, "logs", protocol.LogsArgs{Window: "301"})
+	header := " - 1 log entry, newest last (failed requests, CSP or security errors and JavaScript exceptions; winuse keeps the last 50 per Tab)\n"
+	entry := clock(at) + " exception error Uncaught TypeError: x is undefined https://docs.test/static/app.js:120\n" +
+		"    at render (https://docs.test/static/app.js:120:7)\n"
+	if e != nil || !strings.HasSuffix(out, header+entry) || strings.Count(out, "\n") != 3 {
+		t.Errorf("logs: %+v\n%q\nwant the header ending %q, then\n%q", e, out, header, entry)
+	}
+	// Installed once: the Tab keeps it.
+	if n := len(scriptsSent(r.browser.Srv)); n != 2 {
+		t.Errorf("%d scripts sent, want 2", n)
+	}
+	onlyLogDomain(t, r.browser.Srv)
+}
+
+// A launched browser's Tab captures by default: the listener goes in
+// before navigate sends the Tab to the next page, so that page has it.
+func TestALaunchedBrowserCapturesBeforeNavigate(t *testing.T) {
+	r := newWinRig(t)
+	addScriptIDs(r.browser.Srv)
+	r.evalReply = exceptionBuffer(true)
+	if out, e := r.run(t, "navigate", protocol.NavigateArgs{Window: "301", URL: "https://docs.test/next"}); e != nil || out != "ok https://docs.test/next\n" {
+		t.Fatalf("navigate: %q %+v", out, e)
+	}
+	scripts, navigated := 0, false
+	for _, m := range r.browser.Srv.Received() {
+		switch m.Method {
+		case "Page.addScriptToEvaluateOnNewDocument":
+			if navigated {
+				t.Error("the listener went in after Page.navigate")
+			}
+			scripts++
+		case "Page.navigate":
+			navigated = true
+		}
+	}
+	if scripts != 2 || !navigated {
+		t.Errorf("%d scripts, navigated %v", scripts, navigated)
+	}
+	out, e := r.run(t, "logs", protocol.LogsArgs{Window: "301", JSON: true})
+	if e != nil || !strings.Contains(out, `"capturing":true`) {
+		t.Errorf("logs --json: %q %+v", out, e)
+	}
+	onlyLogDomain(t, r.browser.Srv)
+}
+
+// A Tab tab new opened is the agent's: it captures; the user's Tabs next
+// to it do not.
+func TestTabNewCapturesInItsTab(t *testing.T) {
+	_, conn := extensionBrowser(t)
+	r := newTabRig(t, conn, nil, nil, nil)
+	if out, e := r.run(t, "tab-new", protocol.TabArgs{Window: "302", URL: "https://a.test/"}); e != nil || !strings.HasPrefix(out, "ok newtab5") {
+		t.Fatalf("tab new = %q, %+v", out, e)
+	}
+	if !page.TabLogOf(conn.Client, "NEWTAB5").Capturing() {
+		t.Error("the new Tab does not capture")
+	}
+	out, _ := r.run(t, "tab-list", protocol.TabArgs{Window: "302"})
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		id := strings.Fields(strings.TrimLeft(line, "* "))[0]
+		if id != "newtab5" && page.TabLogOf(conn.Client, strings.ToUpper(id)).Capturing() {
+			t.Errorf("the user's Tab %s captures", id)
+		}
+	}
+}
+
+func TestLogNoteForExceptions(t *testing.T) {
+	at := time.Now()
+	thrown := page.LogEntry{Time: at, Source: "exception", Level: "error", Text: "Uncaught TypeError: x is undefined",
+		URL: "https://shop.test/static/app.js", Line: 120}
+	got := logNoteLines([]page.LogEntry{thrown}, "https://shop.test/", 301)
+	if len(got) != 1 || got[0] != "the Page threw: TypeError: x is undefined (app.js:120)" {
+		t.Errorf("one: %q", got)
+	}
+	rejected := page.LogEntry{Time: at, Source: "exception", Level: "error", Text: "Uncaught (in promise) Error: save failed"}
+	failed := page.LogEntry{Time: at, Source: "network", Level: "error", Text: status404, URL: "https://shop.test/api/save"}
+	got = logNoteLines([]page.LogEntry{thrown, failed, rejected, thrown}, "https://shop.test/", 301)
+	want := []string{
+		"1 failed request: 404 /api/save",
+		"the Page threw 3 times: TypeError: x is undefined (app.js:120); 2 more: winuse logs 301",
+	}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("several:\n%q\nwant\n%q", got, want)
+	}
+	if got := logNoteLines([]page.LogEntry{rejected}, "", 301); len(got) != 1 || got[0] != "the Page threw: (in promise) Error: save failed" {
+		t.Errorf("a rejection: %q", got)
 	}
 }
 

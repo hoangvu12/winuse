@@ -1,8 +1,10 @@
 package cli
 
-// `winuse logs <window>[:<tab>] [--clear] [--max-chars N | --out <file>]`
-// (.scratch/bladebro-ideas ticket 29): a Tab's failed requests and CSP or
-// security errors. Parsing is local (usage errors exit 2 and never dial
+// `winuse logs <window>[:<tab>] [--capture] [--clear] [--max-chars N |
+// --out <file>]` (.scratch/bladebro-ideas tickets 29 and 30): a Tab's
+// failed requests, CSP or security errors and, where the Tab captures them
+// (--capture turns it on in the user's Tabs), JavaScript exceptions.
+// Parsing is local (usage errors exit 2 and never dial
 // the helper); --out is made absolute here, where the working directory is
 // known; the global --json asks the helper for its JSON answer.
 
@@ -28,11 +30,15 @@ func parseLogsArgs(args []string) (protocol.LogsArgs, error) {
 		}
 		name, value, inline := strings.Cut(tok[2:], "=")
 		switch name {
-		case "clear":
+		case "clear", "capture":
 			if inline {
-				return a, errors.New("--clear takes no value")
+				return a, fmt.Errorf("--%s takes no value", name)
 			}
-			a.Clear = true
+			if name == "clear" {
+				a.Clear = true
+			} else {
+				a.Capture = true
+			}
 			continue
 		case "max-chars", "out":
 		default:

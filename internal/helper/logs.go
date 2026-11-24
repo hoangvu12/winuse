@@ -16,12 +16,24 @@ package helper
 // at most 3 requests are named, and the rest are counted with the command
 // that lists them. A Batch notes once, after its steps.
 //
-// `winuse logs <window>[:<tab>] [--clear] [--max-chars N | --out <file>]`
-// prints the ring, newest last; --clear empties it after printing (and
-// Log.clear empties the browser's store that Log.enable replays from);
-// the global --json answers with a JSON object. It only reads: no lane, no
-// Agent Cursor, nothing sent to the Page's input. Ticket 30 adds the
-// Page's JavaScript exceptions to the same ring and its notes.
+// `winuse logs <window>[:<tab>] [--capture] [--clear] [--max-chars N |
+// --out <file>]` prints the ring, newest last; --clear empties it after
+// printing (and Log.clear empties the browser's store that Log.enable
+// replays from); the global --json answers with a JSON object. It only
+// reads: no lane, no Agent Cursor, nothing sent to the Page's input.
+//
+// JavaScript exceptions (ticket 30, page/exceptions.go) join the same ring
+// in a Tab that captures them: by default a Tab of a browser winuse
+// launched or cloned and one tab new opened; the user's own Tabs after
+// `winuse logs <window> --capture`, for the Tab's life. The listener goes
+// in before each Page Action (markPageLogs), so a page the Action loads
+// has it, and its records are read before the notes and before logs
+// prints:
+//
+//	Note: the Page threw: TypeError: x is undefined (app.js:120)
+//
+// It covers pages loaded after it went in: the first --capture says so,
+// as logs does for a page loaded before, and both offer reload.
 
 import (
 	"context"
@@ -76,6 +88,11 @@ func markPageLogs(ctx context.Context, c *cdp.Client, session, targetID string, 
 	if l == nil {
 		return
 	}
+	if session != "" && l.Capturing() {
+		// The exception listener (page/exceptions.go), before the Action:
+		// a page it loads has it.
+		l.Capture(ctx, session)
+	}
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	for i, m := range rec.marks {
@@ -119,6 +136,12 @@ func (rec *logMarks) notes(ctx context.Context) string {
 	rec.mu.Unlock()
 	var b strings.Builder
 	for _, m := range marks {
+		if m.session != "" && m.log.Capturing() && ctx.Err() == nil {
+			// The exceptions the isolated world holds join the ring first.
+			pctx, cancel := context.WithTimeout(ctx, pageProbeBudget)
+			m.log.PullExceptions(pctx, m.session)
+			cancel()
+		}
 		var errs []page.LogEntry
 		for _, e := range m.log.Since(m.mark) {
 			if e.Level == "error" {
@@ -142,14 +165,18 @@ func (rec *logMarks) notes(ctx context.Context) string {
 }
 
 // logNoteLines are the notes for a Tab's new error entries: the failed
-// requests, at most logNoteNamed named, then the other errors, the first
-// one quoted. pageURL decides which requests are the Page's own site.
+// requests, at most logNoteNamed named, then the exceptions the Page threw
+// and the other errors, the first of each quoted. pageURL decides which
+// requests are the Page's own site.
 func logNoteLines(errs []page.LogEntry, pageURL string, windowID uint64) []string {
-	var reqs, others []page.LogEntry
+	var reqs, thrown, others []page.LogEntry
 	for _, e := range errs {
-		if e.Source == "network" {
+		switch e.Source {
+		case "network":
 			reqs = append(reqs, e)
-		} else {
+		case "exception":
+			thrown = append(thrown, e)
+		default:
 			others = append(others, e)
 		}
 	}
@@ -162,6 +189,17 @@ func logNoteLines(errs []page.LogEntry, pageURL string, windowID uint64) []strin
 		line := plural(len(reqs), "failed request") + ": " + strings.Join(named, ", ")
 		if len(reqs) > logNoteNamed {
 			line += fmt.Sprintf(", and %d more: winuse logs %d", len(reqs)-logNoteNamed, windowID)
+		}
+		lines = append(lines, line)
+	}
+	if len(thrown) > 0 {
+		line := "the Page threw"
+		if len(thrown) > 1 {
+			line += fmt.Sprintf(" %d times", len(thrown))
+		}
+		line += ": " + thrownText(thrown[0])
+		if len(thrown) > 1 {
+			line += fmt.Sprintf("; %d more: winuse logs %d", len(thrown)-1, windowID)
 		}
 		lines = append(lines, line)
 	}
@@ -179,6 +217,16 @@ func logNoteLines(errs []page.LogEntry, pageURL string, windowID uint64) []strin
 		lines = append(lines, line)
 	}
 	return lines
+}
+
+// thrownText is an exception as a note quotes it: its text without
+// Chrome's "Uncaught " and with where it was thrown ("app.js:120").
+func thrownText(e page.LogEntry) string {
+	text := capText(page.Collapse(strings.TrimPrefix(e.Text, "Uncaught ")), logNoteText)
+	if place := page.ScriptPlace(e.URL, e.Line); place != "" {
+		text += " (" + place + ")"
+	}
+	return text
 }
 
 // entries is "entry" or "entries" after n.
@@ -273,12 +321,22 @@ func logsCommand(s Services) Command {
 			browserPage: func(pageWin) *Error { return nil },
 			act: func(ctx context.Context, pw pageWin, stopped func() bool) (string, bool, *Error) {
 				l := page.WatchLog(ctx, pw.conn.Client, pw.session, pw.tab.TargetID)
+				view := logsView{ref: a.Window}
+				if a.Capture || l.Capturing() {
+					// Exceptions (page/exceptions.go): --capture turns them on
+					// for the Tab's life; a Tab that captures reads them.
+					view.first = l.Capture(ctx, pw.session) && a.Capture
+					pctx, cancel := context.WithTimeout(ctx, pageProbeBudget)
+					covered, ok := l.PullExceptions(pctx, pw.session)
+					cancel()
+					view.capturing, view.uncovered = true, ok && !covered
+				}
 				l.Settle(ctx) // the replay of a session turned on just now
 				list := l.Entries()
 				if a.Clear {
 					l.Clear(ctx)
 				}
-				out, rerr := renderLogs(pw.tab.URL, list, a)
+				out, rerr := renderLogs(pw.tab.URL, list, a, view)
 				return out, false, rerr
 			},
 		})
@@ -316,20 +374,45 @@ type logJSON struct {
 	Stack  string    `json:"stack,omitempty"`
 }
 
-// renderLogs prints the entries under a header naming the Page: the newest
-// within the cap (--max-chars, else defaultMaxChars) after a line counting
-// the older ones left out, or every one written to --out; JSON under
-// --json.
-func renderLogs(pageURL string, list []page.LogEntry, a protocol.LogsArgs) (string, *Error) {
+// logsView is what logs says about the Tab's exception capture.
+type logsView struct {
+	ref       string // the Window (or Tab target) as given, for the reload hint
+	capturing bool   // the Tab captures its exceptions
+	first     bool   // this --capture turned it on
+	uncovered bool   // the Page loaded before the listener was installed
+}
+
+// renderLogs prints the entries under a header naming the Page and what
+// its log holds: the newest within the cap (--max-chars, else
+// defaultMaxChars) after a line counting the older ones left out, or every
+// one written to --out; JSON under --json. A capture just turned on, or a
+// Page loaded before it, says that reload covers the Page.
+func renderLogs(pageURL string, list []page.LogEntry, a protocol.LogsArgs, v logsView) (string, *Error) {
 	if a.JSON {
-		return renderLogsJSON(pageURL, list, a)
+		return renderLogsJSON(pageURL, list, a, v)
 	}
 	var b strings.Builder
-	if len(list) == 0 {
-		fmt.Fprintf(&b, "Page: %s - no log entries (failed requests and CSP or security errors show here)\n", pageURL)
-	} else {
-		fmt.Fprintf(&b, "Page: %s - %d log %s, newest last (failed requests and CSP or security errors; winuse keeps the last %d per Tab)\n",
-			pageURL, len(list), entries(len(list)), page.LogRingSize)
+	what := "failed requests and CSP or security errors"
+	if v.capturing {
+		what = "failed requests, CSP or security errors and JavaScript exceptions"
+	}
+	switch {
+	case len(list) == 0 && v.capturing:
+		fmt.Fprintf(&b, "Page: %s - no log entries (%s show here)\n", pageURL, what)
+	case len(list) == 0:
+		fmt.Fprintf(&b, "Page: %s - no log entries (%s show here; --capture adds JavaScript exceptions)\n", pageURL, what)
+	case v.capturing:
+		fmt.Fprintf(&b, "Page: %s - %d log %s, newest last (%s; winuse keeps the last %d per Tab)\n",
+			pageURL, len(list), entries(len(list)), what, page.LogRingSize)
+	default:
+		fmt.Fprintf(&b, "Page: %s - %d log %s, newest last (%s; --capture adds JavaScript exceptions; winuse keeps the last %d per Tab)\n",
+			pageURL, len(list), entries(len(list)), what, page.LogRingSize)
+	}
+	switch {
+	case v.first:
+		fmt.Fprintf(&b, "(capturing JavaScript exceptions in this Tab from now on, while it is open: they show for pages it loads from now on; winuse reload %s covers this one)\n", v.ref)
+	case v.uncovered:
+		fmt.Fprintf(&b, "(this page loaded before winuse began capturing its exceptions: winuse reload %s covers it)\n", v.ref)
 	}
 	lines := make([]string, len(list))
 	for i, e := range list {
@@ -366,19 +449,21 @@ func renderLogs(pageURL string, list []page.LogEntry, a protocol.LogsArgs) (stri
 	return b.String(), nil
 }
 
-// renderLogsJSON is logs' --json answer: {"url","entries","cleared"}, or
-// with --out the same object in the file and {"url","file","count",
-// "cleared"} printed.
-func renderLogsJSON(pageURL string, list []page.LogEntry, a protocol.LogsArgs) (string, *Error) {
+// renderLogsJSON is logs' --json answer: {"url","capturing","entries",
+// "cleared"}, or with --out the same object in the file and {"url","file",
+// "count","cleared"} printed. capturing says the Tab captures its
+// JavaScript exceptions.
+func renderLogsJSON(pageURL string, list []page.LogEntry, a protocol.LogsArgs, view logsView) (string, *Error) {
 	items := make([]logJSON, 0, len(list))
 	for _, e := range list {
 		items = append(items, logJSON{Time: e.Time, Source: e.Source, Level: e.Level, Text: e.Text, URL: e.URL, Line: e.Line, Stack: e.Stack})
 	}
 	var v any = struct {
-		URL     string    `json:"url"`
-		Entries []logJSON `json:"entries"`
-		Cleared bool      `json:"cleared"`
-	}{pageURL, items, a.Clear}
+		URL       string    `json:"url"`
+		Capturing bool      `json:"capturing"`
+		Entries   []logJSON `json:"entries"`
+		Cleared   bool      `json:"cleared"`
+	}{pageURL, view.capturing, items, a.Clear}
 	if a.Out != "" {
 		data, err := json.Marshal(v)
 		if err != nil {

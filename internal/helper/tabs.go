@@ -219,6 +219,12 @@ func tabNew(s Services) Command {
 		}
 		return s.tabHeadless(ctx, tw, nil, "open tab", func(ctx context.Context) (string, *Error, bool) {
 			id, err := page.NewTab(ctx, tw.conn, tw.tabs.WindowID, a.URL, s.agentTabGroup(ctx))
+			if id != "" {
+				// The agent's own Tab captures its JavaScript exceptions
+				// (page/exceptions.go): the listener goes in at its first
+				// Page Action, nothing is sent now.
+				page.WatchLog(ctx, tw.conn.Client, "", id).Capture(ctx, "")
+			}
 			var other *page.OtherWindowError
 			switch {
 			case errors.As(err, &other):
