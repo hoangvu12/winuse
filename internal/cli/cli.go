@@ -270,6 +270,36 @@ type windowArgs struct {
 type recordArgs struct {
 	Window string `json:"window"`
 	File   string `json:"file"`
+	Table  bool   `json:"table,omitempty"` // the list or grid extract reads, not the tree (ticket 27)
+}
+
+// recordUsage is record-tree's usage line.
+const recordUsage = "usage: winuse record-tree <window> <file> [--table]"
+
+// parseRecordArgs parses record-tree's Window, file and --table, the flag
+// anywhere; the file becomes absolute.
+func parseRecordArgs(args []string) (recordArgs, error) {
+	var a recordArgs
+	var pos []string
+	for _, tok := range args {
+		switch {
+		case tok == "--table":
+			a.Table = true
+		case strings.HasPrefix(tok, "--"):
+			return a, fmt.Errorf("unknown flag %s", tok)
+		default:
+			pos = append(pos, tok)
+		}
+	}
+	if len(pos) != 2 {
+		return a, errors.New("record-tree takes a window and a file")
+	}
+	file, err := filepath.Abs(pos[1])
+	if err != nil {
+		return a, fmt.Errorf("resolving %s: %v", pos[1], err)
+	}
+	a.Window, a.File = pos[0], file
+	return a, nil
 }
 
 // windowStateUsage is get-window-state's usage line.
@@ -296,19 +326,16 @@ func getWindowStateCmd(args []string, headed bool) int {
 	return 0
 }
 
-// recordTreeCmd records a real Window's tree to a fixture file (the
-// recorder; see the README).
+// recordTreeCmd records a real Window's tree, or with --table its list or
+// grid as extract reads it, to a fixture file (the recorder; see the
+// README).
 func recordTreeCmd(args []string) int {
-	if len(args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: winuse record-tree <window> <file>")
-		return 2
-	}
-	file, err := filepath.Abs(args[1])
+	a, err := parseRecordArgs(args)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "winuse: resolving %s: %v\n", args[1], err)
+		fmt.Fprintf(os.Stderr, "winuse: %v\n%s\n", err, recordUsage)
 		return 2
 	}
-	if err := runWithArgs("record-tree", recordArgs{Window: args[0], File: file}); err != nil {
+	if err := runWithArgs("record-tree", a); err != nil {
 		reportError(os.Stderr, err)
 		return ExitCode(err)
 	}

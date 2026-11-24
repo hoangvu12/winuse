@@ -1,16 +1,17 @@
 package helper
 
 // `winuse extract <window>[:<tab>] [--root <element>] [--as list|table|jsonld]
-// [--limit N] [--max-chars N | --out <file>]` (bladebro ideas, ticket 26):
-// the rows of a list, a table or the page's JSON-LD, printed as one header
-// line naming the container and the count, then a JSON array
+// [--limit N] [--max-chars N | --out <file>]` (bladebro ideas, tickets 26
+// and 27): the rows of a list, a table or the page's JSON-LD, printed as
+// one header line naming the container and the count, then a JSON array
 // (internal/extract). It reads only: no cursor, no input, no Element
 // Indexes, and the Window State stays as it was.
 //
-// Pages only for now: page.Extract runs extract.js in winuse's isolated
-// world of the Tab, or of the --root node's frame. A Window that is no
-// browser is refused; native lists and grids (ticket 27) plug in at
-// extractNative with the same arguments and the same extract.Result.
+// On a Page, page.Extract runs extract.js in winuse's isolated world of
+// the Tab, or of the --root node's frame. On a native Window (ticket 27),
+// the UIA client reads the Window's list or grid in one bounded read
+// (uia.Client.ExtractNative) and extract.FromNative makes its rows; --as
+// is a Page's only, and --limit defaults to 500 there.
 
 import (
 	"context"
@@ -20,13 +21,27 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hoangvu12/winuse/internal/extract"
 	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
+	"github.com/hoangvu12/winuse/internal/win"
 	"github.com/hoangvu12/winuse/internal/wstate"
 )
+
+// NativeExtractor reads a native Window's list or grid for extract
+// (ticket 27): the Element behind root of the Agent's latest Window State,
+// or the list holding that item (-1: extract picks), and its rows up to
+// one past limit, within budget; found is false when the Window shows
+// none. The real one is *uia.Client; Services.Trees is type-asserted to
+// it, so tests fake it with recorded reads.
+type NativeExtractor interface {
+	ExtractNative(ctx context.Context, hwnd uint64, root, limit int, budget time.Duration) (read extract.NativeRead, found bool, err error)
+}
+
+var _ NativeExtractor = (*uia.Client)(nil)
 
 func extractCommand(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
@@ -43,7 +58,7 @@ func extractCommand(s Services) Command {
 				return "", rerr
 			}
 			if s.Pages == nil || s.Pages.Browser(w) == "" {
-				return s.extractNative(ctx, a, w.ID)
+				return s.extractNative(ctx, a, w)
 			}
 		}
 		return s.runPageWindow(ctx, a.Window, pageWindowRun{
@@ -72,12 +87,76 @@ func extractArgsError(a protocol.ExtractArgs) *Error {
 	return nil
 }
 
-// extractNative is extract on a Window that is no browser Page. Ticket 27
-// reads native lists and grids here; until then it is refused.
-func (s Services) extractNative(ctx context.Context, a protocol.ExtractArgs, id uint64) (string, *Error) {
-	ref := strconv.FormatUint(id, 10)
-	return "", Fail(fmt.Sprintf("window %d is not a browser Window, and extract reads only the lists and tables of a browser Page for now", id),
-		"read the Window's lists with winuse get-window-state "+ref+" or winuse find "+ref+" --role \"list item\"")
+// extractNative is extract on a Window that is no browser Page: its list
+// or grid, through the UIA client.
+func (s Services) extractNative(ctx context.Context, a protocol.ExtractArgs, w win.WindowInfo) (string, *Error) {
+	ref := strconv.FormatUint(w.ID, 10)
+	if a.As != "" {
+		return "", Fail(fmt.Sprintf("extract: --as works on a browser Page only; window %d is native, and extract reads its list or grid as it is", w.ID),
+			"run winuse extract "+ref+" without --as; pass --root <index> of the list from winuse get-window-state "+ref+" to pick another")
+	}
+	ex, ok := s.Trees.(NativeExtractor)
+	if !ok {
+		return "", Fail("extract is unavailable: no UIA client", "")
+	}
+	root := -1
+	if a.Root != "" {
+		var rerr *Error
+		if root, rerr = s.nativeRoot(ctx, w, a.Root); rerr != nil {
+			return "", rerr
+		}
+	}
+	limit := a.Limit
+	if limit <= 0 {
+		limit = extract.NativeLimit
+	}
+	read, found, err := ex.ExtractNative(ctx, w.ID, root, limit, s.Budget)
+	switch {
+	case err != nil && root >= 0 && (errors.Is(err, uia.ErrStale) || errors.Is(err, uia.ErrNoState) || errors.Is(err, uia.ErrPageElement)):
+		return "", elementError(err, w, root)
+	case err != nil:
+		return "", treeReadError(err)
+	case !found:
+		return extract.NoList + "\n", nil
+	}
+	hint := ""
+	if root < 0 {
+		hint = "winuse get-window-state " + ref
+	}
+	return renderExtract(extract.FromNative(read, limit), a, hint)
+}
+
+// nativeRoot resolves --root on a native Window to an Element Index of the
+// Agent's latest Window State: an index, or a name:/id: reference.
+func (s Services) nativeRoot(ctx context.Context, w win.WindowInfo, root string) (int, *Error) {
+	root = strings.TrimSpace(root)
+	var t elementTarget
+	if i, err := strconv.Atoi(root); err == nil && i >= 0 {
+		t.index = &i
+	} else if strings.HasPrefix(root, wstate.NameRefPrefix) || strings.HasPrefix(root, wstate.IDRefPrefix) {
+		t.ref = root
+	} else {
+		return 0, Fail(fmt.Sprintf("extract: --root %q is not an Element Index, name: or id: reference", root), protocol.ExtractUsage)
+	}
+	return t.resolve(ctx, s, w)
+}
+
+// renderExtract prints res within extract's budgets: --out or --max-chars
+// (the read's default cap when neither is given); hint is the command
+// whose Element Indexes --root takes ("" for none: a --root run).
+func renderExtract(res extract.Result, a protocol.ExtractArgs, hint string) (string, *Error) {
+	o := extract.Options{MaxChars: defaultMaxChars, Out: a.Out, Write: writeFileAtomic, RootHint: hint}
+	if a.MaxChars != nil {
+		o.MaxChars = *a.MaxChars
+	}
+	if a.Out != "" {
+		o.MaxChars = 0
+	}
+	out, err := extract.Render(res, o)
+	if err != nil {
+		return "", Fail("writing the rows to "+a.Out+" failed: "+err.Error(), "pass --out a file in a folder you can write to")
+	}
+	return out, nil
 }
 
 // extractPage runs extract on the Page of pw: on the --root node when one
@@ -105,21 +184,11 @@ func (s Services) extractPage(ctx context.Context, pw pageWin, a protocol.Extrac
 		return "", Fail(fmt.Sprintf("extract failed in window %d: %v", pw.w.ID, err),
 			"retry; run winuse browser status "+pw.name+" if it keeps failing")
 	}
-	o := extract.Options{MaxChars: defaultMaxChars, Out: a.Out, Write: writeFileAtomic}
-	if a.MaxChars != nil {
-		o.MaxChars = *a.MaxChars
-	}
-	if a.Out != "" {
-		o.MaxChars = 0
-	}
+	hint := ""
 	if root == nil {
-		o.RootHint = stateCmd
+		hint = stateCmd
 	}
-	out, err := extract.Render(res, o)
-	if err != nil {
-		return "", Fail("writing the rows to "+a.Out+" failed: "+err.Error(), "pass --out a file in a folder you can write to")
-	}
-	return out, nil
+	return renderExtract(res, a, hint)
 }
 
 // extractRoot resolves --root to a Page Element of the Window's (or the

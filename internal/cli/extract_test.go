@@ -23,6 +23,25 @@ func TestParseExtractArgs(t *testing.T) {
 	}
 }
 
+// record-tree --table (ticket 27) records the list or grid extract reads.
+func TestParseRecordArgs(t *testing.T) {
+	a, err := parseRecordArgs([]string{"--table", "4242", "grid.json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Window != "4242" || !a.Table || !filepath.IsAbs(a.File) || filepath.Base(a.File) != "grid.json" {
+		t.Errorf("parsed %+v", a)
+	}
+	if a, err = parseRecordArgs([]string{"4242", "tree.json"}); err != nil || a.Table {
+		t.Errorf("without --table: %+v %v", a, err)
+	}
+	for _, args := range [][]string{{"4242"}, {"4242", "a", "b"}, {"4242", "a", "--grid"}} {
+		if _, err := parseRecordArgs(args); err == nil {
+			t.Errorf("%q parsed", args)
+		}
+	}
+}
+
 func TestParseExtractArgsRefusals(t *testing.T) {
 	cases := []struct {
 		args []string

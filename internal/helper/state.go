@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hoangvu12/winuse/internal/browser"
+	"github.com/hoangvu12/winuse/internal/extract"
 	"github.com/hoangvu12/winuse/internal/keys"
 	"github.com/hoangvu12/winuse/internal/notes"
 	"github.com/hoangvu12/winuse/internal/protocol"
@@ -456,7 +457,7 @@ func CommandsWith(s Services) map[string]Command {
 	// Window screenshot, since it hides the indicator and the cursor.
 	cmds["list-displays"] = listDisplays(s)
 	cmds["screenshot"] = displayScreenshot(s)
-	cmds["extract"] = extractCommand(s) // extract.go: a Page's rows as JSON, reads only
+	cmds["extract"] = extractCommand(s) // extract.go: a Page's or a native list's rows as JSON, reads only
 	// The notifications' Desktop commands (notifications.go, desktop parity
 	// ticket 18): list-notifications only reads; the two actions take the
 	// desktop lane below. open-shell (openshell.go) is Headed only.
@@ -523,7 +524,7 @@ func observationOnlyCommand(name string) bool {
 	case "list-windows", "get-window", "list-apps", "get-window-state", "find", "record-tree", "launch-app",
 		"tab-list",      // reads a browser Window's Tabs only (tabs.go)
 		"list-displays", // a Desktop command that only reads the monitors (display.go)
-		"extract",       // reads a Page's rows in an isolated world (extract.go)
+		"extract",       // reads a Page's rows in an isolated world, or a native list's (extract.go)
 		StatusCommand:   // read-only probes (status.go): never waits behind an Action
 		return true
 	case "list-notifications": // a Desktop command that only reads the toast banners (notifications.go)
@@ -1063,6 +1064,9 @@ func stateSettle(ctx context.Context) time.Duration {
 type recordArgs struct {
 	Window string `json:"window"`
 	File   string `json:"file"` // absolute output path (the CLI resolves it)
+	// Table records the Window's list or grid as extract reads it
+	// (extract.NativeRead, ticket 27) instead of its tree.
+	Table bool `json:"table,omitempty"`
 }
 
 // recordTree answers `winuse record-tree <window> <file>`: it captures a
@@ -1079,6 +1083,9 @@ func recordTree(s Services, ctx context.Context, args json.RawMessage) (string, 
 	w, rerr := resolveWindow(s, a.Window)
 	if rerr != nil {
 		return "", rerr
+	}
+	if a.Table {
+		return recordTable(s, ctx, w, a.File)
 	}
 	tree, err := s.Trees.Capture(ctx, w.ID, w.Title, win.AppExeName(w), s.Budget)
 	if err != nil {
@@ -1100,6 +1107,39 @@ func recordTree(s Services, ctx context.Context, args json.RawMessage) (string, 
 		note = " (" + strings.Join(tree.Notes, "; ") + ")"
 	}
 	return fmt.Sprintf("recorded %s: %d elements%s\n", a.File, len(tree.Elements), note), nil
+}
+
+// recordTable answers `winuse record-tree <window> <file> --table`: the
+// list or grid extract picks on the Window, read as extract reads it
+// (default limit), saved in the extract.NativeRead fixture format for
+// internal/extract's offline tests (ticket 27).
+func recordTable(s Services, ctx context.Context, w win.WindowInfo, file string) (string, *Error) {
+	ex, ok := s.Trees.(NativeExtractor)
+	if !ok {
+		return "", Fail("record-tree --table is unavailable: no UIA client", "")
+	}
+	read, found, err := ex.ExtractNative(ctx, w.ID, -1, extract.NativeLimit, s.Budget)
+	if err != nil {
+		return "", treeReadError(err)
+	}
+	if !found {
+		return "", Fail(fmt.Sprintf("window %d shows no list or grid to record", w.ID), "record a Window that shows a list or grid, or record its tree without --table")
+	}
+	now := time.Now()
+	read.Format, read.Captured = extract.NativeFormat, &now
+	read.Source = fmt.Sprintf("recorded by winuse record-tree --table from %q (Window %d)", w.Title, w.ID)
+	data, err := json.MarshalIndent(read, "", "  ")
+	if err != nil {
+		return "", Fail("encoding the fixture: "+err.Error(), "")
+	}
+	if err := writeFileAtomic(file, append(data, '\n')); err != nil {
+		return "", Fail("writing "+file+": "+err.Error(), "")
+	}
+	label := ""
+	if read.Name != "" {
+		label = " " + strconv.Quote(read.Name)
+	}
+	return fmt.Sprintf("recorded %s: %s%s, %d children\n", file, read.Role, label, len(read.Children)), nil
 }
 
 // parseArgs unmarshals a command's arguments, refusing missing or malformed

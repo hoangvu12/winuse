@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "source": "hand-authored from ticket 13's probe of a .NET Framework DataGridView: no Table or Grid pattern, a header row of header items, rows of cells with no GridItem whose Name reads like \"Name Row 0, Not sorted.\" and whose Value is the text; replace with winuse record-tree <window> <file> --table",
+  "role": "table",
+  "name": "dataGridView1",
+  "children": [
+    {"role": "custom", "name": "Top Row", "children": [
+      {"role": "header item", "name": "Id"},
+      {"role": "header item", "name": "Name"},
+      {"role": "header item", "name": "Price"},
+      {"role": "header item", "name": "Stock"}
+    ]},
+    {"role": "custom", "name": "Row 0", "children": [
+      {"role": "header item", "name": "Row 0"},
+      {"role": "custom", "name": "Id Row 0, Not sorted.", "value": "0"},
+      {"role": "custom", "name": "Name Row 0, Not sorted.", "value": "Item 0"},
+      {"role": "custom", "name": "Price Row 0, Not sorted.", "value": "0.00"},
+      {"role": "custom", "name": "Stock Row 0, Not sorted.", "value": ""}
+    ]},
+    {"role": "custom", "name": "Row 1", "children": [
+      {"role": "header item", "name": "Row 1"},
+      {"role": "custom", "name": "Id Row 1, Not sorted.", "value": "1"},
+      {"role": "custom", "name": "Name Row 1, Not sorted.", "value": "Item 1"},
+      {"role": "custom", "name": "Price Row 1, Not sorted.", "value": "1.50"},
+      {"role": "custom", "name": "Stock Row 1, Not sorted.", "value": "7"}
+    ]},
+    {"role": "scroll bar", "name": "Vertical Scroll Bar"}
+  ]
+}
