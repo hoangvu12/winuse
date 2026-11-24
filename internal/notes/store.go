@@ -126,21 +126,28 @@ func (s *Store) now() time.Time {
 
 // CleanText is a Note's text as stored: trimmed, and refused when empty,
 // on more than one line, with control characters or over MaxTextLen
-// characters.
+// characters. Every refusal is a *TextError.
 func CleanText(text string) (string, error) {
 	t := strings.TrimSpace(text)
 	switch {
 	case t == "":
-		return "", ErrEmpty
-	case strings.ContainsAny(t, "\r\n  "):
-		return "", ErrMultiLine
+		return "", &TextError{ErrEmpty}
+	case strings.ContainsAny(t, lineBreaks):
+		return "", &TextError{ErrMultiLine}
 	case strings.IndexFunc(t, func(r rune) bool { return unicode.IsControl(r) && r != '\t' }) >= 0:
-		return "", errors.New("a Note cannot hold control characters")
+		return "", &TextError{errors.New("a Note cannot hold control characters")}
 	case utf8.RuneCountInString(t) > MaxTextLen:
-		return "", fmt.Errorf("%w; this one has %d", ErrTooLong, utf8.RuneCountInString(t))
+		return "", &TextError{fmt.Errorf("%w; this one has %d", ErrTooLong, utf8.RuneCountInString(t))}
 	}
 	return strings.ReplaceAll(t, "\t", " "), nil
 }
+
+// TextError is a Note text CleanText refuses: errors.Is still finds
+// ErrEmpty, ErrMultiLine and ErrTooLong through it.
+type TextError struct{ Err error }
+
+func (e *TextError) Error() string { return e.Err.Error() }
+func (e *TextError) Unwrap() error { return e.Err }
 
 // Add stores a Note for key, unless its text is refused (ErrEmpty,
 // ErrMultiLine, ErrTooLong) or key already holds the same text
@@ -364,3 +371,7 @@ func renameRetry(from, to string) error {
 	}
 	return err
 }
+
+// lineBreaks are the characters that end a line: CR, LF, and Unicode's
+// line and paragraph separators.
+var lineBreaks = "\r\n" + string(rune(0x2028)) + string(rune(0x2029))

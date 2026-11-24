@@ -120,15 +120,17 @@ func (n noteCmds) add(ctx context.Context, args json.RawMessage) (string, *Error
 
 // noteAddError maps Add's refusals; nothing was stored.
 func noteAddError(err error, key, bad string) *Error {
-	e := Fail(err.Error()+"; nothing was stored", "")
+	// A refused text or a duplicate is the command line's problem (USAGE);
+	// a store that could not be read or written is INTERNAL.
+	e := &Error{Msg: err.Error() + "; nothing was stored", Exit: 1, Code: protocol.CodeInternal, Out: recoveredLine(bad)}
+	var refused *notes.TextError
 	switch {
 	case errors.Is(err, notes.ErrDuplicate):
-		e.Hint = "winuse note list " + key + " shows its Notes"
-	case errors.Is(err, notes.ErrTooLong), errors.Is(err, notes.ErrMultiLine), errors.Is(err, notes.ErrEmpty):
+		e.Hint, e.Code = "winuse note list "+key+" shows its Notes", protocol.CodeUsage
+	case errors.As(err, &refused):
 		e.Hint = fmt.Sprintf("a Note is one line of at most %d characters: the lesson, as an instruction to the next agent", notes.MaxTextLen)
 		e.Code = protocol.CodeUsage
 	}
-	e.Out = recoveredLine(bad)
 	return e
 }
 
@@ -434,8 +436,17 @@ func (s Services) notePageURL(ctx context.Context, w win.WindowInfo, tab string)
 	}
 	t, err := page.ResolveTab(tabs, tab)
 	if err != nil {
-		return "", Fail(fmt.Sprintf("%s in the %s of window %d", err.Error(), browser.DisplayName(bc.name), bc.w.ID),
-			"list the Tabs and their ids: winuse tab list "+bc.id())
+		// Coded as resolveTabTarget codes it (tabtarget.go).
+		code := protocol.CodeNotFound
+		var re *page.TabRefError
+		switch {
+		case errors.As(err, &re) && re.Short:
+			code = protocol.CodeUsage
+		case re != nil && len(re.Matches) > 1:
+			code = protocol.CodeAmbiguousTarget
+		}
+		return "", &Error{Msg: fmt.Sprintf("%s in the %s of window %d", err.Error(), browser.DisplayName(bc.name), bc.w.ID),
+			Hint: "list the Tabs and their ids: winuse tab list " + bc.id(), Exit: 1, Code: code}
 	}
 	return t.URL, nil
 }
