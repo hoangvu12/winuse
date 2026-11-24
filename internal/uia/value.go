@@ -311,17 +311,22 @@ var (
 // Pattern method vtable slots (verified against SDK 10.0.26100.0; see
 // uia-go notes §2). IUnknown occupies slots 0-2.
 const (
-	valueSetValue      = 3  // SetValue(BSTR)
-	valueCurrentRO     = 5  // get_CurrentIsReadOnly(*BOOL)
-	rangeValueSetValue = 3  // SetValue(double)
-	scrollScroll       = 3  // Scroll(hAmount, vAmount)
-	scrollCurrentH     = 9  // get_CurrentHorizontallyScrollable(*BOOL)
-	scrollCurrentV     = 10 // get_CurrentVerticallyScrollable(*BOOL)
-	ecExpand           = 3  // Expand()
-	ecCollapse         = 4  // Collapse()
-	ecCurrentState     = 5  // get_CurrentExpandCollapseState(*int32)
-	siSelect           = 3  // Select()
-	toggleToggle       = 3  // Toggle()
+	valueSetValue      = 3 // SetValue(BSTR)
+	valueCurrentRO     = 5 // get_CurrentIsReadOnly(*BOOL)
+	rangeValueSetValue = 3 // SetValue(double)
+	// IUIAutomationRangeValuePattern's reads, in vtable order.
+	rangeValueCurrentValue    = 4  // get_CurrentValue(*double)
+	rangeValueCurrentReadOnly = 5  // get_CurrentIsReadOnly(*BOOL)
+	rangeValueCurrentMaximum  = 6  // get_CurrentMaximum(*double)
+	rangeValueCurrentMinimum  = 7  // get_CurrentMinimum(*double)
+	scrollScroll              = 3  // Scroll(hAmount, vAmount)
+	scrollCurrentH            = 9  // get_CurrentHorizontallyScrollable(*BOOL)
+	scrollCurrentV            = 10 // get_CurrentVerticallyScrollable(*BOOL)
+	ecExpand                  = 3  // Expand()
+	ecCollapse                = 4  // Collapse()
+	ecCurrentState            = 5  // get_CurrentExpandCollapseState(*int32)
+	siSelect                  = 3  // Select()
+	toggleToggle              = 3  // Toggle()
 )
 
 // UIA enums the policy and the actions use (SDK; uia-go notes §2).
@@ -649,8 +654,13 @@ func (th *thread) writeValue(el comPtr, value string, focus bool) (selected bool
 			// syscall trampoline cannot pass those (uia-go notes §2).
 			return false, errors.New("setting a range value is not supported on this architecture")
 		}
+		if err := checkRangeWrite(f, readRangeFacts(pat)); err != nil {
+			return false, err
+		}
+		before, readBefore := rangeDouble(pat, rangeValueCurrentValue)
 		if hr := call(pat, rangeValueSetValue, uintptr(math.Float64bits(f))); hr.Failed() {
-			return false, callErr(hr, "setting the Element's value")
+			after, readAfter := rangeDouble(pat, rangeValueCurrentValue)
+			return false, rangeWriteFailure(callErr(hr, "setting the Element's value"), before, after, readBefore && readAfter)
 		}
 		return false, nil
 	}

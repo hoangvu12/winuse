@@ -3,7 +3,8 @@ package helper
 // Element scroll (headless-parity spec, "Element scroll"; ADR 0011): the
 // Element forms of `scroll`. `scroll <window> <element> <up|down|left|right>
 // [steps]` scrolls through the Element's ScrollPattern, or its nearest
-// scrollable ancestor's, and `scroll <window> <element> into-view` through
+// scrollable ancestor's, or else an item at a time through the ScrollItem
+// items of a list around it, and `scroll <window> <element> into-view` through
 // its ScrollItem pattern; both are Headless (runHeadless) and read back.
 // With `headed` they run v1's pipeline (runAction): activate, resolve the
 // Element's point the way a Headed click does, then the wheel at that
@@ -218,6 +219,10 @@ func scrollRefusal(err error, w win.WindowInfo, index int, target elementTarget,
 		return Fail(err.Error(),
 			"nothing here scrolls that way through UI Automation; to wheel-scroll at the Element with the real pointer (this brings the Window to the foreground): winuse --headed scroll "+
 				id+" "+target.token()+" "+p.token())
+	case errors.Is(err, uia.ErrScrollEnd):
+		return Fail(err.Error(),
+			"its last items that way are already in the Window State (winuse get-window-state "+id+"); to go back: winuse scroll "+
+				id+" "+target.token()+" "+p.dir.Opposite().String())
 	case errors.Is(err, uia.ErrNoScrollItem):
 		return Fail(err.Error(),
 			"scroll its list or page by steps instead, e.g. winuse scroll "+id+" "+target.token()+" down")

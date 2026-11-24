@@ -527,6 +527,44 @@ func TestHeadlessRefusalsBeforeAnyPatternCall(t *testing.T) {
 	if cmdErr == nil || !strings.HasSuffix(cmdErr.Msg, "; nothing was sent") || !strings.Contains(cmdErr.Hint, "Toggle") {
 		t.Errorf("unreadable toggle state: %v", cmdErr)
 	}
+
+	// A range Element refuses a read-only range (a scroll bar that only
+	// reports its position) and a value outside its bounds before the write.
+	spy = newHeadlessSpy()
+	spy.hValueErr = uia.ErrRangeReadOnly
+	_, cmdErr = runCommand(t, CommandsWith(spy.svc), "set-value", setValueArgs("101", 3, "50"))
+	if cmdErr == nil || cmdErr.Msg != "the Element's range value is read-only, so set-value cannot set it; nothing was sent" ||
+		!strings.Contains(cmdErr.Hint, "winuse scroll 101 3 down") {
+		t.Errorf("read-only range: %v", cmdErr)
+	}
+	spy = newHeadlessSpy()
+	spy.hValueErr = fmt.Errorf("%w: 150 is not between 0 and 100", uia.ErrRangeBounds)
+	_, cmdErr = runCommand(t, CommandsWith(spy.svc), "set-value", setValueArgs("101", 3, "150"))
+	if cmdErr == nil || cmdErr.Msg != "the value is outside the Element's range: 150 is not between 0 and 100; nothing was sent" ||
+		!strings.Contains(cmdErr.Hint, "between") {
+		t.Errorf("out of range: %v", cmdErr)
+	}
+}
+
+func TestHeadlessRangeWriteRefusedSaysNothingChanged(t *testing.T) {
+	// A range write the Element refused, whose value reads as before: the
+	// failure says nothing was changed, so a retry is safe, not "may have
+	// taken effect".
+	spy := newHeadlessSpy()
+	spy.hValueErr = fmt.Errorf("%w: setting the Element's value failed (HRESULT 0x80131509); it still reads 0, so nothing was changed", uia.ErrRangeRefused)
+	_, cmdErr := runCommand(t, CommandsWith(spy.svc), "set-value", setValueArgs("101", 3, "40"))
+	if cmdErr == nil || !strings.HasSuffix(cmdErr.Msg, "nothing was changed") {
+		t.Fatalf("refused range write: %v", cmdErr)
+	}
+	if strings.Contains(cmdErr.Msg+cmdErr.Hint, "may have taken effect") {
+		t.Errorf("an unchanged value must not say it may have taken effect: %v", cmdErr)
+	}
+	if !strings.Contains(cmdErr.Hint, "winuse scroll 101 3 down") {
+		t.Errorf("hint = %q, want the scroll alternative", cmdErr.Hint)
+	}
+	if got := Delivery(cmdErr); got != protocol.DeliveryNotDelivered {
+		t.Errorf("delivery = %q, want %q", got, protocol.DeliveryNotDelivered)
+	}
 }
 
 func TestHeadlessWriteAndVerifyFailureWording(t *testing.T) {
