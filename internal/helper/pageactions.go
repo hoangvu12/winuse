@@ -380,6 +380,7 @@ func (s Services) runPage(ctx context.Context, run pageRun) (string, *Error) {
 	s.watchNewTabs(ctx, o)
 	defer s.guardUsersTab(ctx)() // a Tab target's: a new Tab never keeps the user's place (ADR 0017)
 	rippled := s.rippleOnDelivery(ctx, w, rect, shown, in)
+	markPageLogs(ctx, o.Client, o.TopSession(), o.TargetID, w.ID) // logs.go: the requests that fail from here are noted
 	err = run.act(ctx, in, aim)
 	rippled()
 	if esc.Stopped() {
@@ -837,6 +838,7 @@ func (s Services) runPageInput(ctx context.Context, w win.WindowInfo, o *page.Or
 	s.watchNewTabs(ctx, o)
 	defer s.guardUsersTab(ctx)() // a Tab target's: Enter on a link opens a Tab too (ADR 0017)
 	rippled := s.rippleOnDelivery(ctx, w, rect, shown, in)
+	markPageLogs(ctx, o.Client, o.TopSession(), o.TargetID, w.ID) // logs.go
 	err = p.act(ctx, in)
 	rippled()
 	if esc.Stopped() {

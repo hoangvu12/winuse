@@ -59,9 +59,10 @@ global options:
                                "error" with its code, message, hint, delivery
                                and retry; a Page click or press-key adds
                                "effect": navigated, changed, text, none or
-                               unknown, and navigate, back, forward and
-                               reload add "http_status" when the Page
-                               answered 4xx or 5xx. Exit codes are unchanged
+                               unknown, navigate, back, forward and reload
+                               add "http_status" when the Page answered 4xx
+                               or 5xx, and a read's Notes go in "notes",
+                               never in "out". Exit codes are unchanged
   --help, -h                  print the command's usage and examples instead
                                of running it, as winuse help <command> does
 
@@ -194,7 +195,14 @@ commands:
                                --observe=diff does after an Action; with no
                                earlier read, or past 60% changed, the whole
                                Window State prints with a note. It takes the
-                               budgets above, not --root or --skeleton
+                               budgets above, not --root or --skeleton.
+                               Your first read of a site or App prints its
+                               Notes above the Window: line (the newest 10,
+                               then a note list line; a browser Window's
+                               site, then the browser's), once per agent;
+                               they count toward --max-chars and shrink
+                               first. --diff, --observe and find print none;
+                               WINUSE_NOTES=off hides them
   find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N | --full]
                                search the Window's whole live tree, past the
                                Window State's caps: print the matching
@@ -243,24 +251,32 @@ commands:
                                model jev-latest; status masks the key; --key -
                                reads it from stdin; check sends one question
                                and prints the model and round trip
-  record-tree <window> <file> record a Window's real tree to a fixture file
+  record-tree <window> <file> [--table]
+                               record a Window's real tree to a fixture file;
+                               --table records its list or grid as extract
+                               reads it
   zoom <window> <x>,<y>,<w>,<h>
                                save a full-resolution crop of a region of the
                                Window's latest screenshot and print its path
   extract <window>[:<tab>] [--root <element>] [--as list|table|jsonld] [--limit N] [--max-chars N | --out <file>]
-                               a browser Page's repeated items as rows: a
-                               header line naming the container and "N of M
-                               rows (complete)" or "(partial: capped at N /
-                               page says N results)", then a JSON array, one
-                               row per line. Without --root it picks the
-                               list, a table with headers or the page's
-                               JSON-LD, and says "no list found" on an
-                               article or a page with no list; --root takes
-                               the list, an ancestor or one item of it.
-                               --as forces a mode; --limit (default 50, up to
-                               1000); stops before 28000 characters; --out
-                               writes the array to a file. Prints no Element
-                               Indexes and reads in an isolated world
+                               a browser Page's repeated items, or a native
+                               Window's list or grid, as rows: a header line
+                               naming the container and "N of M rows
+                               (complete)" or "(partial: capped at N /
+                               virtualized / page says N results)", then a
+                               JSON array, one row per line. Without --root
+                               it picks the list, a table with headers or the
+                               page's JSON-LD (on a native Window: its only
+                               table or grid, else its longest list), and
+                               says "no list found" when there is none;
+                               --root takes the list, an ancestor or one item
+                               of it. --as forces a mode (Pages only);
+                               --limit (default 50 on a Page, 500 on a native
+                               Window, up to 1000); stops before 28000
+                               characters; --out writes the array to a file.
+                               Prints no Element Indexes; a Page is read in
+                               an isolated world, a native list never
+                               scrolled
   click <window> <element index | name: | id: | @x,y> [options]
                                click an Element of a Window by Element Index,
                                name: or id: reference, or at @x,y
@@ -539,6 +555,19 @@ const usageTail = `);
                                short Page that looks like a CAPTCHA or block
                                wall gets a Note. Pages only: read a native
                                Window with get-window-state
+  logs <window> [--clear] [--max-chars N | --out <file>]
+                               print the Tab's log, newest last: the requests
+                               that failed and the CSP or security errors its
+                               Page logged, each with its time, source, level
+                               and text (winuse keeps the last 50 per Tab,
+                               from before it attached too). Cut at 28000
+                               characters, keeping the newest (--max-chars N,
+                               0 for none), or --out writes them all to a
+                               file. --clear empties it after printing; --json
+                               answers with JSON.
+                               A Page Action that made requests fail stays ok
+                               and adds "Note: 2 failed requests: 404
+                               /api/save, ..." Pages only
   eval <window> <expression> | --file <path or -> [--max <n>]
                                run a JavaScript expression in the Page and
                                print its value (JSON for objects, cut at 4000
@@ -664,7 +693,7 @@ screenshot's pixels) name an Element of the Window's latest Window State.
 A Tab target, <window>:<tab> (a tab id from tab list or tab new), names a Tab
 of that browser shown or not: get-window-state, click, set-value, scroll,
 hover, drag, select-text, type-text, press-key, upload, navigate, back,
-forward, reload, dialog, wait, eval, read, extract and batch read and act
+forward, reload, dialog, wait, eval, read, extract, logs and batch read and act
 on that Tab through its Browser Connection, headless, without switching
 the Tab the user sees; its Element Indexes are its own, and --headed,
 --post and @x,y are refused
@@ -720,11 +749,11 @@ var commandGroups = []struct {
 		{"list-windows", "the visible Windows: Window ID, App, title", []string{
 			"winuse list-windows",
 			"winuse list-windows --app notepad --details"}},
-		{"get-window", "re-resolve one Window and print its line", []string{
+		{"get-window", "re-resolve one Window, print its line", []string{
 			"winuse get-window 4242"}},
 		{"list-apps", "running and recent Apps, with their Windows", []string{
 			"winuse list-apps"}},
-		{"launch-app", "start an App and print the Window it opened", []string{
+		{"launch-app", "start an App, print the Window it opened", []string{
 			"winuse launch-app notepad",
 			`winuse launch-app "C:\Tools\app.exe" --arg --verbose --cwd C:\work`}},
 		{"close-app", "ask every Window of an App to close", []string{
@@ -752,15 +781,16 @@ var commandGroups = []struct {
 			`winuse run 4242:1a2b3c4d "open the Wikipedia article about Kurt Godel" --set "Kurt Godel"`,
 			`winuse run 4242 "fill in the form and submit it" --set "Ada Lovelace" --set ada@example.com`,
 			`winuse run Settings "open the About page"`}},
-		{"jev", "the Jev server, key and model pick and run use", []string{
+		{"jev", "the Jev server, key and model", []string{
 			"winuse jev",
 			"winuse jev set --key - --base-url https://api.codiv.ai",
 			"winuse jev check"}},
 		{"zoom", "a full-resolution crop of the latest screenshot", []string{
 			"winuse zoom 4242 100,80,400,300"}},
-		{"extract", "a Page's list, table or JSON-LD as JSON rows", []string{
+		{"extract", "a Page's or a Window's list or table as JSON rows", []string{
 			"winuse extract 4242",
 			"winuse extract 4242 --root 57 --limit 200",
+			"winuse extract Explorer --out files.json",
 			"winuse extract 4242:1a2b3c4d --as table --out rows.json"}},
 	}},
 	{"Act in a Window (Headless unless --headed)", []commandHelp{
@@ -848,6 +878,10 @@ var commandGroups = []struct {
 			"winuse read 4242",
 			"winuse read 4242:1a2b3c4d --root 57 --urls full",
 			"winuse read 4242 --out page.md"}},
+		{"logs", "failed requests and CSP errors", []string{
+			"winuse logs 4242",
+			"winuse logs 4242:1a2b3c4d --clear",
+			"winuse --json logs 4242"}},
 		{"eval", "run JavaScript in the Page, print the value", []string{
 			"winuse eval 4242 document.title",
 			"winuse eval 4242 --file x.js --max 20000"}},
@@ -907,8 +941,9 @@ var commandGroups = []struct {
 			"winuse help click",
 			"winuse click --help",
 			"winuse help all"}},
-		{"record-tree", "record a tree fixture (winuse's own tests)", []string{
-			"winuse record-tree 4242 notepad.json"}},
+		{"record-tree", "record a tree fixture for tests", []string{
+			"winuse record-tree 4242 notepad.json",
+			"winuse record-tree 4242 services.json --table"}},
 	}},
 }
 

@@ -1,6 +1,6 @@
 # Browser Windows
 
-Read when: any website, browser Window or Electron or WebView2 App: connecting to the user's browser, `navigate`, Page waits, `eval`, `extract`, uploads, downloads, JavaScript dialogs, `browser attach`.
+Read when: any website, browser Window or Electron or WebView2 App: connecting to the user's browser, `navigate`, Page waits, `eval`, `extract`, `logs` (failed requests), uploads, downloads, JavaScript dialogs, `browser attach`.
 
 This is one topic of the winuse skill. `winuse skill browser` prints it, and `winuse skill` prints the core, SKILL.md, which holds the safety rules, the Esc stop and recovery.
 
@@ -126,8 +126,8 @@ winuse extract <window> --as table|list|jsonld # force a mode; --limit N (defaul
   `no list found: the Page looks like a <Cloudflare|...> wall; ask the user to handle it`:
   stop and ask the user, as the safety rules say.
 - It only reads, in an isolated world the Page cannot see, and prints no
-  Element Indexes. It takes `<window>:<tab>`. Pages only: on a native
-  Window, use `get-window-state` or `find`.
+  Element Indexes. It takes `<window>:<tab>`. On a native Window it reads
+  the Window's list or grid instead (`winuse skill reading`).
 
 ### Act on a Page
 
@@ -139,6 +139,7 @@ winuse wait <window> selector .spinner --gone  # until it is gone (selector and 
 winuse wait <window> idle                      # until the Page settles: no DOM change, no request finishing
 winuse wait <window> js "window.app?.ready"    # until the expression is true (a promise is awaited)
 winuse read <window> [--root <element>]        # the Page's main content (or one Element's) as Markdown
+winuse logs <window> [--clear]                 # the Tab's failed requests and CSP or security errors, newest last
 winuse eval <window> <expression>              # run JavaScript in the Page, print the value
 winuse eval <window> --file x.js [--max 20000] # the expression from a file (- for stdin); a longer cut
 winuse dialog <window> accept|dismiss [text]
@@ -214,6 +215,18 @@ winuse drag <window> <element> <element|@x,y>
   under the wheel. Stop scrolling that way. One that reached the end says
   `Note: the Page is now at its bottom`. `scroll <el> into-view` on an
   Element already on screen says `was already in view`.
+- A Page Action during which requests failed or the Page logged a CSP or
+  security error stays `ok` and adds a note, such as
+  `Note: 2 failed requests: 404 /api/save, 500 /api/user` (paths on the
+  Page's own site, host and path on another; at most 3 named) or
+  `Note: 1 security error: Refused to load ...`. A failed save or search
+  often shows only this way: read the Page before retrying.
+  `winuse logs <window>` lists the Tab's last 50 such entries, newest
+  last, with time, source, level and text, including those from before
+  winuse attached; `--clear` empties the list after printing it, and
+  `--json` answers with JSON. JavaScript exceptions and `console` calls
+  are not in it: winuse never turns on the debugger's Runtime or Network
+  domains, which a site can detect.
 - A click or key that opens a JavaScript dialog (alert, confirm, prompt,
   leave-this-page) prints `ok` and a `Note:` line with its text; do not
   repeat it. Every Page Action then fails naming the dialog until you

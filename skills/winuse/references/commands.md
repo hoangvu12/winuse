@@ -18,7 +18,7 @@ close-app <app> [--force]           # --force ends what is still running: the on
 get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--timeout <s>]
 find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
-extract <window> [--root <element>] [--as list|table|jsonld] [--limit N] [--max-chars N | --out <file>]   # a Page's list, table or JSON-LD as JSON rows
+extract <window> [--root <element>] [--as list|table|jsonld] [--limit N] [--max-chars N | --out <file>]   # a Page's list, table or JSON-LD, or a native list or grid, as JSON rows
 click <window> <ref> [--count 1|2|3] [--button left|middle|right] [--post] [--modifiers ctrl,shift,alt]
 # --modifiers: Headless on a Page and for ctrl or shift on a multi-select list item; else --post or --headed
 set-value <window> <ref> <value|on|off|item name> | --stdin | --file <path>   # flags before <ref>: a value ending with winuse flags is refused; -- <value> sets it as written
@@ -45,6 +45,7 @@ wait window <app|title> [--gone] [--timeout <s>] | wait <ms>
 eval <window> <expression> | --file <path|-> [--max <n>] | dialog <window> accept|dismiss [text]
 upload <window> [<element>] <file>...
 read <window> [--root <element>] [--urls full] [--max-chars N | --out <file>]   # a Page's main content as Markdown; Pages only
+logs <window> [--clear] [--max-chars N | --out <file>]   # the Tab's failed requests and CSP or security errors, newest last; Pages only
 tab list <window> | tab new <window> [url] | tab switch <window> <tab> | tab close <window> <tab>
 browser status | launch | connect | stop [browser]
 browser use [browser|auto]          # pin a browser (it persists); auto removes the pin

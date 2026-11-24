@@ -94,10 +94,11 @@ var tabTargetCommands = map[string]bool{
 	"batch":   true,
 	"read":    true, // read.go, bladebro-ideas ticket 25
 	"extract": true, // extract.go, bladebro-ideas ticket 26
+	"logs":    true, // logs.go, bladebro-ideas ticket 29
 }
 
 // tabTargetsWord names them in a refusal's hint.
-const tabTargetsWord = "get-window-state, click, set-value, scroll, hover, drag, select-text, type-text, press-key, upload, navigate, back, forward, reload, dialog, wait, eval, read, extract and batch"
+const tabTargetsWord = "get-window-state, click, set-value, scroll, hover, drag, select-text, type-text, press-key, upload, navigate, back, forward, reload, dialog, wait, eval, read, extract, logs and batch"
 
 // pageWaitKinds are the waits a Tab target takes: the Page's.
 var pageWaitKinds = map[string]bool{page.WaitLoadKind: true, page.WaitURL: true, page.WaitDownload: true, page.WaitSelector: true, page.WaitText: true, page.WaitIdle: true, page.WaitJS: true}
@@ -688,7 +689,11 @@ func (s Services) tabWindowState(ctx context.Context, bt *bgTab, args json.RawMe
 	if rerr != nil {
 		return "", rerr
 	}
-	out, rerr := renderState(tree, a, "", before, what) // no --root hint: a Tab target takes none
+	// No --root hint: a Tab target takes none. The Notes are the Tab's
+	// site's, then the browser's (windownotes.go).
+	out, rerr := s.stateWithNotes(ctx, a, tabNoteKeys(bt), func(a windowRef) (string, *Error) {
+		return renderState(tree, a, "", before, what)
+	})
 	if rerr != nil {
 		return "", rerr
 	}
