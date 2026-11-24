@@ -156,6 +156,8 @@ says why; no cell contains `|`.
 | `TestPostedChordFiresAWPFKeyBinding` | A posted chord fires a WPF KeyBinding on a covered Window | user | drives a WPF window hosted by Windows PowerShell, not the fixture | - | - |
 | `TestPageReadSnapshot` | The Page read snapshot matches across routes | user | starts Edge or Chrome; browsers are not the fixture | - | - |
 | `TestPageReadSnapshotExtension` | The Page read snapshot works through the extension | user | acts in the user's own browser and profile (WINUSE_E2E_USER_BROWSER) | - | - |
+| `TestReadGoldens` | read prints the expected Markdown for saved pages (table, article, search, misleading main, docs, a wall) | user | starts Edge or Chrome; browsers are not the fixture | - | - |
+| `TestReadCommand` | winuse read prints a Page as Markdown, with --root, --max-chars, --out, and refuses a native Window | user | starts Edge or Chrome; browsers are not the fixture | - | - |
 | `TestPostedKeysIntoClassicEdit` | Posted keys reach a covered classic Edit | runner | - | 2026-11-07, lane runs 42367421412 and 42367782401 | passed |
 | `TestPostedKeysRefusedOnBlockedAndMinimizedWindows` | Posted keys are refused on blocked and minimized Windows | runner | - | 2026-11-07, lane runs 42367421412 and 42367782401 | passed |
 | `TestPostedReturnIntoCoveredChromeAddressBar` | A posted Return reaches a covered Chrome's address bar | user | starts Chrome; browsers are not the fixture | - | - |

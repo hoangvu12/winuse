@@ -437,6 +437,7 @@ func CommandsWith(s Services) map[string]Command {
 	for name, cmd := range pageCommands(s) {
 		cmds[name] = cmd
 	}
+	cmds["read"] = pageRead(s) // read.go, bladebro-ideas ticket 25
 	// The clipboard's Desktop commands (clipboard.go, desktop parity
 	// ticket 01): serialized below like the Actions.
 	for name, cmd := range clipboardCommands(s) {

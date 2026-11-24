@@ -490,6 +490,20 @@ const usageTail = `);
                                read and poll, take --timeout like the Page's,
                                and never hold up an Action
   wait <milliseconds>         pause, up to 300000 (300 s)
+  read <window> [--root <element>] [--urls full] [--max-chars N | --out <file>]
+                               print the Page's main content as Markdown, with
+                               no Element Indexes, leaving the Window State as
+                               it is; --root reads a Page Element's subtree
+                               (an Element Index, name: or id: from your
+                               latest read). Same-site links print as paths,
+                               others as a shortened domain and path, images
+                               as their alt text; --urls full prints them
+                               whole. Cut at 28000 characters with a "(cut at
+                               N of M characters)" line (--max-chars N, 0 for
+                               none), or --out writes it whole to a file. A
+                               short Page that looks like a CAPTCHA or block
+                               wall gets a Note. Pages only: read a native
+                               Window with get-window-state
   eval <window> <expression> | --file <path or -> [--max <n>]
                                run a JavaScript expression in the Page and
                                print its value (JSON for objects, cut at 4000
@@ -767,6 +781,10 @@ var commandGroups = []struct {
 			"winuse forward 4242"}},
 		{"reload", "reload the Tab's page", []string{
 			"winuse reload 4242"}},
+		{"read", "the Page's main content as Markdown", []string{
+			"winuse read 4242",
+			"winuse read 4242:1a2b3c4d --root 57 --urls full",
+			"winuse read 4242 --out page.md"}},
 		{"eval", "run JavaScript in the Page, print the value", []string{
 			"winuse eval 4242 document.title",
 			"winuse eval 4242 --file x.js --max 20000"}},

@@ -107,6 +107,7 @@ Window, so the user sees it only while that Window is uncovered.
 winuse navigate <window> <url>                 # open a URL in the Window's Tab (or <window>:<tab>'s), wait for the load, print the URL
 winuse back <window>                           # also forward and reload
 winuse wait <window> selector <css>            # also text <text>, url <url or *pattern*>, load
+winuse read <window> [--root <element>]        # the Page's main content (or one Element's) as Markdown
 winuse eval <window> <expression>              # run JavaScript in the Page, print the value
 winuse eval <window> --file x.js [--max 20000] # the expression from a file (- for stdin); a longer cut
 winuse dialog <window> accept|dismiss [text]
@@ -157,6 +158,20 @@ winuse drag <window> <element> <element|@x,y>
   `winuse wait <window> download` prints the file's path when done.
   Downloads land in `Downloads\winuse` (shown by `winuse browser status`),
   only on a browser winuse launched or cloned.
+- To read a Page's text (an article, docs, search results, a table), use
+  `read`, not `eval` with `innerText`. It prints the main content as
+  Markdown with headings, lists, links and tables with their headers,
+  without navigation, footers or ads, and leaves your Element Indexes as
+  they are. The first line names what it picked; when that is the wrong
+  part, pass `--root <element>` (an Element Index, `name:` or `id:` from
+  your latest read) to read that Element's subtree. Links on the same site
+  print as paths and others as a shortened domain and path; `--urls full`
+  prints them whole. It is cut at 28000 characters with a
+  `(cut at N of M characters)` line: `--max-chars N` (0 for no cap), or
+  `--out <file>` to write it whole. A short Page that looks like a
+  CAPTCHA or block wall adds
+  `Note: the Page looks like a <kind> wall; ask the user to handle it`.
+  On a native Window, read with `get-window-state` instead.
 - `eval` prints a string as is and anything else as JSON, cut at 4000
   characters; `--max <n>` raises the cut up to 100000, so do not page a
   long result with several evals. Return plain values, not DOM nodes.
