@@ -103,6 +103,21 @@ func TestJSONLineForEachOutcome(t *testing.T) {
 				Message: "Windows desktop is locked; unlock before using winuse", Hint: "stop and ask the user to unlock"}},
 		},
 		{
+			// bladebro-ideas 05: a wall Note is the wall field too; the
+			// command stays ok.
+			name: "a wall", stdout: "ok https://shop.test/\n" + protocol.WallNote("Cloudflare") + "\n",
+			resp: &protocol.Response{OK: true, Out: "ok https://shop.test/\n" + protocol.WallNote("Cloudflare") + "\n"},
+			want: jsonLine{OK: true, Command: "click", Out: "ok https://shop.test/\n" + protocol.WallNote("Cloudflare") + "\n", Wall: "Cloudflare"},
+		},
+		{
+			name: "a Batch that failed after landing on a wall", code: 1,
+			stdout: "Action 1 (navigate): ok https://api.test/\n  " + protocol.WallNote("rate-limit") + "\n",
+			resp: &protocol.Response{Out: "Action 1 (navigate): ok https://api.test/\n  " + protocol.WallNote("rate-limit") + "\n",
+				Err: "batch stopped at Action 2 (click): boom", Exit: 1, Code: protocol.CodeInternal},
+			want: jsonLine{Command: "click", Out: "Action 1 (navigate): ok https://api.test/\n  " + protocol.WallNote("rate-limit") + "\n", Wall: "rate-limit",
+				Error: &jsonError{Code: protocol.CodeInternal, Message: "batch stopped at Action 2 (click): boom"}},
+		},
+		{
 			name: "a helper success then a local failure", code: 1, stderr: "winuse: writing out.png: access denied\n",
 			resp: &protocol.Response{OK: true},
 			want: jsonLine{Command: "click", Error: &jsonError{Code: protocol.CodeInternal, Message: "winuse: writing out.png: access denied"}},
