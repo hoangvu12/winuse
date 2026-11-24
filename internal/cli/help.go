@@ -872,7 +872,7 @@ var commandGroups = []struct {
 			"winuse --headed open-shell start"}},
 	}},
 	{"winuse itself", []commandHelp{
-		{"note", "Notes for the next agents on a site or App", []string{
+		{"note", "Notes left for later agents", []string{
 			`winuse note add 4242 "the comment box is a placeholder: click it before typing"`,
 			`winuse note add 4242 --app "Ctrl+L focuses the address bar"`,
 			`winuse note add excel.exe "Save As takes about 3 s to open"`,
