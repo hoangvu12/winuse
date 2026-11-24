@@ -1,6 +1,6 @@
 # 03: Say when a Page scroll moved nothing
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 From: `map.md`; bladebro `ScrollReport` and `scroll_probe_expr` (`bb/src/action/verdict.rs:113-147`), and the verdict at `:421-501`
 
@@ -41,3 +41,7 @@ bottom reported success and burned agent steps doubting the tool".
   through UIA ScrollPattern, which reports its position.
 - **Tests.** A fake CDP test, and an e2e page with a short body and a nested
   scroller.
+
+## Answer
+
+Built on branch `agent/bladebro-ideas` (merge 468614a; review fixes in 081a150). Page `scroll` reuses ticket 06's effect watch in a scroll mode and says when nothing moved and why (Page at its bottom/top/edge, does not scroll, nested scroller at its end), or when a scroll reached an end; `into-view` says when the Element was already in view.

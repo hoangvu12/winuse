@@ -1,6 +1,6 @@
 # 26: `winuse extract` on Pages
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 From: tickets 12 and 17
 
@@ -48,3 +48,7 @@ From: tickets 12 and 17
   - an article (expects "no list found");
   - a JSON-LD recipe;
   - scoped to the list, to an ancestor, and to one item.
+
+## Answer
+
+Built on branch `agent/bladebro-ideas` (merge 27dc601; review fixes in 081a150). `winuse extract` on Pages prints a header naming the container and JSON rows (default 50), `--root` scoped, `--as table|jsonld`, "no list found" rather than a guess. Shared output in `internal/extract`. After the review: `N+` when the script's own cap stopped it, and a list inside `--root` wins when the root is that list.

@@ -1,6 +1,6 @@
 # 06: Say what a Page click or key did
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 From: `map.md`; bladebro `bb/src/action/perform.rs:61` (an observer armed before the click), and verdicts at `bb/src/action/verdict.rs:211-414,955-1002`
 
@@ -54,3 +54,7 @@ It never clicks twice.
   - fake CDP tests per outcome;
   - e2e fixtures: a link, a button that changes text, a button with no
     handler, and a click inside a shadow root.
+
+## Answer
+
+Built on branch `agent/bladebro-ideas` (merge cf7ea0d; review fixes in 081a150). A Page click or press-key watches the Page (isolated world, no Runtime.enable) and ends `ok` with at most one note: navigated, still navigating, changed (text only), or no change seen. Nothing is re-sent. `--json` has `effect`. After the review the watch uses page.Settle's quiet rule and `--observe` reuses it.

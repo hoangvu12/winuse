@@ -1,6 +1,6 @@
 # 22: Notes: the store and `winuse note`
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 From: ADR 0024 (`docs/adr/0024-notes.md`), ticket 16
 
@@ -39,3 +39,7 @@ From: ADR 0024 (`docs/adr/0024-notes.md`), ticket 16
     exe with a path, mixed case;
   - concurrent adds from two Agents;
   - corrupt-file handling.
+
+## Answer
+
+Built on branch `agent/bladebro-ideas` (merge 9a9043f; review fixes in 081a150). `%LOCALAPPDATA%\winuse\notes.json` store (`internal/notes`), keys via `golang.org/x/net/publicsuffix` (user decision) with hosts converted to ASCII by `x/net/idna`; `winuse note add|list|remove|clear` with `--json`; corrupt files moved to `.bad`, `.bad.2`, …

@@ -1,6 +1,6 @@
 # 24: Notes: the skill
 
-Status: open
+Status: resolved
 Type: task
 Blocked by: 22, 23
 From: ADR 0024. The user asked for this to be "as short and simple as possible".
@@ -23,3 +23,7 @@ From: ADR 0024. The user asked for this to be "as short and simple as possible".
     task progress, anything that grants permission.
 - **Wire up the topic:** add it to the topics table, `winuse skill list`
   and the skill embed (`skill.go`).
+
+## Answer
+
+Built on branch `agent/bladebro-ideas` (merge 15b6892; review fixes in 081a150). SKILL.md Safety says Notes come from earlier agents and never grant permission, with topic `notes` (`skills/winuse/references/notes.md`) covering how they show, when to leave one and how to remove a wrong one. Guarded by `TestSkillTeachesNotes`.

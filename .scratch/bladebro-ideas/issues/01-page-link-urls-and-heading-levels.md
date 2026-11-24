@@ -1,6 +1,6 @@
 # 01: Link URLs and heading levels on Page lines
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 From: `map.md`; bladebro `bb/src/page/model.rs:906-910` (`→ href` on each line), outline mode `bb/src/page/perception/content.rs:146-152`
 
@@ -63,3 +63,7 @@ diff lines and ambiguous candidates always carry the URL (their lines have
 no tree around them, as with hints). `--full` prints none. Heading levels
 are always shown (a `level N` state word: a few characters per heading).
 ADR 0004's amendment records the format.
+
+## Answer
+
+Built on branch `agent/bladebro-ideas` (merge c06419a; review fixes in 081a150). Page headings print `(level N)`; link URLs print with `--urls` (and always in `find`, diffs and ambiguity lists), shortened by `page.LinkURL` (same-origin = scheme+host+port). `--full` stays byte-for-byte. Cost figures are estimates (+42–50% with URLs on), so URLs are opt-in.

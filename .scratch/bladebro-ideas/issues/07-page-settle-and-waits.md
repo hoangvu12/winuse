@@ -1,6 +1,6 @@
 # 07: Settle before `--observe`; `wait idle` and `wait js`
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 From: `map.md`; bladebro `bb/src/page/perception/wait.rs:89-179` (settle), `bb/src/page/route.rs` (SPA route changes), `bb/src/action/verdict.rs:626-925` (wait conditions)
 
@@ -54,3 +54,7 @@ A hard bound caps both.
 - **Tests:**
   - fake-clock tests for settle;
   - e2e fixtures: a late render, a route change, a page with a websocket.
+
+## Answer
+
+Built on branch `agent/bladebro-ideas` (merge bf192ff; review fixes in 081a150). `--observe` on a Page settles first (110 ms DOM quiet + 280 ms request quiet, 1 s bound, note when still busy). New `wait idle`, `wait js <expr>`, `--gone` for selector/text; `wait text` searches open shadow roots and same-origin frames. ADR 0021 amended.

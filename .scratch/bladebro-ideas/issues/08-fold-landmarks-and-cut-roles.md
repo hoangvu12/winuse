@@ -1,6 +1,6 @@
 # 08: Fold Page landmarks; break the cut note down by role
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 From: `map.md`; bladebro `bb/src/page/model.rs:556-614` (folding), `:631-641` and `:979-990` (the omitted-by-role note)
 
@@ -82,3 +82,7 @@ Unnamed landmarks now have lines of their own (`main`, `navigation`,
 `banner`, `footer`, `complementary`). This adds about one line per
 landmark, roughly 5 lines and 100 characters on a typical page, and it
 lets an agent tell chrome links from content even when nothing folds.
+
+## Answer
+
+Built on branch `agent/bladebro-ideas` (merge cbbbc94; review fixes in 081a150). Page landmarks (main, navigation, banner, footer, complementary) are always lines; when a read is too long, chrome landmarks with 3+ Elements fold to one line (never the focused, main, cut or changed ones). The cut note counts by role. Measurements are estimates (no news page).

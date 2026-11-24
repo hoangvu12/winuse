@@ -1,6 +1,6 @@
 # 29: Failed requests and CSP errors: notes and `winuse logs`
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 From: tickets 11 and 19
 
@@ -28,3 +28,7 @@ From: tickets 11 and 19
 - **Docs.** Add it to `browser.md` and `commands.md`.
 - **Tests.** Fake CDP tests: the replay on enable, the note after an Action,
   the bounds, the ring being per Tab.
+
+## Answer
+
+Built on branch `agent/bladebro-ideas` (merge 0f4ba69; review fixes in 081a150). `Log.enable` in every Tab session (never Runtime/Network on the user's Tabs); failed-request and CSP notes after Page Actions; `winuse logs <w>[:<tab>] [--clear] [--max-chars | --out]`. Fix 5c37137 made the ring keep every entry (ordered listener, no cross-clock marks).

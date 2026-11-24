@@ -140,6 +140,26 @@ Permalink base: https://github.com/dondai44423/bladebro/blob/d50ee9e/
     where `--block` is on (ticket 28).
   - Build tickets 29–30. [19](issues/19-console-capture-decision.md)
 
+- **21** (2026-11-24, built): `wait value` treats LF/CRLF/CR alike; native `wait text` and `wait notification --text` match whitespace-collapsed text; rename read-back accepts a stale old name when the new name appeared. [21](issues/21-wait-value-line-breaks.md)
+- **22** (2026-11-24, built): `%LOCALAPPDATA%\winuse\notes.json` store (`internal/notes`), keys via `golang.org/x/net/publicsuffix` (user decision) with hosts converted to ASCII by `x/net/idna`; `winuse note add|list|remove|clear` with `--json`; corrupt files moved to `.bad`, `.bad.2`, …. [22](issues/22-notes-store-and-commands.md)
+- **23** (2026-11-24, built): The newest 10 Notes for a site or App print once per Agent above the Window State (site then browser on a browser Window), in `"notes"` under `--json`, shrinking first under `--max-chars`. [23](issues/23-notes-in-window-state.md)
+- **24** (2026-11-24, built): SKILL.md Safety says Notes come from earlier agents and never grant permission, with topic `notes` (`skills/winuse/references/notes.md`) covering how they show, when to leave one and how to remove a wrong one. [24](issues/24-notes-in-the-skill.md)
+- **25** (2026-11-24, built): `winuse read <window>[:<tab>] [--root] [--urls full] [--max-chars | --out]` prints a Page's main content as Markdown (bladebro port, Apache-2.0 attribution in `third_party/bladebro`). [25](issues/25-read-command.md)
+- **26** (2026-11-24, built): `winuse extract` on Pages prints a header naming the container and JSON rows (default 50), `--root` scoped, `--as table|jsonld`, "no list found" rather than a guess. [26](issues/26-extract-pages.md)
+- **27** (2026-11-24, built): `extract` on native Windows reads the only Table/Grid or the longest list (default 500 rows), never `GetItem`, bounded cached reads; `record-tree --table` records fixtures. [27](issues/27-extract-native.md)
+- **28** (2026-11-24, built): `tab new … --block images,fonts,media` and `navigate <w>:<tab> --block` on agent-owned Tabs only, via `Network.setBlockedURLs` urlPatterns plus `Network.enable` on that Tab (see Comments); reads, screenshots and extract on a blocking Tab end with a note. [28](issues/28-asset-blocking.md)
+- **29** (2026-11-24, built): `Log.enable` in every Tab session (never Runtime/Network on the user's Tabs); failed-request and CSP notes after Page Actions; `winuse logs <w>[:<tab>] [--clear] [--max-chars | --out]`. [29](issues/29-log-notes-and-logs-command.md)
+- **30** (2026-11-24, built): A main-world exception listener installed with `addScriptToEvaluateOnNewDocument` (after `Page.enable`) passes records to an isolated-world buffer; notes say `the Page threw: …`. [30](issues/30-exception-listener.md)
+- **01** (2026-11-24, built): Page headings print `(level N)`; link URLs print with `--urls` (and always in `find`, diffs and ambiguity lists), shortened by `page.LinkURL` (same-origin = scheme+host+port). [01](issues/01-page-link-urls-and-heading-levels.md)
+- **02** (2026-11-24, built): `navigate`/`back`/`forward`/`reload` read `responseStatus` in an isolated world and add `Note: the Page answered HTTP <code> <reason>`; empty-body 4xx/5xx prints `ok` with the error page noted. [02](issues/02-http-status-on-navigate.md)
+- **03** (2026-11-24, built): Page `scroll` reuses ticket 06's effect watch in a scroll mode and says when nothing moved and why (Page at its bottom/top/edge, does not scroll, nested scroller at its end), or when a scroll reached an end; `into-view` says when the Element was already in view.. [03](issues/03-page-scroll-result.md)
+- **04** (2026-11-24, built): A Batch runs every step's argument-only checks while it prepares and sends nothing on a bad value (`batch: Action N (kind): …; nothing was sent`). [04](issues/04-batch-upfront-value-checks.md)
+- **05** (2026-11-24, built): One shared wall check (`internal/page/wall.js`, `page.WallKind`, ported from bladebro) used by `read`, `extract` and a note after navigations and after a click that navigated (once the new body has loaded). [05](issues/05-challenge-page-note.md)
+- **06** (2026-11-24, built): A Page click or press-key watches the Page (isolated world, no Runtime.enable) and ends `ok` with at most one note: navigated, still navigating, changed (text only), or no change seen. [06](issues/06-page-action-outcome-note.md)
+- **07** (2026-11-24, built): `--observe` on a Page settles first (110 ms DOM quiet + 280 ms request quiet, 1 s bound, note when still busy). [07](issues/07-page-settle-and-waits.md)
+- **08** (2026-11-24, built): Page landmarks (main, navigation, banner, footer, complementary) are always lines; when a read is too long, chrome landmarks with 3+ Elements fold to one line (never the focused, main, cut or changed ones). [08](issues/08-fold-landmarks-and-cut-roles.md)
+- **09** (2026-11-24, built): `set-value` and `type-text --into` follow a placeholder's focus hand-off and a remounted editor (with a note), never read a detached node, and read multi-line editors back by blocks. [09](issues/09-facade-editor-set-value.md)
+
 ## Priority
 
 From ticket 14's real-session counts:
@@ -169,15 +189,15 @@ read JS, console and asset scripts, the UIA probe, the facade repro test).
 
 | # | Ticket | Type | Status |
 |---|---|---|---|
-| 01 | [Link URLs and heading levels on Page lines](issues/01-page-link-urls-and-heading-levels.md) | task | ready-for-agent |
-| 02 | [HTTP status on navigate](issues/02-http-status-on-navigate.md) | task | ready-for-agent |
-| 03 | [Say when a Page scroll moved nothing](issues/03-page-scroll-result.md) | task | ready-for-agent (low) |
-| 04 | [Batch: check step values before the first step](issues/04-batch-upfront-value-checks.md) | task | ready-for-agent (low) |
-| 05 | [Note a challenge or block page](issues/05-challenge-page-note.md) | task | ready-for-agent |
-| 06 | [Say what a Page click or key did](issues/06-page-action-outcome-note.md) | task | ready-for-agent |
-| 07 | [Settle before `--observe`; `wait idle` and `wait js`](issues/07-page-settle-and-waits.md) | task | ready-for-agent |
-| 08 | [Fold Page landmarks; break the cut note down by role](issues/08-fold-landmarks-and-cut-roles.md) | task | ready-for-agent |
-| 09 | [Placeholder and remounting editors in `set-value`](issues/09-facade-editor-set-value.md) | task | ready-for-agent |
+| 01 | [Link URLs and heading levels on Page lines](issues/01-page-link-urls-and-heading-levels.md) | task | resolved |
+| 02 | [HTTP status on navigate](issues/02-http-status-on-navigate.md) | task | resolved |
+| 03 | [Say when a Page scroll moved nothing](issues/03-page-scroll-result.md) | task | resolved |
+| 04 | [Batch: check step values before the first step](issues/04-batch-upfront-value-checks.md) | task | resolved |
+| 05 | [Note a challenge or block page](issues/05-challenge-page-note.md) | task | resolved |
+| 06 | [Say what a Page click or key did](issues/06-page-action-outcome-note.md) | task | resolved |
+| 07 | [Settle before `--observe`; `wait idle` and `wait js`](issues/07-page-settle-and-waits.md) | task | resolved |
+| 08 | [Fold Page landmarks; break the cut note down by role](issues/08-fold-landmarks-and-cut-roles.md) | task | resolved |
+| 09 | [Placeholder and remounting editors in `set-value`](issues/09-facade-editor-set-value.md) | task | resolved |
 | 10 | [Measure asset blocking](issues/10-measure-asset-blocking.md) | prototype | resolved |
 | 11 | [Console and errors without Runtime; HTTP status method](issues/11-console-without-runtime.md) | research | resolved |
 | 12 | [Generic `read` and `extract` on real pages](issues/12-read-extract-quality.md) | prototype | resolved |
@@ -189,13 +209,13 @@ read JS, console and asset scripts, the UIA probe, the facade repro test).
 | 18 | [Asset blocking: build it, and how](issues/18-asset-blocking-decision.md) | grilling | resolved |
 | 19 | [Console capture: scope and visibility](issues/19-console-capture-decision.md) | grilling | resolved |
 | 20 | [Native `set-value` false readback failures](issues/20-native-set-value-false-failures.md) | prototype | resolved |
-| 21 | [Line breaks in `wait value`, `wait text` and the rename fallback](issues/21-wait-value-line-breaks.md) | task | ready-for-agent |
-| 22 | [Notes: the store and `winuse note`](issues/22-notes-store-and-commands.md) | task | ready-for-agent |
-| 23 | [Notes: shown in the Window State](issues/23-notes-in-window-state.md) | task | blocked by 22 |
-| 24 | [Notes: the skill](issues/24-notes-in-the-skill.md) | task | blocked by 22, 23 |
-| 25 | [`winuse read`](issues/25-read-command.md) | task | ready-for-agent |
-| 26 | [`winuse extract` on Pages](issues/26-extract-pages.md) | task | ready-for-agent |
-| 27 | [`winuse extract` on native lists and grids](issues/27-extract-native.md) | task | blocked by 26 |
-| 28 | [Asset blocking on agent-owned Tabs](issues/28-asset-blocking.md) | task | ready-for-agent |
-| 29 | [Failed requests and CSP: notes and `winuse logs`](issues/29-log-notes-and-logs-command.md) | task | ready-for-agent |
-| 30 | [JavaScript exceptions without `Runtime.enable`](issues/30-exception-listener.md) | task | blocked by 29 |
+| 21 | [Line breaks in `wait value`, `wait text` and the rename fallback](issues/21-wait-value-line-breaks.md) | task | resolved |
+| 22 | [Notes: the store and `winuse note`](issues/22-notes-store-and-commands.md) | task | resolved |
+| 23 | [Notes: shown in the Window State](issues/23-notes-in-window-state.md) | task | resolved |
+| 24 | [Notes: the skill](issues/24-notes-in-the-skill.md) | task | resolved |
+| 25 | [`winuse read`](issues/25-read-command.md) | task | resolved |
+| 26 | [`winuse extract` on Pages](issues/26-extract-pages.md) | task | resolved |
+| 27 | [`winuse extract` on native lists and grids](issues/27-extract-native.md) | task | resolved |
+| 28 | [Asset blocking on agent-owned Tabs](issues/28-asset-blocking.md) | task | resolved |
+| 29 | [Failed requests and CSP: notes and `winuse logs`](issues/29-log-notes-and-logs-command.md) | task | resolved |
+| 30 | [JavaScript exceptions without `Runtime.enable`](issues/30-exception-listener.md) | task | resolved |

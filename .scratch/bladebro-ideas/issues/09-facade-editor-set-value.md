@@ -1,6 +1,6 @@
 # 09: Placeholder and remounting editors in `set-value`
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 From: `map.md`; ticket 15 (reproduced); bladebro `bb/src/action/edit.rs` and the `tools/qol_probe/editor.html` fixture (sections 1–3)
 
@@ -63,3 +63,7 @@ All of this is in `internal/page/input.go`; `pageSetValue` in
     facade (set-value and type-text `--into`), and the remount (single-line,
     multi-line, type-text with newlines).
   - Ticket 15's repro test can become the regression test.
+
+## Answer
+
+Built on branch `agent/bladebro-ideas` (merge d8d4ea9; review fixes in 081a150). `set-value` and `type-text --into` follow a placeholder's focus hand-off and a remounted editor (with a note), never read a detached node, and read multi-line editors back by blocks. Regression test `TestPageEditors` replaces ticket 15's repro.

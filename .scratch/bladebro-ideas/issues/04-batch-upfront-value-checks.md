@@ -1,6 +1,6 @@
 # 04: Batch: check step values before the first step
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 From: `map.md`; bladebro `bb/src/mcp/server/validate.rs:8-119`, which validates every step of a plan, including unchosen branches, before the first effect
 
@@ -120,3 +120,7 @@ command's own front half, which the command still runs when sent alone.
 - whether a pause's length is an open Window's ID;
 - desktop `wait text` with only whitespace (on a Page it is valid);
 - every read-back.
+
+## Answer
+
+Built on branch `agent/bladebro-ideas` (merge 8110041; review fixes in 081a150). A Batch runs every step's argument-only checks while it prepares and sends nothing on a bad value (`batch: Action N (kind): …; nothing was sent`). The checks are each command's own, in `internal/helper/batchcheck.go`; live checks stay at the step's turn. The review added the missing table cases and fixed a drag with one end.

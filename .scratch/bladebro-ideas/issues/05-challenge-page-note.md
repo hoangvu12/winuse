@@ -1,6 +1,6 @@
 # 05: Note a challenge or block page
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 From: `map.md`; bladebro `bb/src/page/js/detect_block.js`, `bb/src/page/perception/block.rs`
 
@@ -47,3 +47,7 @@ login form with a Turnstile widget, is not flagged.
   - fixture pages for each wall kind, plus negatives: a long docs page that
     mentions "rate limit", and a login form with a Turnstile widget;
   - fake CDP tests.
+
+## Answer
+
+Built on branch `agent/bladebro-ideas` (merge c8c017c; review fixes in 081a150). One shared wall check (`internal/page/wall.js`, `page.WallKind`, ported from bladebro) used by `read`, `extract` and a note after navigations and after a click that navigated (once the new body has loaded). `--json` has a `wall` field.

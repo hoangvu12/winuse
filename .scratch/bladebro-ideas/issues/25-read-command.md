@@ -1,6 +1,6 @@
 # 25: `winuse read`: a Page's main content as Markdown
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 From: tickets 12 and 17
 
@@ -42,3 +42,7 @@ From: tickets 12 and 17
     article, a search-results page where every result is a link, a page
     with a misleading `<main>`, a table page, and a docs page.
   - An e2e test on one live fixture page.
+
+## Answer
+
+Built on branch `agent/bladebro-ideas` (merge 354bdc5; review fixes in 081a150). `winuse read <window>[:<tab>] [--root] [--urls full] [--max-chars | --out]` prints a Page's main content as Markdown (bladebro port, Apache-2.0 attribution in `third_party/bladebro`). After the review, links are shortened in Go by the same rule as `page.LinkURL` and `--max-chars` bounds the whole output.

@@ -1,6 +1,6 @@
 # 02: HTTP status on navigate
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 From: `map.md`; bladebro `bb/src/page/navigate.rs:150-181,485-488`, `bb/src/page/logs.rs:17-134`
 
@@ -48,3 +48,7 @@ shows its own error page for an empty body.
 - Show the note on a Tab target too.
 - Tests: a fake CDP test for each status, and an e2e page that serves 404
   and 429.
+
+## Answer
+
+Built on branch `agent/bladebro-ideas` (merge 98ce7df; review fixes in 081a150). `navigate`/`back`/`forward`/`reload` read `responseStatus` in an isolated world and add `Note: the Page answered HTTP <code> <reason>`; empty-body 4xx/5xx prints `ok` with the error page noted. `--json` has `http_status` (a real Response field after the review).

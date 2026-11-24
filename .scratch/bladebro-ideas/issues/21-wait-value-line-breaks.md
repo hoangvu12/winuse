@@ -1,6 +1,6 @@
 # 21: Line breaks in `wait value`, `wait text` and the rename fallback
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 From: ticket 20
 
@@ -31,3 +31,7 @@ fixed.
   sibling under the same parent carries the new name.
 - Tests: unit tests for each. Add an e2e test for Notepad multi-line
   `wait value` if the suite has a Notepad fixture.
+
+## Answer
+
+Built on branch `agent/bladebro-ideas` (merge 60c62f9; review fixes in 081a150). `wait value` treats LF/CRLF/CR alike; native `wait text` and `wait notification --text` match whitespace-collapsed text; rename read-back accepts a stale old name when the new name appeared. On Pages, `wait text` matches line breaks as they are (documented).

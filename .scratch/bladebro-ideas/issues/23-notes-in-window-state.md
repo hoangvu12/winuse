@@ -1,6 +1,6 @@
 # 23: Notes: shown in the Window State
 
-Status: open
+Status: resolved
 Type: task
 Blocked by: 22
 From: ADR 0024
@@ -35,3 +35,7 @@ From: ADR 0024
   - Tab targets;
   - the off switch;
   - JSON.
+
+## Answer
+
+Built on branch `agent/bladebro-ideas` (merge b45cbd9; review fixes in 081a150). The newest 10 Notes for a site or App print once per Agent above the Window State (site then browser on a browser Window), in `"notes"` under `--json`, shrinking first under `--max-chars`. `WINUSE_NOTES=off` hides them (set by the Task Suite and e2e runner).

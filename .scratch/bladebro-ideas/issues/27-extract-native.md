@@ -1,6 +1,6 @@
 # 27: `winuse extract` on native lists and grids
 
-Status: open
+Status: resolved
 Type: task
 Blocked by: 26 (for the shared command surface)
 From: tickets 13 and 17
@@ -43,3 +43,7 @@ From: tickets 13 and 17
     Services, .NET 8 ListView, and a WPF DataGrid.
   - An e2e test on a fixture list if the fixture App gains a grid. The
     current fixture has only a single-column list.
+
+## Answer
+
+Built on branch `agent/bladebro-ideas` (merge fd8412d; review fixes in 081a150). `extract` on native Windows reads the only Table/Grid or the longest list (default 500 rows), never `GetItem`, bounded cached reads; `record-tree --table` records fixtures. Fixtures are hand-written from ticket 13's notes; `--names` not built.
