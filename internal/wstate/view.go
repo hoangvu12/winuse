@@ -296,45 +296,42 @@ func roleCounts(lines []PrintedLine) string {
 	return ": " + strings.Join(parts, ", ")
 }
 
-// roleCountsBound is the longest roleCounts could print for some of lines.
-func roleCountsBound(lines []PrintedLine) string {
-	longest := ""
-	for _, l := range lines {
-		if r := Collapse(l.Role); utf8.RuneCountInString(r) > utf8.RuneCountInString(longest) {
-			longest = r
-		}
-	}
-	if longest == "" {
-		return ""
-	}
-	parts := make([]string, 0, cutRoles)
-	for range cutRoles - 1 {
-		parts = append(parts, "9999999 "+longest)
-	}
-	return ": " + strings.Join(append(parts, "9999999 other"), ", ")
-}
-
-// cutLines is Cut, and whether it stopped the lines.
+// cutLines is Cut, and whether it stopped the lines. It reserves room for
+// the note as if its numbers were long and it named no role, then, when
+// the note it writes is longer than that, prints fewer lines until the
+// output fits: the role counts cost a line only when they must.
 func cutLines(head string, lines []PrintedLine, tail string, maxChars int, hint string) (string, bool) {
 	const format = "Note: --max-chars %d stopped the output after %s: %d more Element lines (from Element %d on%s) are not printed; their Element Indexes still work. %s\n"
 	printed := len(lines)
+	fixed := utf8.RuneCountInString(head) + utf8.RuneCountInString(tail) + 1
+	used := 0
 	if maxChars > 0 {
-		reserve := utf8.RuneCountInString(fmt.Sprintf(format, maxChars, "Element 9999999", 9999999, 9999999, roleCountsBound(lines), hint))
-		budget := maxChars - utf8.RuneCountInString(head) - utf8.RuneCountInString(tail) - 1 - reserve
-		used := 0
+		reserve := utf8.RuneCountInString(fmt.Sprintf(format, maxChars, "Element 9999999", 9999999, 9999999, "", hint))
+		budget := maxChars - fixed - reserve
 		for i, l := range lines {
-			if used += utf8.RuneCountInString(l.Text); used > budget {
+			n := utf8.RuneCountInString(l.Text)
+			if used+n > budget {
 				printed = i
 				break
 			}
+			used += n
 		}
 	}
-	if printed < len(lines) {
+	note := func(printed int) string {
 		last := "the header"
 		if printed > 0 {
 			last = "Element " + strconv.Itoa(lines[printed-1].Index)
 		}
-		tail += fmt.Sprintf(format, maxChars, last, len(lines)-printed, lines[printed].Index, roleCounts(lines[printed:]), hint)
+		return fmt.Sprintf(format, maxChars, last, len(lines)-printed, lines[printed].Index, roleCounts(lines[printed:]), hint)
+	}
+	if printed < len(lines) {
+		n := note(printed)
+		for printed > 0 && fixed+used+utf8.RuneCountInString(n) > maxChars {
+			printed--
+			used -= utf8.RuneCountInString(lines[printed].Text)
+			n = note(printed)
+		}
+		tail += n
 	}
 	var b strings.Builder
 	b.WriteString(head)

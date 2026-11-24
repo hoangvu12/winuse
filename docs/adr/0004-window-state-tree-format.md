@@ -378,8 +378,8 @@ like content. The cut note gave a count and an index only.
   edit)`: the lines left out, the most first, then by role name, so a page
   always gives the same text; past five roles the fifth is `other`. It is
   every cut's (`find`, `--root`, diffs, native reads). A heading's
-  `level N` is its state, not its role. The cap's reserve covers the
-  longest such list.
+  `level N` is its state, not its role. The output still fits the cap:
+  when the counts make the note longer, one line fewer prints.
 - **Measured** (estimated from five real pages' link lists; this run
   could not start Chrome): the chrome's share of a read is large on
   documentation with a sidebar (MDN about 75%) and small on articles and
