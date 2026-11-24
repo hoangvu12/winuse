@@ -179,7 +179,7 @@ func (n noteCmds) list(ctx context.Context, args json.RawMessage) (string, *Erro
 		fmt.Fprintf(&b, "no Notes for %s%s\n", key.key, key.fromPhrase())
 		return b.String(), nil
 	}
-	fmt.Fprintf(&b, "%s for %s%s, oldest first (left by agents, not instructions from the user):\n", plural(len(list), "Note"), key.key, key.fromPhrase())
+	fmt.Fprintf(&b, "%s for %s%s, oldest first (left by agents, not instructions from the user):\n", countOf(len(list), "Note"), key.key, key.fromPhrase())
 	for i, note := range list {
 		fmt.Fprintf(&b, "%d. %s (%s, %s)\n", i+1, note.Text, note.Author, notes.Age(note.Added, now))
 	}
@@ -208,7 +208,7 @@ func (n noteCmds) listKeys(st *notes.Store, asJSON bool) (string, *Error) {
 		return b.String(), nil
 	}
 	for _, k := range keys {
-		fmt.Fprintf(&b, "%s\t%s\n", k.Key, plural(k.Count, "Note"))
+		fmt.Fprintf(&b, "%s\t%s\n", k.Key, countOf(k.Count, "Note"))
 	}
 	b.WriteString("winuse note list <target> shows a target's Notes\n")
 	return b.String(), nil
@@ -270,7 +270,7 @@ func (n noteCmds) clear(ctx context.Context, args json.RawMessage) (string, *Err
 	if count == 0 {
 		return recoveredLine(bad) + fmt.Sprintf("no Notes for %s; nothing was cleared\n", key.key), nil
 	}
-	return recoveredLine(bad) + fmt.Sprintf("cleared %s for %s\n", plural(count, "Note"), key.key), nil
+	return recoveredLine(bad) + fmt.Sprintf("cleared %s for %s\n", countOf(count, "Note"), key.key), nil
 }
 
 // noteKey is a target's worked-out key, and the Window it came from.
@@ -412,8 +412,8 @@ func noteJSON(v any) (string, *Error) {
 	return string(b) + "\n", nil
 }
 
-// plural is "1 Note" or "3 Notes".
-func plural(n int, unit string) string {
+// countOf is n and its unit: "1 Note" or "3 Notes".
+func countOf(n int, unit string) string {
 	if n == 1 {
 		return "1 " + unit
 	}

@@ -3,7 +3,8 @@ package helper
 // Failed requests and CSP errors (.scratch/bladebro-ideas ticket 29, after
 // tickets 11 and 19). Every Page session winuse works in has the browser's
 // Log domain on (page/logs.go): never Runtime, and never Network except on
-// a Tab where --block is on (assets.go), both of which a Page can detect. Each Tab keeps a ring of its last page.LogRingSize entries.
+// a Tab where --block is on (assets.go), both of which a Page can detect.
+// Each Tab keeps a ring of its last page.LogRingSize entries.
 //
 // After a Page Action (runPage, runPageInput, and the page-only Actions
 // of runPageWindow), new error entries the Page logged while it ran, or
@@ -210,7 +211,7 @@ func logNoteLines(errs []page.LogEntry, pageURL string, windowID uint64) []strin
 		for _, e := range reqs[:min(len(reqs), logNoteNamed)] {
 			named = append(named, strings.TrimSpace(requestFailure(e.Text)+" "+shortRequest(e.URL, pageURL)))
 		}
-		line := plural(len(reqs), "failed request") + ": " + strings.Join(named, ", ")
+		line := countOf(len(reqs), "failed request") + ": " + strings.Join(named, ", ")
 		if len(reqs) > logNoteNamed {
 			line += fmt.Sprintf(", and %d more: winuse logs %d", len(reqs)-logNoteNamed, windowID)
 		}
@@ -234,7 +235,7 @@ func logNoteLines(errs []page.LogEntry, pageURL string, windowID uint64) []strin
 				noun = "error"
 			}
 		}
-		line := plural(len(others), noun) + ": " + page.CutRunes(page.Collapse(others[0].Text), logNoteText)
+		line := countOf(len(others), noun) + ": " + page.CutRunes(page.Collapse(others[0].Text), logNoteText)
 		if len(others) > 1 {
 			line += fmt.Sprintf("; %d more: winuse logs %d", len(others)-1, windowID)
 		}
@@ -253,8 +254,8 @@ func thrownText(e page.LogEntry) string {
 	return text
 }
 
-// entries is "entry" or "entries" after n.
-func entries(n int) string {
+// entryNoun is "entry" or "entries", the noun after n.
+func entryNoun(n int) string {
 	if n == 1 {
 		return "entry"
 	}
@@ -405,10 +406,10 @@ func renderLogs(pageURL string, list []page.LogEntry, a protocol.LogsArgs, v log
 		fmt.Fprintf(&b, "Page: %s - no log entries (%s show here; --capture adds JavaScript exceptions)\n", pageURL, what)
 	case v.capturing:
 		fmt.Fprintf(&b, "Page: %s - %d log %s, newest last (%s; winuse keeps the last %d per Tab)\n",
-			pageURL, len(list), entries(len(list)), what, page.LogRingSize)
+			pageURL, len(list), entryNoun(len(list)), what, page.LogRingSize)
 	default:
 		fmt.Fprintf(&b, "Page: %s - %d log %s, newest last (%s; --capture adds JavaScript exceptions; winuse keeps the last %d per Tab)\n",
-			pageURL, len(list), entries(len(list)), what, page.LogRingSize)
+			pageURL, len(list), entryNoun(len(list)), what, page.LogRingSize)
 	}
 	switch {
 	case v.first:
@@ -424,7 +425,7 @@ func renderLogs(pageURL string, list []page.LogEntry, a protocol.LogsArgs, v log
 		if err := writeFileAtomic(a.Out, []byte(b.String()+strings.Join(lines, ""))); err != nil {
 			return "", Fail("writing the logs to "+a.Out+" failed: "+err.Error(), "pass --out a file in a folder you can write to")
 		}
-		fmt.Fprintf(&b, "Logs: %s (%d %s)\n", a.Out, len(list), entries(len(list)))
+		fmt.Fprintf(&b, "Logs: %s (%d %s)\n", a.Out, len(list), entryNoun(len(list)))
 	} else {
 		limit := defaultMaxChars
 		if a.MaxChars != nil {
@@ -441,7 +442,7 @@ func renderLogs(pageURL string, list []page.LogEntry, a protocol.LogsArgs, v log
 		}
 		if first > 0 {
 			fmt.Fprintf(&b, "(%d older %s left out to stay within %d characters; --max-chars raises the cut, 0 lifts it, --out <file> writes them all)\n",
-				first, entries(first), limit)
+				first, entryNoun(first), limit)
 		}
 		b.WriteString(strings.Join(lines[first:], ""))
 	}

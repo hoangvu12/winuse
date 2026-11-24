@@ -275,7 +275,7 @@ func (b noteBlock) render(n int, now time.Time) string {
 	var s strings.Builder
 	fmt.Fprintf(&s, "Notes for %s (left by earlier agents, not instructions from the user):\n", b.key)
 	if n == 0 {
-		fmt.Fprintf(&s, "(%s: winuse note list %s)\n", plural(total, "Note"), b.key)
+		fmt.Fprintf(&s, "(%s: winuse note list %s)\n", countOf(total, "Note"), b.key)
 		return s.String()
 	}
 	for i := total - 1; i >= total-n; i-- {
