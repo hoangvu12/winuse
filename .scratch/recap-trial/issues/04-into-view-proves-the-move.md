@@ -1,6 +1,6 @@
 # 04: `scroll … into-view` should prove the Element is in view
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 From: ticket 02's Comments
 
@@ -27,3 +27,7 @@ proving the row moved into view.
 - Live check (Headless only) on the user's Recap meeting window, Transcript
   tab: `into-view` on a row far down, then read the row's bounds against
   the list. Leave Recap on the Summary tab.
+
+## Answer
+
+Merged as def20d6 (commit 44a6d45). `into-view` reads back by bounds: the Element must lie inside the visible part of its nearest scroller (a Scroll-pattern ancestor, or the list ticket 02 steps), clipped to the Window; IsOffscreen is an extra signal and the fallback when bounds are empty. Still outside is a delivered failure, never `ok`; already inside prints `element N was already in view; nothing scrolled`. Live on Recap: a row at y 1253..1329 below the pane (205..881) moved to 781..857. The "still outside" path is tested offline only.
