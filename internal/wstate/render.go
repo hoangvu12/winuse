@@ -13,16 +13,35 @@ import (
 // focused, then one "Note: ..." line per note (partial-tree and sparse-tree
 // notes from the walk).
 func Render(t *Tree) string {
+	return renderTree(t, false)
+}
+
+// RenderCodex is --full's text: Render as Codex prints it, byte for byte,
+// so without a Page heading's level (bladebro-ideas 01), which is
+// winuse's word beyond Codex's grammar.
+func RenderCodex(t *Tree) string {
+	return renderTree(t, true)
+}
+
+func renderTree(t *Tree, codex bool) string {
+	line := func(i int) *Element {
+		if !codex {
+			return &t.Elements[i]
+		}
+		c := t.Elements[i]
+		c.Level = 0
+		return &c
+	}
 	var b strings.Builder
 	writeHeader(&b, t)
 	for i := range t.Elements {
-		writeElement(&b, i, &t.Elements[i], true)
+		writeElement(&b, i, line(i), true)
 	}
 	if focused, note := t.Focused(), len(t.Notes) > 0; focused >= 0 || note {
 		b.WriteByte('\n')
 		if focused >= 0 {
 			b.WriteString("The focused UI element is ")
-			writeElement(&b, focused, &t.Elements[focused], false)
+			writeElement(&b, focused, line(focused), false)
 			b.WriteString(".\n")
 		}
 		for _, n := range t.Notes {
@@ -116,7 +135,8 @@ func writeElement(b *strings.Builder, index int, e *Element, indent bool) {
 // order: selectable, selected, disabled, collapsed/expanded/partially
 // expanded, then "settable, string" (writable ValuePattern) or
 // "settable, float" (RangeValue), then "password" (a secret field whose
-// Value is withheld; winuse's one word beyond Codex's grammar).
+// Value is withheld) and "level N" (a Page heading's level), winuse's
+// words beyond Codex's grammar.
 func (e *Element) states() string {
 	var parts []string
 	if e.Selectable {
@@ -137,5 +157,27 @@ func (e *Element) states() string {
 	if e.Password {
 		parts = append(parts, "password")
 	}
+	if e.Level > 0 {
+		parts = append(parts, "level "+strconv.Itoa(e.Level))
+	}
 	return strings.Join(parts, ", ")
+}
+
+// writeURL adds " URL: <url>" to a line, when the Element has one: a Page
+// link's address (bladebro-ideas 01), after Codex's line and before a
+// hint.
+func writeURL(b *strings.Builder, e *Element) {
+	if u := Collapse(e.URL); u != "" {
+		b.WriteString(" URL: ")
+		b.WriteString(u)
+	}
+}
+
+// URLLine is Line with the Element's URL after it: the line find, a diff
+// and an ambiguous reference print, without the tree around them.
+func URLLine(index int, e *Element) string {
+	var b strings.Builder
+	writeElement(&b, index, e, false)
+	writeURL(&b, e)
+	return b.String()
 }

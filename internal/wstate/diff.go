@@ -38,13 +38,14 @@ const (
 )
 
 // Diff compares two Window States' Elements by Element Index: an index
-// both have is Changed when its line (depth included) differs, an index
-// only after has is New, and one only before has is Gone.
+// both have is Changed when its line (depth and a link's URL included)
+// differs, an index only after has is New, and one only before has is
+// Gone.
 func Diff(before, after []Element) []Change {
 	var out []Change
 	n := min(len(before), len(after))
 	for i := 0; i < n; i++ {
-		if before[i].Depth != after[i].Depth || Line(i, &before[i]) != Line(i, &after[i]) {
+		if before[i].Depth != after[i].Depth || URLLine(i, &before[i]) != URLLine(i, &after[i]) {
 			out = append(out, Change{i, Changed})
 		}
 	}
@@ -140,13 +141,14 @@ func diffParts(before []Element, t *Tree, v View, changes []Change, what string)
 		b.WriteString(strings.Repeat("\t", e.Depth+1))
 		b.WriteByte(byte(c.Kind))
 		writeElement(&b, c.Index, &e, false)
+		writeURL(&b, &e) // a diff is winuse's text, never Codex's: the URL Diff counted shows
 		writeHint(&b, hint.Text(true))
 		if c.Kind == Changed {
 			old := before[c.Index].WithoutSharedID(sharedBefore)
 			b.WriteString(" (was: " + clip(lineBody(c.Index, &old), wasLimit) + ")")
 		}
 		b.WriteByte('\n')
-		lines = append(lines, PrintedLine{c.Index, b.String()})
+		lines = append(lines, PrintedLine{Index: c.Index, Text: b.String(), Role: e.Role})
 	}
 
 	var tl strings.Builder
@@ -178,9 +180,9 @@ func sharedOf(els []Element, v View) map[string]bool {
 	return SharedIDs(els)
 }
 
-// lineBody is an Element's line without its index.
+// lineBody is an Element's line without its index, its URL included.
 func lineBody(index int, e *Element) string {
-	return strings.TrimPrefix(Line(index, e), strconv.Itoa(index)+" ")
+	return strings.TrimPrefix(URLLine(index, e), strconv.Itoa(index)+" ")
 }
 
 // clip cuts s to at most n runes, marking the cut.

@@ -54,6 +54,17 @@ type winRig struct {
 	onPoll    func(n int)
 	calls     []string // what the commands sent, as "method params"
 	dialog    bool
+	// settle is what the Page's settle probe answers (page.Settle): how
+	// long its DOM and its finished requests have been quiet, in ms. Zero:
+	// quiet.
+	settleDOM, settleNet float64
+	settles              int
+	// statuses is the HTTP status each address answers (bladebro-ideas 02),
+	// 200 when not listed; an address with "empty" in it answers with an
+	// empty body, so the Tab shows Chrome's error page with unreachable
+	// set.
+	statuses    map[string]int
+	unreachable string
 }
 
 var (
@@ -104,7 +115,11 @@ func (r *winRig) sent(method string) []string {
 
 func (r *winRig) handlers(s *cdptest.Server) {
 	frame := func() any {
-		return map[string]any{"frameTree": map[string]any{"frame": map[string]any{"id": "F1", "loaderId": r.loader, "url": r.url}}}
+		f := map[string]any{"id": "F1", "loaderId": r.loader, "url": r.url}
+		if r.unreachable != "" {
+			f["unreachableUrl"] = r.unreachable
+		}
+		return map[string]any{"frameTree": map[string]any{"frame": f}}
 	}
 	s.Handle("Page.getFrameTree", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
 		r.mu.Lock()
@@ -122,9 +137,13 @@ func (r *winRig) handlers(s *cdptest.Server) {
 		if strings.Contains(p.URL, "nowhere") {
 			return map[string]any{"frameId": "F1", "loaderId": "LX", "errorText": "net::ERR_NAME_NOT_RESOLVED"}, nil
 		}
-		r.loader, r.url = "L2", p.URL
 		r.entries = append(r.entries[:r.cur+1], page.HistoryEntry{ID: 8 + r.cur, URL: p.URL})
 		r.cur++
+		if strings.Contains(p.URL, "empty") {
+			r.loader, r.url, r.unreachable = "L5", "chrome-error://chromewebdata/", p.URL
+			return map[string]any{"frameId": "F1", "loaderId": "L5", "errorText": "net::ERR_HTTP_RESPONSE_CODE_FAILURE"}, nil
+		}
+		r.loader, r.url, r.unreachable = "L2", p.URL, ""
 		return map[string]any{"frameId": "F1", "loaderId": "L2"}, nil
 	})
 	s.Handle("Page.getNavigationHistory", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
@@ -142,7 +161,7 @@ func (r *winRig) handlers(s *cdptest.Server) {
 		defer r.mu.Unlock()
 		for i, e := range r.entries {
 			if e.ID == p.EntryID {
-				r.cur, r.url = i, e.URL
+				r.cur, r.url, r.unreachable = i, e.URL, ""
 			}
 		}
 		return nil, nil
@@ -167,6 +186,27 @@ func (r *winRig) handlers(s *cdptest.Server) {
 		case p.Expression == "location.href":
 			defer r.mu.Unlock()
 			return map[string]any{"result": map[string]any{"type": "string", "value": r.url}}, nil
+		case strings.Contains(p.Expression, "winuse:http-status"):
+			defer r.mu.Unlock()
+			doc := r.url
+			if r.unreachable != "" {
+				doc = r.unreachable
+			}
+			code, ok := r.statuses[doc]
+			if !ok {
+				code = 200
+			}
+			r.calls = append(r.calls, "http-status "+string(m.Params))
+			return map[string]any{"result": map[string]any{"type": "number", "value": code}}, nil
+		case strings.Contains(p.Expression, "winuse:settle"):
+			defer r.mu.Unlock()
+			r.settles++
+			dom, net := r.settleDOM, r.settleNet
+			if dom == 0 && net == 0 {
+				dom, net = 5000, 5000
+			}
+			r.calls = append(r.calls, "settle "+string(m.Params))
+			return map[string]any{"result": map[string]any{"type": "object", "value": map[string]any{"dom": dom, "net": net, "loading": false}}}, nil
 		case strings.Contains(p.Expression, "winuse:wait-"):
 			r.polls++
 			n, ok, onPoll := r.polls, r.polls >= r.waitAfter, r.onPoll
@@ -179,7 +219,14 @@ func (r *winRig) handlers(s *cdptest.Server) {
 		reply := r.evalReply
 		r.mu.Unlock()
 		r.note("eval", m.Params)
+		if f, ok := reply.(func() any); ok {
+			reply = f() // an answer that changes as the test goes
+		}
 		return reply, nil
+	})
+	s.Handle("Page.createIsolatedWorld", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
+		r.note(m.Method, m.Params)
+		return map[string]any{"executionContextId": 77}, nil
 	})
 	s.Handle("Page.handleJavaScriptDialog", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
 		r.note(m.Method, m.Params)
@@ -313,6 +360,100 @@ func TestHistoryEndsAndReload(t *testing.T) {
 		t.Errorf("reload with a URL: %+v", e)
 	}
 	r.passiveOnly(t)
+}
+
+// TestNavigateNotesAnHTTPError: a Page that answers 4xx or 5xx with a body
+// stays ok, with a note naming the status (bladebro-ideas 02); a 2xx has
+// none.
+func TestNavigateNotesAnHTTPError(t *testing.T) {
+	r := newWinRig(t)
+	r.statuses = map[string]int{
+		"https://new.test/missing": 404,
+		"https://new.test/limited": 429,
+		"https://new.test/broken":  500,
+		"https://new.test/down":    503,
+		"https://new.test/odd":     499,
+	}
+	for _, c := range []struct{ url, note string }{
+		{"https://new.test/missing", "Note: the Page answered HTTP 404 Not Found"},
+		{"https://new.test/limited", "Note: the Page answered HTTP 429 Too Many Requests"},
+		{"https://new.test/broken", "Note: the Page answered HTTP 500 Internal Server Error"},
+		{"https://new.test/down", "Note: the Page answered HTTP 503 Service Unavailable"},
+		{"https://new.test/odd", "Note: the Page answered HTTP 499"},
+	} {
+		out, e := r.run(t, "navigate", protocol.NavigateArgs{Window: "301", URL: c.url})
+		if e != nil || out != "ok "+c.url+"\n"+c.note+"\n" {
+			t.Errorf("navigate %s: %q %+v", c.url, out, e)
+		}
+	}
+	if out, e := r.run(t, "navigate", protocol.NavigateArgs{Window: "301", URL: "https://new.test/fine"}); e != nil || out != "ok https://new.test/fine\n" {
+		t.Errorf("a 200: %q %+v", out, e)
+	}
+	// The status is read in an isolated world, never with a domain turned
+	// on.
+	if len(r.sent("http-status")) == 0 {
+		t.Error("the status was never read")
+	}
+	for _, m := range r.browser.Methods() {
+		if m == "Runtime.enable" || m == "Network.enable" {
+			t.Errorf("%s was sent", m)
+		}
+	}
+	r.passiveOnly(t)
+}
+
+// TestHistoryAndReloadNoteAnHTTPError: back, forward and reload onto a
+// 4xx/5xx Page carry the same note.
+func TestHistoryAndReloadNoteAnHTTPError(t *testing.T) {
+	r := newWinRig(t)
+	r.statuses = map[string]int{"https://docs.test/": 503, "https://two.test/gone": 410}
+	if _, e := r.run(t, "navigate", protocol.NavigateArgs{Window: "301", URL: "https://two.test/gone"}); e != nil {
+		t.Fatal(e.Error())
+	}
+	if out, e := r.run(t, "back", protocol.NavigateArgs{Window: "301"}); e != nil || out != "ok https://docs.test/\nNote: the Page answered HTTP 503 Service Unavailable\n" {
+		t.Errorf("back: %q %+v", out, e)
+	}
+	if out, e := r.run(t, "forward", protocol.NavigateArgs{Window: "301"}); e != nil || out != "ok https://two.test/gone\nNote: the Page answered HTTP 410 Gone\n" {
+		t.Errorf("forward: %q %+v", out, e)
+	}
+	if out, e := r.run(t, "reload", protocol.NavigateArgs{Window: "301"}); e != nil || out != "ok https://two.test/gone\nNote: the Page answered HTTP 410 Gone\n" {
+		t.Errorf("reload: %q %+v", out, e)
+	}
+}
+
+// TestNavigateToAnEmptyHTTPError: a 4xx/5xx with an empty body fails
+// Page.navigate with ERR_HTTP_RESPONSE_CODE_FAILURE and the Tab shows
+// Chrome's error page; it is reported as delivered and landed, ok, with
+// the status and the address asked for.
+func TestNavigateToAnEmptyHTTPError(t *testing.T) {
+	r := newWinRig(t)
+	r.statuses = map[string]int{"https://new.test/empty429": 429}
+	out, e := r.run(t, "navigate", protocol.NavigateArgs{Window: "301", URL: "https://new.test/empty429"})
+	if e != nil || out != "ok https://new.test/empty429\nNote: the Page answered HTTP 429 Too Many Requests with an empty body; Chrome shows its error page\n" {
+		t.Errorf("empty 429: %q %+v", out, e)
+	}
+	// Reloading Chrome's error page reads the status again.
+	if out, e := r.run(t, "reload", protocol.NavigateArgs{Window: "301"}); e != nil || !strings.Contains(out, "HTTP 429 Too Many Requests with an empty body") {
+		t.Errorf("reload of the error page: %q %+v", out, e)
+	}
+	// No 4xx/5xx to read: the failure stays the browser's, delivered.
+	_, e = r.run(t, "navigate", protocol.NavigateArgs{Window: "301", URL: "https://new.test/empty-unknown"})
+	if e == nil || e.Msg != "the browser could not open https://new.test/empty-unknown: net::ERR_HTTP_RESPONSE_CODE_FAILURE" || !strings.Contains(e.Hint, "error page") || strings.Contains(e.Msg, "nothing was sent") {
+		t.Errorf("empty without a status: %+v", e)
+	}
+}
+
+// TestNavigateWaitNoneReadsNoStatus: with --wait none the new document may
+// not have committed yet, so its status is not read.
+func TestNavigateWaitNoneReadsNoStatus(t *testing.T) {
+	r := newWinRig(t)
+	r.statuses = map[string]int{"https://new.test/missing": 404}
+	if out, e := r.run(t, "navigate", protocol.NavigateArgs{Window: "301", URL: "https://new.test/missing", Wait: "none"}); e != nil || out != "ok https://new.test/missing\n" {
+		t.Errorf("--wait none: %q %+v", out, e)
+	}
+	if got := r.sent("http-status"); len(got) != 0 {
+		t.Errorf("the status was read: %v", got)
+	}
 }
 
 func TestPageOnlyCommandsNeedABrowserConnection(t *testing.T) {
@@ -547,10 +688,154 @@ func TestWait(t *testing.T) {
 	if e == nil || e.Exit != protocol.ExitEsc || !strings.Contains(e.Hint, "nothing was sent") {
 		t.Errorf("Esc: %+v", e)
 	}
-	if _, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "idle"}); e == nil || !strings.Contains(e.Msg, "unknown wait") {
+	if _, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "networkidle"}); e == nil || !strings.Contains(e.Msg, "unknown wait") {
 		t.Errorf("bad kind: %+v", e)
 	}
 	r.passiveOnly(t)
+}
+
+// TestWaitIdle: wait idle settles the Page (page.Settle) and fails, saying
+// what kept changing, when it did not settle in time.
+func TestWaitIdle(t *testing.T) {
+	r := newWinRig(t)
+	if out, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "idle"}); e != nil || out != okOutput || r.settles == 0 {
+		t.Fatalf("idle: %q %+v after %d probes", out, e, r.settles)
+	}
+	r.mu.Lock()
+	r.settleDOM, r.settleNet = 1, 5000
+	r.mu.Unlock()
+	_, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "idle", TimeoutMS: 300})
+	if e == nil || !strings.HasPrefix(e.Msg, "waiting for the page to settle in window 301: it did not within ") || !strings.HasSuffix(e.Msg, ": its DOM kept changing") {
+		t.Errorf("busy: %+v", e)
+	}
+	if _, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "idle", Value: "x"}); e == nil || !strings.Contains(e.Msg, "takes no value") {
+		t.Errorf("a value: %+v", e)
+	}
+	r.passiveOnly(t)
+}
+
+// TestWaitJSAndGone: wait js polls the agent's predicate; --gone waits for
+// a selector or text to go, and goes with nothing else.
+func TestWaitJSAndGone(t *testing.T) {
+	r := newWinRig(t)
+	r.waitAfter = 2
+	if out, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "js", Value: "window.ready"}); e != nil || out != okOutput {
+		t.Fatalf("js: %q %+v", out, e)
+	}
+	r.mu.Lock()
+	r.polls = 0
+	r.mu.Unlock()
+	if out, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "selector", Value: ".spinner", Gone: true}); e != nil || out != okOutput {
+		t.Fatalf("gone: %q %+v", out, e)
+	}
+	r.waitAfter = 1 << 30
+	_, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "text", Value: "Loading", Gone: true, TimeoutMS: 200})
+	if e == nil || !strings.HasPrefix(e.Msg, `waiting for text "Loading" to be gone in window 301: the condition did not hold within `) {
+		t.Errorf("gone timeout: %+v", e)
+	}
+	if _, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "url", Value: "x", Gone: true}); e == nil || !strings.Contains(e.Msg, "--gone") {
+		t.Errorf("url --gone: %+v", e)
+	}
+}
+
+// TestObserveSettlesThePage: --observe on a browser Window settles its
+// Page before the read; a Page that does not settle in SettleBound is read
+// anyway, with a note.
+func TestObserveSettlesThePage(t *testing.T) {
+	r := newWinRig(t)
+	act := func(ctx context.Context, args json.RawMessage) (string, *Error) {
+		r.note("act", nil)
+		return okOutput, nil
+	}
+	run := func() string {
+		ctx, cancel := context.WithTimeout(context.Background(), protocol.RequestTimeout+protocol.ObserveTimeout)
+		defer cancel()
+		out, e := r.svc.observed("click", act)(withObserve(ctx, &protocol.Observe{Mode: protocol.ObserveFull}), json.RawMessage(`{"window":"301"}`))
+		if e != nil {
+			t.Fatalf("observe: %+v", e)
+		}
+		return out
+	}
+	out := run()
+	r.mu.Lock()
+	order := strings.Join(r.calls, "\n")
+	r.mu.Unlock()
+	if i, j := strings.Index(order, "act "), strings.Index(order, "settle "); i < 0 || j < i {
+		t.Fatalf("no settle after the Action: %s", order)
+	}
+	if strings.Contains(out, "had not settled") {
+		t.Errorf("a quiet Page got a note:\n%s", out)
+	}
+	r.mu.Lock()
+	r.settleDOM, r.settleNet = 1, 1
+	r.mu.Unlock()
+	start := time.Now()
+	out = run()
+	if took := time.Since(start); took < page.SettleBound {
+		t.Errorf("observed after %s, before the settle's bound", took)
+	}
+	if !strings.Contains(out, notePrefix+"the Page had not settled after ") || !strings.Contains(out, "(its DOM kept changing), so this read may miss what it does next") {
+		t.Errorf("no settle note:\n%s", out)
+	}
+}
+
+// TestObserveTakesTheActionsOwnSettle: a Page click or key under
+// --observe already waited for its Page to settle (its effect watch, by
+// page.Settle's rule), so the read does not wait for the same quiet again;
+// a watch that hit the bound gives the read its note. A Batch's steps may
+// act after the watch, so a Batch settles as before.
+func TestObserveTakesTheActionsOwnSettle(t *testing.T) {
+	r := newWinRig(t)
+	watched := page.SettleResult{Settled: true}
+	act := func(ctx context.Context, args json.RawMessage) (string, *Error) {
+		r.note("act", nil)
+		recordSettled(ctx, r.conn.Client, docsSession, watched)
+		return okOutput, nil
+	}
+	run := func(name string) (string, time.Duration) {
+		ctx, cancel := context.WithTimeout(context.Background(), protocol.RequestTimeout+protocol.ObserveTimeout)
+		defer cancel()
+		r.mu.Lock()
+		r.settles = 0
+		r.mu.Unlock()
+		start := time.Now()
+		out, e := r.svc.observed(name, act)(withObserve(ctx, &protocol.Observe{Mode: protocol.ObserveFull}), json.RawMessage(`{"window":"301"}`))
+		if e != nil {
+			t.Fatalf("observe: %+v", e)
+		}
+		return out, time.Since(start)
+	}
+	settles := func() int {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		return r.settles
+	}
+	out, _ := run("click")
+	if n := settles(); n != 0 || strings.Contains(out, "had not settled") {
+		t.Errorf("a settled Action: %d settle probes after it, out:\n%s", n, out)
+	}
+
+	// The watch hit its bound: the note, and no second wait.
+	watched = page.SettleResult{Busy: page.SettleBusyNet, After: page.SettleBound}
+	r.mu.Lock()
+	r.settleDOM, r.settleNet = 1, 1 // a settle of its own would run to the bound too
+	r.mu.Unlock()
+	out, took := run("click")
+	if n := settles(); n != 0 || took >= page.SettleBound {
+		t.Errorf("a busy Action: %d settle probes, observed after %s", n, took)
+	}
+	if !strings.Contains(out, notePrefix+"the Page had not settled after 1s (it kept loading resources), so this read may miss what it does next") {
+		t.Errorf("no settle note:\n%s", out)
+	}
+
+	// A Batch settles its Page itself.
+	r.mu.Lock()
+	r.settleDOM, r.settleNet = 0, 0
+	r.mu.Unlock()
+	watched = page.SettleResult{Settled: true}
+	if run("batch"); settles() == 0 {
+		t.Error("a Batch's observation took a step's settle")
+	}
 }
 
 func TestEval(t *testing.T) {

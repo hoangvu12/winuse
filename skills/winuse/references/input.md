@@ -7,9 +7,12 @@ This is one topic of the winuse skill. `winuse skill input` prints it, and `winu
 ## Fill in fields, keys and text
 
 `set-value` fills a `settable` field in one Headless Action and reads the
-value back; sliders take numbers. A toggle without a value takes `on` or
-`off` (also `true`, `false`, `checked`, `unchecked`): winuse toggles only
-when the state differs, so the box ends where you asked.
+value back; sliders take numbers within their range. A read-only range (a
+scroll bar that only reports its position) or a number outside the range
+is refused with nothing sent; scroll the list instead. A toggle without a
+value takes `on` or `off` (also `true`, `false`, `checked`, `unchecked`):
+winuse toggles only when the state differs, so the box ends where you
+asked.
 
 The value is everything after the Element, so put flags before the
 Element: `set-value 101 --observe id:name Ada`. A value whose last
@@ -207,12 +210,18 @@ At a point, winuse scrolls Headless up to 16 notches per axis; more is
 refused with nothing sent, so split it or pass `--headed` to turn the real
 wheel there.
 
-By Element, name anything inside the list or page; winuse scrolls the
-nearest container above it that scrolls on that axis and reads the
-position back. `ok` means it moved, even partly. "the Element did not
-scroll; it may already be at the end" means nothing moved. `into-view`
-scrolls the Element itself into view and checks it is on screen. When
-nothing scrolls it Headless, nothing was sent; use
+By Element, name anything inside the list or page, the list itself or its
+scroll bar; winuse scrolls the nearest container above it that scrolls on
+that axis and reads the position back. A list with no such container
+whose items reach past its edge (Apps that draw their own lists) scrolls
+one item per step, and the next read lists the items it built. `ok`
+means it moved, even partly. "the Element did not scroll; it may already
+be at the end" means nothing moved; "the list is already at its end"
+means nothing was sent. `into-view` scrolls the Element itself into view
+and checks its bounds lie inside the visible part of the list or pane
+that scrolls it; "still outside" means it was delivered but the Element
+is not in view. When nothing scrolls it Headless, nothing was
+sent; use
 `winuse --headed scroll <window> <ref> <direction>`, which takes the
 foreground.
 

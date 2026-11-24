@@ -86,8 +86,14 @@ type pageRig struct {
 	inputs    []string
 	scrolled  int
 	scrolls   [][5]int32
+	rects     [][]float64    // the rect script's answers in turn (the last repeats); none answers null
 	textField map[string]any // select-text's textFieldJS answer
 	selection map[string]any // selectTextJS answer override; nil echoes the span
+	// handoff, when set, is the node the field hands its focus to after
+	// DOM.focus (a placeholder editor, bladebro-ideas 09), once, named
+	// handoffName.
+	handoff     int64
+	handoffName string
 
 	ripplesAtRelease []int // the cursor's ripples when each mouseReleased arrived
 }
@@ -167,6 +173,15 @@ func (r *pageRig) handlers() {
 		r.record("focus")
 		return nil, nil
 	})
+	r.srv.Handle("DOM.describeNode", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
+		var p struct {
+			ObjectID string `json:"objectId"`
+		}
+		json.Unmarshal(m.Params, &p)
+		var id int64
+		fmt.Sscanf(p.ObjectID, "handoff:%d", &id)
+		return map[string]any{"node": map[string]any{"backendNodeId": id}}, nil
+	})
 	r.srv.Handle("Runtime.callFunctionOn", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
 		var p struct {
 			Fn   string `json:"functionDeclaration"`
@@ -179,6 +194,23 @@ func (r *pageRig) handlers() {
 		defer r.mu.Unlock()
 		var v any
 		switch {
+		case strings.Contains(p.Fn, "winuse:follow"):
+			if r.handoff != 0 {
+				r.inputs = append(r.inputs, "handoff")
+				id := r.handoff
+				r.handoff = 0
+				return map[string]any{"result": map[string]any{"type": "object", "subtype": "node", "objectId": fmt.Sprintf("handoff:%d", id)}}, nil
+			}
+			return map[string]any{"result": map[string]any{"type": "object", "subtype": "null"}}, nil
+		case strings.Contains(p.Fn, "winuse:label"):
+			v = map[string]any{"role": "", "name": r.handoffName}
+		case strings.Contains(p.Fn, "winuse:rect"):
+			if len(r.rects) > 0 {
+				v = r.rects[0]
+				if len(r.rects) > 1 {
+					r.rects = r.rects[1:]
+				}
+			}
 		case strings.Contains(p.Fn, "winuse:textfield"):
 			v = r.textField
 		case strings.Contains(p.Fn, "winuse:selecttext"):
@@ -579,6 +611,25 @@ func TestPageSetValue(t *testing.T) {
 	}
 	if len(r.sent()) != 0 {
 		t.Errorf("sent %v", r.sent())
+	}
+}
+
+// A placeholder field that hands its focus to the editor it mounts
+// (bladebro-ideas 09): set-value prints ok with a note naming where the
+// text went, not a false "delivered, do not repeat".
+func TestPageSetValueNotesAHandedOffFocus(t *testing.T) {
+	r := newPageRig(t)
+	r.set(func() { r.handoff, r.handoffName = 81, "Comment editor" })
+	out, e := r.run(t, "set-value", protocol.SetValueArgs{Window: "301", ElementIndex: idx(8), Value: "hello"})
+	if e != nil {
+		t.Fatal(e.Error())
+	}
+	want := okOutput + `Note: the field handed its focus to edit "Comment editor"; the text went there` + "\n"
+	if out != want {
+		t.Errorf("out = %q, want %q", out, want)
+	}
+	if got := r.sent(); !reflect.DeepEqual(got, []string{"focus", "handoff", "select", "insertText hello"}) {
+		t.Errorf("sent %v", got)
 	}
 }
 

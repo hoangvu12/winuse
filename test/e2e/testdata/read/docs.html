@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<!-- A docs page: a sidebar of links bigger than nothing, a <main> with
+     permalink anchors in the headings, code blocks, inline code, nested
+     lists, a definition list and a small parameter table. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>Reading files - Example SDK docs</title></head>
+<body>
+<header class="topbar"><a href="/" class="logo">Example SDK</a> <a href="/docs">Docs</a> <a href="/api">API</a> <a href="https://github.com/example/sdk">GitHub</a></header>
+<div class="page">
+  <div class="sidebar" role="navigation">
+    <ul>
+      <li><a href="/docs/install">Install</a></li>
+      <li><a href="/docs/quickstart">Quickstart</a></li>
+      <li><a href="/docs/files">Reading files</a>
+        <ul><li><a href="/docs/files#open">Open a file</a></li><li><a href="/docs/files#stream">Stream a file</a></li></ul></li>
+      <li><a href="/docs/errors">Errors</a></li>
+      <li><a href="/docs/config">Configuration</a></li>
+      <li><a href="/docs/deploy">Deploying</a></li>
+    </ul>
+  </div>
+  <main class="docs-content">
+    <h1>Reading files<a class="headerlink" href="#reading-files" title="Permalink">¶</a></h1>
+    <p>The SDK reads local and remote files through one call, <code>sdk.open(path)</code>, which returns a <code>File</code>.</p>
+    <h2 id="open">Open a file<a class="headerlink" href="#open">¶</a></h2>
+    <pre><code>import sdk
+
+with sdk.open("data/report.csv") as f:
+    for row in f.rows():
+        print(row)
+</code></pre>
+    <h2 id="stream">Stream a file<a class="headerlink" href="#stream">¶</a></h2>
+    <p>Large files stream in chunks. Pass a chunk size:</p>
+    <ul>
+      <li>Local files
+        <ul><li>read with <code>mmap</code> when possible</li><li>fall back to buffered reads</li></ul>
+      </li>
+      <li>Remote files, over HTTPS only</li>
+    </ul>
+    <table>
+      <thead><tr><th>Parameter</th><th>Type</th><th>Default</th></tr></thead>
+      <tbody>
+        <tr><td><code>chunk_size</code></td><td>int</td><td>65536</td></tr>
+        <tr><td><code>timeout</code></td><td>float</td><td>30.0</td></tr>
+      </tbody>
+    </table>
+    <dl>
+      <dt>File</dt><dd>An open file. Close it, or use it in a <code>with</code> block.</dd>
+    </dl>
+    <p>See <a href="/docs/errors">Errors</a> for what <code>open</code> raises, and the <a href="https://www.rfc-editor.org/rfc/rfc9110">HTTP semantics RFC</a> for remote files.</p>
+  </main>
+</div>
+<footer><a href="/docs/changelog">Changelog</a> © Example</footer>
+</body>
+</html>

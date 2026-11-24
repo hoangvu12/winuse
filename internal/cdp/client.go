@@ -24,11 +24,12 @@ type Client struct {
 
 	writeMu sync.Mutex // one message on the wire at a time
 
-	mu      sync.Mutex
-	nextID  int64
-	pending map[int64]*pendingCall
-	subs    map[*Subscription]struct{}
-	err     error // why the connection ended; nil while open
+	mu        sync.Mutex
+	nextID    int64
+	pending   map[int64]*pendingCall
+	subs      map[*Subscription]struct{}
+	listeners map[*listener]struct{}
+	err       error // why the connection ended; nil while open
 
 	done chan struct{}
 }
@@ -79,10 +80,11 @@ type wireMessage struct {
 // transport from here on: Close closes it.
 func NewClient(t Transport) *Client {
 	c := &Client{
-		t:       t,
-		pending: map[int64]*pendingCall{},
-		subs:    map[*Subscription]struct{}{},
-		done:    make(chan struct{}),
+		t:         t,
+		pending:   map[int64]*pendingCall{},
+		subs:      map[*Subscription]struct{}{},
+		listeners: map[*listener]struct{}{},
+		done:      make(chan struct{}),
 	}
 	go c.readLoop()
 	return c
@@ -238,10 +240,18 @@ func (c *Client) resolve(id int64, m *wireMessage) {
 	call.ch <- callResult{raw: m.Result}
 }
 
-// dispatch queues an event on every matching subscription. A session the
-// browser detached fails its pending calls at once instead of leaving them
-// to time out.
+// dispatch queues an event on every matching subscription, then calls the
+// matching listeners. A session the browser detached fails its pending
+// calls at once instead of leaving them to time out.
 func (c *Client) dispatch(ev Event) {
+	for _, l := range c.queue(ev) {
+		l.f(ev)
+	}
+}
+
+// queue does dispatch's work under the lock and returns the listeners to
+// call once it is released (a listener may Listen or stop).
+func (c *Client) queue(ev Event) []*listener {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if ev.Method == "Target.detachedFromTarget" {
@@ -261,6 +271,46 @@ func (c *Client) dispatch(ev Event) {
 		if s.matches(ev) {
 			s.push(ev)
 		}
+	}
+	var ls []*listener
+	for l := range c.listeners {
+		if l.matches(ev) {
+			ls = append(ls, l)
+		}
+	}
+	return ls
+}
+
+// listener is one Listen: its filter and its function.
+type listener struct {
+	sessionID string
+	method    string
+	f         func(Event)
+}
+
+func (l *listener) matches(ev Event) bool {
+	return ev.SessionID == l.sessionID && (l.method == "" || ev.Method == l.method)
+}
+
+// Listen calls f with every event of one session ("" for the browser-level
+// connection) and one method ("" for every method of that session) until
+// stop. Unlike a Subscription, f runs on the reader goroutine, in wire
+// order: an event the browser sent before a command's answer has been
+// through f by the time the command's Wait returns. So f must be quick, and
+// must not call the Client or wait on anything that does; it may call stop.
+// An event being dispatched while stop runs may still reach f once. On a
+// closed client f is never called.
+func (c *Client) Listen(sessionID, method string, f func(Event)) (stop func()) {
+	l := &listener{sessionID: sessionID, method: method, f: f}
+	c.mu.Lock()
+	if c.err == nil {
+		c.listeners[l] = struct{}{}
+	}
+	c.mu.Unlock()
+	return func() {
+		c.mu.Lock()
+		delete(c.listeners, l)
+		c.mu.Unlock()
 	}
 }
 
@@ -285,6 +335,7 @@ func (c *Client) shutdown(reason error) {
 		delete(c.subs, s)
 		s.end()
 	}
+	clear(c.listeners)
 }
 
 // Subscribe starts receiving the events of one session ("" for the

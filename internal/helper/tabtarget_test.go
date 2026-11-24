@@ -59,11 +59,16 @@ type bgRig struct {
 	value    map[string]string // the text field's value per session
 	gate     map[string]chan struct{}
 	shot     func() (any, error)
+	// navigated is the address navigate opened per session, and status the
+	// HTTP status its document answered (bladebro-ideas 02).
+	navigated map[string]string
+	status    map[string]int
 }
 
 func newBgRig(t *testing.T) *bgRig {
 	t.Helper()
-	r := &bgRig{selected: map[string]int{}, date: map[string]string{}, value: map[string]string{}, gate: map[string]chan struct{}{}}
+	r := &bgRig{selected: map[string]int{}, date: map[string]string{}, value: map[string]string{}, gate: map[string]chan struct{}{},
+		navigated: map[string]string{}, status: map[string]int{}}
 	r.ext = &bridgetest.Extension{
 		Tabs: []bridgetest.Tab{
 			{TargetID: bgInbox, Title: "Inbox", URL: "https://mail.test/", TabID: 11, WindowID: 1, Active: true},
@@ -171,11 +176,31 @@ func (r *bgRig) page(sid, method string, params json.RawMessage) (any, error) {
 		return map[string]any{"object": map[string]any{"type": "object", "objectId": fmt.Sprintf("%s/%v", sid, p["backendNodeId"])}}, nil
 	case "Runtime.callFunctionOn":
 		return map[string]any{"result": map[string]any{"type": "object", "value": r.call(sid, p)}}, nil
+	case "Page.navigate":
+		r.mu.Lock()
+		r.navigated[sid] = fmt.Sprint(p["url"])
+		r.mu.Unlock()
+		return map[string]any{"frameId": "F" + sid, "loaderId": "L1"}, nil
 	case "Runtime.evaluate":
-		if strings.Contains(fmt.Sprint(p["expression"]), "winuse:focus") {
+		expr := fmt.Sprint(p["expression"])
+		if strings.Contains(expr, "winuse:focus") {
 			return map[string]any{"result": map[string]any{"value": map[string]any{"kind": "editable", "x": 10, "y": 20, "w": 50, "h": 10, "dpr": 1}}}, nil
 		}
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		switch {
+		case expr == "document.readyState" && r.navigated[sid] != "":
+			return map[string]any{"result": map[string]any{"type": "string", "value": "complete"}}, nil
+		case expr == "location.href" && r.navigated[sid] != "":
+			return map[string]any{"result": map[string]any{"type": "string", "value": r.navigated[sid]}}, nil
+		case strings.Contains(expr, "winuse:http-status"):
+			return map[string]any{"result": map[string]any{"type": "number", "value": r.status[sid]}}, nil
+		}
 		return map[string]any{"result": map[string]any{"type": "number", "value": 0}}, nil
+	case "Page.createIsolatedWorld":
+		if p["worldName"] == "winuse-status" { // the status read's world only; the others keep their old answer
+			return map[string]any{"executionContextId": 5}, nil
+		}
 	case "Input.dispatchMouseEvent":
 		r.mu.Lock()
 		gate := r.gate[sid]
@@ -408,6 +433,27 @@ func TestTabTargetActsWithoutTouchingTheUsersTab(t *testing.T) {
 	}})
 	if e != nil || !strings.Contains(out, "Action 1 (click): ok") || !strings.Contains(out, "Action 2 (press-key): ok") {
 		t.Errorf("batch: %q, %+v", out, e)
+	}
+	r.noUserImpact(t)
+}
+
+// TestTabTargetNavigateNotesAnHTTPError: navigate on a Tab target in the
+// background notes a 4xx/5xx as navigate on a Window does
+// (bladebro-ideas 02), and leaves the user's Tab alone.
+func TestTabTargetNavigateNotesAnHTTPError(t *testing.T) {
+	r := newBgRig(t)
+	r.mu.Lock()
+	r.status[bgDocs] = 429
+	r.mu.Unlock()
+	out, e := r.as(t, "claude", "navigate", protocol.NavigateArgs{Window: "301:e200", URL: "https://docs.test/busy"})
+	if e != nil || out != "ok https://docs.test/busy\nNote: the Page answered HTTP 429 Too Many Requests\n" {
+		t.Errorf("navigate: %q %+v", out, e)
+	}
+	if got := r.sent(bgDocs, "Runtime.enable"); len(got) != 0 {
+		t.Errorf("Runtime.enable was sent: %v", got)
+	}
+	if got := r.sent(bgDocs, "Network.enable"); len(got) != 0 {
+		t.Errorf("Network.enable was sent: %v", got)
 	}
 	r.noUserImpact(t)
 }

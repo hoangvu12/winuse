@@ -34,6 +34,17 @@ package helper
 // several new Windows none is read and a note says so. The read shares
 // the observation's budget and takes its own view (its own cap); a read
 // that fails, or a Window that closed meanwhile, is a note.
+//
+// The Page settles first (bladebro-ideas 07, ADR 0021 amendment): on a
+// browser Window or a Tab target, the read waits for the Page to stop
+// changing (page.Settle: a DOM-quiet window and a window in which no
+// request finished), up to page.SettleBound. A Page still changing then is
+// read anyway, with a note saying so and why. A settle that cannot run (no
+// Browser Connection, a browser page, a dialog) is skipped: the read says
+// what it finds. A Page click, key or wheel already waited by the same rule
+// (its effect watch, page.EffectWatch.Settled) and records how that ended
+// (recordSettled): the read takes it instead of a second wait. A Batch
+// does not, as a later step may act after the watch.
 
 import (
 	"context"
@@ -44,6 +55,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/hoangvu12/winuse/internal/cdp"
+	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
 	"github.com/hoangvu12/winuse/internal/win"
@@ -87,7 +100,7 @@ func checkObserve(name string, o *protocol.Observe) *Error {
 // observeRef is the read o asks for, as get-window-state's arguments: its budgets
 // and their defaults (views.go) are the read's.
 func observeRef(o *protocol.Observe) windowRef {
-	return windowRef{Interactive: o.Interactive, Depth: o.Depth, Compact: o.Compact, MaxChars: o.MaxChars, Out: o.Out, Full: o.Full}
+	return windowRef{Interactive: o.Interactive, Depth: o.Depth, Compact: o.Compact, MaxChars: o.MaxChars, Out: o.Out, Full: o.Full, URLs: o.URLs}
 }
 
 // observed is the registry's wrapper of the ObservableCommands: with
@@ -110,6 +123,9 @@ func (s Services) observed(name string, cmd Command) Command {
 		}
 		if e := checkObserve(name, o); e != nil {
 			return "", e
+		}
+		if name != "batch" {
+			ctx = context.WithValue(ctx, settledRecordKey{}, &settledRecord{})
 		}
 		// The command keeps the budget it has without --observe
 		// (protocol.Budget added ObserveTimeout for the read).
@@ -269,8 +285,12 @@ func (s Services) observe(ctx context.Context, args json.RawMessage, o *protocol
 	var tree *wstate.Tree
 	var what string
 	var rerr *Error
+	settled := ""
 	if bt := tabTargetOf(ctx); bt != nil {
 		what = fmt.Sprintf("tab %s of window %d", bt.short(), bt.w.ID)
+		if bt.session != "" && !bt.tab.Internal {
+			settled = s.settleNote(ctx, bt.conn.Client, bt.session)
+		}
 		if st, ok := s.tabStates.get(AgentOf(ctx).ID, tabKeyOf(bt)); ok {
 			before = st.elements
 		}
@@ -282,6 +302,7 @@ func (s Services) observe(ctx context.Context, args json.RawMessage, o *protocol
 		}
 		what = "window " + strconv.FormatUint(w.ID, 10)
 		v.Ref = strconv.FormatUint(w.ID, 10) // the notes' --root commands
+		settled = s.settleWindow(ctx, w)
 		before = s.storedState(ctx, w.ID)
 		tree, rerr = readWindowTree(s, uia.WithSettle(ctx, stateSettle(ctx)), w)
 		if rerr == nil {
@@ -289,8 +310,9 @@ func (s Services) observe(ctx context.Context, args json.RawMessage, o *protocol
 		}
 	}
 	if rerr != nil {
-		return observeNote(a.Window, rerr), nil
+		return observeNote(a.Window, rerr) + settled, nil
 	}
+	v.Before = before // changed Page landmarks stay open (bladebro-ideas 08)
 	text := wstate.RenderView(tree, v)
 	if o.Mode == protocol.ObserveDiff {
 		text = wstate.RenderChanges(before, tree, v, what).Text
@@ -298,14 +320,88 @@ func (s Services) observe(ctx context.Context, args json.RawMessage, o *protocol
 	if o.Out != "" {
 		out, werr := writeStateOut(text, tree, o.Out, "Observed Window State")
 		if werr != nil {
-			return observeNote(a.Window, werr), nil
+			return observeNote(a.Window, werr) + settled, nil
 		}
-		return out, nil // the read is in the file: the opened Window gets its own
+		return out + settled, nil // the read is in the file: the opened Window gets its own
 	}
 	if tabTargetOf(ctx) != nil {
-		return text, nil
+		return text + settled, nil
 	}
-	return text, tree
+	return text + settled, tree
+}
+
+// settleWindow settles the Page a browser Window shows before --observe
+// reads it, and returns the note for a Page that did not settle ("" for
+// any other Window, or a settle that could not run).
+func (s Services) settleWindow(ctx context.Context, w win.WindowInfo) string {
+	if s.Pages == nil || s.Pages.Browser(w) == "" || s.live() == nil {
+		return ""
+	}
+	pw, rerr := s.pageWindow(ctx, strconv.FormatUint(w.ID, 10))
+	if rerr != nil || pw.tab.Internal || pw.session == "" {
+		return ""
+	}
+	return s.settleNote(ctx, pw.conn.Client, pw.session)
+}
+
+// settleNote settles a Page (page.Settle, up to page.SettleBound) and
+// returns the note for one that did not settle. When the Action's own
+// effect watch settled that Page already (recordSettled), its result
+// stands and nothing waits again.
+func (s Services) settleNote(ctx context.Context, c *cdp.Client, session string) string {
+	r, ok := settledOf(ctx, c, session)
+	if !ok {
+		var stopped func() bool
+		if s.Esc != nil {
+			stopped = s.Esc.Stopped
+		}
+		var err error
+		if r, err = page.Settle(ctx, c, session, page.SettleBound, stopped); err != nil {
+			return ""
+		}
+	}
+	if r.Settled {
+		return ""
+	}
+	return notePrefix + r.Note() + "\n"
+}
+
+// settledRecord is how the Action's effect watch found its Page settling,
+// for the --observe read of a single Action.
+type settledRecord struct {
+	mu      sync.Mutex
+	c       *cdp.Client
+	session string
+	r       page.SettleResult
+	set     bool
+}
+
+type settledRecordKey struct{}
+
+// recordSettled records how a Page Action's effect watch found the Page of
+// session settling; outside an --observe of a single Action it does
+// nothing. The latest call wins.
+func recordSettled(ctx context.Context, c *cdp.Client, session string, r page.SettleResult) {
+	if rec, ok := ctx.Value(settledRecordKey{}).(*settledRecord); ok {
+		rec.mu.Lock()
+		rec.c, rec.session, rec.r, rec.set = c, session, r, true
+		rec.mu.Unlock()
+	}
+}
+
+// settledOf is the recorded settle of the Page of session, if the Action
+// recorded one for it.
+func settledOf(ctx context.Context, c *cdp.Client, session string) (page.SettleResult, bool) {
+	rec, ok := ctx.Value(settledRecordKey{}).(*settledRecord)
+	if !ok {
+		return page.SettleResult{}, false
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if !rec.set || rec.c != c || rec.session != session {
+		return page.SettleResult{}, false
+	}
+	return rec.r, true
 }
 
 // storedState is the Agent's latest Window State of hwnd, every Element

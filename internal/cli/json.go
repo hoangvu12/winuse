@@ -5,7 +5,13 @@ package cli
 // JSON line on stdout instead of its text:
 //
 //	{"ok":true,"command":"click","out":"..."}
+//	{"ok":true,"command":"click","out":"...","effect":"navigated"}
 //	{"ok":false,"command":"click","out":"","error":{"code":"STALE_REF","message":"...","hint":"...","delivery":"not_delivered","retry":"safe"}}
+//	{"ok":true,"command":"navigate","out":"ok ...\nNote: the Page answered HTTP 404 Not Found\n","http_status":404}
+//
+// A Page that looks like a challenge or block wall adds "wall" (its kind,
+// whose note out carries). effect, http_status and wall are the helper's
+// own response fields (protocol.Response), never read back from out.
 //
 // The command runs exactly as without the flag; its stdout and stderr are
 // captured and become the line. out is the text it printed (a Window
@@ -33,12 +39,28 @@ const jsonFlag = "--json"
 // message and hint from it.
 var lastResponse *protocol.Response
 
-// jsonLine is the one line --json prints.
+// jsonActive is set while --json captures the command's output: a read's
+// Notes then go in the line's notes field, not on stdout (notes.go).
+var jsonActive bool
+
+// jsonLine is the one line --json prints. Notes are the Notes a
+// get-window-state showed (ADR 0024), kept out of out.
 type jsonLine struct {
-	OK      bool       `json:"ok"`
-	Command string     `json:"command"`
-	Out     string     `json:"out"`
-	Error   *jsonError `json:"error,omitempty"`
+	OK      bool   `json:"ok"`
+	Command string `json:"command"`
+	Out     string `json:"out"`
+	Notes   string `json:"notes,omitempty"`
+	// Effect is what a Headless Page click or key did (bladebro-ideas
+	// ticket 06): navigated, changed, text, none or unknown.
+	Effect string     `json:"effect,omitempty"`
+	Error  *jsonError `json:"error,omitempty"`
+	// HTTPStatus is the 4xx/5xx a navigation's Page answered
+	// (bladebro-ideas 02, protocol.Response.HTTPStatus).
+	HTTPStatus int `json:"http_status,omitempty"`
+	// Wall names the challenge or block wall a Page looks like
+	// (bladebro-ideas 05, protocol.Response.Wall): one of
+	// protocol.WallKinds. A failure keeps it, as its out keeps the note.
+	Wall string `json:"wall,omitempty"`
 }
 
 // jsonError is a failed command's error object.
@@ -90,7 +112,9 @@ func extractJSON(args []string) (rest []string, on bool, command string) {
 // line; the exit code is the command's.
 func runJSON(command string, run func() int) int {
 	lastResponse = nil
+	jsonActive = true
 	code, stdout, stderr, err := captureOutput(run)
+	jsonActive = false
 	if err != nil {
 		code, stdout, stderr = 1, "", fmt.Sprintf("winuse: --json: %v\n", err)
 	}
@@ -111,7 +135,13 @@ func runJSON(command string, run func() int) int {
 // printing stdout and stderr; resp is the helper's last answer, if any.
 func jsonLineFor(command string, code int, stdout, stderr string, resp *protocol.Response) jsonLine {
 	line := jsonLine{OK: code == 0, Command: command, Out: stdout}
+	if resp != nil {
+		line.Notes, line.Wall = resp.Notes, resp.Wall
+	}
 	if line.OK {
+		if resp != nil && resp.OK {
+			line.Effect, line.HTTPStatus = resp.Effect, resp.HTTPStatus
+		}
 		return line
 	}
 	var r protocol.Response

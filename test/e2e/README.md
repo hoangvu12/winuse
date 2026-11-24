@@ -953,6 +953,63 @@ set WINUSE_E2E=1
 go test -tags e2e -v -timeout 10m -run "TestPageReadSnapshot$" ./test/e2e
 ```
 
+## The HTTP status test
+
+`http_status_test.go` (bladebro-ideas ticket 02) checks the status
+navigate reports. `TestHTTPStatus` starts Chrome or Edge headless on a
+throwaway profile and reads the main document's status in process
+(`page.ReadHTTPStatus`, as the helper does) after 200, 404, 429 and 503
+pages, a redirect chain that ends in 404, and 429 and 503 with an empty
+body, which Chrome replaces with its own error page. TestBrowserPages's
+`http-status` subtest runs the real `navigate`, `back`, `forward` and
+`reload` on the same pages and checks the note and `--json`'s
+`http_status`.
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -timeout 10m -run "TestHTTPStatus$" ./test/e2e
+```
+
+## The asset blocking test
+
+`asset_blocking_test.go` (bladebro-ideas ticket 28) checks `--block`.
+`TestAssetBlocking` starts Chrome or Edge headless on a throwaway profile
+and blocks in process (`page.BlockAssets`, as the helper does:
+`Network.enable`, then `Network.setBlockedURLs` with `urlPatterns`). A
+fixture page's images, web font and video are served after 800 ms; the
+blocking Tab's load event must come sooner than a plain Tab's, the server
+must never see its images, font or video, its HTML, stylesheet and script
+still load, an image without a file extension still loads, and after
+`--block none` the images load again. The note on a blocking Tab's reads
+is checked offline (`internal/helper/assets_test.go`).
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -timeout 10m -run "TestAssetBlocking$" ./test/e2e
+```
+
+## The exception listener test
+
+`exceptions_test.go` (bladebro-ideas ticket 30) checks the JavaScript
+exceptions winuse captures without `Runtime.enable`.
+`TestExceptionListener` starts Chrome or Edge headless on a throwaway
+profile and captures in process (`page.TabLog.Capture` and
+`PullExceptions`, as the helper does). `throws`: a page that throws in a
+script file, in a timer and in an unhandled promise gives three records,
+each with a stack, the first with its file and line. `detection`: the same
+fixture in a capturing Tab and a plain one patches `dispatchEvent`,
+`addEventListener`, `CustomEvent`, `JSON.stringify` and `Object.prototype`
+getters, then throws; none of its patches sees a call, `window.onerror`
+stays null, the window's own properties and what the page's own handlers
+see (`defaultPrevented` included) match the plain Tab. `loaded before`: a
+page loaded before capture is not covered until it loads again. The notes
+and `logs --capture` are checked offline (`internal/helper/logs_test.go`).
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -timeout 10m -run "TestExceptionListener$" ./test/e2e
+```
+
 ## The occlusion flag test
 
 `browser_occlusion_test.go` (ticket 04 of `.scratch/headless-max/`)

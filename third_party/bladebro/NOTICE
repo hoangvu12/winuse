@@ -1,0 +1,29 @@
+bladebro
+
+Source: https://github.com/dondai44423/bladebro
+Commit: d50ee9e (v4.8.3, 2026-11-21)
+License: Apache License 2.0 (LICENSE beside this file)
+
+internal/page/extract.js, the script behind `winuse extract` on a Page, is
+derived from these bladebro files at the commit above, and modified for
+winuse:
+
+- src/mcp/server/js/auto_extract.js: repeated-item detection, the item
+  fields, the redirect unwrapping and the page's result count;
+- src/adapters/js/jsonld.js: the schema.org JSON-LD reader;
+- src/page/js/detect_block.js: the generic block-wall check (the
+  site-specific branches and every solving step are left out).
+
+What changed: the site adapters and site branches are gone; items group
+loosely, sibling rows of one record merge, only the title link dedupes,
+off-site links get no bonus, navs, footers, asides, prose and reference
+lists never win, a weak list loses to JSON-LD, article pages have no list,
+a single --root item gathers its siblings, data tables print cells by
+header, more count formats are read, star counts are `stars`, and vote,
+answer, view and comment counts are fields. The script runs in winuse's
+isolated world, never the Page's own.
+
+test/e2e/testdata/page-editors.html, the page behind TestPageEditors, is
+sections 1-3 of tools/qol_probe/editor.html at the commit above (plain
+controls, the placeholder composer, the remounting editor), copied as is
+but for its title and an attribution comment.

@@ -41,6 +41,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hoangvu12/winuse/internal/linebreak"
 	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/uia"
@@ -103,11 +104,8 @@ func (s Services) waitGated(cmd Command) Command {
 }
 
 // runDesktopWait runs a desktop wait in a passive Esc scope (pageWait
-// hands it over).
+// hands it over, its arguments checked by waitInput).
 func (s Services) runDesktopWait(ctx context.Context, a protocol.WaitArgs) (string, *Error) {
-	if a.TimeoutMS < 0 {
-		return "", Fail("wait: the timeout must be positive", waitUsageHint)
-	}
 	esc := s.Esc
 	if esc == nil {
 		esc = noopEscWatch{}
@@ -214,11 +212,8 @@ func waitWindowClosed(what string) *Error {
 
 // waitPause is `wait <milliseconds>`: a plain pause in pauseStep slices,
 // stopped by Esc, and failed when the request's budget ends before it.
+// Its length is waitInput's to check.
 func (s Services) waitPause(ctx context.Context, a protocol.WaitArgs, stopped func() bool) (string, *Error) {
-	limit := int(protocol.MaxWaitTimeout / time.Millisecond)
-	if a.MS <= 0 || a.MS > limit {
-		return "", Fail(fmt.Sprintf("wait: a pause is a number of milliseconds above 0 and at most %d, got %d", limit, a.MS), waitUsageHint)
-	}
 	// `wait <window>` with what to wait for left out reads as a pause:
 	// refuse a number that is an open Window's ID rather than sit out
 	// minutes.
@@ -250,10 +245,7 @@ func (s Services) waitPause(ctx context.Context, a protocol.WaitArgs, stopped fu
 // matching Windows' list-windows lines once one shows, or ok once none is
 // left.
 func (s Services) waitWindow(ctx context.Context, a protocol.WaitArgs, want time.Duration, stopped func() bool) (string, *Error) {
-	target := strings.TrimSpace(a.Value)
-	if target == "" {
-		return "", Fail("wait window: an App name or a title is required", waitUsageHint)
-	}
+	target := strings.TrimSpace(a.Value) // waitInput refused none
 	found, end, e := pollUntil(ctx, s.Sleep, want, windowWaitPoll, stopped, func() ([]win.WindowInfo, bool, *Error) {
 		ws, err := s.Windows()
 		if err != nil {
@@ -301,9 +293,10 @@ func windowsMatching(ws []win.WindowInfo, target string) []win.WindowInfo {
 
 // waitTreeText is `wait <window> text <text>` on a Window that names no
 // browser: the text shows in an Element's name, value or description
-// (case-sensitive, as a Page's text wait matches).
+// (case-sensitive, as a Page's text wait matches), whitespace-collapsed
+// as the Window State prints it (treeHasText).
 func (s Services) waitTreeText(ctx context.Context, a protocol.WaitArgs, want time.Duration, stopped func() bool) (string, *Error) {
-	if a.Value == "" {
+	if wstate.Collapse(a.Value) == "" {
 		return "", Fail("wait: wait text needs the text to wait for", waitUsageHint)
 	}
 	w, rerr := resolveWindow(s, a.Window)
@@ -315,6 +308,9 @@ func (s Services) waitTreeText(ctx context.Context, a protocol.WaitArgs, want ti
 		return "", Fail("this winuse helper cannot read a tree for a wait", "")
 	}
 	what := fmt.Sprintf("text %q in window %d", a.Value, w.ID)
+	if a.Gone {
+		what = fmt.Sprintf("text %q to be gone in window %d", a.Value, w.ID)
+	}
 	_, end, e := pollUntil(ctx, s.Sleep, want, treeWaitPoll, stopped, func() (struct{}, bool, *Error) {
 		if !s.WindowOpen(w.ID) {
 			return struct{}{}, false, waitWindowClosed(what)
@@ -322,7 +318,7 @@ func (s Services) waitTreeText(ctx context.Context, a protocol.WaitArgs, want ti
 		tree, err := peeker.PeekTree(ctx, w.ID, w.Title, win.AppExeName(w), s.Budget)
 		switch {
 		case err == nil:
-			return struct{}{}, treeHasText(tree, a.Value), nil
+			return struct{}{}, treeHasText(tree, a.Value) != a.Gone, nil
 		case errors.Is(err, uia.ErrWindowGone):
 			return struct{}{}, false, waitWindowClosed(what)
 		case ctx.Err() != nil, errors.Is(err, uia.ErrWorkerGone), transientTreeRead(err):
@@ -343,27 +339,36 @@ func (s Services) waitTreeText(ctx context.Context, a protocol.WaitArgs, want ti
 }
 
 // treeHasText reports whether an Element's name, value or description
-// holds text.
+// holds text, both whitespace-collapsed (bladebro-ideas 21): the Window
+// State prints each Element on one line, its line breaks as spaces, so a
+// line break in text, LF, CRLF or CR, matches one there, and the text an
+// agent copies from a printed line matches too.
 func treeHasText(tree *wstate.Tree, text string) bool {
+	want := wstate.Collapse(text)
+	if want == "" {
+		return false
+	}
 	for _, el := range tree.Elements {
-		if strings.Contains(el.Name, text) || strings.Contains(el.Value, text) || strings.Contains(el.Description, text) {
+		if collapsedHolds(el.Name, want) || collapsedHolds(el.Value, want) || collapsedHolds(el.Description, want) {
 			return true
 		}
 	}
 	return false
 }
 
+// collapsedHolds reports whether s, whitespace-collapsed, holds want
+// (collapsed already). s holding want as it is says so without the
+// collapse: want starts and ends with no whitespace and has single spaces
+// inside, so collapsing s keeps that match.
+func collapsedHolds(s, want string) bool {
+	return strings.Contains(s, want) || strings.Contains(wstate.Collapse(s), want)
+}
+
 // waitElement is `wait <window> <element> <state>`: the Element resolves
 // once, against the Window's latest Window State, and its live state is
 // read until it holds.
 func (s Services) waitElement(ctx context.Context, a protocol.WaitArgs, want time.Duration, stopped func() bool) (string, *Error) {
-	state := strings.ToLower(strings.TrimSpace(a.State))
-	if !slices.Contains(protocol.WaitStates, state) {
-		return "", Fail(fmt.Sprintf("wait: an element waits for one of %s, not %q", strings.Join(protocol.WaitStates, ", "), a.State), waitUsageHint)
-	}
-	if a.Value != "" && state != "value" {
-		return "", Fail("wait: only value takes a value", waitUsageHint)
-	}
+	state := strings.ToLower(strings.TrimSpace(a.State)) // waitInput checked it, and the value
 	if strings.TrimSpace(a.Window) == "" {
 		return "", Fail("wait: a window reference is required", waitUsageHint)
 	}
@@ -506,7 +511,9 @@ func elementStateHolds(state, value string, st uia.ElementState) bool {
 	case "disabled":
 		return !st.Enabled
 	case "value":
-		return st.Value == value
+		// Line breaks aside (bladebro-ideas 21): Windows 11 Notepad stores
+		// CR only, as set-value's read-back allows.
+		return linebreak.Same(st.Value, value)
 	case "checked":
 		return st.Toggle == "on" || (st.Toggle == "" && st.Selected)
 	case "unchecked":

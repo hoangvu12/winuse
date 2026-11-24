@@ -85,20 +85,27 @@ func splitTabRef(ref string) (window, tab string, ok bool) {
 
 // tabTargetCommands are the commands a Tab target takes: the Page's own
 // reads and Actions. Every one of them reaches the Tab over CDP alone.
-var tabTargetCommands = map[string]bool{
-	"get-window-state": true,
-	"click":            true, "set-value": true, "scroll": true, "hover": true, "drag": true,
-	"select-text": true, "type-text": true, "press-key": true, "upload": true,
-	"navigate": true, "back": true, "forward": true, "reload": true,
-	"dialog": true, "wait": true, "eval": true,
-	"batch": true,
-}
+var tabTargetCommands = func() map[string]bool {
+	m := map[string]bool{
+		"get-window-state": true,
+		"click":            true, "set-value": true, "scroll": true, "hover": true, "drag": true,
+		"select-text": true, "type-text": true, "press-key": true,
+		"batch":   true,
+		"read":    true, // read.go, bladebro-ideas ticket 25
+		"extract": true, // extract.go, bladebro-ideas ticket 26
+		"logs":    true, // logs.go, bladebro-ideas ticket 29
+	}
+	for _, c := range protocol.PageCommands { // the navigations, upload, dialog, wait, eval
+		m[c] = true
+	}
+	return m
+}()
 
 // tabTargetsWord names them in a refusal's hint.
-const tabTargetsWord = "get-window-state, click, set-value, scroll, hover, drag, select-text, type-text, press-key, upload, navigate, back, forward, reload, dialog, wait, eval and batch"
+const tabTargetsWord = "get-window-state, click, set-value, scroll, hover, drag, select-text, type-text, press-key, upload, navigate, back, forward, reload, dialog, wait, eval, read, extract, logs and batch"
 
 // pageWaitKinds are the waits a Tab target takes: the Page's.
-var pageWaitKinds = map[string]bool{page.WaitLoadKind: true, page.WaitURL: true, page.WaitDownload: true, "selector": true, "text": true}
+var pageWaitKinds = map[string]bool{page.WaitLoadKind: true, page.WaitURL: true, page.WaitDownload: true, page.WaitSelector: true, page.WaitText: true, page.WaitIdle: true, page.WaitJS: true}
 
 // bgTab is the Tab a command names as <window>:<tab>, resolved and held
 // before the command runs.
@@ -148,7 +155,11 @@ func (s Services) tabTargeted(name string, cmd Command) Command {
 		}
 		window, tabRef, ok := splitTabRef(a.Window)
 		if !ok {
-			return cmd(ctx, args)
+			out, e := cmd(ctx, args)
+			if blockReads[name] || observeOf(ctx) != nil {
+				out, e = s.endWithWindowBlockNote(ctx, a.Window, out, e) // assets.go: the Window shows a blocking Tab
+			}
+			return out, e
 		}
 		if first, _, twice := strings.Cut(window, ":"); twice {
 			// 301:301:ab12cd34: the Window named twice. Refused rather than
@@ -166,7 +177,7 @@ func (s Services) tabTargeted(name string, cmd Command) Command {
 		if rerr := refuseOnTab(name, args, a.Window); rerr != nil {
 			return "", rerr
 		}
-		bt, rerr := s.resolveTabTarget(ctx, window, tabRef)
+		bt, rerr := s.resolveTabTarget(ctx, window, tabRef, s.refuseBlock(name, args))
 		if rerr != nil {
 			if name == "get-window-state" {
 				return "", rerr
@@ -178,9 +189,13 @@ func (s Services) tabTargeted(name string, cmd Command) Command {
 		var e *Error
 		if name == "get-window-state" {
 			// Worded for the Tab already, and the rest is the Page's own text.
-			return s.tabWindowState(ctx, bt, plain)
+			out, e = s.tabWindowState(ctx, bt, plain)
+			return s.endWithBlockNote(bt.tab.TargetID, out, e)
 		}
 		out, e = cmd(ctx, plain)
+		if blockReads[name] || observeOf(ctx) != nil {
+			out, e = s.endWithBlockNote(bt.tab.TargetID, out, e) // assets.go: a blocking Tab says so
+		}
 		return bt.retargetOut(out), bt.retargetErr(e)
 	}
 }
@@ -268,8 +283,10 @@ func tabHeadedRefusal(ref string) *Error {
 
 // resolveTabTarget finds the Tab a Tab target names among the Tabs of the
 // Window's browser (any of its windows), attaches its session and holds
-// it. Nothing reaches the Page's input.
-func (s Services) resolveTabTarget(ctx context.Context, window, tabRef string) (*bgTab, *Error) {
+// it. Nothing reaches the Page's input. check, when not nil, may refuse
+// the Tab once it is found, before anything is sent to it (assets.go's
+// --block on a Tab that is not winuse's).
+func (s Services) resolveTabTarget(ctx context.Context, window, tabRef string, check func(*bgTab) *Error) (*bgTab, *Error) {
 	bc, rerr := s.browserWindow(ctx, window, "Tabs", "Tab targets")
 	if rerr != nil {
 		return nil, rerr
@@ -292,6 +309,11 @@ func (s Services) resolveTabTarget(ctx context.Context, window, tabRef string) (
 			Hint: "list the Tabs and their ids: winuse tab list " + bc.id(), Exit: 1, Code: code}
 	}
 	bt := &bgTab{browserConn: bc, tab: tab, active: tab.Active != nil && *tab.Active}
+	if check != nil {
+		if rerr := check(bt); rerr != nil {
+			return nil, rerr
+		}
+	}
 	if tab.Internal {
 		return bt, nil // a browser page is never attached; navigate leaves it
 	}
@@ -305,6 +327,7 @@ func (s Services) resolveTabTarget(ctx context.Context, window, tabRef string) (
 	}
 	bt.session = session
 	s.tabHolds.hold(ctx, bc.conn, session, tab.TargetID)
+	s.keepBlocking(ctx, bt) // assets.go: a blocking Tab's session may be new
 	return bt, nil
 }
 
@@ -674,19 +697,25 @@ func (s Services) tabWindowState(ctx context.Context, bt *bgTab, args json.RawMe
 	if e := budgetError(a); e != nil {
 		return "", e
 	}
+	// The earlier read, taken before this one replaces it: --diff prints
+	// the changes, and a read past its cap keeps changed landmarks open.
 	var before []wstate.Element
 	var what string
+	if st, ok := s.tabStates.get(AgentOf(ctx).ID, tabKeyOf(bt)); ok {
+		before = st.elements
+	}
 	if a.Diff {
 		what = fmt.Sprintf("tab %s of window %d", bt.short(), bt.w.ID)
-		if st, ok := s.tabStates.get(AgentOf(ctx).ID, tabKeyOf(bt)); ok {
-			before = st.elements // taken before the read replaces it
-		}
 	}
 	tree, rerr := s.readTabTree(ctx, bt)
 	if rerr != nil {
 		return "", rerr
 	}
-	out, rerr := renderState(tree, a, "", before, what) // no --root hint: a Tab target takes none
+	// No --root hint: a Tab target takes none. The Notes are the Tab's
+	// site's, then the browser's (windownotes.go).
+	out, rerr := s.stateWithNotes(ctx, a, tabNoteKeys(bt), func(a windowRef) (string, *Error) {
+		return renderState(tree, a, "", before, what)
+	})
 	if rerr != nil {
 		return "", rerr
 	}

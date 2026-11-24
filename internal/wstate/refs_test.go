@@ -8,6 +8,7 @@ package wstate
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -153,6 +154,195 @@ func TestResolveElementRefAmbiguousListsCandidates(t *testing.T) {
 		amb.Candidates[0] != "4 button Solo One ID: solo" ||
 		amb.Candidates[1] != "5 button Solo Two ID: solo" {
 		t.Errorf("candidates = %q", amb.Candidates)
+	}
+}
+
+// labelledControls is a desktop-shaped tree whose controls carry their
+// own label as a child, as many Apps' accessibility trees do.
+func labelledControls() []Element {
+	return []Element{
+		{Depth: 0, Role: "window", Name: "Example"},
+		{Depth: 1, Role: "button", Name: "Open Item"},
+		{Depth: 2, Role: "text", Name: "Open Item"},
+		{Depth: 1, Role: "tab", Name: "Notes", Selectable: true},
+		{Depth: 2, Role: "group"},
+		{Depth: 3, Role: "text", Name: "Notes"},
+		{Depth: 1, Role: "button", Name: "Next", Disabled: true},
+		{Depth: 2, Role: "image", Name: "Next"},
+	}
+}
+
+// TestNameResolvesAControlOverItsOwnLabel: a name: reference matching an
+// Element an agent acts on and one non-interactive Element inside it with
+// the same name names one control, its label included, so it resolves to
+// the control.
+func TestNameResolvesAControlOverItsOwnLabel(t *testing.T) {
+	els := labelledControls()
+	for _, tc := range []struct {
+		ref  string
+		want int
+	}{
+		{"name:Open Item", 1}, // the label is the control's child
+		{"name:Notes", 3},     // or deeper inside it
+		{"name:Next", 6},      // a disabled control is still the one acted on
+	} {
+		if i, err := ResolveElementRef(els, tc.ref); err != nil || i != tc.want {
+			t.Errorf("ResolveElementRef(%q) = %d, %v, want %d, nil", tc.ref, i, err, tc.want)
+		}
+	}
+}
+
+// TestNameResolvesAPageControlOverItsOwnLabel: the same rule on a Page's
+// Elements, where a control's text sits under a wrapper the Page reader
+// keeps (its own direct text it already leaves out).
+func TestNameResolvesAPageControlOverItsOwnLabel(t *testing.T) {
+	els := []Element{
+		{Depth: 0, Role: "document", Name: "Shop"},
+		{Depth: 1, Role: "link", Name: "Pricing", URL: "/pricing"},
+		{Depth: 2, Role: "group"},
+		{Depth: 3, Role: "text", Name: "Pricing"},
+		{Depth: 1, Role: "list item", Name: "Cart"},
+		{Depth: 2, Role: "image", Name: "Cart"},
+		{Depth: 1, Role: "heading", Name: "Pricing plans", Level: 2},
+		{Depth: 1, Role: "text", Name: "Pricing plans"},
+	}
+	for _, tc := range []struct {
+		ref  string
+		want int
+	}{
+		{"name:Pricing", 1},
+		{"name:Cart", 4},
+	} {
+		if i, err := ResolveElementRef(els, tc.ref); err != nil || i != tc.want {
+			t.Errorf("ResolveElementRef(%q) = %d, %v, want %d, nil", tc.ref, i, err, tc.want)
+		}
+	}
+	// A heading is not acted on, and the text beside it is not inside it.
+	var amb *AmbiguousRefError
+	if _, err := ResolveElementRef(els, "name:Pricing plans"); !errors.As(err, &amb) || !slices.Equal(amb.Matches, []int{6, 7}) {
+		t.Errorf("name:Pricing plans: %v, want ambiguous among 6 and 7", err)
+	}
+}
+
+// TestNameResolvesAPageClickableOverItsOwnLabel: a Page Element marked
+// clickable (a div with a click handler) is the control a name: reference
+// means when its own text sits inside it, as a button would be
+// (recap-trial 03). Two clickables, or a clickable and a control inside
+// it, stay ambiguous.
+func TestNameResolvesAPageClickableOverItsOwnLabel(t *testing.T) {
+	els := []Element{
+		{Depth: 0, Role: "document", Name: "Shop"},
+		{Depth: 1, Role: "clickable", Name: "Add to basket"},
+		{Depth: 2, Role: "group"},
+		{Depth: 3, Role: "text", Name: "Add to basket"},
+		{Depth: 1, Role: "clickable", Name: "Gift wrap"},
+		{Depth: 2, Role: "image", Name: "Gift wrap"},
+		{Depth: 1, Role: "clickable", Name: "Size"},
+		{Depth: 2, Role: "clickable", Name: "Size"},
+		{Depth: 1, Role: "clickable", Name: "Colour"},
+		{Depth: 1, Role: "clickable", Name: "Colour"},
+		{Depth: 1, Role: "clickable", Name: "Help"},
+		{Depth: 2, Role: "link", Name: "Help", URL: "/help"},
+		{Depth: 1, Role: "clickable", Name: "Reviews"},
+		{Depth: 1, Role: "text", Name: "Reviews"},
+	}
+	for _, tc := range []struct {
+		ref  string
+		want int
+	}{
+		{"name:Add to basket", 1},
+		{"name:Gift wrap", 4},
+	} {
+		if i, err := ResolveElementRef(els, tc.ref); err != nil || i != tc.want {
+			t.Errorf("ResolveElementRef(%q) = %d, %v, want %d, nil", tc.ref, i, err, tc.want)
+		}
+	}
+	for _, tc := range []struct {
+		ref  string
+		want []int
+	}{
+		{"name:Size", []int{6, 7}},      // a clickable inside a clickable
+		{"name:Colour", []int{8, 9}},    // two clickables
+		{"name:Help", []int{10, 11}},    // a link inside the clickable
+		{"name:Reviews", []int{12, 13}}, // a text beside it
+	} {
+		var amb *AmbiguousRefError
+		if i, err := ResolveElementRef(els, tc.ref); !errors.As(err, &amb) || !slices.Equal(amb.Matches, tc.want) {
+			t.Errorf("ResolveElementRef(%q) = %d, %v, want ambiguous among %v", tc.ref, i, err, tc.want)
+		}
+	}
+	// The rule is name: resolution's alone: a clickable is still not
+	// ActedOn, so the --interactive views are unchanged.
+	if els[1].ActedOn() || els[1].Interactive() {
+		t.Errorf("a clickable reads as ActedOn/Interactive; the rule must stay inside name: resolution")
+	}
+}
+
+// TestNameStaysAmbiguousUnlessTheLabelIsTheControlsOwn: exact, never a
+// guess. Only a control and a non-interactive Element inside it collapse;
+// every other pair, and three matches, fail with the candidates.
+func TestNameStaysAmbiguousUnlessTheLabelIsTheControlsOwn(t *testing.T) {
+	cases := []struct {
+		name string
+		els  []Element
+		ref  string
+		want []int
+	}{
+		{"a text beside the control", []Element{
+			{Depth: 0, Role: "window", Name: "w"},
+			{Depth: 1, Role: "button", Name: "Save"},
+			{Depth: 1, Role: "text", Name: "Save"},
+		}, "name:Save", []int{1, 2}},
+		{"a text after the control's subtree", []Element{
+			{Depth: 0, Role: "window", Name: "w"},
+			{Depth: 1, Role: "group"},
+			{Depth: 2, Role: "button", Name: "Save"},
+			{Depth: 3, Role: "image"},
+			{Depth: 2, Role: "text", Name: "Save"},
+		}, "name:Save", []int{2, 4}},
+		{"two buttons, one inside the other", []Element{
+			{Depth: 0, Role: "window", Name: "w"},
+			{Depth: 1, Role: "button", Name: "Save"},
+			{Depth: 2, Role: "button", Name: "Save"},
+		}, "name:Save", []int{1, 2}},
+		{"two sibling buttons", []Element{
+			{Depth: 0, Role: "window", Name: "w"},
+			{Depth: 1, Role: "button", Name: "Save"},
+			{Depth: 1, Role: "button", Name: "Save"},
+		}, "name:Save", []int{1, 2}},
+		{"a link inside the control", []Element{
+			{Depth: 0, Role: "window", Name: "w"},
+			{Depth: 1, Role: "list item", Name: "Docs"},
+			{Depth: 2, Role: "link", Name: "Docs"},
+		}, "name:Docs", []int{1, 2}},
+		{"a text with a Secondary Action inside the control", []Element{
+			{Depth: 0, Role: "window", Name: "w"},
+			{Depth: 1, Role: "button", Name: "More"},
+			{Depth: 2, Role: "text", Name: "More", SecondaryActions: []string{"Expand"}},
+		}, "name:More", []int{1, 2}},
+		{"a label inside a non-interactive Element", []Element{
+			{Depth: 0, Role: "window", Name: "w"},
+			{Depth: 1, Role: "group", Name: "Totals"},
+			{Depth: 2, Role: "text", Name: "Totals"},
+		}, "name:Totals", []int{1, 2}},
+		{"the control and two labels", []Element{
+			{Depth: 0, Role: "window", Name: "w"},
+			{Depth: 1, Role: "button", Name: "Go"},
+			{Depth: 2, Role: "text", Name: "Go"},
+			{Depth: 2, Role: "text", Name: "Go"},
+		}, "name:Go", []int{1, 2, 3}},
+		{"id: is never collapsed", []Element{
+			{Depth: 0, Role: "window", Name: "w"},
+			{Depth: 1, Role: "button", Name: "Go", AutomationId: "go"},
+			{Depth: 2, Role: "text", Name: "Go", AutomationId: "go"},
+		}, "id:go", []int{1, 2}},
+	}
+	for _, tc := range cases {
+		i, err := ResolveElementRef(tc.els, tc.ref)
+		var amb *AmbiguousRefError
+		if !errors.As(err, &amb) || !slices.Equal(amb.Matches, tc.want) || len(amb.Candidates) != len(tc.want) {
+			t.Errorf("%s: ResolveElementRef(%q) = %d, %v, want ambiguous among %v", tc.name, tc.ref, i, err, tc.want)
+		}
 	}
 }
 

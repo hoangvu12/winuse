@@ -10,8 +10,11 @@ package uia
 // scroll container itself. Each step is one SmallIncrement or
 // SmallDecrement on that axis. The scroll percent on the axis is read
 // before and after: no change at all fails as delivered ("it may already be
-// at the end"), a partial move is ok. Into view is one ScrollIntoView,
-// read back through the Element's IsOffscreen property.
+// at the end"), a partial move is ok. With no Scroll pattern on the axis up
+// the chain, a list whose items offer ScrollItem scrolls an item per step
+// (scrollitems.go). Into view is one ScrollIntoView, read back by the
+// Element's bounds against its scrolling container and its IsOffscreen
+// property (intoview.go).
 //
 // The decisions (direction words, the steps bound, the amounts, the
 // percent verdict and the run over the steps) are pure functions tested
@@ -47,6 +50,20 @@ func (d ScrollDirection) String() string {
 		return fmt.Sprintf("ScrollDirection(%d)", int(d))
 	}
 	return scrollDirectionWords[d]
+}
+
+// Opposite is the direction back the way it came: up for down, left for
+// right.
+func (d ScrollDirection) Opposite() ScrollDirection {
+	switch d {
+	case ScrollUp:
+		return ScrollDown
+	case ScrollDown:
+		return ScrollUp
+	case ScrollLeft:
+		return ScrollRight
+	}
+	return ScrollLeft
 }
 
 // Vertical reports whether the direction scrolls the vertical axis.
@@ -210,6 +227,14 @@ func (c *Client) ScrollElement(ctx context.Context, hwnd uint64, index int, dir 
 	}
 	return c.onElement(ctx, hwnd, index, func(th *thread, el comPtr) error {
 		pat, err := th.nearestScroller(el, dir)
+		if errors.Is(err, ErrNotScrollable) {
+			// No Scroll pattern on the axis: a list whose items offer
+			// ScrollItem scrolls an item at a time (scrollitems.go).
+			if list := th.itemList(hwnd, el, dir.Vertical()); list != nil {
+				defer release(list)
+				return th.scrollList(hwnd, list, dir, steps)
+			}
+		}
 		if err != nil {
 			return err
 		}
@@ -219,20 +244,16 @@ func (c *Client) ScrollElement(ctx context.Context, hwnd uint64, index int, dir 
 }
 
 // ScrollElementIntoView scrolls the Element behind index into view through
-// its ScrollItem pattern and reads IsOffscreen back.
-func (c *Client) ScrollElementIntoView(ctx context.Context, hwnd uint64, index int) error {
-	return c.onElement(ctx, hwnd, index, func(th *thread, el comPtr) error {
-		if err := scrollItemIntoView(el); err != nil {
-			return err
-		}
-		return pollVerify("scroll into-view", "on screen", func() (bool, string) {
-			v := currentProp(el, propIsOffscreen)
-			defer clearVariant(&v)
-			readable := v.has(vtBool)
-			offscreen := readable && v.boolean()
-			return intoViewDone(readable, offscreen), "offscreen"
-		})
+// its ScrollItem pattern and reads it back by its bounds against the
+// container that scrolls it, and IsOffscreen (intoview.go). already
+// reports an Element that was in view before and did not move.
+func (c *Client) ScrollElementIntoView(ctx context.Context, hwnd uint64, index int) (already bool, err error) {
+	err = c.onElement(ctx, hwnd, index, func(th *thread, el comPtr) error {
+		var aerr error
+		already, aerr = th.scrollIntoViewLive(hwnd, el)
+		return aerr
 	})
+	return already && err == nil, err
 }
 
 // scrollItemIntoView is the one ScrollItem.ScrollIntoView call, shared by
@@ -262,7 +283,8 @@ func (th *thread) nearestScroller(el comPtr, dir ScrollDirection) (comPtr, error
 	if dir.Vertical() {
 		axis = scrollCurrentV
 	}
-	notScrollable := fmt.Errorf("%w %s", ErrNotScrollable, dir.axisWord())
+	notScrollable := fmt.Errorf("%w %s: no Scroll pattern on that axis, and no list around it with ScrollItem items out of view",
+		ErrNotScrollable, dir.axisWord())
 
 	var walker comPtr
 	if hr := call(th.auto, uiaGetRawViewWalker, uintptr(unsafe.Pointer(&walker))); hr.Failed() || walker == nil {

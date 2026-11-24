@@ -1,6 +1,6 @@
 # Browser Windows
 
-Read when: any website, browser Window or Electron or WebView2 App: connecting to the user's browser, `navigate`, Page waits, `eval`, uploads, downloads, JavaScript dialogs, `browser attach`.
+Read when: any website, browser Window or Electron or WebView2 App: connecting to the user's browser, `navigate`, Page waits, `eval`, `extract`, `logs` (failed requests), uploads, downloads, JavaScript dialogs, `browser attach`.
 
 This is one topic of the winuse skill. `winuse skill browser` prints it, and `winuse skill` prints the core, SKILL.md, which holds the safety rules, the Esc stop and recovery.
 
@@ -101,12 +101,48 @@ The Agent Cursor shows Page Actions too: it glides to the Page Element,
 presses when the input reaches the Page, and stays just above the browser
 Window, so the user sees it only while that Window is uncovered.
 
+### Read a Page's lists and tables as data
+
+```
+winuse extract <window>                        # the Page's main list, table or JSON-LD as JSON rows
+winuse extract <window> --root <element>       # the list, an ancestor of it, or one item of it
+winuse extract <window> --as table|list|jsonld # force a mode; --limit N (default 50), --out rows.json
+```
+
+- Use `extract` instead of `eval` or reading the Window State when you
+  want the rows of search results, a product grid, a table or a feed. The
+  first line names the container and the count, then a JSON array, one
+  row per line:
+  `list: <ol id="results"> "Search results": 10 of 10 rows (complete)`.
+  `(partial: capped at 50 / page says 1,234 results)` says rows are
+  missing: raise `--limit`, or the page itself shows only some (load more
+  or go to its next page). `of 2000+` means extract stopped counting
+  there.
+- Without `--root` it picks the container itself. If that is the wrong
+  one, read `get-window-state` and pass `--root` the Element Index of the
+  list, of an ancestor, or of one item; one item gathers its alike
+  siblings, unless a list inside it is most of it (the root is then that
+  list's container). A table with headers prints its cells by header.
+- An article or a page with no repeated items prints `no list found`;
+  read it instead. A block page prints
+  `no list found: the Page looks like a <Cloudflare|...> wall; ask the user to handle it`
+  (`--json` adds `"wall": "<kind>"`): stop and ask the user, as the
+  safety rules say.
+- It only reads, in an isolated world the Page cannot see, and prints no
+  Element Indexes. It takes `<window>:<tab>`. On a native Window it reads
+  the Window's list or grid instead (`winuse skill reading`).
+
 ### Act on a Page
 
 ```
 winuse navigate <window> <url>                 # open a URL in the Window's Tab (or <window>:<tab>'s), wait for the load, print the URL
 winuse back <window>                           # also forward and reload
 winuse wait <window> selector <css>            # also text <text>, url <url or *pattern*>, load
+winuse wait <window> selector .spinner --gone  # until it is gone (selector and text take --gone)
+winuse wait <window> idle                      # until the Page settles: no DOM change, no request finishing
+winuse wait <window> js "window.app?.ready"    # until the expression is true (a promise is awaited)
+winuse read <window> [--root <element>]        # the Page's main content (or one Element's) as Markdown
+winuse logs <window> [--capture] [--clear]     # the Tab's failed requests, CSP errors and exceptions, newest last
 winuse eval <window> <expression>              # run JavaScript in the Page, print the value
 winuse eval <window> --file x.js [--max 20000] # the expression from a file (- for stdin); a longer cut
 winuse dialog <window> accept|dismiss [text]
@@ -117,13 +153,48 @@ winuse drag <window> <element> <element|@x,y>
 
 - Open a URL with `navigate`; keys sent into the address bar do nothing
   Headless.
+- When `navigate`, `back`, `forward`, `reload`, or a Page click or key that
+  navigated, lands on a short Page that looks like a CAPTCHA or block wall
+  (Cloudflare, DataDome, PerimeterX, reCAPTCHA, hCaptcha, Akamai, or a rate
+  limit), it stays `ok` and adds
+  `Note: the Page looks like a <kind> wall; ask the user to handle it`
+  (`--json` adds `"wall": "<kind>"`). Stop there and ask the user, as
+  Safety says: never click the challenge or try to solve it. A docs page
+  that mentions a rate limit, or a login form with a CAPTCHA widget, gets
+  no note.
+- `Note: the Page answered HTTP 404 Not Found` (or 429, 503 ...) after
+  `navigate`, `back`, `forward` or `reload` means the Page you see is the
+  site's error page, not the content: the navigation still says `ok`.
+  `with an empty body; Chrome shows its error page` means the Tab shows
+  Chrome's own page for it. On a 429 or 503, wait before you retry, and
+  never in a tight loop.
+- To load pages faster in a Tab of your own, block their images, fonts
+  and media: `winuse tab new <window> <url> --block images,fonts,media`,
+  or `winuse navigate <window>:<tab> <url> --block images` on a Tab you
+  opened (any Tab of a browser winuse launched or cloned); `--block none`
+  turns it off. The text and alt text stay, so reads are the same. It
+  matches file extensions, so images whose URLs have none still load.
+  On the user's own Tabs it is refused. More in topic `tabs`.
 - After an Action that loads or changes the Page, `wait` for what you
   expect (10 seconds by default, `--timeout <seconds>` up to 300), then
   read the Window State. A Page Element goes stale when the Page navigates
-  or the node goes away.
+  or the node goes away. `--observe` already waits up to 1 s for the Page
+  to settle before it reads, and says so in a `Note:` when the Page was
+  still changing; wait only for what takes longer.
+- `wait text` reads the Page's rendered text, its open shadow roots' and
+  its same-origin frames'. `wait js` takes any expression: a syntax error
+  fails at once, and a timeout names the last error it threw. Prefer
+  `selector` or `text` when they say it: they need no script of yours.
 - `set-value` fills a text field, picks a list option by label or value,
   and turns a check box, switch or radio button `on` or `off` (turn another
   radio button on to turn one off).
+- `set-value` and `type-text --into` work on rich-text editors too
+  (Lexical, ProseMirror, Slate, a comment box). A placeholder box that
+  hands its focus to the real editor gets the text in that editor, with
+  `Note: the field handed its focus to edit "<name>"; the text went there`.
+  An editor that replaces itself as you type is read back, or typed on, in
+  the editor that took its place, and a note says so. Each line of the
+  value becomes a paragraph.
 - `set-value` also picks an option of a custom combobox or listbox (Radix,
   Headless UI, MUI, React Select) by its name, exactly or in any case, in
   one call: name the combobox, its button or the listbox. winuse opens it
@@ -136,6 +207,44 @@ winuse drag <window> <element> <element|@x,y>
   picking a suggestion.
 - A covered, disabled, hidden or off-screen Page Element is refused with
   nothing sent, naming any covering Element, such as a cookie banner.
+- A Page `click` or `press-key` watches the Page until it settles (up to
+  1 s) and says what it saw, still with `ok` since the input was delivered:
+  `Note: the Page navigated to <url>`; `Note: the Page is navigating to
+  <url> and had not loaded when winuse looked` (then `wait <window> load`);
+  `Note: the Page changed (text only)`; or `Note: no change seen in the
+  Page; the click was delivered, so read the Page before repeating it`,
+  which names an Element that now covers the click point or is gone. Do not
+  repeat a click on that note alone: read the Page first, because a late
+  reaction or a repeat can act twice. Other changes print no note. Under
+  `--observe` only the navigation note prints; the diff shows the rest.
+  `--json` gives the same as an `effect` field (`navigated`, `changed`,
+  `text`, `none` or `unknown`).
+- A Page `scroll` that moved nothing says why, still with `ok`:
+  `Note: nothing scrolled; the Page is at its bottom` (or top, an edge, or
+  `does not scroll`), or `<div id="list"> is at its end` for the scroller
+  under the wheel. Stop scrolling that way. One that reached the end says
+  `Note: the Page is now at its bottom`. `scroll <el> into-view` on an
+  Element already on screen says `was already in view`.
+- A Page Action during which requests failed, the Page logged a CSP or
+  security error, or the Page threw a JavaScript exception stays `ok` and
+  adds a note, such as
+  `Note: 2 failed requests: 404 /api/save, 500 /api/user` (paths on the
+  Page's own site, host and path on another; at most 3 named),
+  `Note: 1 security error: Refused to load ...` or
+  `Note: the Page threw: TypeError: x is undefined (app.js:120)`. A failed
+  save or search often shows only this way: read the Page before retrying.
+  `winuse logs <window>` lists the Tab's last 50 such entries, newest
+  last, with time, source, level and text (and an exception's stack),
+  including failed requests from before winuse attached; `--clear` empties
+  the list after printing it, and `--json` answers with JSON.
+- Exceptions are captured in Tabs you opened with `tab new` (from their
+  first page) and in every Tab of a browser winuse launched or cloned. In
+  the user's own Tab, run
+  `winuse logs <window> --capture` first: it lasts while the Tab is open
+  and covers pages loaded after it, so `reload` to cover the current one.
+  `console` calls are never captured: winuse never turns on the debugger's
+  Runtime domain, and never its Network domain except on a Tab where
+  `--block` is on; a site can detect both.
 - A click or key that opens a JavaScript dialog (alert, confirm, prompt,
   leave-this-page) prints `ok` and a `Note:` line with its text; do not
   repeat it. Every Page Action then fails naming the dialog until you
@@ -157,6 +266,28 @@ winuse drag <window> <element> <element|@x,y>
   `winuse wait <window> download` prints the file's path when done.
   Downloads land in `Downloads\winuse` (shown by `winuse browser status`),
   only on a browser winuse launched or cloned.
+- To learn where a link goes, read with `--urls` or `find <window> --role
+  link`, not `eval`: a link's line then ends with `URL: /path` on the
+  Page's own site, or the domain and path elsewhere. A heading's line says
+  its level, so `find <window> --role heading` is the Page's outline (see
+  `winuse skill reading`).
+- To read a Page's text (an article, docs, search results, a table), use
+  `read`, not `eval` with `innerText`. It prints the main content as
+  Markdown with headings, lists, links and tables with their headers,
+  without navigation, footers or ads, and leaves your Element Indexes as
+  they are. The first line names what it picked; when that is the wrong
+  part, pass `--root <element>` (an Element Index, `name:` or `id:` from
+  your latest read) to read that Element's subtree. Links on the same site
+  (`www.x.com` and `x.com` are one site) print as paths and others as a
+  shortened domain and path; `--urls full` prints them whole. The output
+  stays within 28000 characters, header and notes included: the Markdown
+  is cut, with a `(cut at N of M characters)` line saying how much of it
+  printed. `--max-chars N` sets the cap (0 for none), `--out <file>`
+  writes the Markdown whole. A short Page that looks like a
+  CAPTCHA or block wall adds
+  `Note: the Page looks like a <kind> wall; ask the user to handle it`
+  (`--json` adds `"wall": "<kind>"`).
+  On a native Window, read with `get-window-state` instead.
 - `eval` prints a string as is and anything else as JSON, cut at 4000
   characters; `--max <n>` raises the cut up to 100000, so do not page a
   long result with several evals. Return plain values, not DOM nodes.

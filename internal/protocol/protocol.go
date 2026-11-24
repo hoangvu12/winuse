@@ -89,6 +89,9 @@ var commandTimeouts = map[string]time.Duration{
 	"dialog":   BrowserTimeout,
 	"wait":     BrowserTimeout,
 	"eval":     BrowserTimeout,
+	"read":     BrowserTimeout, // read.go, bladebro-ideas ticket 25
+	"extract":  BrowserTimeout, // extract.go: a Page's rows, over the same connection
+	"logs":     BrowserTimeout, // logs.go, bladebro-ideas ticket 29
 }
 
 // CommandTimeout returns a command's explicitly configured budget, if it
@@ -194,6 +197,7 @@ type Observe struct {
 	MaxChars    *int   `json:"max_chars,omitempty"`
 	Out         string `json:"out,omitempty"` // absolute (the CLI resolves it)
 	Full        bool   `json:"full,omitempty"`
+	URLs        bool   `json:"urls,omitempty"` // a Page link's URL after its line (bladebro-ideas 01)
 }
 
 // ObservableCommands are the commands that take --observe: the Actions
@@ -249,6 +253,11 @@ type Request struct {
 	// reference not found yet (--no-wait, reliability-council 06): it
 	// fails at once, as before.
 	NoWait bool `json:"no_wait,omitempty"`
+
+	// NoNotes hides the Notes (ADR 0024) a get-window-state would show:
+	// WINUSE_NOTES=off, and the CLI's own reads that never reach the agent
+	// (pick, run). Hidden Notes still show on the Agent's next read.
+	NoNotes bool `json:"no_notes,omitempty"`
 }
 
 // ListWindowsArgs are list-windows's optional arguments (desktop-parity
@@ -726,6 +735,29 @@ type Response struct {
 	// Trace is the helper's part of a trace line (desktop-parity ticket
 	// 19, trace.go), only when Request.Trace asked for it.
 	Trace *Trace `json:"trace,omitempty"`
+
+	// Notes are the Notes (ADR 0024) the Agent's first get-window-state of
+	// a site or App shows, one block per key under its header. The CLI
+	// prints them above Out, then a blank line; under --json they are the
+	// line's own "notes" field, never part of "out".
+	Notes string `json:"notes,omitempty"`
+
+	// Effect is what a Headless Page click or key did to its Page
+	// (bladebro-ideas ticket 06): navigated, changed, text, none or
+	// unknown; "" for any other command, a Batch and a failure. Printed
+	// only under --json.
+	Effect string `json:"effect,omitempty"`
+
+	// HTTPStatus is the 4xx/5xx a navigation's Page answered, whose note
+	// Out carries (bladebro-ideas 02); 0 for none, a Batch and a failure.
+	// Printed only under --json.
+	HTTPStatus int `json:"http_status,omitempty"`
+
+	// Wall is the challenge or block wall (one of WallKinds) a Page the
+	// command landed on or read looks like, whose note Out carries
+	// (bladebro-ideas 05): the last one, a Batch step's too. Printed only
+	// under --json.
+	Wall string `json:"wall,omitempty"`
 }
 
 // ErrLineTooLarge is returned when a line exceeds MaxLine.

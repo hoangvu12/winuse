@@ -85,7 +85,20 @@ func TestWindowStateShapeFlags(t *testing.T) {
 	if err != nil || req.Window != "101" || !req.Diff || !req.Interactive {
 		t.Errorf("--diff: %+v, %v", req, err)
 	}
+	// A Page link's URL (bladebro-ideas 01), on a read or a region.
+	req, err = windowStateRequest([]string{"101", "--urls", "--interactive"}, false)
+	if err != nil || !req.URLs || !req.Interactive {
+		t.Errorf("--urls: %+v, %v", req, err)
+	}
+	if req, err = windowStateRequest([]string{"101", "--root", "8", "--urls"}, false); err != nil || !req.URLs || req.Root != "8" {
+		t.Errorf("--root --urls: %+v, %v", req, err)
+	}
+	if req, err = windowStateRequest([]string{"101"}, false); err != nil || req.URLs {
+		t.Errorf("no --urls by default: %+v, %v", req, err)
+	}
 	for _, bad := range [][]string{
+		{"101", "--urls=1"},
+		{"101", "--full", "--urls"},
 		{"101", "--diff=1"},
 		{"101", "--out"},
 		{"101", "--out", " "},

@@ -47,9 +47,13 @@ func (c *Client) ResolveElementRef(ctx context.Context, hwnd uint64, ref string)
 }
 
 // resolveBaseFirst resolves ref against els[:base], then, when nothing
-// matched there, against the Elements added after it.
+// matched there, against the Elements added after it. Only the read is a
+// tree, so only there does a control's own label resolve to the control.
 func resolveBaseFirst(els []wstate.Element, base int, ref string) (int, error) {
-	if base >= len(els) || base <= 0 {
+	if base <= 0 {
+		return wstate.ResolveElementRefInList(els, ref)
+	}
+	if base >= len(els) {
 		return wstate.ResolveElementRef(els, ref)
 	}
 	i, err := wstate.ResolveElementRef(els[:base], ref)
@@ -57,7 +61,7 @@ func resolveBaseFirst(els []wstate.Element, base int, ref string) (int, error) {
 	if !errors.As(err, &none) {
 		return i, err
 	}
-	i, err = wstate.ResolveElementRef(els[base:], ref)
+	i, err = wstate.ResolveElementRefInList(els[base:], ref)
 	var several *wstate.AmbiguousRefError
 	if errors.As(err, &several) {
 		for k := range several.Matches {

@@ -18,7 +18,9 @@ Steps take the standalone arguments without the Window. A separate `then`
 starts a new step; quote text containing it. `winuse batch -` reads stdin:
 the Window and flags on line 1, then one step per line without `then`; `"`
 groups words (`\"` inside), and blank and `#` lines are skipped. A
-malformed Batch or unknown Window sends nothing. Batch only sequences you
+malformed Batch, an unknown Window or a bad value in any step (a key name,
+an action, an Element Reference, a `wait` kind or timeout, a missing
+upload file) sends nothing and names the step. Batch only sequences you
 understand well. A Batch has 60 s; `--timeout <s>` (up to 300) after the
 Window widens it (a later one is a `wait` step's).
 
@@ -85,8 +87,13 @@ Changed since this agent's last read of window 101 (~ changed, * new, - gone); E
 - A failed Action prints no observation. A Batch observes after its last
   step, failed steps included. A read that fails is a `Note:`; the Action's
   own result stands.
-- On a Page, the read comes right after the Action: a page that reacts late
-  may not show it yet.
+- On a Page (a browser Window or a Tab), the read first waits up to 1 s for
+  the Page to settle: no DOM change for 110 ms and no request finishing for
+  280 ms. A late render or a route change then shows in the read. A Page
+  still changing after 1 s is read anyway, with `Note: the Page had not
+  settled after 1s (its DOM kept changing), ...`: wait for what you need
+  (`wait <window> selector ...`, `text ...`, `idle`) and read again. A
+  request slower than 280 ms is not waited for.
 - To read again with no Action, after a `wait` or something the user did,
   `winuse get-window-state <window> --diff` prints the same diff, under the
   same rules and budgets (not with `--root` or `--skeleton`, which read part
@@ -101,6 +108,7 @@ reading the Window State over and over:
 winuse wait window "Save As"                   # a Window of that App, or whose title holds the text, shows: prints its line
 winuse wait window "Save As" --gone            # no such Window is left
 winuse wait <window> text <text>               # the text shows in the Window
+winuse wait <window> text <text> --gone        # no Element (or no Page text) holds it any more
 winuse wait <window> <ref> enabled             # also disabled, gone, value <v>, checked, unchecked, expanded, collapsed
 winuse wait 500                                # a plain pause, in milliseconds (at most 300000)
 ```
@@ -115,6 +123,13 @@ instead of two: `batch 101 click name:Save then wait text Saved`.
   wait starts. `gone` also succeeds when its Window closes; any other wait
   whose Window closes fails with `the Window closed`. A wait for something
   the Element cannot show, such as `value` without `Value:`, fails at once.
+- On a native Window, `text` matches the Window State as printed, where
+  each Element is one line: a line break or a run of blanks in your text
+  matches one space, so `wait 101 text $'Opens at 9:30.\nNo flash'` finds
+  a two-line paragraph. On a Page, `text` matches the Page's rendered text
+  as it is, its line breaks included: wait for one line of it.
+  `value <v>` treats LF, CRLF and CR alike, as `set-value` does (Notepad
+  stores CR only); otherwise it compares exactly.
 - A wait only reads: it does not renumber your indexes, and an Action can
   run meanwhile.
 - You need no wait for a short one. An Action refused because its Element
@@ -126,6 +141,8 @@ instead of two: `batch 101 click name:Save then wait text Saved`.
   have acted; `--no-wait` fails at once, and Esc stops it. A Batch's steps
   do not wait (the Batch holds its Window for all its steps): put a
   `wait <ref> enabled` step before one that may find its Element disabled.
-- With a Browser Connection, `text` waits in the Page (see "Act on a Page"
-  in `winuse skill browser` for the other Page waits), and an element wait takes the frame's
+- With a Browser Connection, `text` waits in the Page, its open shadow
+  roots and same-origin frames included (see "Act on a Page" in `winuse
+  skill browser` for the other Page waits: `selector`, `url`, `load`,
+  `idle`, `js`, `download`), and an element wait takes the frame's
   Elements, not the Page's.

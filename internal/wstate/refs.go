@@ -133,9 +133,28 @@ func (e *PartialRefError) Error() string {
 // (RefID) with the reference text, both whitespace-collapsed — the form
 // the tree prints — and otherwise exact, so a reference the agent copied
 // from the Window State resolves to the Element behind that line. Several
-// matches are an AmbiguousRefError with the candidate lines; none is a
+// matches are an AmbiguousRefError with the candidate lines, except one
+// pair: a name: matching an Element an agent acts on (or a Page clickable)
+// and a non-interactive Element inside it names that control
+// (controlAndItsLabel). None is a
 // NoMatchRefError; a malformed reference is a BadRefError.
+//
+// elements must be one depth-first tree, as a read stores them; a list
+// whose depths do not say who is inside whom resolves with
+// ResolveElementRefInList.
 func ResolveElementRef(elements []Element, ref string) (int, error) {
+	return resolveElementRef(elements, ref, true)
+}
+
+// ResolveElementRefInList is ResolveElementRef against Elements that are
+// not one tree, such as those finds and region reads add after a read: no
+// Element counts as inside another, so every several matches are
+// ambiguous.
+func ResolveElementRefInList(elements []Element, ref string) (int, error) {
+	return resolveElementRef(elements, ref, false)
+}
+
+func resolveElementRef(elements []Element, ref string, tree bool) (int, error) {
 	kind, text, err := ParseElementRef(ref)
 	if err != nil {
 		return 0, err
@@ -153,6 +172,11 @@ func ResolveElementRef(elements []Element, ref string) (int, error) {
 			matches = append(matches, i)
 		}
 	}
+	if tree && kind == RefName {
+		if control, ok := controlAndItsLabel(elements, matches); ok {
+			return control, nil
+		}
+	}
 	switch len(matches) {
 	case 1:
 		return matches[0], nil
@@ -166,6 +190,46 @@ func ResolveElementRef(elements []Element, ref string) (int, error) {
 			Candidates: candidateLines(elements, matches),
 		}
 	}
+}
+
+// controlAndItsLabel reports whether two name matches are one control: the
+// first an Element an agent acts on (ActedOn), the second a
+// non-interactive Element inside it, its label (recap-trial 01). Many
+// Apps' trees carry a control's name twice, on the control and on the
+// text inside it; acting on the label would act on the control anyway.
+// Any other pair, and any other count, stays ambiguous.
+func controlAndItsLabel(elements []Element, matches []int) (int, bool) {
+	if len(matches) != 2 {
+		return 0, false
+	}
+	control, label := matches[0], matches[1]
+	if !namesAControl(elements[control]) || namesAControl(elements[label]) {
+		return 0, false
+	}
+	return control, descends(elements, control, label)
+}
+
+// namesAControl reports whether an Element counts as a control for
+// controlAndItsLabel: one an agent acts on (ActedOn), or a Page Element
+// marked clickable, a role-less element with a click handler (recap-trial
+// 03). The clickable counts here only: ActedOn, and so the --interactive
+// views, leave it out as before.
+func namesAControl(e Element) bool {
+	return e.ActedOn() || e.Role == "clickable"
+}
+
+// descends reports whether Element d lies inside Element a in a
+// depth-first list: every Element after a up to d is deeper than a.
+func descends(elements []Element, a, d int) bool {
+	if d <= a {
+		return false
+	}
+	for i := a + 1; i <= d; i++ {
+		if elements[i].Depth <= elements[a].Depth {
+			return false
+		}
+	}
+	return true
 }
 
 // InPartialRead turns the resolution of ref against a partial Window

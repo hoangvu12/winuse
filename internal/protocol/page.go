@@ -5,22 +5,31 @@ package protocol
 // browser Window with a Browser Connection. Their names, usage lines and
 // arguments live here, where the CLI and the helper both read them.
 
+import "slices"
+
+// NavCommands are the navigations: navigate, back, forward and reload,
+// which take NavigateArgs.
+var NavCommands = []string{"navigate", "back", "forward", "reload"}
+
+// IsNavCommand reports whether cmd is one of NavCommands.
+func IsNavCommand(cmd string) bool { return slices.Contains(NavCommands, cmd) }
+
 // PageCommands are the page-only Actions' command names, also their Batch
 // step kinds.
-var PageCommands = []string{"navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval"}
+var PageCommands = append(slices.Clone(NavCommands), "upload", "dialog", "wait", "eval")
 
 // PageUsage is a page-only Action's usage line: what the CLI prints on a
 // usage error, and the helper's hint for bad arguments.
 func PageUsage(cmd string) string {
 	switch cmd {
 	case "navigate":
-		return "usage: winuse navigate <window> <url> [--wait load|domcontentloaded|none]"
+		return "usage: winuse navigate <window> <url> [--wait load|domcontentloaded|none] [--block images,fonts,media|none]"
 	case "upload":
 		return "usage: winuse upload <window> [<element index | name: | id:>] <file>...   (without an element: the file chooser a click opened)"
 	case "dialog":
 		return "usage: winuse dialog <window> accept|dismiss [text]   (text answers a prompt)"
 	case "wait":
-		return "usage: winuse wait <window> selector <css> | text <text> | url <url or pattern with *> | load [domcontentloaded] | download   [--timeout <seconds>]\n" +
+		return "usage: winuse wait <window> selector <css> [--gone] | text <text> [--gone] | url <url or pattern with *> | load [domcontentloaded] | idle | js <expression> | download   [--timeout <seconds>]\n" +
 			"       winuse wait <window> <element index | name: | id:> enabled | disabled | gone | value <value> | checked | unchecked | expanded | collapsed   [--timeout <seconds>]\n" +
 			"       winuse wait window <app or title> [--gone] [--timeout <seconds>]\n" +
 			"       winuse wait notification [--app <name>] [--text <text>] [--timeout <seconds>]\n" +
@@ -38,6 +47,10 @@ type NavigateArgs struct {
 	Window string `json:"window"`
 	URL    string `json:"url,omitempty"`
 	Wait   string `json:"wait,omitempty"`
+	// Block is navigate's --block on a Tab target winuse opened: the asset
+	// classes to block from now on, canonical (ParseBlock), or "none"
+	// (bladebro-ideas 28).
+	Block string `json:"block,omitempty"`
 }
 
 // UploadArgs are upload's arguments: the file input (an Element Index or a
@@ -59,7 +72,8 @@ type DialogArgs struct {
 }
 
 // WaitArgs are wait's arguments: what to wait for (selector, text, url,
-// load or download), its value, and a timeout in milliseconds (0: the
+// load, idle, js or download; bladebro-ideas 07 added idle and js, and
+// Gone for selector and text), its value, and a timeout in milliseconds (0: the
 // default; capped by the request budget, which the CLI widens to the
 // timeout plus WaitMargin through Request.TimeoutMS).
 //
@@ -79,7 +93,7 @@ type WaitArgs struct {
 	Value     string `json:"value,omitempty"`
 	TimeoutMS int    `json:"timeout_ms,omitempty"`
 
-	Gone         bool   `json:"gone,omitempty"`          // window: wait until no such Window is left
+	Gone         bool   `json:"gone,omitempty"`          // window, selector, text: wait until no such Window, element or text is left
 	ElementIndex *int   `json:"element_index,omitempty"` // element: the Element, from the Window's latest Window State
 	Ref          string `json:"ref,omitempty"`           // element: name:<text> or id:<AutomationId>
 	State        string `json:"state,omitempty"`         // element: one of WaitStates

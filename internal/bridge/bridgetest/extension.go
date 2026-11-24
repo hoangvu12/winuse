@@ -890,6 +890,19 @@ func (e *Extension) sessionCall(sessionID, method string, params json.RawMessage
 			return nil, err
 		}
 		e.attached[sessionID] = true
+		if method == "Page.navigate" {
+			// The tab shows the URL from then on (tab new opens on
+			// about:blank and navigates).
+			var nav struct {
+				URL string `json:"url"`
+			}
+			json.Unmarshal(params, &nav)
+			for i := range e.Tabs {
+				if e.Tabs[i].TargetID == sessionID && nav.URL != "" {
+					e.Tabs[i].URL = nav.URL
+				}
+			}
+		}
 	}
 	page := e.Page
 	e.mu.Unlock()

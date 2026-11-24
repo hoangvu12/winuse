@@ -141,7 +141,7 @@ func runPick(a pickArgs, cfg jev.Config, headed bool, w io.Writer) error {
 		return noKeyError
 	}
 	zero := 0 // the whole State: it never reaches the Agent, so no cap
-	resp, err := sendRequest("get-window-state", windowArgs{Window: a.window, MaxChars: &zero}, nil)
+	resp, err := sendRequest("get-window-state", windowArgs{Window: a.window, MaxChars: &zero}, hideNotes)
 	if err != nil {
 		return err
 	}

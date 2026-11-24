@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"github.com/hoangvu12/winuse/internal/browser"
+	"github.com/hoangvu12/winuse/internal/extract"
 	"github.com/hoangvu12/winuse/internal/keys"
+	"github.com/hoangvu12/winuse/internal/notes"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/shot"
 	"github.com/hoangvu12/winuse/internal/uia"
@@ -364,6 +366,17 @@ type Services struct {
 	// of its Tab targets. Created by defaultServices.
 	tabHolds  *tabHolds
 	tabStates *tabStateStore
+
+	// assetBlocks are the Tabs tab new opened and what each blocking Tab
+	// blocks (assets.go, bladebro-ideas 28). Created by defaultServices.
+	assetBlocks *assetBlocks
+
+	// The Notes a Window State shows (ADR 0024, windownotes.go): NoteStore
+	// opens the Notes store, nil showing none (offline tests that do not
+	// set a temp store; Main wires notes.Default); notesSeen is the keys
+	// each Agent's reads covered, created by defaultServices.
+	NoteStore func() (*notes.Store, error)
+	notesSeen *notesSeen
 }
 
 // CommandsWith builds the command registry over the given services.
@@ -437,6 +450,7 @@ func CommandsWith(s Services) map[string]Command {
 	for name, cmd := range pageCommands(s) {
 		cmds[name] = cmd
 	}
+	cmds["read"] = pageRead(s) // read.go, bladebro-ideas ticket 25
 	// The clipboard's Desktop commands (clipboard.go, desktop parity
 	// ticket 01): serialized below like the Actions.
 	for name, cmd := range clipboardCommands(s) {
@@ -447,6 +461,8 @@ func CommandsWith(s Services) map[string]Command {
 	// Window screenshot, since it hides the indicator and the cursor.
 	cmds["list-displays"] = listDisplays(s)
 	cmds["screenshot"] = displayScreenshot(s)
+	cmds["extract"] = extractCommand(s) // extract.go: a Page's or a native list's rows as JSON, reads only
+	cmds["logs"] = logsCommand(s)       // logs.go: a Tab's failed requests and CSP errors, reads only
 	// The notifications' Desktop commands (notifications.go, desktop parity
 	// ticket 18): list-notifications only reads; the two actions take the
 	// desktop lane below. open-shell (openshell.go) is Headed only.
@@ -454,6 +470,10 @@ func CommandsWith(s Services) map[string]Command {
 	cmds["notification-action"] = notificationAction(s)
 	cmds["notification-dismiss"] = notificationDismiss(s)
 	cmds["open-shell"] = openShell(s)
+	// The Notes (notes.go, ADR 0024): they read and write notes.json only.
+	for name, cmd := range noteCommands(s) {
+		cmds[name] = cmd
+	}
 
 	// The serialized registry: every control-path command runs alone, the
 	// Actions that can open a Window report it (opened.go), and so does an
@@ -509,12 +529,15 @@ func observationOnlyCommand(name string) bool {
 	case "list-windows", "get-window", "list-apps", "get-window-state", "find", "record-tree", "launch-app",
 		"tab-list",      // reads a browser Window's Tabs only (tabs.go)
 		"list-displays", // a Desktop command that only reads the monitors (display.go)
+		"extract",       // reads a Page's rows in an isolated world, or a native list's (extract.go)
+		"logs",          // reads a Tab's log, which winuse keeps (logs.go)
 		StatusCommand:   // read-only probes (status.go): never waits behind an Action
 		return true
 	case "list-notifications": // a Desktop command that only reads the toast banners (notifications.go)
 		return true
 	}
-	return strings.HasPrefix(name, "browser-")
+	// The note commands touch no Window (notes.go); the store has its own lock.
+	return strings.HasPrefix(name, "browser-") || strings.HasPrefix(name, "note-")
 }
 
 // WaitingEscWatch is the Esc service's side of stopping requests that wait
@@ -915,6 +938,12 @@ func defaultServices(s Services) Services {
 	if s.tabStates == nil {
 		s.tabStates = newTabStateStore()
 	}
+	if s.assetBlocks == nil {
+		s.assetBlocks = newAssetBlocks()
+	}
+	if s.notesSeen == nil {
+		s.notesSeen = newNotesSeen()
+	}
 	if s.WindowThread == nil {
 		s.WindowThread = win.WindowThreadID
 	}
@@ -950,6 +979,9 @@ type windowRef struct {
 	// Visible prints only the Elements on screen: a Page's scrolled-away
 	// Elements are left out (wstate.View.Visible).
 	Visible bool `json:"visible,omitempty"`
+	// URLs prints a Page link's URL after its line (--urls,
+	// bladebro-ideas 01; wstate.View.URLs). Not with Full.
+	URLs bool `json:"urls,omitempty"`
 	// MarkOffscreen prints every Element and marks the off-screen ones
 	// (wstate.View.MarkOffscreen): winuse run's read; no CLI flag.
 	MarkOffscreen bool `json:"mark_offscreen,omitempty"`
@@ -974,20 +1006,21 @@ func getWindowState(s Services, ctx context.Context, args json.RawMessage) (stri
 	if err := parseArgs(args, &a); err != nil {
 		return "", Fail("get-window-state: "+err.Error(), "run winuse get-window-state <window> [--screenshot] [--timeout <seconds>]")
 	}
+	if ferr := windowStateInput(a); ferr != nil {
+		return "", ferr
+	}
 	ctx = uia.WithSettle(ctx, stateSettle(ctx))
 	w, rerr := resolveWindow(s, a.Window)
 	if rerr != nil {
 		return "", rerr
 	}
-	if a.Screenshot && (a.Root != "" || a.Skeleton) {
-		return "", Fail("get-window-state: --screenshot goes with a full read, not --root or --skeleton", windowStateUsage)
-	}
-	if a.Diff && (a.Root != "" || a.Skeleton) {
-		return "", Fail("get-window-state: --diff compares a full read with your last one; --root and --skeleton read part of the Window",
-			"drop --diff to read the part, or --root/--skeleton to diff the whole Window")
-	}
 	if out, serr, ok := windowStateShape(s, ctx, w, a); ok {
-		return out, serr
+		if serr != nil {
+			return out, serr
+		}
+		// A partial read merges no Page: a browser Window covers its App's
+		// Notes only, and its site's on its next full read.
+		return s.stateWithNotes(ctx, a, s.stateNoteKeys(w, ""), func(windowRef) (string, *Error) { return out, nil })
 	}
 	if a.Screenshot {
 		// The screenshot path captures with the indicator and the Agent
@@ -998,21 +1031,51 @@ func getWindowState(s Services, ctx context.Context, args json.RawMessage) (stri
 		})(ctx, args)
 	}
 	before, what := s.baselineOf(ctx, w, a)
-	tree, terr := readWindowTree(s, ctx, w)
+	var pageURL string // the merged Page's, for its Notes (windownotes.go)
+	tree, terr := readWindowTree(s, withReadURL(ctx, &pageURL), w)
 	if terr != nil {
 		return "", terr
 	}
-	return renderState(tree, a, strconv.FormatUint(w.ID, 10), before, what)
+	return s.stateWithNotes(ctx, a, s.stateNoteKeys(w, pageURL), func(a windowRef) (string, *Error) {
+		return renderState(tree, a, strconv.FormatUint(w.ID, 10), before, what)
+	})
 }
 
-// baselineOf is what a --diff read of w compares with: the Agent's latest
-// Window State of w, taken before the read replaces it (nil: none), and
-// the Window's name in the diff's text. Nothing without --diff.
-func (s Services) baselineOf(ctx context.Context, w win.WindowInfo, a windowRef) ([]wstate.Element, string) {
-	if !a.Diff {
-		return nil, ""
+// windowStateInput checks get-window-state's flags alone, before the
+// Window resolves: the ones a read cannot take together (budgetError, the
+// partial reads' and --screenshot's and --diff's). A Batch runs it on a
+// get-window-state step while it prepares (batchcheck.go).
+func windowStateInput(a windowRef) *Error {
+	if e := budgetError(a); e != nil {
+		return e
 	}
-	return s.storedState(ctx, w.ID), "window " + strconv.FormatUint(w.ID, 10)
+	switch {
+	case a.Screenshot && (a.Root != "" || a.Skeleton):
+		return Fail("get-window-state: --screenshot goes with a full read, not --root or --skeleton", windowStateUsage)
+	case a.Diff && (a.Root != "" || a.Skeleton):
+		return Fail("get-window-state: --diff compares a full read with your last one; --root and --skeleton read part of the Window",
+			"drop --diff to read the part, or --root/--skeleton to diff the whole Window")
+	case a.Skeleton && a.Root != "":
+		return Fail("get-window-state: --skeleton reads the whole Window and --root one Element; pass one", windowStateUsage)
+	case a.Skeleton && a.Depth != 0:
+		return Fail(fmt.Sprintf("get-window-state: --skeleton reads %d levels; --depth goes with a full read or --root <element>", uia.SkeletonDepth), windowStateUsage)
+	case a.Root != "" && (a.Compact || a.Out != ""):
+		return Fail("get-window-state: --compact and --out shape a full read; --root takes --depth, --interactive, --max-chars and --full", windowStateUsage)
+	}
+	return nil
+}
+
+// baselineOf is what a read of w compares with: the Agent's latest Window
+// State of w, taken before the read replaces it (nil: none), which --diff
+// prints the changes since and a read past its cap uses to keep changed
+// Page landmarks open (bladebro-ideas 08); and, with --diff, the Window's
+// name in the diff's text.
+func (s Services) baselineOf(ctx context.Context, w win.WindowInfo, a windowRef) ([]wstate.Element, string) {
+	before := s.storedState(ctx, w.ID)
+	if !a.Diff {
+		return before, ""
+	}
+	return before, "window " + strconv.FormatUint(w.ID, 10)
 }
 
 // stateSettle is the Chromium settle budget of a get-window-state under
@@ -1036,6 +1099,9 @@ func stateSettle(ctx context.Context) time.Duration {
 type recordArgs struct {
 	Window string `json:"window"`
 	File   string `json:"file"` // absolute output path (the CLI resolves it)
+	// Table records the Window's list or grid as extract reads it
+	// (extract.NativeRead, ticket 27) instead of its tree.
+	Table bool `json:"table,omitempty"`
 }
 
 // recordTree answers `winuse record-tree <window> <file>`: it captures a
@@ -1052,6 +1118,9 @@ func recordTree(s Services, ctx context.Context, args json.RawMessage) (string, 
 	w, rerr := resolveWindow(s, a.Window)
 	if rerr != nil {
 		return "", rerr
+	}
+	if a.Table {
+		return recordTable(s, ctx, w, a.File)
 	}
 	tree, err := s.Trees.Capture(ctx, w.ID, w.Title, win.AppExeName(w), s.Budget)
 	if err != nil {
@@ -1073,6 +1142,39 @@ func recordTree(s Services, ctx context.Context, args json.RawMessage) (string, 
 		note = " (" + strings.Join(tree.Notes, "; ") + ")"
 	}
 	return fmt.Sprintf("recorded %s: %d elements%s\n", a.File, len(tree.Elements), note), nil
+}
+
+// recordTable answers `winuse record-tree <window> <file> --table`: the
+// list or grid extract picks on the Window, read as extract reads it
+// (default limit), saved in the extract.NativeRead fixture format for
+// internal/extract's offline tests (ticket 27).
+func recordTable(s Services, ctx context.Context, w win.WindowInfo, file string) (string, *Error) {
+	ex, ok := s.Trees.(NativeExtractor)
+	if !ok {
+		return "", Fail("record-tree --table is unavailable: no UIA client", "")
+	}
+	read, found, err := ex.ExtractNative(ctx, w.ID, -1, extract.NativeLimit, s.Budget)
+	if err != nil {
+		return "", treeReadError(err)
+	}
+	if !found {
+		return "", Fail(fmt.Sprintf("window %d shows no list or grid to record", w.ID), "record a Window that shows a list or grid, or record its tree without --table")
+	}
+	now := time.Now()
+	read.Format, read.Captured = extract.NativeFormat, &now
+	read.Source = fmt.Sprintf("recorded by winuse record-tree --table from %q (Window %d)", w.Title, w.ID)
+	data, err := json.MarshalIndent(read, "", "  ")
+	if err != nil {
+		return "", Fail("encoding the fixture: "+err.Error(), "")
+	}
+	if err := writeFileAtomic(file, append(data, '\n')); err != nil {
+		return "", Fail("writing "+file+": "+err.Error(), "")
+	}
+	label := ""
+	if read.Name != "" {
+		label = " " + strconv.Quote(read.Name)
+	}
+	return fmt.Sprintf("recorded %s: %s%s, %d children\n", file, read.Role, label, len(read.Children)), nil
 }
 
 // parseArgs unmarshals a command's arguments, refusing missing or malformed

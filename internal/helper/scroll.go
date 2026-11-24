@@ -3,7 +3,8 @@ package helper
 // Element scroll (headless-parity spec, "Element scroll"; ADR 0011): the
 // Element forms of `scroll`. `scroll <window> <element> <up|down|left|right>
 // [steps]` scrolls through the Element's ScrollPattern, or its nearest
-// scrollable ancestor's, and `scroll <window> <element> into-view` through
+// scrollable ancestor's, or else an item at a time through the ScrollItem
+// items of a list around it, and `scroll <window> <element> into-view` through
 // its ScrollItem pattern; both are Headless (runHeadless) and read back.
 // With `headed` they run v1's pipeline (runAction): activate, resolve the
 // Element's point the way a Headed click does, then the wheel at that
@@ -152,13 +153,22 @@ func scrollElement(ctx context.Context, s Services, args json.RawMessage, a prot
 		return scrollRefusal(err, w, index, run.target, plan)
 	}
 	if ha, ok := s.headless("scroll", args); ok {
+		// into-view on an Element already in view says so (recap-trial 04).
+		already, at := false, -1
 		run.act = func(ctx context.Context, w win.WindowInfo, index int) error {
 			if plan.intoView {
-				return ha.ScrollElementIntoView(ctx, w.ID, index)
+				var err error
+				already, err = ha.ScrollElementIntoView(ctx, w.ID, index)
+				at = index
+				return err
 			}
 			return ha.ScrollElement(ctx, w.ID, index, plan.dir, plan.steps)
 		}
-		return s.runHeadless(ctx, a.Window, ha, run)
+		out, rerr := s.runHeadless(ctx, a.Window, ha, run)
+		if rerr == nil && out == okOutput && already {
+			return okWith(alreadyInViewNote(at)), nil
+		}
+		return out, rerr
 	}
 	if !a.Headed {
 		// Unreachable on a real helper (its UIA client is a HeadlessActor):
@@ -178,8 +188,12 @@ func scrollElement(ctx context.Context, s Services, args json.RawMessage, a prot
 			if rerr != nil {
 				return "", rerr
 			}
-			if err := ha.ScrollElementIntoView(ctx, w.ID, index); err != nil {
+			already, err := ha.ScrollElementIntoView(ctx, w.ID, index)
+			if err != nil {
 				return "", headlessFailure(err, w, index, run)
+			}
+			if already {
+				return okWith(alreadyInViewNote(index)), nil
 			}
 			return okOutput, nil
 		})
@@ -218,6 +232,10 @@ func scrollRefusal(err error, w win.WindowInfo, index int, target elementTarget,
 		return Fail(err.Error(),
 			"nothing here scrolls that way through UI Automation; to wheel-scroll at the Element with the real pointer (this brings the Window to the foreground): winuse --headed scroll "+
 				id+" "+target.token()+" "+p.token())
+	case errors.Is(err, uia.ErrScrollEnd):
+		return Fail(err.Error(),
+			"its last items that way are already in the Window State (winuse get-window-state "+id+"); to go back: winuse scroll "+
+				id+" "+target.token()+" "+p.dir.Opposite().String())
 	case errors.Is(err, uia.ErrNoScrollItem):
 		return Fail(err.Error(),
 			"scroll its list or page by steps instead, e.g. winuse scroll "+id+" "+target.token()+" down")

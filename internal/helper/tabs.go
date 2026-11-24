@@ -79,7 +79,7 @@ func tabCommands(s Services) map[string]Command {
 func tabUsageHint(cmd string) string {
 	switch cmd {
 	case "tab-new":
-		return "usage: winuse tab new <window> [url]"
+		return "usage: winuse tab new <window> [url] [--block images,fonts,media|none]"
 	case "tab-close":
 		return "usage: winuse tab close <window> <tab>"
 	case "tab-switch":
@@ -213,12 +213,32 @@ func tabNew(s Services) Command {
 		if e != nil {
 			return "", e
 		}
+		var classes []string
+		if a.Block != "" {
+			canon, err := protocol.ParseBlock(a.Block)
+			if err != nil {
+				return "", Fail("tab-new: "+err.Error(), tabUsageHint("tab-new"))
+			}
+			classes = protocol.BlockList(canon)
+		}
 		tw, e := s.tabWindow(ctx, a.Window)
 		if e != nil {
 			return "", nothingSent(e)
 		}
 		return s.tabHeadless(ctx, tw, nil, "open tab", func(ctx context.Context) (string, *Error, bool) {
-			id, err := page.NewTab(ctx, tw.conn, tw.tabs.WindowID, a.URL, s.agentTabGroup(ctx))
+			// The Tab opens on about:blank and goes to the URL only once its
+			// exception listener (and --block, assets.go) is in, so its first
+			// load is captured (and blocked) too (startNewTab).
+			id, err := page.NewTab(ctx, tw.conn, tw.tabs.WindowID, "", s.agentTabGroup(ctx))
+			if id != "" {
+				if s.assetBlocks != nil {
+					s.assetBlocks.markOpened(id) // winuse's own Tab: --block may go there later
+				}
+				// Being winuse's, it captures its JavaScript exceptions
+				// (page/exceptions.go). Without a URL nothing is sent now: the
+				// listener goes in at its first Page Action.
+				page.WatchLog(ctx, tw.conn.Client, "", id).Capture(ctx, "")
+			}
 			var other *page.OtherWindowError
 			switch {
 			case errors.As(err, &other):
@@ -231,6 +251,11 @@ func tabNew(s Services) Command {
 			}
 			// The read-back found the new Tab in the Window's browser window.
 			tw.g.Memory.Remember(tw.conn.Client, tw.g, tw.tabs.WindowID)
+			if a.URL != "" || len(classes) > 0 {
+				if e := s.startNewTab(ctx, tw, id, a.URL, classes); e != nil {
+					return "", e, true
+				}
+			}
 			return "ok " + page.TabID(id) + "\n", nil, true
 		})
 	}

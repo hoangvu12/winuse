@@ -123,7 +123,7 @@ func (o Origin) Rect(ctx context.Context) (Rect, error) {
 	return rect(ctx, c, o)
 }
 
-const rectJS = `function(){const r=this.getBoundingClientRect();return [r.left,r.top,r.width,r.height,window.devicePixelRatio]}`
+const rectJS = `function(){/* winuse:rect */const r=this.getBoundingClientRect();return [r.left,r.top,r.width,r.height,window.devicePixelRatio]}`
 
 // contentJS is an iframe element's content-box top-left in its parent's
 // viewport.
@@ -206,12 +206,64 @@ func frameLoader(ctx context.Context, c Caller, session, frameID string) (string
 
 // frameTree is Page.getFrameTree's answer.
 type frameTree struct {
-	Frame struct {
-		ID       string `json:"id"`
-		LoaderID string `json:"loaderId"`
-		URL      string `json:"url"`
-	} `json:"frame"`
+	Frame       frameInfo   `json:"frame"`
 	ChildFrames []frameTree `json:"childFrames"`
+}
+
+// frameInfo is one frame of the tree. UnreachableURL is the address the
+// frame could not show, when it shows Chrome's own error page.
+type frameInfo struct {
+	ID             string `json:"id"`
+	LoaderID       string `json:"loaderId"`
+	URL            string `json:"url"`
+	UnreachableURL string `json:"unreachableUrl"`
+}
+
+// mainFrame is the session's main frame, from Page.getFrameTree: the one
+// read of it every caller shares.
+func mainFrame(ctx context.Context, c Caller, session string) (frameInfo, error) {
+	res, err := c.CallSession(ctx, session, "Page.getFrameTree", nil)
+	if err != nil {
+		return frameInfo{}, err
+	}
+	var ft struct {
+		FrameTree frameTree `json:"frameTree"`
+	}
+	if err := json.Unmarshal(res, &ft); err != nil {
+		return frameInfo{}, err
+	}
+	return ft.FrameTree.Frame, nil
+}
+
+// newWorld makes an isolated world named name in frameID and returns its
+// execution context; the browser's errors come back as they are.
+func newWorld(ctx context.Context, c Caller, session, frameID, name string) (int, error) {
+	res, err := c.CallSession(ctx, session, "Page.createIsolatedWorld", map[string]any{"frameId": frameID, "worldName": name})
+	if err != nil {
+		return 0, err
+	}
+	var w struct {
+		ExecutionContextID int `json:"executionContextId"`
+	}
+	if json.Unmarshal(res, &w) != nil || w.ExecutionContextID == 0 {
+		return 0, errors.New("the browser gave no isolated world to read the Page in")
+	}
+	return w.ExecutionContextID, nil
+}
+
+// isolatedWorld makes an isolated world named name in frameID (the
+// session's main frame when "") and returns its execution context; a frame
+// or session that is gone is ErrStale.
+func isolatedWorld(ctx context.Context, c Caller, session, frameID, name string) (int, error) {
+	if frameID == "" {
+		f, err := mainFrame(ctx, c, session)
+		if err != nil {
+			return 0, err
+		}
+		frameID = f.ID
+	}
+	id, err := newWorld(ctx, c, session, frameID, name)
+	return id, staleOr(err)
 }
 
 // loaders collects frame id to loader id, depth levels deep (-1: all).

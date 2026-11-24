@@ -26,6 +26,7 @@ type scrollRecord struct {
 	steps    int
 	err      error // ScrollElement's outcome
 	intoErr  error // ScrollElementIntoView's outcome
+	already  bool  // ScrollElementIntoView found the Element in view already
 	wheeled  []int32
 	wheelErr error
 }
@@ -39,11 +40,11 @@ func (s *headlessSpy) ScrollElement(ctx context.Context, hwnd uint64, index int,
 }
 
 // ScrollElementIntoView implements HeadlessActor.
-func (s *headlessSpy) ScrollElementIntoView(ctx context.Context, hwnd uint64, index int) error {
+func (s *headlessSpy) ScrollElementIntoView(ctx context.Context, hwnd uint64, index int) (bool, error) {
 	s.step("into-view")
 	s.scroll.index = index
 	s.esc.pressIf("act")
-	return s.scroll.intoErr
+	return s.scroll.already, s.scroll.intoErr
 }
 
 // newScrollSpy is a headlessSpy whose wheel is faked and recorded.
@@ -123,6 +124,29 @@ func TestHeadlessElementScrollIntoView(t *testing.T) {
 	}
 }
 
+// into-view on an Element that was inside its container's view before and
+// did not move says so, in the Page form's words (recap-trial 04).
+func TestHeadlessElementScrollIntoViewAlreadyInView(t *testing.T) {
+	spy := newScrollSpy()
+	spy.scroll.already = true
+	out, cmdErr := runCommand(t, CommandsWith(spy.svc), "scroll", elementScroll(5, "into-view"))
+	if want := "ok\nNote: element 5 was already in view; nothing scrolled\n"; cmdErr != nil || out != want {
+		t.Fatalf("into-view: %q, %v; want %q", out, cmdErr, want)
+	}
+}
+
+// into-view whose read-back finds the Element still outside its list is
+// delivered, never ok.
+func TestHeadlessElementScrollIntoViewStillOutside(t *testing.T) {
+	spy := newScrollSpy()
+	spy.scroll.intoErr = &uia.VerifyError{Action: "scroll into-view", Msg: "the Element did not scroll into view"}
+	out, cmdErr := runCommand(t, CommandsWith(spy.svc), "scroll", elementScroll(5, "into-view"))
+	if cmdErr == nil || out != "" || !strings.Contains(cmdErr.Msg, "did not scroll into view") ||
+		!strings.Contains(cmdErr.Hint, "do not repeat") {
+		t.Fatalf("into-view: %q, %+v; want the delivered failure", out, cmdErr)
+	}
+}
+
 func TestElementScrollArgumentChecks(t *testing.T) {
 	cases := []struct {
 		name string
@@ -177,6 +201,15 @@ func TestElementScrollFailureWording(t *testing.T) {
 			setup:    func(s *headlessSpy) { s.scroll.err = fmt.Errorf("%w vertically", uia.ErrNotScrollable) },
 			wantMsg:  "neither the Element nor any of its ancestors scrolls vertically; nothing was sent",
 			wantHint: "winuse --headed scroll 101 2 down",
+		},
+		{
+			name: "a list already at its end",
+			args: elementScroll(2, "down", 10),
+			setup: func(s *headlessSpy) {
+				s.scroll.err = fmt.Errorf("%w: no item lies further down", uia.ErrScrollEnd)
+			},
+			wantMsg:  "the list is already at its end: no item lies further down; nothing was sent",
+			wantHint: "winuse scroll 101 2 up",
 		},
 		{
 			name:     "no ScrollItem",

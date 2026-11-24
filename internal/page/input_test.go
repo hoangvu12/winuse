@@ -277,6 +277,19 @@ type fakePage struct {
 	moves     []string
 	awaited   int
 	recentred map[int64]map[string]any
+	// Placeholder and remounting editors (bladebro-ideas 09): follow holds,
+	// per node, the answers of its winuse:follow calls in order (a node id
+	// the focus went to, "lost", "throw" for a check that throws, or nil
+	// for none; nil once they run out);
+	// fields and reads override a node's winuse:field and winuse:read
+	// answers; labels are winuse:label's. selected and readFrom record the
+	// nodes the select and the read-back ran on.
+	follow   map[int64][]any
+	fields   map[int64]map[string]any
+	reads    map[int64]any
+	labels   map[int64]map[string]any
+	selected []int64
+	readFrom []int64
 }
 
 func newFakePage(t *testing.T) (*fakePage, *cdp.Client) {
@@ -325,6 +338,23 @@ func newFakePage(t *testing.T) (*fakePage, *cdp.Client) {
 		defer f.mu.Unlock()
 		var v any
 		switch {
+		case strings.Contains(p.Fn, "winuse:follow"):
+			var next any
+			if q := f.follow[node]; len(q) > 0 {
+				next, f.follow[node] = q[0], q[1:]
+			}
+			switch n := next.(type) {
+			case int:
+				return map[string]any{"result": map[string]any{"type": "object", "subtype": "node", "objectId": fmt.Sprintf("follow:%d", n)}}, nil
+			case string:
+				if n == "throw" {
+					return map[string]any{"result": map[string]any{"type": "object"}, "exceptionDetails": map[string]any{"text": "Uncaught"}}, nil
+				}
+				return map[string]any{"result": map[string]any{"type": "string", "value": n}}, nil
+			}
+			return map[string]any{"result": map[string]any{"type": "object", "subtype": "null", "value": nil}}, nil
+		case strings.Contains(p.Fn, "winuse:label"):
+			v = f.labels[node]
 		case strings.Contains(p.Fn, "winuse:settle"):
 			f.moves = append(f.moves, fmt.Sprintf("settle %d", node))
 			if p.Await {
@@ -350,11 +380,19 @@ func newFakePage(t *testing.T) (*fakePage, *cdp.Client) {
 			v = []float64{100, 200, 2}
 		case strings.Contains(p.Fn, "winuse:field"):
 			v = f.field
+			if fd, ok := f.fields[node]; ok {
+				v = fd
+			}
 		case strings.Contains(p.Fn, "winuse:select"):
 			f.inputs = append(f.inputs, "select")
+			f.selected = append(f.selected, node)
 			v = true
 		case strings.Contains(p.Fn, "winuse:read"):
+			f.readFrom = append(f.readFrom, node)
 			v = f.value
+			if r, ok := f.reads[node]; ok {
+				v = r
+			}
 		case strings.Contains(p.Fn, "isConnected"):
 			v = true
 		}
@@ -365,6 +403,18 @@ func newFakePage(t *testing.T) (*fakePage, *cdp.Client) {
 		f.inputs = append(f.inputs, "focus")
 		f.mu.Unlock()
 		return nil, nil
+	})
+	// The node a winuse:follow answer names, by its object id.
+	f.srv.Handle("DOM.describeNode", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
+		var p struct {
+			ObjectID string `json:"objectId"`
+		}
+		json.Unmarshal(m.Params, &p)
+		n, err := strconv.ParseInt(strings.TrimPrefix(p.ObjectID, "follow:"), 10, 64)
+		if err != nil {
+			return nil, &cdptest.ReplyError{Code: -32000, Message: "Could not find node with given id"}
+		}
+		return map[string]any{"node": map[string]any{"backendNodeId": n, "nodeName": "DIV"}}, nil
 	})
 	input := func(c *cdptest.Conn, m cdptest.Message) (any, error) {
 		var p map[string]any
@@ -730,6 +780,225 @@ func TestSetValueReadsBack(t *testing.T) {
 	var v *VerifyError
 	if !errors.As(err, &v) || strings.Contains(err.Error(), "secr") {
 		t.Errorf("password read-back: %v", err)
+	}
+}
+
+// A placeholder ("facade") field mounts the real editor on focus and hands
+// it the focus (bladebro-ideas 09): set-value selects, writes and reads back
+// in the editor, reads that node's own field (editable text now), and says
+// where the text went.
+func TestSetValueFollowsAHandedOffFocus(t *testing.T) {
+	f, c := newFakePage(t)
+	ctx := context.Background()
+	o := Origin{Client: c, SessionID: "S", FrameID: "F1", LoaderID: "L1", BackendNodeID: 7}
+	f.mu.Lock()
+	f.follow = map[int64][]any{7: {8}}
+	f.fields = map[int64]map[string]any{8: {"kind": "editable"}}
+	f.labels = map[int64]map[string]any{8: {"role": "", "name": "Comment editor"}}
+	// innerText of <p>hello</p> with its paragraph newline: editable text
+	// normalizes it, a text field would not.
+	f.reads = map[int64]any{7: "", 8: "hello\n"}
+	f.mu.Unlock()
+	in, err := NewInput(ctx, c, "S", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if err := o.SetValue(ctx, in, Field{Kind: "text"}, "hello"); err != nil {
+		t.Fatalf("set-value through the handed-off focus: %v", err)
+	}
+	f.mu.Lock()
+	selected, readFrom := f.selected, f.readFrom
+	f.mu.Unlock()
+	if !reflect.DeepEqual(selected, []int64{8}) || !reflect.DeepEqual(readFrom, []int64{8}) {
+		t.Errorf("selected %v and read back %v, want the editor 8 for both", selected, readFrom)
+	}
+	if got := f.log(); !reflect.DeepEqual(got, []string{"focus", "select", "S Input.insertText hello"}) {
+		t.Errorf("set-value = %v", got)
+	}
+	want := []string{`the field handed its focus to edit "Comment editor"; the text went there`}
+	if !reflect.DeepEqual(in.Notes, want) {
+		t.Errorf("notes = %q, want %q", in.Notes, want)
+	}
+}
+
+// A field that keeps its focus gets no note and no extra writes.
+func TestSetValueWithoutAHandOffAddsNoNote(t *testing.T) {
+	f, c := newFakePage(t)
+	ctx := context.Background()
+	o := Origin{Client: c, SessionID: "S", FrameID: "F1", LoaderID: "L1", BackendNodeID: 7}
+	in, err := NewInput(ctx, c, "S", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if err := o.SetValue(ctx, in, Field{Kind: "text"}, "plain"); err != nil {
+		t.Fatal(err)
+	}
+	if len(in.Notes) != 0 {
+		t.Errorf("notes = %q, want none", in.Notes)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !reflect.DeepEqual(f.selected, []int64{7}) || !reflect.DeepEqual(f.readFrom, []int64{7}) {
+		t.Errorf("selected %v and read back %v, want the field 7", f.selected, f.readFrom)
+	}
+}
+
+// The read-back never reads a node that left the document (an editor that
+// replaced itself on the input): it reads the focused editable element
+// that took its place and says so, or reports that it could not read back,
+// never the stale copy.
+func TestCheckValueNeverReadsADetachedNode(t *testing.T) {
+	f, c := newFakePage(t)
+	ctx := context.Background()
+	o := Origin{Client: c, SessionID: "S", FrameID: "F1", LoaderID: "L1", BackendNodeID: 7}
+	in, err := NewInput(ctx, c, "S", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+
+	f.mu.Lock()
+	f.reads = map[int64]any{7: map[string]any{"replaced": true, "value": "a\nb", "kind": "editable", "role": "", "name": "Remount editor"}}
+	f.mu.Unlock()
+	if err := o.CheckValue(ctx, in, Field{Kind: "editable"}, "a\nb"); err != nil {
+		t.Fatalf("read through the editor that took its place: %v", err)
+	}
+	want := []string{`the field was replaced after the input; its value was read back from the focused edit "Remount editor"`}
+	if !reflect.DeepEqual(in.Notes, want) {
+		t.Errorf("notes = %q, want %q", in.Notes, want)
+	}
+
+	// The replacement holds other text: a mismatch that names where it read.
+	f.mu.Lock()
+	f.reads[7] = map[string]any{"replaced": true, "value": "ab", "kind": "editable", "name": "Remount editor"}
+	f.mu.Unlock()
+	err = o.CheckValue(ctx, nil, Field{Kind: "editable"}, "a\nb")
+	var v *VerifyError
+	if !errors.As(err, &v) || !strings.Contains(err.Error(), `holds "ab" afterwards`) || !strings.Contains(err.Error(), `edit "Remount editor"`) {
+		t.Errorf("mismatch through the replacement: %v", err)
+	}
+
+	// Nothing editable holds the focus: no read-back, and no stale copy.
+	f.mu.Lock()
+	f.reads[7] = map[string]any{"replaced": true, "lost": true}
+	f.mu.Unlock()
+	err = o.CheckValue(ctx, nil, Field{Kind: "editable"}, "a\nb")
+	if !errors.As(err, &v) || !strings.Contains(err.Error(), "could not be read back") || !strings.Contains(err.Error(), "left the document") {
+		t.Errorf("lost: %v", err)
+	}
+}
+
+// type-text --into on an editor that replaces its node on the first input
+// (bladebro-ideas 09): before each part after the first, a replaced node
+// hands over to the focused editable element, with the caret put at its
+// end, and the typing goes on there, once noted.
+func TestTypeIntoFollowsARemount(t *testing.T) {
+	f, c := newFakePage(t)
+	ctx := context.Background()
+	o := Origin{Client: c, SessionID: "S", FrameID: "F1", LoaderID: "L1", BackendNodeID: 7}
+	f.mu.Lock()
+	// After the focus: no hand-off. Before the Return: replaced by 9.
+	f.follow = map[int64][]any{7: {nil, 9}}
+	f.labels = map[int64]map[string]any{9: {"role": "textbox", "name": "Remount editor"}}
+	f.mu.Unlock()
+	in, err := NewInput(ctx, c, "S", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if err := o.TypeInto(ctx, in, "one\ntwo"); err != nil {
+		t.Fatalf("type-text --into across a remount: %v", err)
+	}
+	want := []string{"focus", "S Input.insertText one", "S Input.dispatchKeyEvent keyDown", "S Input.dispatchKeyEvent keyUp", "S Input.insertText two"}
+	if got := f.log(); !reflect.DeepEqual(got, want) {
+		t.Errorf("typed %v, want %v", got, want)
+	}
+	notes := []string{`the field was replaced while typing; the rest of the text went to the focused edit "Remount editor", at its end`}
+	if !reflect.DeepEqual(in.Notes, notes) {
+		t.Errorf("notes = %q, want %q", in.Notes, notes)
+	}
+	// Each check after the first part asked for the caret at the end.
+	var follows []string
+	for _, m := range f.srv.Received() {
+		if m.Method != "Runtime.callFunctionOn" || !strings.Contains(string(m.Params), "winuse:follow") {
+			continue
+		}
+		var p struct {
+			Args []struct {
+				Value any `json:"value"`
+			} `json:"arguments"`
+		}
+		json.Unmarshal(m.Params, &p)
+		follows = append(follows, fmt.Sprint(p.Args[0].Value))
+	}
+	if !reflect.DeepEqual(follows, []string{"focus", "replaced", "replaced"}) {
+		t.Errorf("follow calls %v, want the focus check, then a replaced check before each later part", follows)
+	}
+}
+
+// A field replaced while typing with nothing editable focused stops the
+// typing at once, as a delivered failure (the text so far went in), never
+// typing the rest somewhere else.
+func TestTypeIntoStopsWhenTheFieldIsLost(t *testing.T) {
+	f, c := newFakePage(t)
+	ctx := context.Background()
+	o := Origin{Client: c, SessionID: "S", FrameID: "F1", LoaderID: "L1", BackendNodeID: 7}
+	f.mu.Lock()
+	f.follow = map[int64][]any{7: {nil, "lost"}}
+	f.mu.Unlock()
+	in, err := NewInput(ctx, c, "S", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	err = o.TypeInto(ctx, in, "one\ntwo")
+	var v *VerifyError
+	if err == nil || errors.As(err, &v) || errors.Is(err, ErrStale) || !strings.Contains(err.Error(), "left the document while typing") {
+		t.Fatalf("lost field: %v", err)
+	}
+	if got := f.log(); !reflect.DeepEqual(got, []string{"focus", "S Input.insertText one"}) || in.Sent != 1 {
+		t.Errorf("typed %v (sent %d), want only the first part", got, in.Sent)
+	}
+}
+
+// A focus check between parts that fails in any other way stops the
+// typing too: winuse cannot tell where the rest would go.
+func TestTypeIntoStopsWhenTheFocusCheckFails(t *testing.T) {
+	f, c := newFakePage(t)
+	ctx := context.Background()
+	o := Origin{Client: c, SessionID: "S", FrameID: "F1", LoaderID: "L1", BackendNodeID: 7}
+	f.mu.Lock()
+	f.follow = map[int64][]any{7: {nil, "throw"}}
+	f.mu.Unlock()
+	in, err := NewInput(ctx, c, "S", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	err = o.TypeInto(ctx, in, "one\ntwo")
+	var v *VerifyError
+	if err == nil || errors.As(err, &v) || errors.Is(err, ErrStale) || !strings.Contains(err.Error(), "the typing stopped before a Return key") {
+		t.Fatalf("a failed focus check: %v", err)
+	}
+	if got := f.log(); !reflect.DeepEqual(got, []string{"focus", "S Input.insertText one"}) || in.Sent != 1 {
+		t.Errorf("typed %v (sent %d), want only the first part", got, in.Sent)
+	}
+}
+
+// Editable text drops the zero-width characters editors use as caret
+// anchors (Slate's U+FEFF, U+200B), not other text.
+func TestValueMatchesEditableZeroWidth(t *testing.T) {
+	zwsp, bom := string(rune(0x200B)), string(rune(0xFEFF))
+	if err := ValueMatches(Field{Kind: "editable"}, "a\nb", "a"+zwsp+"\n"+bom+"b"); err != nil {
+		t.Errorf("zero-width anchors: %v", err)
+	}
+	if err := ValueMatches(Field{Kind: "editable"}, "a\n\nb", "a\nb"); err == nil {
+		t.Error("a missing blank line matched")
+	}
+	if err := ValueMatches(Field{Kind: "text"}, "ab", "a"+zwsp+"b"); err == nil {
+		t.Error("a text field's zero-width character was dropped")
 	}
 }
 

@@ -1,6 +1,6 @@
 # Reading a Window
 
-Read when: you need Element References in full (stale indexes, re-found names, points), the tree's details, screenshots and `zoom`, a Chromium tree that stays thin, a slow or partial read, or a big Window (`find`, `--skeleton`, `--root`, `--interactive`, `--compact`, `--max-chars`, `--out`).
+Read when: you need Element References in full (stale indexes, re-found names, points), the tree's details, screenshots and `zoom`, a Chromium tree that stays thin, a slow or partial read, a big Window (`find`, `--skeleton`, `--root`, `--interactive`, `--compact`, `--max-chars`, `--out`), or a native list or grid as rows (`extract`).
 
 This is one topic of the winuse skill. `winuse skill reading` prints it, and `winuse skill` prints the core, SKILL.md, which holds the safety rules, the Esc stop and recovery.
 
@@ -48,6 +48,24 @@ lines around it do not show it: in `find`, `--interactive`, `--depth`, an
 `--observe` diff and an ambiguous reference's candidates. Pick the control
 by its Element Index: a hint is not a name, and `name:` never matches it.
 `--full` prints no hint.
+
+On a Page, a heading says its level (`heading (level 2) Install`), so
+`find <window> --role heading` lists the Page's outline. A link's address
+prints only where asked, after its line and before any hint:
+
+```
+		14 link Forgot your password? URL: /reset
+		15 link Source URL: github.com/hoangvu12/winuse
+```
+
+A link on the Page's own site prints its path (or `#fragment` for a place
+on the same Page), one elsewhere its domain and path, cut at 60
+characters with `…`; a `javascript:` link prints none and a `data:` link
+only `data:…`. `--urls` adds them to a read, `--root` or `--observe`;
+`find`, a `--diff` or `--observe` diff and an ambiguous reference's
+candidates always print them, and a diff lists a link whose address
+changed. `--full` prints none. For a link's whole address, `read
+<window> --root <element> --urls full`.
 
 Start with the tree (a few hundred tokens); take a screenshot (image
 tokens) for canvas apps, visual layout questions, or a tree that looks
@@ -100,19 +118,35 @@ winuse get-window-state <window> --root 42 --depth 2 --interactive
 winuse get-window-state <window> --interactive --compact   # a full read, printing only what you act on
 winuse get-window-state <window> --max-chars 20000 # stop the tree before 20000 characters, with a note
 winuse get-window-state <window> --out state.txt   # write it to a file, uncut; prints the path and the notes
-winuse get-window-state <window> --full            # Codex's text byte for byte: every ID, no cap, no hint
+winuse get-window-state <window> --urls            # a Page link's line ends with its URL
+winuse get-window-state <window> --full            # Codex's text byte for byte: every ID, no cap, no hint, no URL, no heading level
 ```
 
 By default a read, `find` and `--root` stop before 28000 characters
 (under the Harness's 30000-character cap on a command's output) with a
-note naming the first Element not printed, and leave out the IDs two or
-more Elements share, which `id:` refuses as ambiguous; a unique ID always
-prints. A full read that would pass the cap first folds its unnamed
-containers, as `--compact` does, and says so in a note; it cuts only what
-still does not fit (on Chromium and Electron Windows, where a third of the
-Elements can be such wrappers, that fits far more). A read that fits
+note naming the first Element not printed and counting the rest by role
+(`(from Element 412 on: 30 link, 8 button, 3 edit)`), and leave out the
+IDs two or more Elements share, which `id:` refuses as ambiguous; a
+unique ID always prints. A full read that would pass the cap first folds
+its unnamed containers, as `--compact` does, and says so in a note; it
+cuts only what still does not fit (on Chromium and Electron Windows, where
+a third of the Elements can be such wrappers, that fits far more). A read that fits
 prints whole. `--max-chars N` sets the cap, `--max-chars 0` lifts it, and
 `--out <file>` writes the whole read to the file.
+
+A Page's landmarks print as `main`, `navigation`, `banner`, `footer` and
+`complementary` lines. On a Page with a `main` or `dialog`, a read still
+too long once folded folds each `navigation`, `banner`, `footer` and
+`complementary` of 3 or more Elements to one line, so the cut drops site
+chrome before content:
+
+```
+		3 navigation Sections (+42 Elements folded; --root 3 shows them)
+```
+
+The folded Elements' indexes still work. One that holds the focus, or an
+Element changed since your last read, stays open. A Tab target takes no
+`--root`, so its fold line says `--out <file> writes them` instead.
 
 On a full read, `--interactive`, `--depth N` and `--compact` (folds
 unnamed containers) print less, but the Window State is kept whole:
@@ -131,6 +165,35 @@ State's own (if the tree ended at 240, `find` prints 241, 242...), and the
 earlier indexes keep working. The next full read, `--skeleton` and an
 Action's `--observe` included, renumbers from 0. In a browser Window with a Browser Connection, `find`
 reads the Window State afresh and says so; use its indexes.
+
+### Lists and grids as data
+
+```
+winuse extract <window>                  # the Window's table or grid, else its longest list, as JSON rows
+winuse extract <window> --root <element> # that list or grid, an ancestor of it, or one of its items
+winuse extract <window> --out rows.json  # every row to a file; --limit N (default 500, up to 1000)
+```
+
+Use `extract` instead of reading list items off the tree when you want
+the rows of Explorer's details view, Services, a grid or a list. The first
+line names the control and the count, then a JSON array, one row per line,
+keyed by the column headers (`"name"` for a list without columns):
+
+```
+table: list "Items View": 22 of 470 rows (partial: virtualized)
+[
+{"Name":"Documents","Date modified":"11/20/2026 9:14 AM","Type":"File folder","Size":""},
+...
+```
+
+- `(partial: virtualized)`: the App builds only the rows on screen, and
+  `extract` never scrolls it. Scroll the list (`scroll`) and extract
+  again for the next rows, or read the folder or data another way.
+- `(partial: capped at 500)`: raise `--limit`. `M+` means the App gave no
+  total. `stopped at the time limit` means a slow App ran out the read.
+- It only reads, prints no Element Indexes and picks the control itself;
+  the header names it. If that is the wrong one, pass `--root` from
+  `get-window-state`. `no list found` means the Window shows none.
 
 ## Name an Element
 
@@ -151,7 +214,10 @@ An Element Reference takes one of four forms.
   right or middle clicks aim at the point itself, with `--headed`.
 
 Matching is exact and case-sensitive. A name or ID that matches several
-Elements fails and lists the candidates.
+Elements fails and lists the candidates. One pair is a single control: a
+`name:` matching just a control and a non-interactive Element inside it
+(its label, such as `56 button Open` with `57 text Open` under it) acts on
+the control.
 
 An Element Index and an `@x,y` point are valid only for the Window State
 and screenshot that printed them; a stale index fails and asks for a fresh

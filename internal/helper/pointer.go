@@ -91,32 +91,12 @@ func scroll(s Services) Command {
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("scroll: "+err.Error(), scrollUsageHint)
 		}
-		// Modifiers held during the wheel, e.g. Ctrl to zoom (desktop-parity
-		// ticket 06, modifiers.go): the point form only.
-		mods, merr := win.ParseModifiers(a.Modifiers)
-		if merr != nil {
-			return "", Fail("scroll: "+merr.Error(), scrollUsageHint)
+		mods, ierr := scrollInput(a)
+		if ierr != nil {
+			return "", ierr
 		}
 		if isElementScroll(a) {
-			if a.Post {
-				return "", Fail("scroll: --post scrolls at an @x,y point; an Element scrolls headless without it", scrollUsageHint)
-			}
-			if !mods.None() {
-				return "", Fail("scroll: --modifiers goes with an @x,y point; an Element scrolls by steps without them", scrollUsageHint)
-			}
 			return scrollElement(ctx, s, args, a)
-		}
-		if a.Direction != "" || a.Steps != nil {
-			return "", Fail("scroll: a direction or steps needs an element index, name: or id: reference", scrollUsageHint)
-		}
-		if a.X < 0 || a.Y < 0 {
-			return "", Fail("scroll: the @x,y coordinates must be non-negative integers", scrollUsageHint)
-		}
-		if a.ScrollX == 0 && a.ScrollY == 0 {
-			return "", Fail("scroll: at least one scroll amount must be non-zero", scrollUsageHint)
-		}
-		if abs(a.ScrollX) > maxScrollUnits || abs(a.ScrollY) > maxScrollUnits {
-			return "", Fail(fmt.Sprintf("scroll amounts must be within ±%d wheel units (one notch is 120)", maxScrollUnits), scrollUsageHint)
 		}
 		if a.Post {
 			// A posted wheel to the classic control there, opt-in
@@ -187,6 +167,96 @@ func scroll(s Services) Command {
 	}
 }
 
+// scrollInput checks scroll's arguments alone, before anything resolves,
+// and returns the modifiers held during the wheel (desktop-parity ticket
+// 06, modifiers.go: the point form only). An Element form takes no --post
+// or --modifiers and a direction with steps 1 to 50, or into-view
+// (parseElementScroll); the point form takes no direction or steps,
+// non-negative coordinates and two amounts, not both zero, within
+// ±maxScrollUnits. A Batch runs it on a scroll step while it prepares
+// (batchcheck.go).
+func scrollInput(a protocol.ScrollArgs) (win.Modifiers, *Error) {
+	mods, merr := win.ParseModifiers(a.Modifiers)
+	if merr != nil {
+		return win.Modifiers{}, Fail("scroll: "+merr.Error(), scrollUsageHint)
+	}
+	if isElementScroll(a) {
+		if a.Post {
+			return win.Modifiers{}, Fail("scroll: --post scrolls at an @x,y point; an Element scrolls headless without it", scrollUsageHint)
+		}
+		if !mods.None() {
+			return win.Modifiers{}, Fail("scroll: --modifiers goes with an @x,y point; an Element scrolls by steps without them", scrollUsageHint)
+		}
+		if _, perr := parseElementScroll(a); perr != nil {
+			return win.Modifiers{}, perr
+		}
+		return mods, nil
+	}
+	if a.Direction != "" || a.Steps != nil {
+		return win.Modifiers{}, Fail("scroll: a direction or steps needs an element index, name: or id: reference", scrollUsageHint)
+	}
+	if a.X < 0 || a.Y < 0 {
+		return win.Modifiers{}, Fail("scroll: the @x,y coordinates must be non-negative integers", scrollUsageHint)
+	}
+	if a.ScrollX == 0 && a.ScrollY == 0 {
+		return win.Modifiers{}, Fail("scroll: at least one scroll amount must be non-zero", scrollUsageHint)
+	}
+	if abs(a.ScrollX) > maxScrollUnits || abs(a.ScrollY) > maxScrollUnits {
+		return win.Modifiers{}, Fail(fmt.Sprintf("scroll amounts must be within ±%d wheel units (one notch is 120)", maxScrollUnits), scrollUsageHint)
+	}
+	return mods, nil
+}
+
+// dragInput checks drag's arguments alone, before anything resolves, and
+// returns --drop-delay: from an Element, its Element Reference and the
+// end's (another Element, or a non-negative @x,y); from a point, both
+// points non-negative. A Batch runs it on a drag step while it prepares
+// (batchcheck.go).
+func dragInput(a protocol.DragArgs) (time.Duration, *Error) {
+	drop, derr := dropDelay(a.DropDelayMS)
+	if derr != nil {
+		return 0, derr
+	}
+	if a.FromIndex != nil || a.FromRef != "" {
+		if _, rerr := parseElementTarget("drag", a.FromIndex, a.FromRef, nil, dragUsageHint); rerr != nil {
+			return 0, rerr
+		}
+		if a.ToIndex != nil || a.ToRef != "" {
+			if _, rerr := parseElementTarget("drag", a.ToIndex, a.ToRef, nil, dragUsageHint); rerr != nil {
+				return 0, rerr
+			}
+			return drop, nil
+		}
+		if a.ToX < 0 || a.ToY < 0 {
+			return 0, Fail("drag: the @x,y coordinates must be non-negative integers", dragUsageHint)
+		}
+		return drop, nil
+	}
+	if a.ToIndex != nil || a.ToRef != "" {
+		// The point form goes from @x,y to @x,y: an Element to drop on with
+		// no Element to start from has lost its first end.
+		return 0, Fail("drag: a drag to an Element needs an Element to start from", dragUsageHint)
+	}
+	if a.FromX < 0 || a.FromY < 0 || a.ToX < 0 || a.ToY < 0 {
+		return 0, Fail("drag: the @x,y coordinates must be non-negative integers", dragUsageHint)
+	}
+	return drop, nil
+}
+
+// hoverInput checks hover's arguments alone, before anything resolves: an
+// Element Reference, or a non-negative @x,y. A Batch runs it on a hover
+// step while it prepares (batchcheck.go).
+func hoverInput(a protocol.HoverArgs) *Error {
+	if a.ElementIndex != nil || a.Ref != "" {
+		_, rerr := parseElementTarget("hover", a.ElementIndex, a.Ref, nil, hoverUsageHint)
+		return rerr
+	}
+	if a.X < 0 || a.Y < 0 {
+		return Fail("hover: the @x,y coordinates must be non-negative integers", hoverUsageHint)
+	}
+	return nil
+}
+
 // drag runs `winuse drag <window> @x,y @x,y`: the Window is activated and
 // verified in the foreground, both points are mapped from the latest
 // screenshot's pixels to the screen, and a left-button drag is injected
@@ -198,15 +268,12 @@ func drag(s Services) Command {
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("drag: "+err.Error(), dragUsageHint)
 		}
-		drop, derr := dropDelay(a.DropDelayMS)
+		drop, derr := dragInput(a)
 		if derr != nil {
 			return "", derr
 		}
 		if a.FromIndex != nil || a.FromRef != "" {
 			return s.elementDrag(ctx, a, drop)
-		}
-		if a.FromX < 0 || a.FromY < 0 || a.ToX < 0 || a.ToY < 0 {
-			return "", Fail("drag: the @x,y coordinates must be non-negative integers", dragUsageHint)
 		}
 		fx, fy, tx, ty := a.FromX, a.FromY, a.ToX, a.ToY
 		if !a.Headed {
@@ -247,7 +314,8 @@ func (s Services) dragBetween(ctx context.Context, w win.WindowInfo, fx, fy, tx,
 // is activated, the start is the Element's clickable point (ElementPoint,
 // as a Headed click aims), the end is the target Element's or the
 // screenshot point mapped like the point form, and the same drag runs.
-// Without `headed` it is refused with nothing sent.
+// Without `headed` it is refused with nothing sent. dragInput checked the
+// arguments.
 func (s Services) elementDrag(ctx context.Context, a protocol.DragArgs, drop time.Duration) (string, *Error) {
 	from, rerr := parseElementTarget("drag", a.FromIndex, a.FromRef, nil, dragUsageHint)
 	if rerr != nil {
@@ -260,8 +328,6 @@ func (s Services) elementDrag(ctx context.Context, a protocol.DragArgs, drop tim
 			return "", rerr
 		}
 		to = &t
-	} else if a.ToX < 0 || a.ToY < 0 {
-		return "", Fail("drag: the @x,y coordinates must be non-negative integers", dragUsageHint)
 	}
 	if out, rerr, ok := s.onPage(ctx, a.Window, from, func(w win.WindowInfo, index int, o *page.Origin) (string, *Error) {
 		return s.pageDrag(ctx, w, index, o, from, to, a.ToX, a.ToY, drop) // Headless (pageelements.go)
@@ -334,11 +400,11 @@ func hover(s Services) Command {
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("hover: "+err.Error(), hoverUsageHint)
 		}
+		if herr := hoverInput(a); herr != nil {
+			return "", herr
+		}
 		if a.ElementIndex != nil || a.Ref != "" {
 			return s.elementHover(ctx, a)
-		}
-		if a.X < 0 || a.Y < 0 {
-			return "", Fail("hover: the @x,y coordinates must be non-negative integers", hoverUsageHint)
 		}
 		x, y := a.X, a.Y
 		if !a.Headed {

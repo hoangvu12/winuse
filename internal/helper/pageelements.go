@@ -205,6 +205,22 @@ func checkUploadFiles(files []string) *Error {
 	return nil
 }
 
+// uploadInput checks upload's arguments alone, before anything resolves:
+// the files (checkUploadFiles) and the Element Reference, when one is
+// named. A Batch runs it on an upload step while it prepares
+// (batchcheck.go), so a missing file fails the Batch before its first
+// step.
+func uploadInput(a protocol.UploadArgs) *Error {
+	if rerr := checkUploadFiles(a.Files); rerr != nil {
+		return rerr
+	}
+	if a.ElementIndex == nil && a.Ref == "" {
+		return nil
+	}
+	_, rerr := parseElementTarget("upload", a.ElementIndex, a.Ref, nil, uploadUsageHint)
+	return rerr
+}
+
 // pageUpload runs `winuse upload <window> [<element>] <file>...`: a file
 // input Element gets the files (DOM.setFileInputFiles), or, without an
 // Element or with one that is no file input, the file chooser a click
@@ -218,7 +234,7 @@ func pageUpload(s Services) Command {
 		if strings.TrimSpace(a.Window) == "" {
 			return "", Fail("upload: a window reference is required", uploadUsageHint)
 		}
-		if rerr := checkUploadFiles(a.Files); rerr != nil {
+		if rerr := uploadInput(a); rerr != nil {
 			return "", rerr
 		}
 		if a.ElementIndex == nil && a.Ref == "" {

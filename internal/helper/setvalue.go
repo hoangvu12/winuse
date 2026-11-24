@@ -83,7 +83,7 @@ func setValue(s Services) Command {
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("set-value: "+err.Error(), setValueUsageHint)
 		}
-		target, terr := parseElementTarget("set-value", a.ElementIndex, a.Ref, a.Point, setValueUsageHint)
+		target, terr := setValueTarget(a)
 		if terr != nil {
 			return "", terr
 		}
@@ -196,17 +196,9 @@ func performSecondaryAction(s Services) Command {
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("perform-secondary-action: "+err.Error(), secondaryUsageHint)
 		}
-		target, terr := parseElementTarget("perform-secondary-action", a.ElementIndex, a.Ref, a.Point, secondaryUsageHint)
+		target, action, terr := secondaryInput(a)
 		if terr != nil {
 			return "", terr
-		}
-		if a.Action == "" {
-			return "", Fail("perform-secondary-action: an action is required", secondaryUsageHint)
-		}
-		action, ok := uia.CanonicalSecondaryAction(a.Action)
-		if !ok {
-			return "", Fail(fmt.Sprintf("unsupported secondary action: %s; expected %s", a.Action, uia.ExpectedSecondaryActions()),
-				"the Secondary Actions each Element offers are listed in its Window State line")
 		}
 		if out, rerr, ok := s.onPage(ctx, a.Window, target, func(w win.WindowInfo, index int, _ *page.Origin) (string, *Error) {
 			return "", pageSecondaryRefusal(w, index, target, action)
@@ -304,6 +296,34 @@ func performSecondaryAction(s Services) Command {
 	}
 }
 
+// setValueTarget checks set-value's Element Reference, before anything
+// resolves (the value is the agent's own text). A Batch runs it on a
+// set-value step while it prepares (batchcheck.go).
+func setValueTarget(a protocol.SetValueArgs) (elementTarget, *Error) {
+	return parseElementTarget("set-value", a.ElementIndex, a.Ref, a.Point, setValueUsageHint)
+}
+
+// secondaryInput checks perform-secondary-action's arguments alone, before
+// anything resolves: the Element Reference, and the action named and one
+// of winuse's Secondary Actions (case-insensitive), returned canonical.
+// Whether the Element offers it is read live, at the Action. A Batch runs
+// it on a step while it prepares (batchcheck.go).
+func secondaryInput(a protocol.SecondaryActionArgs) (elementTarget, string, *Error) {
+	target, terr := parseElementTarget("perform-secondary-action", a.ElementIndex, a.Ref, a.Point, secondaryUsageHint)
+	if terr != nil {
+		return elementTarget{}, "", terr
+	}
+	if a.Action == "" {
+		return elementTarget{}, "", Fail("perform-secondary-action: an action is required", secondaryUsageHint)
+	}
+	action, ok := uia.CanonicalSecondaryAction(a.Action)
+	if !ok {
+		return elementTarget{}, "", Fail(fmt.Sprintf("unsupported secondary action: %s; expected %s", a.Action, uia.ExpectedSecondaryActions()),
+			"the Secondary Actions each Element offers are listed in its Window State line")
+	}
+	return target, action, nil
+}
+
 // valueError maps a set-value failure to the user-facing line: the
 // not-settable refusal points at type-text (the ticket's contract); a
 // combo or list with no item, or several, by the name asked for points at
@@ -330,6 +350,15 @@ func valueError(err error, w win.WindowInfo, index int) *Error {
 			"use winuse click to focus the Element, then winuse type-text to type into it instead")
 	case errors.Is(err, uia.ErrRangeValue):
 		return Fail(err.Error(), "this Element takes a numeric value (a slider or spinner); pass a number")
+	case errors.Is(err, uia.ErrRangeBounds):
+		return Fail(err.Error(), "pass a number between the bounds the message names")
+	case errors.Is(err, uia.ErrRangeReadOnly), errors.Is(err, uia.ErrRangeRefused):
+		scroll := "winuse scroll"
+		if index >= 0 {
+			scroll = fmt.Sprintf("winuse scroll %d %d down", w.ID, index)
+		}
+		return Fail(err.Error(),
+			"a scroll bar that does not take a value still moves its list or page by scrolling, e.g. "+scroll)
 	case errors.Is(err, uia.ErrToggleValue):
 		return Fail(err.Error(), "this Element is a check box or toggle; pass on or off")
 	case errors.Is(err, uia.ErrToggleUnreadable):

@@ -57,7 +57,14 @@ global options:
   --json                      print one JSON line instead of the text:
                                {"ok","command","out"} and, on a failure,
                                "error" with its code, message, hint, delivery
-                               and retry. Exit codes are unchanged
+                               and retry; a Page click or press-key adds
+                               "effect": navigated, changed, text, none or
+                               unknown, navigate, back, forward and reload
+                               add "http_status" when the Page answered 4xx
+                               or 5xx, a Page that looks like a CAPTCHA or
+                               block wall adds "wall", and a read's Notes go
+                               in "notes", never in "out". Exit codes are
+                               unchanged
   --help, -h                  print the command's usage and examples instead
                                of running it, as winuse help <command> does
 
@@ -103,8 +110,12 @@ act and see the effect in one call: <action> ... --observe[=diff|full]
   command or anywhere after it outside type-text's text and set-value's
   value. When the Action opened one new Window (a menu, a dialog), it is
   read too and printed whole after, under a line naming its Window ID;
-  several new Windows are a note. A failed Action prints none; a read that
-  fails is a note and the Action's result stands.
+  several new Windows are a note. On a browser Window or a Tab the read
+  first waits for the Page to settle (no DOM change for 110 ms and no
+  request finishing for 280 ms, up to 1 s), so a late render or a route
+  change shows; a Page still changing then is read anyway, with a note. A
+  failed Action prints none; a read that fails is a note and the Action's
+  result stands.
 
 commands:
   list-windows [--details] [--app <name>] [--shell]
@@ -141,7 +152,7 @@ commands:
                                command that ends a process. Windows' own
                                processes (explorer, dwm, csrss, ...) and
                                administrator Apps are refused, nothing sent
-  get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--visible] [--compact] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]
+  get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--visible] [--compact] [--urls] [--max-chars N | --out <file>] [--full] [--diff] [--timeout <seconds>]
                                print a Window's State: its Element tree as text,
                                and with --screenshot a screenshot saved to a file
                                whose path is printed (sized to the model's
@@ -179,14 +190,27 @@ commands:
                                lines around it do not show it); a hint is
                                not a name: name: never matches it. --full
                                prints Codex's text byte for byte: every ID,
-                               no cap, no hint.
+                               no cap, no hint, no URL, no heading level.
+                               A Page heading says its level, as in
+                               "heading (level 2) Install". --urls ends a
+                               Page link's line with "URL: /path" (on the
+                               Page's own site; elsewhere the domain and
+                               path, cut at 60 characters); find and --diff
+                               lines always carry it.
                                --diff prints only the Element Indexes whose
                                line changed since your last read of the
                                Window (~ changed, * new, - gone), as
                                --observe=diff does after an Action; with no
                                earlier read, or past 60% changed, the whole
                                Window State prints with a note. It takes the
-                               budgets above, not --root or --skeleton
+                               budgets above, not --root or --skeleton.
+                               Your first read of a site or App prints its
+                               Notes above the Window: line (the newest 10,
+                               then a note list line; a browser Window's
+                               site, then the browser's), once per agent;
+                               they count toward --max-chars and shrink
+                               first. --diff, --observe and find print none;
+                               WINUSE_NOTES=off hides them
   find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N | --full]
                                search the Window's whole live tree, past the
                                Window State's caps: print the matching
@@ -235,10 +259,32 @@ commands:
                                model jev-latest; status masks the key; --key -
                                reads it from stdin; check sends one question
                                and prints the model and round trip
-  record-tree <window> <file> record a Window's real tree to a fixture file
+  record-tree <window> <file> [--table]
+                               record a Window's real tree to a fixture file;
+                               --table records its list or grid as extract
+                               reads it
   zoom <window> <x>,<y>,<w>,<h>
                                save a full-resolution crop of a region of the
                                Window's latest screenshot and print its path
+  extract <window>[:<tab>] [--root <element>] [--as list|table|jsonld] [--limit N] [--max-chars N | --out <file>]
+                               a browser Page's repeated items, or a native
+                               Window's list or grid, as rows: a header line
+                               naming the container and "N of M rows
+                               (complete)" or "(partial: capped at N /
+                               virtualized / page says N results)", then a
+                               JSON array, one row per line. Without --root
+                               it picks the list, a table with headers or the
+                               page's JSON-LD (on a native Window: its only
+                               table or grid, else its longest list), and
+                               says "no list found" when there is none;
+                               --root takes the list, an ancestor or one item
+                               of it. --as forces a mode (Pages only);
+                               --limit (default 50 on a Page, 500 on a native
+                               Window, up to 1000); stops before 28000
+                               characters; --out writes the array to a file.
+                               Prints no Element Indexes; a Page is read in
+                               an isolated world, a native list never
+                               scrolled
   click <window> <element index | name: | id: | @x,y> [options]
                                click an Element of a Window by Element Index,
                                name: or id: reference, or at @x,y
@@ -440,8 +486,15 @@ const usageTail = `);
   tab list <window>           list the Tabs of a browser Window with a Browser
                                Connection, one per line: * for the active
                                Tab, its id, title and URL
-  tab new <window> [url]      open a Tab in the background of that Window and
-                               print its id; work in it as <window>:<tab>
+  tab new <window> [url] [--block images,fonts,media|none]
+                               open a Tab in the background of that Window and
+                               print its id; work in it as <window>:<tab>.
+                               --block keeps those files from loading in it
+                               (faster loads; text and alt text stay) for the
+                               Tab's life; it matches file extensions, so
+                               images whose URLs have no file extension still
+                               load. Reads of it end with Note: ... are
+                               blocked in this Tab
   tab close <window> <tab>    close a Tab by its id from tab list (4 or more
                                characters of it); the last Tab is refused,
                                run close-window to close the Window
@@ -449,9 +502,19 @@ const usageTail = `);
                                Page commands act on the active Tab); headless,
                                --headed switches with real keys
   navigate <window> <url> [--wait load|domcontentloaded|none]
+                               [--block images,fonts,media|none]
                                open a URL in the Window's active Tab, wait for
                                it to load (default load), and print the URL it
-                               ended on; never type into the address bar
+                               ended on; never type into the address bar. A
+                               Page that answered 4xx or 5xx (also after
+                               back, forward and reload) adds
+                               Note: the Page answered HTTP <code> <reason>;
+                               a short Page that looks like a CAPTCHA or
+                               block wall adds a note too: ask the user to
+                               handle it. --block sets what a Tab target
+                               blocks (as tab new --block), only on a Tab
+                               winuse opened or in a browser it launched or
+                               cloned
   back <window> [--wait ...]  go one page back in the Tab's history
   forward <window> [--wait ...]
                                go one page forward in the Tab's history
@@ -467,22 +530,29 @@ const usageTail = `);
                                (alert, confirm, prompt, or leave the page);
                                text answers a prompt. While one shows, every
                                other Page Action fails and says so
-  wait <window> selector <css> | text <text> | url <url or pattern> | load [domcontentloaded] | download
-                               wait until an element shows, the text appears,
-                               the URL matches (* is a wildcard), or the page
-                               loads (10 s by default, --timeout <seconds> up
-                               to 300; in a batch, the Batch's budget bounds
-                               it); wait download prints the path of the
-                               file a click downloaded, on a browser winuse
-                               launched or cloned
+  wait <window> selector <css> | text <text> | url <url or pattern> | load [domcontentloaded] | idle | js <expression> | download
+                               wait until an element shows, the text appears
+                               (open shadow roots and same-origin frames
+                               too), the URL matches (* is a wildcard), the
+                               page loads, the page settles (idle: no DOM
+                               change and no request finishing for a moment),
+                               or a JavaScript expression is true (js: a
+                               syntax error fails at once, a timeout names
+                               the last error it threw); selector and text
+                               take --gone to wait until it is gone (10 s by
+                               default, --timeout <seconds> up to 300; in a
+                               batch, the Batch's budget bounds it); wait
+                               download prints the path of the file a click
+                               downloaded, on a browser winuse launched or
+                               cloned
   wait <window> <element index | name: | id:> enabled | disabled | gone | value <value> | checked | unchecked | expanded | collapsed
                                wait until an Element of the Window's latest
                                Window State reaches that state (gone: the
                                Element is gone, its Window closed too); text
                                on a Window that is no browser waits in its
-                               UI Automation tree. Both read the Window
-                               without changing its Element Indexes, and fail
-                               when it closes
+                               UI Automation tree, --gone there too. Both
+                               read the Window without changing its Element
+                               Indexes, and fail when it closes
   wait window <app or title> [--gone]
                                wait until a Window of that App, or whose title
                                holds the text, shows, and print its line;
@@ -490,6 +560,44 @@ const usageTail = `);
                                read and poll, take --timeout like the Page's,
                                and never hold up an Action
   wait <milliseconds>         pause, up to 300000 (300 s)
+  read <window> [--root <element>] [--urls full] [--max-chars N | --out <file>]
+                               print the Page's main content as Markdown, with
+                               no Element Indexes, leaving the Window State as
+                               it is; --root reads a Page Element's subtree
+                               (an Element Index, name: or id: from your
+                               latest read). Same-site links print as paths,
+                               others as a shortened domain and path, images
+                               as their alt text; --urls full prints them
+                               whole. The output stays within 28000
+                               characters, header included: the Markdown is
+                               cut, with a "(cut at N of M characters)" line
+                               (--max-chars N, 0 for none), or --out writes
+                               it whole to a file. A short Page that looks
+                               like a CAPTCHA or block wall gets a note.
+                               Pages only: read a native Window with
+                               get-window-state
+  logs <window> [--capture] [--clear] [--max-chars N | --out <file>]
+                               print the Tab's log, newest last: the requests
+                               that failed and the CSP or security errors its
+                               Page logged, and the JavaScript exceptions it
+                               threw with their stacks, each with its time,
+                               source, level and text (winuse keeps the last
+                               50 per Tab). Exceptions are captured in Tabs
+                               tab new opened and in launched or cloned
+                               browsers; --capture turns that on in one of
+                               your Tabs while it is open, for pages it loads
+                               from then on (reload covers the current one).
+                               Cut at 28000 characters, keeping the newest
+                               (--max-chars N, 0 for none), or --out writes
+                               them all to a file. --clear empties it after
+                               printing; --json answers with JSON, within
+                               the same cap ("left_out" counts the older
+                               entries it dropped).
+                               A Page Action that made requests fail or the
+                               Page throw stays ok and adds "Note: 2 failed
+                               requests: 404 /api/save, ..." or "Note: the
+                               Page threw: TypeError: ... (app.js:120)".
+                               Pages only
   eval <window> <expression> | --file <path or -> [--max <n>]
                                run a JavaScript expression in the Page and
                                print its value (JSON for objects, cut at 4000
@@ -550,6 +658,30 @@ const usageTail = `);
                                its line; read it with get-window-state.
                                Without --headed nothing is sent; one open
                                already is printed with nothing sent
+  note add <target> [--app] <text> | --stdin | --file <path>
+                               leave a Note, one line of at most 200
+                               characters, for the next agents on a site or
+                               App. The target is a Window ID (a browser
+                               Window means its Page's site, --app the
+                               browser itself), a <window>:<tab> Tab target,
+                               a URL or domain (kept as its registrable
+                               domain: gist.github.com is github.com;
+                               localhost and IP addresses keep their port)
+                               or an exe name (excel.exe). A free-form name
+                               is refused and the Windows it matches listed;
+                               the same text twice on one key is refused.
+                               Stored in %LOCALAPPDATA%\winuse\notes.json,
+                               shared by every agent; a Note informs, it
+                               never grants permission
+  note list [<target> [--app]]
+                               a target's Notes, numbered, with author and
+                               age; with no target, every key and its count
+  note remove <target> [--app] <n>
+                               remove Note n of note list, such as one that
+                               proved wrong
+  note clear <target> [--app]
+                               remove every Note of a target. With --json,
+                               each note command answers JSON
   skill [<topic> | list | all]
                                print the agent skill this binary was built
                                with: its core (SKILL.md), one topic of it,
@@ -591,10 +723,10 @@ screenshot's pixels) name an Element of the Window's latest Window State.
 A Tab target, <window>:<tab> (a tab id from tab list or tab new), names a Tab
 of that browser shown or not: get-window-state, click, set-value, scroll,
 hover, drag, select-text, type-text, press-key, upload, navigate, back,
-forward, reload, dialog, wait, eval and batch read and act on that Tab
-through its Browser Connection, headless, without switching the Tab the
-user sees; its Element Indexes are its own, and --headed, --post and @x,y
-are refused
+forward, reload, dialog, wait, eval, read, extract, logs and batch read and act
+on that Tab through its Browser Connection, headless, without switching
+the Tab the user sees; its Element Indexes are its own, and --headed,
+--post and @x,y are refused
 `
 
 // Usage is the full reference, `winuse help all` (it grows as tickets
@@ -647,11 +779,11 @@ var commandGroups = []struct {
 		{"list-windows", "the visible Windows: Window ID, App, title", []string{
 			"winuse list-windows",
 			"winuse list-windows --app notepad --details"}},
-		{"get-window", "re-resolve one Window and print its line", []string{
+		{"get-window", "re-resolve one Window, print its line", []string{
 			"winuse get-window 4242"}},
 		{"list-apps", "running and recent Apps, with their Windows", []string{
 			"winuse list-apps"}},
-		{"launch-app", "start an App and print the Window it opened", []string{
+		{"launch-app", "start an App, print the Window it opened", []string{
 			"winuse launch-app notepad",
 			`winuse launch-app "C:\Tools\app.exe" --arg --verbose --cwd C:\work`}},
 		{"close-app", "ask every Window of an App to close", []string{
@@ -679,12 +811,17 @@ var commandGroups = []struct {
 			`winuse run 4242:1a2b3c4d "open the Wikipedia article about Kurt Godel" --set "Kurt Godel"`,
 			`winuse run 4242 "fill in the form and submit it" --set "Ada Lovelace" --set ada@example.com`,
 			`winuse run Settings "open the About page"`}},
-		{"jev", "the Jev server, key and model pick and run use", []string{
+		{"jev", "the Jev server, key and model", []string{
 			"winuse jev",
 			"winuse jev set --key - --base-url https://api.codiv.ai",
 			"winuse jev check"}},
 		{"zoom", "a full-resolution crop of the latest screenshot", []string{
 			"winuse zoom 4242 100,80,400,300"}},
+		{"extract", "a Page's or a Window's list or table as JSON rows", []string{
+			"winuse extract 4242",
+			"winuse extract 4242 --root 57 --limit 200",
+			"winuse extract Explorer --out files.json",
+			"winuse extract 4242:1a2b3c4d --as table --out rows.json"}},
 	}},
 	{"Act in a Window (Headless unless --headed)", []commandHelp{
 		{"click", "click an Element, or at an @x,y point", []string{
@@ -757,6 +894,7 @@ var commandGroups = []struct {
 		{"tab", "list, open, switch and close Tabs", []string{
 			"winuse tab list 4242",
 			"winuse tab new 4242 https://example.com",
+			"winuse tab new 4242 https://example.com --block images,fonts,media",
 			"winuse click 4242:1a2b3c4d 7"}},
 		{"navigate", "open a URL in the Tab and wait for the load", []string{
 			"winuse navigate 4242 https://example.com",
@@ -767,6 +905,15 @@ var commandGroups = []struct {
 			"winuse forward 4242"}},
 		{"reload", "reload the Tab's page", []string{
 			"winuse reload 4242"}},
+		{"read", "the Page's main content as Markdown", []string{
+			"winuse read 4242",
+			"winuse read 4242:1a2b3c4d --root 57 --urls full",
+			"winuse read 4242 --out page.md"}},
+		{"logs", "failed requests and CSP errors", []string{
+			"winuse logs 4242",
+			"winuse logs 4242:1a2b3c4d --clear",
+			"winuse logs 4242 --capture",
+			"winuse --json logs 4242"}},
 		{"eval", "run JavaScript in the Page, print the value", []string{
 			"winuse eval 4242 document.title",
 			"winuse eval 4242 --file x.js --max 20000"}},
@@ -801,6 +948,12 @@ var commandGroups = []struct {
 			"winuse --headed open-shell start"}},
 	}},
 	{"winuse itself", []commandHelp{
+		{"note", "Notes left for later agents", []string{
+			`winuse note add 4242 "the comment box is a placeholder: click it before typing"`,
+			`winuse note add 4242 --app "Ctrl+L focuses the address bar"`,
+			`winuse note add excel.exe "Save As takes about 3 s to open"`,
+			"winuse note list github.com",
+			"winuse note remove github.com 2"}},
 		{"skill", "the agent guide; skill list for its topics", []string{
 			"winuse skill",
 			"winuse skill list",
@@ -820,8 +973,9 @@ var commandGroups = []struct {
 			"winuse help click",
 			"winuse click --help",
 			"winuse help all"}},
-		{"record-tree", "record a tree fixture (winuse's own tests)", []string{
-			"winuse record-tree 4242 notepad.json"}},
+		{"record-tree", "record a tree fixture for tests", []string{
+			"winuse record-tree 4242 notepad.json",
+			"winuse record-tree 4242 services.json --table"}},
 	}},
 }
 

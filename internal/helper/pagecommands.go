@@ -380,6 +380,9 @@ func (s Services) runPageWindow(ctx context.Context, ref string, run pageWindowR
 			s.cursorClick(ctx, pw.w, rect)
 		}
 	}
+	if run.acts {
+		markPageLogs(ctx, pw.conn.Client, pw.session, pw.tab.TargetID, pw.w.ID) // logs.go: a load's failed requests are noted
+	}
 	// An act marks the moment the browser accepted its request
 	// (markDelivered), so a navigation's ripple plays then and not after
 	// the new page loaded (browser-ux 03).
@@ -481,15 +484,16 @@ func pageNav(s Services, cmd string) Command {
 		if strings.TrimSpace(a.Window) == "" {
 			return "", Fail(cmd+": a window reference is required", hint)
 		}
-		switch {
-		case cmd == "navigate" && strings.TrimSpace(a.URL) == "":
-			return "", Fail("navigate: a URL is required", hint)
-		case cmd != "navigate" && a.URL != "":
-			return "", Fail(cmd+" takes no URL; to open one, run winuse navigate "+a.Window+" <url>", hint)
+		state, nerr := navInput(cmd, a)
+		if nerr != nil {
+			return "", nerr
 		}
-		state, err := page.ParseLoadState(a.Wait)
-		if err != nil {
-			return "", Fail(cmd+": "+err.Error(), hint)
+		var block []string // --block (assets.go): checked before anything is sent
+		if a.Block != "" {
+			var rerr *Error
+			if block, rerr = s.checkNavBlock(ctx, cmd, a); rerr != nil {
+				return "", rerr
+			}
 		}
 		target := page.NavURL(a.URL)
 		label := cmd
@@ -508,10 +512,35 @@ func pageNav(s Services, cmd string) Command {
 				return nil
 			},
 			act: func(ctx context.Context, pw pageWin, stopped func() bool) (string, bool, *Error) {
+				if a.Block != "" {
+					// The new document loads under the block.
+					if rerr := s.blockBeforeNavigate(ctx, &pw, block); rerr != nil {
+						return "", false, rerr
+					}
+				}
 				return s.navigate(ctx, pw, cmd, target, state, stopped)
 			},
 		})
 	}
+}
+
+// navInput checks navigate's, back's, forward's and reload's arguments
+// alone, before anything resolves: a URL for navigate and none for the
+// others, and --wait's load state, returned. A Batch runs it on such a
+// step while it prepares (batchcheck.go).
+func navInput(cmd string, a protocol.NavigateArgs) (string, *Error) {
+	hint := protocol.PageUsage(cmd)
+	switch {
+	case cmd == "navigate" && strings.TrimSpace(a.URL) == "":
+		return "", Fail("navigate: a URL is required", hint)
+	case cmd != "navigate" && a.URL != "":
+		return "", Fail(cmd+" takes no URL; to open one, run winuse navigate "+a.Window+" <url>", hint)
+	}
+	state, err := page.ParseLoadState(a.Wait)
+	if err != nil {
+		return "", Fail(cmd+": "+err.Error(), hint)
+	}
+	return state, nil
 }
 
 // hostOf is a URL's host for the Agent Cursor's label.
@@ -541,9 +570,18 @@ func (s Services) navigate(ctx context.Context, pw pageWin, cmd, target, state s
 	}
 	c, sess, id := pw.conn.Client, pw.session, pw.id()
 	var committed func(ctx context.Context) bool
+	var emptyHTTP *page.NavigateError
 	switch cmd {
 	case "navigate":
 		loader, err := page.Navigate(ctx, c, sess, target)
+		// A 4xx/5xx with an empty body: Chrome shows its own error page,
+		// so the navigation was delivered and landed there (bladebro-ideas
+		// 02); navWait reads the status, or reports the failure as before.
+		if errors.As(err, &emptyHTTP) && emptyHTTP.HTTPError() {
+			loader, err = emptyHTTP.LoaderID, nil
+		} else {
+			emptyHTTP = nil
+		}
 		if err != nil {
 			return s.navFailure(err, pw, "navigation")
 		}
@@ -553,7 +591,7 @@ func (s Services) navigate(ctx context.Context, pw pageWin, cmd, target, state s
 				l, _, err := page.MainFrame(ctx, c, sess)
 				return err == nil && l == loader
 			}
-		} else {
+		} else if emptyHTTP == nil {
 			state = page.LoadNone // a #fragment: the document stays
 		}
 	case "back", "forward":
@@ -592,17 +630,36 @@ func (s Services) navigate(ctx context.Context, pw pageWin, cmd, target, state s
 			return err == nil && l != before
 		}
 	}
-	return s.navWait(ctx, pw, cmd, state, committed, stopped)
+	return s.navWait(ctx, pw, cmd, state, committed, stopped, emptyHTTP)
 }
 
 // navWait waits for a delivered navigation's document to commit (committed:
 // nil to skip) and load (state) within the request's budget, and prints the
-// Tab's URL.
-func (s Services) navWait(ctx context.Context, pw pageWin, cmd, state string, committed func(ctx context.Context) bool, stopped func() bool) (string, bool, *Error) {
+// Tab's URL, with a note when the landed document answered 4xx or 5xx
+// (bladebro-ideas 02). emptyHTTP is a navigation Page.navigate reported as
+// an empty-body HTTP failure: it prints the note, or without a 4xx/5xx to
+// read, fails as the browser's error.
+func (s Services) navWait(ctx context.Context, pw pageWin, cmd, state string, committed func(ctx context.Context) bool, stopped func() bool, emptyHTTP *page.NavigateError) (string, bool, *Error) {
 	c, sess, id := pw.conn.Client, pw.session, pw.id()
+	landed := committed == nil
+	if committed != nil {
+		saw := committed
+		committed = func(ctx context.Context) bool {
+			ok := saw(ctx)
+			landed = landed || ok
+			return ok
+		}
+	}
 	lctx, cancel := pageWaitContext(ctx, 0)
 	defer cancel()
 	err := page.WaitLoad(lctx, c, sess, state, committed, stopped)
+	// The status of a document still on its way is the previous one's, so
+	// it is read only once the navigation landed; --wait none waits for
+	// nothing.
+	readStatus := emptyHTTP != nil || landed && state != page.LoadNone
+	// The wall check (bladebro-ideas 05) reads the landed document too,
+	// after the status; Chrome's own error page is no wall.
+	checkWall := landed && state != page.LoadNone && emptyHTTP == nil
 	var dialog *page.DialogError
 	var slow *page.LoadTimeoutError
 	switch {
@@ -611,13 +668,91 @@ func (s Services) navWait(ctx context.Context, pw pageWin, cmd, state string, co
 	case errors.As(err, &dialog):
 		return "", true, Fail("the "+cmd+" was delivered, and "+dialog.Error(), dialogHint(id)+"; do not repeat the "+cmd)
 	case errors.As(err, &slow):
-		u := page.CurrentURL(ctx, c, sess)
-		return fmt.Sprintf("ok %s (%s; winuse wait %s load waits longer)\n", u, slow.Error(), id), true, nil
+		shown := page.CurrentURL(ctx, c, sess)
+		u, note := shown, ""
+		if readStatus {
+			u, note = httpStatusNote(ctx, pw, u)
+		}
+		if emptyHTTP != nil && note == "" {
+			return s.navFailure(emptyHTTP, pw, "navigation")
+		}
+		if checkWall && !strings.HasPrefix(shown, chromeErrorPage) {
+			note += pageWallNote(ctx, c, sess)
+		}
+		return fmt.Sprintf("ok %s (%s; winuse wait %s load waits longer)\n%s", u, slow.Error(), id, note), true, nil
 	case err != nil:
 		return "", true, Fail(fmt.Sprintf("the %s was delivered, and waiting for the page failed: %v", cmd, err),
 			"read winuse get-window-state "+id+" before repeating it")
 	}
-	return "ok " + page.CurrentURL(ctx, c, sess) + "\n", true, nil
+	shown := page.CurrentURL(ctx, c, sess)
+	u, note := shown, ""
+	if readStatus {
+		u, note = httpStatusNote(ctx, pw, u)
+	}
+	if emptyHTTP != nil && note == "" {
+		return s.navFailure(emptyHTTP, pw, "navigation")
+	}
+	if checkWall && !strings.HasPrefix(shown, chromeErrorPage) {
+		note += pageWallNote(ctx, c, sess)
+	}
+	return "ok " + u + "\n" + note, true, nil
+}
+
+// httpStatusRead bounds the status read after a navigation.
+const httpStatusRead = 2 * time.Second
+
+// httpStatusNote reads the Tab's main document's HTTP status
+// (page.ReadHTTPStatus, no domain turned on). A 4xx/5xx gives its note
+// line; on Chrome's own error page the URL printed is the address it could
+// not show, not chrome-error://. Anything else, or a status that does not
+// read, leaves u and gives no note.
+func httpStatusNote(ctx context.Context, pw pageWin, u string) (string, string) {
+	sctx, cancel := context.WithTimeout(ctx, httpStatusRead)
+	defer cancel()
+	st, err := page.ReadHTTPStatus(sctx, pw.conn.Client, pw.session)
+	if err != nil || !st.Failed() {
+		return u, ""
+	}
+	if st.ErrorPage && st.URL != "" {
+		u = st.URL
+	}
+	recordHTTPStatus(ctx, st.Code)
+	return u, protocol.HTTPStatusNote(st.Code, page.StatusReason(st.Code), st.ErrorPage) + "\n"
+}
+
+// wallCheckBound bounds the wall check after a navigation.
+const wallCheckBound = 2 * time.Second
+
+// chromeErrorPage is the address of Chrome's own error page, which is no
+// wall: the wall check skips it.
+const chromeErrorPage = "chrome-error://"
+
+// pageWallNote is the wall note line (bladebro-ideas 05) for the Page a
+// navigation landed on: page.WallKind, one isolated-world call, names a
+// short challenge or block page. "" for an ordinary Page, or when the check
+// fails (the navigation landed; the note only informs). winuse never
+// clicks or solves anything there: the note sends the agent to the user. A
+// Page Action whose effect navigated (bladebro-ideas 06) adds it the same
+// way.
+func pageWallNote(ctx context.Context, c page.Caller, session string) string {
+	return wallNoteBy(ctx, c, session, page.WallKind)
+}
+
+// pageWallNoteOnceLoaded is pageWallNote once the Page's document has its
+// body: a Page Action's effect watch sees a navigation at its commit.
+func pageWallNoteOnceLoaded(ctx context.Context, c page.Caller, session string) string {
+	return wallNoteBy(ctx, c, session, page.WallKindOnceLoaded)
+}
+
+func wallNoteBy(ctx context.Context, c page.Caller, session string, check func(context.Context, page.Caller, string) (string, error)) string {
+	cctx, cancel := context.WithTimeout(ctx, wallCheckBound)
+	defer cancel()
+	kind, err := check(cctx, c, session)
+	if err != nil || kind == "" {
+		return ""
+	}
+	recordWall(ctx, kind)
+	return protocol.WallNote(kind) + "\n"
 }
 
 // browserPagePoll is how often navigateFromBrowserPage reads the Tab while
@@ -679,7 +814,7 @@ func (s Services) navigateFromBrowserPage(ctx context.Context, pw pageWin, targe
 		case <-time.After(browserPagePoll):
 		}
 	}
-	return s.navWait(ctx, pw, "navigate", state, nil, stopped)
+	return s.navWait(ctx, pw, "navigate", state, nil, stopped, nil)
 }
 
 // navFailure maps a navigation the browser did not start or finish.
@@ -728,6 +863,21 @@ func pageWaitContext(ctx context.Context, want time.Duration) (context.Context, 
 	return context.WithTimeout(ctx, d)
 }
 
+// dialogInput checks dialog's arguments alone, before anything resolves:
+// accept or dismiss, returned lower-case, and text only with accept.
+// Whether a prompt is open is read live. A Batch runs it on a dialog step
+// while it prepares (batchcheck.go).
+func dialogInput(a protocol.DialogArgs) (string, *Error) {
+	action := strings.ToLower(strings.TrimSpace(a.Action))
+	if action != "accept" && action != "dismiss" {
+		return "", Fail(fmt.Sprintf("dialog: the answer must be accept or dismiss, got %q", a.Action), dialogUsageHint)
+	}
+	if a.Text != nil && action != "accept" {
+		return "", Fail("dialog: text answers a prompt, so it goes with accept", dialogUsageHint)
+	}
+	return action, nil
+}
+
 // pageDialog runs `winuse dialog <window> accept|dismiss [text]`.
 func pageDialog(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
@@ -738,12 +888,9 @@ func pageDialog(s Services) Command {
 		if strings.TrimSpace(a.Window) == "" {
 			return "", Fail("dialog: a window reference is required", dialogUsageHint)
 		}
-		action := strings.ToLower(strings.TrimSpace(a.Action))
-		if action != "accept" && action != "dismiss" {
-			return "", Fail(fmt.Sprintf("dialog: the answer must be accept or dismiss, got %q", a.Action), dialogUsageHint)
-		}
-		if a.Text != nil && action != "accept" {
-			return "", Fail("dialog: text answers a prompt, so it goes with accept", dialogUsageHint)
+		action, derr := dialogInput(a)
+		if derr != nil {
+			return "", derr
 		}
 		return s.runPageWindow(ctx, a.Window, pageWindowRun{
 			acts: true, dialogOK: true, target: s.pageDocRect, label: action + " dialog",
@@ -785,13 +932,69 @@ func pageDialog(s Services) Command {
 	}
 }
 
+// waitInput checks wait's arguments alone, before anything resolves, for
+// every kind, the Page's and the desktop's: the timeout (0 to 300 s), the
+// kind, and its value, state, Element Reference and --gone. A pause's
+// length is checked here; whether it is an open Window's ID is read at
+// the wait. A Batch runs it on a wait step while it prepares
+// (batchcheck.go).
+func waitInput(a protocol.WaitArgs) *Error {
+	if a.TimeoutMS < 0 {
+		return Fail("wait: the timeout must be positive", waitUsageHint)
+	}
+	if a.TimeoutMS > int(protocol.MaxWaitTimeout/time.Millisecond) {
+		return Fail(fmt.Sprintf("wait: --timeout takes up to %d seconds", int(protocol.MaxWaitTimeout/time.Second)), waitUsageHint)
+	}
+	switch kind := strings.ToLower(strings.TrimSpace(a.For)); kind {
+	case protocol.WaitMS:
+		if limit := int(protocol.MaxWaitTimeout / time.Millisecond); a.MS <= 0 || a.MS > limit {
+			return Fail(fmt.Sprintf("wait: a pause is a number of milliseconds above 0 and at most %d, got %d", limit, a.MS), waitUsageHint)
+		}
+	case protocol.WaitWindow:
+		if strings.TrimSpace(a.Value) == "" {
+			return Fail("wait window: an App name or a title is required", waitUsageHint)
+		}
+	case protocol.WaitNotification:
+	case protocol.WaitElement:
+		state := strings.ToLower(strings.TrimSpace(a.State))
+		if !slices.Contains(protocol.WaitStates, state) {
+			return Fail(fmt.Sprintf("wait: an element waits for one of %s, not %q", strings.Join(protocol.WaitStates, ", "), a.State), waitUsageHint)
+		}
+		if a.Value != "" && state != "value" {
+			return Fail("wait: only value takes a value", waitUsageHint)
+		}
+		if _, perr := parseElementTarget("wait", a.ElementIndex, a.Ref, nil, waitUsageHint); perr != nil {
+			return perr
+		}
+	case page.WaitDownload:
+	case page.WaitIdle:
+		if strings.TrimSpace(a.Value) != "" {
+			return Fail("wait: wait idle takes no value", waitUsageHint)
+		}
+		if a.Gone {
+			return Fail("wait: --gone goes with wait selector and wait text, not wait idle", waitUsageHint)
+		}
+	default:
+		// The Page's predicates, wait text's on the desktop too: both
+		// routes refuse it without text.
+		if _, err := page.WaitExpr(kind, a.Value, a.Gone); err != nil {
+			return Fail("wait: "+err.Error(), waitUsageHint)
+		}
+	}
+	return nil
+}
+
 // pageWait runs `winuse wait <window> <for> [value] [--timeout s]`. The
 // desktop waits (waits.go, desktop-parity ticket 03) leave here first.
+// waitInput checks every wait's arguments before either route.
 func pageWait(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.WaitArgs
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("wait: "+err.Error(), waitUsageHint)
+		}
+		if werr := waitInput(a); werr != nil {
+			return "", werr
 		}
 		if s.desktopWait(a) {
 			return s.runDesktopWait(ctx, a)
@@ -799,14 +1002,13 @@ func pageWait(s Services) Command {
 		if strings.TrimSpace(a.Window) == "" {
 			return "", Fail("wait: a window reference is required", waitUsageHint)
 		}
-		if a.TimeoutMS < 0 {
-			return "", Fail("wait: the timeout must be positive", waitUsageHint)
-		}
 		kind := strings.ToLower(strings.TrimSpace(a.For))
 		var expr string
-		if kind != page.WaitDownload {
+		switch kind {
+		case page.WaitDownload, page.WaitIdle:
+		default:
 			var err error
-			if expr, err = page.WaitExpr(kind, a.Value); err != nil {
+			if expr, err = page.WaitExpr(kind, a.Value, a.Gone); err != nil {
 				return "", Fail("wait: "+err.Error(), waitUsageHint)
 			}
 		}
@@ -822,8 +1024,11 @@ func pageWait(s Services) Command {
 			act: func(ctx context.Context, pw pageWin, stopped func() bool) (string, bool, *Error) {
 				wctx, cancel := pageWaitContext(ctx, want)
 				defer cancel()
-				if kind == page.WaitDownload {
+				switch kind {
+				case page.WaitDownload:
 					return s.waitDownload(wctx, pw, stopped)
+				case page.WaitIdle:
+					return waitIdle(wctx, pw, want, stopped)
 				}
 				id := pw.id()
 				err := page.Poll(wctx, pw.conn.Client, pw.session, expr, stopped)
@@ -836,7 +1041,7 @@ func pageWait(s Services) Command {
 				case errors.Is(err, page.ErrStopped):
 					return "", false, escStopBeforeActError()
 				case errors.As(err, &timeout):
-					return "", false, Fail(fmt.Sprintf("waiting for %s in window %d: %s", waitWhat(kind, a.Value), pw.w.ID, timeout.Error()),
+					return "", false, Fail(fmt.Sprintf("waiting for %s in window %d: %s", waitWhat(kind, a.Value, a.Gone), pw.w.ID, timeout.Error()),
 						"the page may need another Action first; read winuse get-window-state "+id+" (wait takes --timeout <seconds>, up to 300)")
 				case errors.As(err, &bad):
 					return "", false, Fail(fmt.Sprintf("wait: the %s cannot be checked: %s", kind, bad.Msg), waitUsageHint)
@@ -849,6 +1054,26 @@ func pageWait(s Services) Command {
 	}
 }
 
+// waitIdle is `wait <window> idle`: the settle --observe runs
+// (page.Settle), bounded by the wait.
+func waitIdle(ctx context.Context, pw pageWin, want time.Duration, stopped func() bool) (string, bool, *Error) {
+	id := pw.id()
+	r, err := page.Settle(ctx, pw.conn.Client, pw.session, want, stopped)
+	var dialog *page.DialogOpenError
+	switch {
+	case err == nil && r.Settled:
+		return okOutput, false, nil
+	case err == nil:
+		return "", false, Fail(fmt.Sprintf("waiting for the page to settle in window %d: it did not within %s: %s", pw.w.ID, r.After.Round(100*time.Millisecond), r.Busy),
+			"read it now with winuse get-window-state "+id+", or wait for what you need: winuse wait "+id+" selector <css> or text <text> (wait takes --timeout <seconds>, up to 300)")
+	case errors.Is(err, page.ErrStopped):
+		return "", false, escStopBeforeActError()
+	case errors.As(err, &dialog):
+		return "", false, nothingSent(dialogOpenError(pw.w, dialog.Dialog))
+	}
+	return "", false, Fail(fmt.Sprintf("waiting in window %d failed: %v", pw.w.ID, err), "run winuse browser status "+pw.name)
+}
+
 // waitBrowserPage lets wait download run on a browser page; every other
 // wait is refused there (nil: browserPageError).
 func waitBrowserPage(kind string) func(pageWin) *Error {
@@ -859,7 +1084,13 @@ func waitBrowserPage(kind string) func(pageWin) *Error {
 }
 
 // waitWhat names what a wait waited for.
-func waitWhat(kind, value string) string {
+func waitWhat(kind, value string, gone bool) string {
+	switch {
+	case gone:
+		return fmt.Sprintf("%s %q to be gone", kind, value)
+	case kind == page.WaitJS:
+		return fmt.Sprintf("%q to be true", value)
+	}
 	switch kind {
 	case page.WaitLoadKind:
 		if value == "" {
@@ -909,6 +1140,23 @@ func (s Services) waitDownload(ctx context.Context, pw pageWin, stopped func() b
 	return "", false, Fail(err.Error(), "run winuse wait "+id+" download again; run winuse browser status "+pw.name+" if it keeps failing")
 }
 
+// evalInput checks eval's arguments alone, before anything resolves: an
+// expression, and --max within 1 to page.EvalMaxLimit, returned as the
+// result's cut (page.EvalLimit when not given). A Batch runs it on an eval
+// step while it prepares (batchcheck.go).
+func evalInput(a protocol.EvalArgs) (int, *Error) {
+	if strings.TrimSpace(a.Expression) == "" {
+		return 0, Fail("eval: an expression is required", evalUsageHint)
+	}
+	if a.Max < 0 || a.Max > page.EvalMaxLimit {
+		return 0, Fail(fmt.Sprintf("eval: --max takes 1 to %d characters", page.EvalMaxLimit), evalUsageHint)
+	}
+	if a.Max == 0 {
+		return page.EvalLimit, nil
+	}
+	return a.Max, nil
+}
+
 // pageEval runs `winuse eval <window> <expression>`. It is a page Action
 // with no Agent Cursor (it has no target); winuse keeps no history of
 // Window States to list it in.
@@ -921,15 +1169,9 @@ func pageEval(s Services) Command {
 		if strings.TrimSpace(a.Window) == "" {
 			return "", Fail("eval: a window reference is required", evalUsageHint)
 		}
-		if strings.TrimSpace(a.Expression) == "" {
-			return "", Fail("eval: an expression is required", evalUsageHint)
-		}
-		if a.Max < 0 || a.Max > page.EvalMaxLimit {
-			return "", Fail(fmt.Sprintf("eval: --max takes 1 to %d characters", page.EvalMaxLimit), evalUsageHint)
-		}
-		limit := a.Max
-		if limit == 0 {
-			limit = page.EvalLimit
+		limit, eerr := evalInput(a)
+		if eerr != nil {
+			return "", eerr
 		}
 		return s.runPageWindow(ctx, a.Window, pageWindowRun{
 			acts: true,

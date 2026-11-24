@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "source": "hand-authored from ticket 13's probe of a .NET 8 WinForms ListView in details view (1000 rows x 4 columns there, cut to 3 rows here): GetItem answers null, the cached rows read; sub-items carry GridItem and their text as Name, and an empty sub-item reads its column's name; replace with winuse record-tree <window> <file> --table",
+  "role": "list",
+  "name": "listView1",
+  "table": true,
+  "rowCount": 3,
+  "headers": ["Id", "Name", "Price", "Owner"],
+  "children": [
+    {"role": "header", "children": [
+      {"role": "header item", "name": "Id"},
+      {"role": "header item", "name": "Name"},
+      {"role": "header item", "name": "Price"},
+      {"role": "header item", "name": "Owner"}
+    ]},
+    {"role": "list item", "name": "1", "children": [
+      {"role": "text", "name": "1", "column": 0},
+      {"role": "text", "name": "Widget", "column": 1},
+      {"role": "text", "name": "9.99", "column": 2},
+      {"role": "text", "name": "Ada", "column": 3}
+    ]},
+    {"role": "list item", "name": "2", "children": [
+      {"role": "text", "name": "2", "column": 0},
+      {"role": "text", "name": "Gadget", "column": 1},
+      {"role": "text", "name": "24.50", "column": 2},
+      {"role": "text", "name": "Owner", "column": 3}
+    ]},
+    {"role": "list item", "name": "3", "children": [
+      {"role": "text", "name": "3", "column": 0},
+      {"role": "text", "name": "Gizmo", "column": 1},
+      {"role": "text", "name": "5.00", "column": 2},
+      {"role": "text", "name": "Grace", "column": 3}
+    ]}
+  ]
+}

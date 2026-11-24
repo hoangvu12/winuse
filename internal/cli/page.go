@@ -49,14 +49,48 @@ func takeWait(tokens []string) (rest []string, wait string, err error) {
 	return rest, wait, nil
 }
 
+// takeBlock takes a --block <classes> or --block=<classes> option out of
+// tokens (bladebro-ideas 28) and returns its canonical value, "" when
+// there is none.
+func takeBlock(tokens []string) (rest []string, block string, err error) {
+	given, value := false, ""
+	for i := 0; i < len(tokens); i++ {
+		t := tokens[i]
+		switch {
+		case t == "--block":
+			given = true
+			if i+1 < len(tokens) && !strings.HasPrefix(tokens[i+1], "--") {
+				value = tokens[i+1]
+				i++
+			}
+		case strings.HasPrefix(t, "--block="):
+			given, value = true, strings.TrimPrefix(t, "--block=")
+		default:
+			rest = append(rest, t)
+		}
+	}
+	if !given {
+		return rest, "", nil
+	}
+	block, err = protocol.ParseBlock(value)
+	return rest, block, err
+}
+
 // parseNavArgs parses navigate, back, forward and reload after the Window
 // (a Batch step has none).
 func parseNavArgs(cmd string, tokens []string) (protocol.NavigateArgs, error) {
+	tokens, block, err := takeBlock(tokens)
+	if err != nil {
+		return protocol.NavigateArgs{}, err
+	}
+	if block != "" && cmd != "navigate" {
+		return protocol.NavigateArgs{}, fmt.Errorf("%s takes no --block: the Tab keeps what it blocks; to change it, run winuse navigate <window>:<tab> <url> --block ...", cmd)
+	}
 	rest, wait, err := takeWait(tokens)
 	if err != nil {
 		return protocol.NavigateArgs{}, err
 	}
-	a := protocol.NavigateArgs{Wait: wait}
+	a := protocol.NavigateArgs{Wait: wait, Block: block}
 	if cmd == "navigate" {
 		if len(rest) != 1 {
 			return a, errors.New("navigate takes one URL")
@@ -139,7 +173,8 @@ func waitTimeout(a protocol.WaitArgs) time.Duration {
 
 // parseWaitArgs parses what to wait for after the Window, its value and
 // --timeout: a Page predicate, or an Element Reference and its state
-// (desktop-parity ticket 03, wait.go).
+// (desktop-parity ticket 03, wait.go). --gone (bladebro-ideas 07) turns a
+// selector or text wait around: until it is gone.
 func parseWaitArgs(tokens []string) (protocol.WaitArgs, error) {
 	var a protocol.WaitArgs
 	var rest []string
@@ -147,6 +182,9 @@ func parseWaitArgs(tokens []string) (protocol.WaitArgs, error) {
 		t := tokens[i]
 		secs := ""
 		switch {
+		case t == "--gone":
+			a.Gone = true
+			continue
 		case t == "--timeout":
 			if i+1 >= len(tokens) {
 				return a, errors.New("--timeout needs a number of seconds")
@@ -166,14 +204,21 @@ func parseWaitArgs(tokens []string) (protocol.WaitArgs, error) {
 		a.TimeoutMS = ms
 	}
 	if len(rest) == 0 {
-		return a, errors.New("wait needs what to wait for: selector, text, url, load, download, or an element and its state")
+		return a, errors.New("wait needs what to wait for: selector, text, url, load, idle, js, download, or an element and its state")
 	}
 	a.For = strings.ToLower(rest[0])
 	value := strings.Join(rest[1:], " ")
+	if a.Gone && a.For != "selector" && a.For != "text" {
+		return a, fmt.Errorf("--gone goes with wait selector and wait text, not wait %s (an Element waits for gone as its state: wait <window> <element> gone)", rest[0])
+	}
 	switch a.For {
-	case "selector", "text", "url":
+	case "selector", "text", "url", "js":
 		if value == "" {
 			return a, fmt.Errorf("wait %s needs a value", a.For)
+		}
+	case "idle":
+		if value != "" {
+			return a, errors.New("wait idle takes no value")
 		}
 	case "load":
 		if len(rest) > 2 {
@@ -186,7 +231,7 @@ func parseWaitArgs(tokens []string) (protocol.WaitArgs, error) {
 	default:
 		index, ref, err := parseElementRefToken(rest[0])
 		if err != nil {
-			return a, fmt.Errorf("wait for selector, text, url, load, download, or an element (an element index, name: or id:) and its state, not %q", rest[0])
+			return a, fmt.Errorf("wait for selector, text, url, load, idle, js, download, or an element (an element index, name: or id:) and its state, not %q", rest[0])
 		}
 		a.ElementIndex, a.Ref = index, ref
 		return parseElementWait(a, rest[0], rest[1:])
@@ -198,9 +243,10 @@ func parseWaitArgs(tokens []string) (protocol.WaitArgs, error) {
 // parsePageArgs parses a page command's arguments after the Window into
 // its wire arguments (without the Window).
 func parsePageArgs(cmd string, tokens []string) (any, error) {
-	switch cmd {
-	case "navigate", "back", "forward", "reload":
+	if protocol.IsNavCommand(cmd) {
 		return parseNavArgs(cmd, tokens)
+	}
+	switch cmd {
 	case "upload":
 		return parseUploadArgs(tokens)
 	case "dialog":

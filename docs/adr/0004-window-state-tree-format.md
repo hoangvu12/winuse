@@ -303,3 +303,89 @@ the same information as one more field, the last on the line:
   +0.0%, `--interactive` +0.64%, a `find` of every control +2.1%. The Page
   hint pass costs about 0.2 ms on the 200-clickable benchmark page and
   0.7 ms with 400 duplicate controls, against a 19-24 ms Page read.
+
+## Amendment: heading levels and link URLs on Page lines (bladebro-ideas 01, 2026-11-24)
+
+getFullAXTree already carries a heading's `level` and a link's `url`; the
+Page lines printed neither, so agents ran `eval` to learn where a link
+goes, and `find --role heading` could not show an outline.
+
+- **Heading level: a state word.** A Page heading's line ends its states
+  with `level N`: `heading (level 1) Sign in to Example`,
+  `heading (disabled, level 2) ...`. It is in every view but `--full`:
+  `--full` is Codex's text byte for byte, and Codex prints no level, so
+  it leaves the word out (Element.Level is still read). A UIA heading has
+  no level, so native Windows print exactly as before.
+  `find --role heading` is the Page's outline.
+- **Link URL: a field, only where asked.** `...[ URL: <url>][ Hint: ...]`,
+  after the rest of Codex's line and before a hint. The URL is shortened
+  by `page.LinkURL`: the Page's own origin (scheme, host and port) prints
+  the path, query and fragment (only `#fragment` for a place on the same
+  Page); another origin prints its host without `www.` and the path.
+  Every URL is cut at 60 characters with `…`. A `javascript:` URL prints
+  nothing; a `data:` URL prints `data:…`. `read` shares the rule
+  (`page.SiteURL`) with the Page's site (its registrable domain) in place
+  of its origin, and leaves a URL on that site uncut.
+- **Where it prints.** Not in a default read: `--urls` adds it to a read,
+  `--root` or `--observe`. `find`, a `--diff`/`--observe` diff line and an
+  ambiguous reference's candidates always print it, as they print the
+  whole hint: their lines have no tree around them, and they are short.
+  `--full` prints none and refuses `--urls`; `find --full` prints none.
+  `--compact` keeps an unnamed link's line when it prints a URL.
+- **Diffs.** `wstate.Diff` compares lines with their URL, so a link whose
+  address changed is a changed line, and the diff line shows both.
+- **Why opt-in** (estimated in
+  `.scratch/bladebro-ideas/issues/01-page-link-urls-and-heading-levels.md`):
+  on three link-heavy real pages (Hacker News, a GitHub repository, an
+  MDN reference page) a URL on every link would add about 40-50% to the
+  read's characters, more in tokens, since URLs tokenize densely. `read`
+  measured full URLs at half its output (ticket 12). The agent that needs
+  addresses asks with `--urls` or `find --role link`.
+
+## Amendment: Page landmarks, folded before the cut; the cut note by role (bladebro-ideas 08, 2026-11-24)
+
+On a big Page, site chrome (nav menus, headers, footers, sidebars) took
+much of the read, and an unnamed landmark had no line, so its links read
+like content. The cut note gave a count and an index only.
+
+- **Landmark roles.** A Page's `main`, `navigation`, `banner`,
+  `contentinfo` and `complementary` are always lines, named or not, with
+  their own role words: `main`, `navigation`, `banner`, `footer`,
+  `complementary` (a named one used to print as `group`). Other landmarks
+  (`region`, `search`, `form`, ...) stay `group` lines only when named.
+  UIA has none of these roles, so native Windows print as before.
+- **Folding: a view, only under the cap.** After the bare-container fold,
+  a full read still too long for its cap folds, on a Page with main
+  content (a `main` or `dialog` Element), each `navigation`, `banner`,
+  `footer` and `complementary` that holds 3 or more Elements, the outer
+  one of two nested:
+  `...[ (+N Elements folded; --root <index> shows them)]`, after the rest
+  of the line (on a Tab target, which takes no `--root`,
+  `; --out <file> writes them` instead). The
+  note names the fold: `folding unnamed containers (as --compact does)
+  and Page landmarks to fit --max-chars N left out ...`. The stored Window
+  State stays whole and every folded index resolves; `--root` on a Page
+  Element prints it from the stored read.
+- **Never folded:** a landmark that holds the focused Element, main
+  content, or an Element whose line changed since the Agent's earlier
+  Window State of the Window or Tab (by `wstate.Diff`, which a plain read
+  now takes too). When more than `DiffThreshold` of the read changed, the
+  earlier read was another page and nothing counts as changed.
+- **Not the default** (measured below): a read that fits prints every
+  link, as an agent that needs a nav link should not pay a `--root` round
+  trip; so no flag turns it off. `--max-chars 0` and `--out` never fold.
+- **Diffs unchanged:** `--diff` and `--observe=diff` lines compare and
+  print the whole State; only a whole read printed in a diff's place
+  folds.
+- **The cut note by role.** `(from Element N on: 30 link, 8 button, 3
+  edit)`: the lines left out, the most first, then by role name, so a page
+  always gives the same text; past five roles the fifth is `other`. It is
+  every cut's (`find`, `--root`, diffs, native reads). A heading's
+  `level N` is its state, not its role. The output still fits the cap:
+  when the counts make the note longer, one line fewer prints.
+- **Measured** (estimated from five real pages' link lists; this run
+  could not start Chrome): the chrome's share of a read is large on
+  documentation with a sidebar (MDN about 75%) and small on articles and
+  long docs (Wikipedia about 20%, Python's `json` docs about 6%,
+  go.dev's Effective Go about 3%). See
+  `.scratch/bladebro-ideas/issues/08-fold-landmarks-and-cut-roles.md`.

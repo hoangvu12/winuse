@@ -75,7 +75,7 @@ An operation an Element offers besides a plain click, such as Expand, Collapse, 
 _Avoid_: Pattern, verb, default action
 
 **Element Reference**:
-How an Action names its target: an Element Index, an Element's name, an Element's ID, or screen coordinates. A name or ID that matches more than one Element is an error, never a guess, and so is one match in a read that did not see the whole Window (a partial or skeleton Window State): another may sit in the part not read.
+How an Action names its target: an Element Index, an Element's name, an Element's ID, or screen coordinates. A name or ID that matches more than one Element is an error, never a guess, except a name matching exactly two that are one control: an Element an agent acts on and a non-interactive Element inside it, its label, which names the control. One match in a read that did not see the whole Window (a partial or skeleton Window State) is an error too: another may sit in the part not read.
 _Avoid_: Selector, locator
 
 **Batch**:
@@ -118,6 +118,13 @@ _Avoid_: Sent state, side effect
 **Harness**:
 The coding-agent program the user runs (Claude Code, Pi, ...) that drives winuse on the model's behalf.
 _Avoid_: Client, agent, host
+
+### Notes
+
+**Note**:
+One line of text an Agent or the user leaves for a site or an App with `winuse note add`, which later Agents see once, at the top of their first Window State of that site or App (ADR 0024). Its key is worked out by winuse from a Window ID, a URL or domain, or an exe name: a site is its registrable domain (`localhost` and IP addresses keep their port), an App is its exe file name. winuse never writes one and never acts on one; a Note informs the agent and grants no permission.
+_Avoid_: Memory, knowledge, hint (a hint is part of a failure)
+A `Note:` line winuse prints after a command's output (a wall, an HTTP status, a new Window) is not a Note: call it a note, lowercase, in code, comments and docs.
 
 ### Agents
 
