@@ -10,12 +10,14 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 )
 
 //go:embed read.js
-var readMarkdownJS string
+var readSource string
+
+// readMarkdownJS is read.js with block.js, the shared wall check, in it.
+var readMarkdownJS = withBlockCheck(readSource)
 
 // readWorld names the isolated world read.js runs in.
 const readWorld = "winuse-read"
@@ -45,28 +47,9 @@ type Markdown struct {
 // not 0, else on the frame's document, whose main content it picks. A
 // node that is gone is ErrStale.
 func ReadMarkdown(ctx context.Context, c Caller, session, frameID string, backendNodeID int64, o ReadOptions) (Markdown, error) {
-	if frameID == "" {
-		res, err := c.CallSession(ctx, session, "Page.getFrameTree", nil)
-		if err != nil {
-			return Markdown{}, err
-		}
-		var ft struct {
-			FrameTree frameTree `json:"frameTree"`
-		}
-		if err := json.Unmarshal(res, &ft); err != nil {
-			return Markdown{}, err
-		}
-		frameID = ft.FrameTree.Frame.ID
-	}
-	res, err := c.CallSession(ctx, session, "Page.createIsolatedWorld", map[string]any{"frameId": frameID, "worldName": readWorld})
+	worldID, err := isolatedWorld(ctx, c, session, frameID, readWorld)
 	if err != nil {
-		return Markdown{}, staleOr(err)
-	}
-	var w struct {
-		ExecutionContextID int `json:"executionContextId"`
-	}
-	if json.Unmarshal(res, &w) != nil || w.ExecutionContextID == 0 {
-		return Markdown{}, errors.New("the browser gave no isolated world to read the Page in")
+		return Markdown{}, err
 	}
 	urls := "short"
 	if o.FullURLs {
@@ -79,7 +62,7 @@ func ReadMarkdown(ctx context.Context, c Caller, session, frameID string, backen
 		"silent":              true,
 	}
 	if backendNodeID != 0 {
-		res, err := c.CallSession(ctx, session, "DOM.resolveNode", map[string]any{"backendNodeId": backendNodeID, "executionContextId": w.ExecutionContextID, "objectGroup": objectGroup})
+		res, err := c.CallSession(ctx, session, "DOM.resolveNode", map[string]any{"backendNodeId": backendNodeID, "executionContextId": worldID, "objectGroup": objectGroup})
 		if err != nil {
 			return Markdown{}, staleOr(err)
 		}
@@ -94,9 +77,9 @@ func ReadMarkdown(ctx context.Context, c Caller, session, frameID string, backen
 		defer c.CallSession(context.WithoutCancel(ctx), session, "Runtime.releaseObject", map[string]any{"objectId": rn.Object.ObjectID})
 		call["objectId"] = rn.Object.ObjectID
 	} else {
-		call["executionContextId"] = w.ExecutionContextID
+		call["executionContextId"] = worldID
 	}
-	res, err = c.CallSession(ctx, session, "Runtime.callFunctionOn", call)
+	res, err := c.CallSession(ctx, session, "Runtime.callFunctionOn", call)
 	if err != nil {
 		return Markdown{}, staleOr(err)
 	}

@@ -12,6 +12,9 @@ package helper
 //	Note: the Page changed (text only)
 //	Note: no change seen in the Page[; element N is now covered by <x> at its centre | ; element N is gone from the Page]; the click was delivered, so read the Page before repeating it
 //
+// A navigation that landed adds the wall Note (bladebro-ideas 05) after
+// its own when the new Page looks like a challenge or block wall.
+//
 // A change to elements, attributes, a control's state, the focus or a
 // scroll prints no note, nor does a watch that could not see (unknown).
 // Text-only changes print no counts: the number of text nodes means nothing
@@ -75,10 +78,12 @@ type pageEffect struct {
 	index int    // the clicked Element's index, -1 for a key
 	ran   bool   // the input went out
 	e     page.Effect
+	o     *page.Origin // the Page the watch was armed on, for the wall check
 }
 
 // arm starts the watch on the Tab of o, at the click point (nil for a key).
 func (pe *pageEffect) arm(ctx context.Context, o *page.Origin, at *page.Point) *page.EffectWatch {
+	pe.o = o
 	actx, cancel := context.WithTimeout(ctx, pageProbeBudget)
 	defer cancel()
 	return page.ArmEffect(actx, o.Client, o.TopSession(), at)
@@ -130,14 +135,20 @@ func (pe *pageEffect) finish(ctx context.Context, windowID uint64, out string, r
 		return out, rerr
 	}
 	recordEffect(ctx, pe.e.Kind)
+	// A navigation that landed gets the wall check (bladebro-ideas 05), its
+	// Note after the effect's.
+	wall := ""
+	if pe.e.Kind == page.EffectNavigated && !pe.e.Pending && pe.o != nil && pe.o.Client != nil {
+		wall = pageWallNote(ctx, pe.o.Client, pe.o.TopSession())
+	}
 	if out != okOutput {
-		return out, nil
+		return out + wall, nil
 	}
 	note := pe.note(windowID)
 	if note == "" || (observing(ctx) && pe.e.Kind != page.EffectNavigated) {
-		return out, nil
+		return out + wall, nil
 	}
-	return okWith(note), nil
+	return okWith(note) + wall, nil
 }
 
 // note is the effect's note, "" for none.

@@ -60,6 +60,44 @@ var readGoldenCases = []struct {
 
 func TestReadGoldens(t *testing.T) {
 	optIn(t)
+	dir, err := filepath.Abs(filepath.Join("testdata", "read"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.FileServer(http.Dir(dir)))
+	t.Cleanup(srv.Close)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	conn := headlessBrowser(t, ctx)
+	update := os.Getenv("WINUSE_E2E_UPDATE_GOLDEN") == "1"
+
+	for _, tc := range readGoldenCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := readGolden(t, ctx, conn, srv.URL+"/"+tc.page, tc.root, tc.full)
+			got = strings.ReplaceAll(got, srv.URL, "http://SERVER") // the port changes each run
+			file := filepath.Join(dir, tc.name+".md")
+			if update {
+				if err := os.WriteFile(file, []byte(got), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			want, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatalf("the golden file: %v (WINUSE_E2E_UPDATE_GOLDEN=1 writes it)", err)
+			}
+			if got != strings.ReplaceAll(string(want), "\r\n", "\n") {
+				t.Errorf("%s differs from %s; got:\n%s", tc.page, file, got)
+			}
+		})
+	}
+}
+
+// headlessBrowser starts a headless Chrome or Edge on a throwaway profile
+// (startIsolatedBrowser), skipping the test when neither is installed, and
+// returns its Browser Connection; the browser closes when the test ends.
+func headlessBrowser(t *testing.T, ctx context.Context) *browser.Connection {
+	t.Helper()
 	sys := browser.Live()
 	var b browser.Browser
 	found := false
@@ -71,18 +109,10 @@ func TestReadGoldens(t *testing.T) {
 	if !found {
 		t.Skip("neither Chrome nor Edge is installed; nothing was run")
 	}
-	dir, err := filepath.Abs(filepath.Join("testdata", "read"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := httptest.NewServer(http.FileServer(http.Dir(dir)))
-	t.Cleanup(srv.Close)
-
 	port := freePort(t)
 	pid := startIsolatedBrowser(t, b.Path, "--headless=new", "--window-size=1366,900", fmt.Sprintf("--remote-debugging-port=%d", port), "about:blank")
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	defer cancel()
 	var ws string
+	var err error
 	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(250 * time.Millisecond) {
 		if ws, err = sys.VersionWS(ctx, port); err == nil {
 			break
@@ -106,29 +136,7 @@ func TestReadGoldens(t *testing.T) {
 		}
 		time.Sleep(time.Second)
 	})
-	conn := &browser.Connection{Browser: b.Name, Mode: browser.ModeLaunch, WSURL: ws, Port: port, Client: c}
-	update := os.Getenv("WINUSE_E2E_UPDATE_GOLDEN") == "1"
-
-	for _, tc := range readGoldenCases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := readGolden(t, ctx, conn, srv.URL+"/"+tc.page, tc.root, tc.full)
-			got = strings.ReplaceAll(got, srv.URL, "http://SERVER") // the port changes each run
-			file := filepath.Join(dir, tc.name+".md")
-			if update {
-				if err := os.WriteFile(file, []byte(got), 0o644); err != nil {
-					t.Fatal(err)
-				}
-				return
-			}
-			want, err := os.ReadFile(file)
-			if err != nil {
-				t.Fatalf("the golden file: %v (WINUSE_E2E_UPDATE_GOLDEN=1 writes it)", err)
-			}
-			if got != strings.ReplaceAll(string(want), "\r\n", "\n") {
-				t.Errorf("%s differs from %s; got:\n%s", tc.page, file, got)
-			}
-		})
-	}
+	return &browser.Connection{Browser: b.Name, Mode: browser.ModeLaunch, WSURL: ws, Port: port, Client: c}
 }
 
 // readGolden opens u in a new tab, runs read.js on its main content or on

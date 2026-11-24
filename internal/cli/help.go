@@ -476,7 +476,10 @@ const usageTail = `);
                                ended on; never type into the address bar. A
                                Page that answered 4xx or 5xx (also after
                                back, forward and reload) adds
-                               Note: the Page answered HTTP <code> <reason>
+                               Note: the Page answered HTTP <code> <reason>;
+                               a short Page that looks like a CAPTCHA or
+                               block wall adds a Note too: ask the user to
+                               handle it
   back <window> [--wait ...]  go one page back in the Tab's history
   forward <window> [--wait ...]
                                go one page forward in the Tab's history
