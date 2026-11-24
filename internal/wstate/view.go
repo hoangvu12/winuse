@@ -410,6 +410,8 @@ func viewLines(t *Tree, v View, shared map[string]bool) ([]PrintedLine, int) {
 			fmt.Fprintf(&b, " (+%d Elements folded", folded)
 			if v.Ref != "" {
 				fmt.Fprintf(&b, "; --root %d shows them", i)
+			} else {
+				b.WriteString("; --out <file> writes them") // a Tab target takes no --root
 			}
 			b.WriteString(")\n")
 			out = append(out, PrintedLine{Index: i, Text: b.String(), Role: e.Role})

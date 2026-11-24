@@ -339,8 +339,9 @@ func TestRenderViewFoldsLandmarksBeforeTheCut(t *testing.T) {
 	if out := RenderView(tree, View{MaxChars: utf8.RuneCountInString(whole) + 500, Ref: "7"}); out != whole {
 		t.Errorf("a read that fits must print whole:\n%s", out)
 	}
-	// A Tab target takes no --root: the line says only what it folded.
-	if out := RenderView(tree, View{MaxChars: cap}); !strings.Contains(out, "\t\t1 banner (+32 Elements folded)\n") {
+	// A Tab target takes no --root: the line points at --out, which writes
+	// the read whole.
+	if out := RenderView(tree, View{MaxChars: cap}); !strings.Contains(out, "\t\t1 banner (+32 Elements folded; --out <file> writes them)\n") {
 		t.Errorf("without a Window to name:\n%s", out)
 	}
 }

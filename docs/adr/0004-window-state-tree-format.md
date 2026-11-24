@@ -360,7 +360,8 @@ like content. The cut note gave a count and an index only.
   `footer` and `complementary` that holds 3 or more Elements, the outer
   one of two nested:
   `...[ (+N Elements folded; --root <index> shows them)]`, after the rest
-  of the line (no `--root` part on a Tab target, which takes none). The
+  of the line (on a Tab target, which takes no `--root`,
+  `; --out <file> writes them` instead). The
   note names the fold: `folding unnamed containers (as --compact does)
   and Page landmarks to fit --max-chars N left out ...`. The stored Window
   State stays whole and every folded index resolves; `--root` on a Page

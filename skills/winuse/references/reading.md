@@ -145,7 +145,8 @@ chrome before content:
 ```
 
 The folded Elements' indexes still work. One that holds the focus, or an
-Element changed since your last read, stays open.
+Element changed since your last read, stays open. A Tab target takes no
+`--root`, so its fold line says `--out <file> writes them` instead.
 
 On a full read, `--interactive`, `--depth N` and `--compact` (folds
 unnamed containers) print less, but the Window State is kept whole:
