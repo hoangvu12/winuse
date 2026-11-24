@@ -104,6 +104,30 @@ func TestNavigationNotesAWall(t *testing.T) {
 	r.passiveOnly(t)
 }
 
+// A 429 wall gets both Notes: the HTTP status (bladebro-ideas 02) first,
+// then the wall. Chrome's own error page for an empty body is no wall, so
+// it is not checked.
+func TestNavigationWallNoteFollowsTheStatusNote(t *testing.T) {
+	r := newWinRig(t)
+	r.statuses = map[string]int{"https://api.test/busy": 429, "https://api.test/empty": 429}
+	p := &wallPage{kind: "rate-limit"}
+	p.handle(r.browser.Srv)
+	out, e := r.run(t, "navigate", protocol.NavigateArgs{Window: "301", URL: "https://api.test/busy"})
+	if want := "ok https://api.test/busy\nNote: the Page answered HTTP 429 Too Many Requests\n" + protocol.WallNote("rate-limit") + "\n"; e != nil || out != want {
+		t.Errorf("a 429 wall: %q %+v, want %q", out, e, want)
+	}
+	before := p.count()
+	out, e = r.run(t, "navigate", protocol.NavigateArgs{Window: "301", URL: "https://api.test/empty"})
+	if e != nil || strings.Contains(out, "wall") || p.count() != before {
+		t.Errorf("Chrome's error page: %q %+v, %d checks (before %d)", out, e, p.count(), before)
+	}
+	// A reload there still shows Chrome's page: not checked either.
+	out, e = r.run(t, "reload", protocol.NavigateArgs{Window: "301"})
+	if e != nil || strings.Contains(out, "wall") || p.count() != before {
+		t.Errorf("reload of Chrome's error page: %q %+v, %d checks (before %d)", out, e, p.count(), before)
+	}
+}
+
 // A check that fails says nothing: the navigation landed, and the Note is
 // only ever a hint.
 func TestNavigationWallCheckFailureStaysQuiet(t *testing.T) {
