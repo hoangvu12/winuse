@@ -386,10 +386,11 @@ type logsView struct {
 }
 
 // renderLogs prints the entries under a header naming the Page and what
-// its log holds: the newest within the cap (--max-chars, else
-// defaultMaxChars) after a line counting the older ones left out, or every
-// one written to --out; JSON under --json. A capture just turned on, or a
-// Page loaded before it, says that reload covers the Page.
+// its log holds: the newest that fit the cap (--max-chars, else
+// defaultMaxChars), which bounds the whole output, after a line counting
+// the older ones left out, or every one written to --out; JSON under
+// --json, within the same cap. A capture just turned on, or a Page loaded
+// before it, says that reload covers the Page.
 func renderLogs(pageURL string, list []page.LogEntry, a protocol.LogsArgs, v logsView) (string, *Error) {
 	if a.JSON {
 		return renderLogsJSON(pageURL, list, a, v)
@@ -421,39 +422,71 @@ func renderLogs(pageURL string, list []page.LogEntry, a protocol.LogsArgs, v log
 	for i, e := range list {
 		lines[i] = logLine(e)
 	}
+	tail := ""
+	if a.Clear {
+		tail = "(cleared: the next winuse logs lists only later entries)\n"
+	}
 	if a.Out != "" {
 		if err := writeFileAtomic(a.Out, []byte(b.String()+strings.Join(lines, ""))); err != nil {
 			return "", Fail("writing the logs to "+a.Out+" failed: "+err.Error(), "pass --out a file in a folder you can write to")
 		}
 		fmt.Fprintf(&b, "Logs: %s (%d %s)\n", a.Out, len(list), entryNoun(len(list)))
-	} else {
-		limit := defaultMaxChars
-		if a.MaxChars != nil {
-			limit = *a.MaxChars
-		}
-		first, used := 0, 0
-		for i := len(lines) - 1; i >= 0; i-- {
-			n := utf8.RuneCountInString(lines[i])
-			if limit > 0 && used+n > limit {
-				first = i + 1
-				break
-			}
-			used += n
-		}
-		if first > 0 {
-			fmt.Fprintf(&b, "(%d older %s left out to stay within %d characters; --max-chars raises the cut, 0 lifts it, --out <file> writes them all)\n",
-				first, entryNoun(first), limit)
-		}
-		b.WriteString(strings.Join(lines[first:], ""))
+		return b.String() + tail, nil
 	}
-	if a.Clear {
-		b.WriteString("(cleared: the next winuse logs lists only later entries)\n")
+	limit := logsLimit(a)
+	head := b.String()
+	all := strings.Join(lines, "")
+	if limit <= 0 || utf8.RuneCountInString(head+all+tail) <= limit {
+		return head + all + tail, nil
 	}
-	return b.String(), nil
+	cutLine := func(n int) string {
+		return fmt.Sprintf("(%d older %s left out to stay within %d characters; --max-chars raises the cut, 0 lifts it, --out <file> writes them all)\n",
+			n, entryNoun(n), limit)
+	}
+	// The cut line at its longest (every entry left out) keeps the room
+	// left for the entries from being overstated.
+	sizes := make([]int, len(lines))
+	for i, l := range lines {
+		sizes[i] = utf8.RuneCountInString(l)
+	}
+	first := newestThatFit(sizes, limit-utf8.RuneCountInString(head+cutLine(len(lines))+tail))
+	return head + cutLine(first) + strings.Join(lines[first:], "") + tail, nil
+}
+
+// logsLimit is logs' cap: --max-chars, else defaultMaxChars (0: none).
+func logsLimit(a protocol.LogsArgs) int {
+	if a.MaxChars != nil {
+		return *a.MaxChars
+	}
+	return defaultMaxChars
+}
+
+// newestThatFit is the first of the newest items whose sizes sum to at
+// most room: len(sizes) when none fits.
+func newestThatFit(sizes []int, room int) int {
+	used := 0
+	for i := len(sizes) - 1; i >= 0; i-- {
+		if used+sizes[i] > room {
+			return i + 1
+		}
+		used += sizes[i]
+	}
+	return 0
+}
+
+// logsJSON is logs' --json object; LeftOut counts the older entries the
+// cap left out.
+type logsJSON struct {
+	URL       string    `json:"url"`
+	Capturing bool      `json:"capturing"`
+	Entries   []logJSON `json:"entries"`
+	LeftOut   int       `json:"left_out,omitempty"`
+	Cleared   bool      `json:"cleared"`
 }
 
 // renderLogsJSON is logs' --json answer: {"url","capturing","entries",
-// "cleared"}, or with --out the same object in the file and {"url","file",
+// "cleared"}, the newest entries that fit the cap with "left_out" counting
+// the older ones, or with --out every entry in the file and {"url","file",
 // "count","cleared"} printed. capturing says the Tab captures its
 // JavaScript exceptions.
 func renderLogsJSON(pageURL string, list []page.LogEntry, a protocol.LogsArgs, view logsView) (string, *Error) {
@@ -461,12 +494,11 @@ func renderLogsJSON(pageURL string, list []page.LogEntry, a protocol.LogsArgs, v
 	for _, e := range list {
 		items = append(items, logJSON{Time: e.Time, Source: e.Source, Level: e.Level, Text: e.Text, URL: e.URL, Line: e.Line, Stack: e.Stack})
 	}
-	var v any = struct {
-		URL       string    `json:"url"`
-		Capturing bool      `json:"capturing"`
-		Entries   []logJSON `json:"entries"`
-		Cleared   bool      `json:"cleared"`
-	}{pageURL, view.capturing, items, a.Clear}
+	whole := logsJSON{URL: pageURL, Capturing: view.capturing, Entries: items, Cleared: a.Clear}
+	var v any = whole
+	if limit := logsLimit(a); a.Out == "" && limit > 0 {
+		v = fitLogsJSON(whole, limit)
+	}
 	if a.Out != "" {
 		data, err := json.Marshal(v)
 		if err != nil {
@@ -487,4 +519,28 @@ func renderLogsJSON(pageURL string, list []page.LogEntry, a protocol.LogsArgs, v
 		return "", Fail("encoding the logs: "+err.Error(), "")
 	}
 	return string(data) + "\n", nil
+}
+
+// fitLogsJSON keeps the newest entries of v whose JSON line, newline
+// included, stays within limit characters.
+func fitLogsJSON(v logsJSON, limit int) logsJSON {
+	size := func(x any) int {
+		data, _ := json.Marshal(x)
+		return utf8.RuneCount(data)
+	}
+	if size(v)+1 <= limit {
+		return v
+	}
+	// The object with no entries and the most left out: the rest, less the
+	// newline, is the entries' room, each costing its JSON and a comma (the
+	// last none, which pays for the newline).
+	empty := v
+	empty.Entries, empty.LeftOut = []logJSON{}, len(v.Entries)
+	sizes := make([]int, len(v.Entries))
+	for i, e := range v.Entries {
+		sizes[i] = size(e) + 1
+	}
+	first := newestThatFit(sizes, limit-size(empty))
+	v.LeftOut, v.Entries = first, v.Entries[first:]
+	return v
 }

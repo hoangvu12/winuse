@@ -590,7 +590,9 @@ const usageTail = `);
                                Cut at 28000 characters, keeping the newest
                                (--max-chars N, 0 for none), or --out writes
                                them all to a file. --clear empties it after
-                               printing; --json answers with JSON.
+                               printing; --json answers with JSON, within
+                               the same cap ("left_out" counts the older
+                               entries it dropped).
                                A Page Action that made requests fail or the
                                Page throw stays ok and adds "Note: 2 failed
                                requests: 404 /api/save, ..." or "Note: the
