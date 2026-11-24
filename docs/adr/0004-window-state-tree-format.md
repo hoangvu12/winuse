@@ -312,9 +312,10 @@ goes, and `find --role heading` could not show an outline.
 
 - **Heading level: a state word.** A Page heading's line ends its states
   with `level N`: `heading (level 1) Sign in to Example`,
-  `heading (disabled, level 2) ...`. It is in every view, `--full`
-  included, like `password`: there are no Codex Page lines to match, a
-  UIA heading has no level, so native Windows print exactly as before.
+  `heading (disabled, level 2) ...`. It is in every view but `--full`:
+  `--full` is Codex's text byte for byte, and Codex prints no level, so
+  it leaves the word out (Element.Level is still read). A UIA heading has
+  no level, so native Windows print exactly as before.
   `find --role heading` is the Page's outline.
 - **Link URL: a field, only where asked.** `...[ URL: <url>][ Hint: ...]`,
   after the rest of Codex's line and before a hint. The URL is shortened

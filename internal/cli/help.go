@@ -188,7 +188,7 @@ commands:
                                lines around it do not show it); a hint is
                                not a name: name: never matches it. --full
                                prints Codex's text byte for byte: every ID,
-                               no cap, no hint, no URL.
+                               no cap, no hint, no URL, no heading level.
                                A Page heading says its level, as in
                                "heading (level 2) Install". --urls ends a
                                Page link's line with "URL: /path" (on the

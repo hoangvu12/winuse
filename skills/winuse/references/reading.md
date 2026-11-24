@@ -119,7 +119,7 @@ winuse get-window-state <window> --interactive --compact   # a full read, printi
 winuse get-window-state <window> --max-chars 20000 # stop the tree before 20000 characters, with a note
 winuse get-window-state <window> --out state.txt   # write it to a file, uncut; prints the path and the notes
 winuse get-window-state <window> --urls            # a Page link's line ends with its URL
-winuse get-window-state <window> --full            # Codex's text byte for byte: every ID, no cap, no hint, no URL
+winuse get-window-state <window> --full            # Codex's text byte for byte: every ID, no cap, no hint, no URL, no heading level
 ```
 
 By default a read, `find` and `--root` stop before 28000 characters

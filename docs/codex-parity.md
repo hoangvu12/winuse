@@ -414,10 +414,11 @@ can end with ` URL: <shortened address>` (bladebro-ideas 01): with
 for byte, with no hint and no URL, save two more state words: an Element
 whose IsPassword reads true (or, on an Edit, does not read) has its
 `Value:` withheld and `password` in its states (reliability-council 07);
-Codex prints the Value. A Page heading has `level N` last in its states
-(bladebro-ideas 01); a UIA heading has none. **matched (grammar; byte for
-byte under `--full`) / intentionally different (roles, bounds, shared IDs,
-the default cap, hints, URLs, the `password` and `level N` states)**.
+Codex prints the Value. Outside `--full`, a Page heading has `level N`
+last in its states (bladebro-ideas 01); `--full` prints no level, and a
+UIA heading has none. **matched (grammar; byte for byte under `--full`) /
+intentionally different (roles, bounds, shared IDs, the default cap,
+hints, URLs, the `password` state, and `level N` outside `--full`)**.
 
 ### secondary actions
 
