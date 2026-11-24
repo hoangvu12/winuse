@@ -7,6 +7,9 @@ package cli
 //	{"ok":true,"command":"click","out":"..."}
 //	{"ok":false,"command":"click","out":"","error":{"code":"STALE_REF","message":"...","hint":"...","delivery":"not_delivered","retry":"safe"}}
 //
+// A Page that looks like a challenge or block wall adds "wall" (its kind,
+// from the Note line in out).
+//
 // The command runs exactly as without the flag; its stdout and stderr are
 // captured and become the line. out is the text it printed (a Window
 // State stays its text tree), error is its failure: the helper's message,
@@ -35,10 +38,14 @@ var lastResponse *protocol.Response
 
 // jsonLine is the one line --json prints.
 type jsonLine struct {
-	OK      bool       `json:"ok"`
-	Command string     `json:"command"`
-	Out     string     `json:"out"`
-	Error   *jsonError `json:"error,omitempty"`
+	OK      bool   `json:"ok"`
+	Command string `json:"command"`
+	Out     string `json:"out"`
+	// Wall names the challenge or block wall a Page Note said the Page
+	// looks like (bladebro-ideas 05, protocol.WallOf): Cloudflare,
+	// DataDome, PerimeterX, reCAPTCHA, Akamai or rate-limit.
+	Wall  string     `json:"wall,omitempty"`
+	Error *jsonError `json:"error,omitempty"`
 }
 
 // jsonError is a failed command's error object.
@@ -110,7 +117,7 @@ func runJSON(command string, run func() int) int {
 // jsonLineFor builds the line of a command that exited with code after
 // printing stdout and stderr; resp is the helper's last answer, if any.
 func jsonLineFor(command string, code int, stdout, stderr string, resp *protocol.Response) jsonLine {
-	line := jsonLine{OK: code == 0, Command: command, Out: stdout}
+	line := jsonLine{OK: code == 0, Command: command, Out: stdout, Wall: protocol.WallOf(stdout)}
 	if line.OK {
 		return line
 	}

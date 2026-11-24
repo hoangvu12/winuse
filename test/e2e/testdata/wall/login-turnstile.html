@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<!-- A login form that embeds a Turnstile widget: short, but it has fields
+     to fill, so it is a login page, not a wall. Expect none. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>Sign in - shop.example.com</title></head>
+<body>
+<h1>Sign in</h1>
+<form action="/login" method="POST">
+  <label>Email <input type="email" name="email"></label>
+  <label>Password <input type="password" name="password"></label>
+  <div class="cf-turnstile" data-sitekey="0x4AAAAAAA"></div>
+  <input type="hidden" name="cf-turnstile-response" value="">
+  <button type="submit">Sign in</button>
+</form>
+<p><a href="/forgot">Forgot your password?</a></p>
+</body>
+</html>

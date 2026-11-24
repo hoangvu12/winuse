@@ -612,12 +612,36 @@ func (s Services) navWait(ctx context.Context, pw pageWin, cmd, state string, co
 		return "", true, Fail("the "+cmd+" was delivered, and "+dialog.Error(), dialogHint(id)+"; do not repeat the "+cmd)
 	case errors.As(err, &slow):
 		u := page.CurrentURL(ctx, c, sess)
-		return fmt.Sprintf("ok %s (%s; winuse wait %s load waits longer)\n", u, slow.Error(), id), true, nil
+		return fmt.Sprintf("ok %s (%s; winuse wait %s load waits longer)\n", u, slow.Error(), id) + pageWallNote(ctx, c, sess), true, nil
 	case err != nil:
 		return "", true, Fail(fmt.Sprintf("the %s was delivered, and waiting for the page failed: %v", cmd, err),
 			"read winuse get-window-state "+id+" before repeating it")
 	}
-	return "ok " + page.CurrentURL(ctx, c, sess) + "\n", true, nil
+	out := "ok " + page.CurrentURL(ctx, c, sess) + "\n"
+	if state != page.LoadNone { // with none the document may still be the old one
+		out += pageWallNote(ctx, c, sess)
+	}
+	return out, true, nil
+}
+
+// wallCheckBound bounds the wall check after a navigation.
+const wallCheckBound = 2 * time.Second
+
+// pageWallNote is the wall Note line (bladebro-ideas 05) for the Page a
+// navigation landed on: page.BlockKind, one isolated-world call, names a
+// short challenge or block page. "" for an ordinary Page, or when the check
+// fails (the navigation landed; the Note is only a hint). winuse never
+// clicks or solves anything there: the Note sends the agent to the user. A
+// Page Action whose effect navigated (bladebro-ideas 06) adds it the same
+// way.
+func pageWallNote(ctx context.Context, c page.Caller, session string) string {
+	cctx, cancel := context.WithTimeout(ctx, wallCheckBound)
+	defer cancel()
+	kind, err := page.BlockKind(cctx, c, session)
+	if err != nil || kind == "" {
+		return ""
+	}
+	return protocol.WallNote(kind) + "\n"
 }
 
 // browserPagePoll is how often navigateFromBrowserPage reads the Tab while

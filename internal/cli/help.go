@@ -455,7 +455,10 @@ const usageTail = `);
   navigate <window> <url> [--wait load|domcontentloaded|none]
                                open a URL in the Window's active Tab, wait for
                                it to load (default load), and print the URL it
-                               ended on; never type into the address bar
+                               ended on; never type into the address bar.
+                               A short Page that looks like a CAPTCHA or
+                               block wall gets a Note (so do back, forward
+                               and reload): ask the user to handle it
   back <window> [--wait ...]  go one page back in the Tab's history
   forward <window> [--wait ...]
                                go one page forward in the Tab's history
