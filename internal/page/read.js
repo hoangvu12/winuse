@@ -14,9 +14,10 @@
 //     counting half, navigation, headers, footers and asides counting
 //     nothing; main, article and role=main are preferred) instead of taking
 //     the first <main> over 200 characters, and it never renders empty;
-//   - links print as paths on the same site and as a shortened domain plus
-//     path elsewhere (opts.urls "full" keeps them whole); images keep their
-//     alt text and lose their URLs;
+//   - links go back whole between marks, and read.go prints them by
+//     page.SiteURL's rule: paths on the same site, a shortened domain plus
+//     path elsewhere (opts.urls "full" keeps them whole); images keep
+//     their alt text and lose their URLs;
 //   - the page's h1 is kept when it sits in a <header>, and [edit] links and
 //     heading permalinks are dropped;
 //   - data tables render as Markdown tables with their header row and every
@@ -33,7 +34,6 @@
 function (opts) {
   opts = opts || {};
   var FULL = opts.urls === 'full';
-  var LINK_MAX = 60; // a shortened external link's length
   var SKIP = {SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, SVG: 1, TEMPLATE: 1, META: 1, LINK: 1, BUTTON: 1, INPUT: 1, SELECT: 1, TEXTAREA: 1, CANVAS: 1, OBJECT: 1, EMBED: 1, VIDEO: 1, AUDIO: 1, MAP: 1, HEAD: 1, TITLE: 1};
   var STRUCTURE = {UL: 1, OL: 1, DL: 1, TABLE: 1, THEAD: 1, TBODY: 1, TFOOT: 1, TR: 1, SELECT: 1};
   var NOISE = {NAV: 1, FOOTER: 1, HEADER: 1, ASIDE: 1};
@@ -86,23 +86,17 @@ function (opts) {
 
   // ---- links ----
 
-  // shortURL's rule is also page.LinkURL's (linkurl.go), for a link's
-  // URL on a Page line; keep the two alike.
-  function shortURL(href) {
-    if (!href) return '';
-    var u;
-    try { u = new URL(href, here.href); } catch (e) { return href; }
-    if (FULL) return u.href;
-    if (u.protocol !== 'http:' && u.protocol !== 'https:') return u.href;
-    var tail = u.pathname + u.search + u.hash;
-    if (u.host === here.host) {
-      if (u.pathname === here.pathname && u.search === here.search && u.hash) return u.hash;
-      return tail || '/';
-    }
-    var host = u.host.replace(/^www\./, '');
-    var s = host + (tail === '/' ? '' : tail);
-    if (s.length > LINK_MAX) s = s.slice(0, LINK_MAX - 1) + '…';
-    return s;
+  // A link goes back whole, between marks: \x01, its text, \x1f, its
+  // absolute URL, \x02. read.go prints it, shortened by page.SiteURL, the
+  // rule the Page lines' LinkURL shares (it needs the Public Suffix List),
+  // so there is no URL rule here. The marks are dropped from the Page's
+  // text (see MARKS).
+  function absURL(href) {
+    try { return new URL(href, here.href).href; } catch (e) { return href; }
+  }
+  var MARKS = /[\x01\x02\x1f]/g;
+  function linkMark(text, href) {
+    return '\x01' + text + '\x1f' + absURL(href).replace(MARKS, '') + '\x02';
   }
 
   // ---- the main content ----
@@ -252,7 +246,7 @@ function (opts) {
     }
     function walk(n, isRoot) {
       if (n.nodeType === 3) {
-        var t = n.textContent.replace(/\s+/g, ' ');
+        var t = n.textContent.replace(/\s+/g, ' ').replace(MARKS, '');
         // The white space between list items, rows and cells is markup.
         if (t === ' ' && n.parentElement && STRUCTURE[upper(n.parentElement)]) return;
         if (t) add(t);
@@ -287,11 +281,8 @@ function (opts) {
           }
           if (!tx) return;
           if (!raw || raw === '#' || /^\s*javascript:/i.test(raw)) { add(tx); return; }
-          var u = shortURL(n.href || raw);
-          // A link whose text is its URL prints once.
-          var bare = function (s) { return s.replace(/^(https?:\/\/)?(www\.)?/, '').replace(/[\/…]+$/, ''); };
-          if (u === tx || bare(tx).indexOf(bare(u)) === 0 && bare(u).length > 0 && /^(https?:\/\/)?[\w.-]+\.[a-z]{2,}/i.test(tx)) add(u);
-          else add('[' + tx + '](' + u + ')');
+          // read.go prints it, once when its text is its URL.
+          add(linkMark(tx, n.href || raw));
           return;
         case 'IMG':
           var al = (n.getAttribute('alt') || '').trim();

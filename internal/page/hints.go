@@ -166,7 +166,7 @@ func (v *docView) ownHint(i int) string {
 	} {
 		if val, ok := v.attr(i, a.attr); ok {
 			if val = jsCollapse(val); val != "" && !generated(val) {
-				parts = append(parts, a.word+" "+cutRunes(val, hintPartCap))
+				parts = append(parts, a.word+" "+CutRunes(val, hintPartCap))
 				break
 			}
 		}
@@ -212,27 +212,27 @@ func (v *docView) iconOf(k int) string {
 		for _, a := range []string{"href", "xlink:href"} {
 			if h, ok := v.attr(k, a); ok {
 				if _, frag, found := strings.Cut(h, "#"); found && frag != "" {
-					return cutRunes(frag, hintPartCap)
+					return CutRunes(frag, hintPartCap)
 				}
 			}
 		}
 	case "svg":
 		if d, ok := v.attr(k, "data-icon"); ok && d != "" {
-			return cutRunes(d, hintPartCap)
+			return CutRunes(d, hintPartCap)
 		}
 		for _, c := range v.kids[k] {
 			if strings.EqualFold(v.name(c), "title") {
 				if t := jsCollapse(v.textContent(c)); t != "" {
-					return cutRunes(t, hintPartCap)
+					return CutRunes(t, hintPartCap)
 				}
 			}
 		}
 		if id, ok := v.attr(k, "id"); ok && id != "" && !generated(id) {
-			return cutRunes(id, hintPartCap)
+			return CutRunes(id, hintPartCap)
 		}
 	}
 	if d, ok := v.attr(k, "data-icon"); ok && d != "" {
-		return cutRunes(d, hintPartCap)
+		return CutRunes(d, hintPartCap)
 	}
 	if class, ok := v.attr(k, "class"); ok {
 		for _, c := range strings.Fields(class) {
@@ -242,7 +242,7 @@ func (v *docView) iconOf(k int) string {
 			}
 			for _, p := range iconPrefixes {
 				if strings.HasPrefix(lc, p) && len(lc) > len(p) {
-					return cutRunes(c, hintPartCap)
+					return CutRunes(c, hintPartCap)
 				}
 			}
 		}
@@ -286,7 +286,7 @@ func rowText(row, own string) string {
 	if own != "" {
 		row = jsCollapse(strings.Replace(row, own, " ", 1))
 	}
-	return cutRunes(row, hintRowCap)
+	return CutRunes(row, hintRowCap)
 }
 
 // fileName is an image URL's last path segment ("" for a data: URL).
@@ -302,7 +302,7 @@ func fileName(src string) string {
 	if name == "." || name == "/" || generated(name) {
 		return ""
 	}
-	return cutRunes(name, hintPartCap)
+	return CutRunes(name, hintPartCap)
 }
 
 // generated reports a value that looks made by a build or a framework
@@ -325,8 +325,9 @@ func generated(s string) bool {
 	return false
 }
 
-// cutRunes cuts s to n runes, marking the cut.
-func cutRunes(s string, n int) string {
+// CutRunes cuts s to n runes, the "…" that marks the cut included: the one
+// cut of a Page line's parts, link URLs and log entries.
+func CutRunes(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {
 		return s

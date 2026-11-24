@@ -276,14 +276,6 @@ func parseLogEntry(raw json.RawMessage) (LogEntry, bool) {
 	return e, true
 }
 
-// capRunes cuts s at n characters, marking the cut.
-func capRunes(s string, n int) string {
-	if r := []rune(s); len(r) > n {
-		return string(r[:n]) + "..."
-	}
-	return s
-}
-
 // Add puts an entry in the Tab's ring, unless the ring holds it already, it
 // is older than a full ring's oldest, or it is no newer than the newest
 // entry the last Clear emptied. An entry with no time is stamped now.
@@ -297,9 +289,9 @@ func (l *TabLog) Add(e LogEntry) {
 	if e.Time.IsZero() {
 		e.Time = time.Now()
 	}
-	e.Text = capRunes(e.Text, logTextCap)
-	e.URL = capRunes(e.URL, logURLCap)
-	e.Stack = capRunes(e.Stack, logStackCap)
+	e.Text = CutRunes(e.Text, logTextCap)
+	e.URL = CutRunes(e.URL, logURLCap)
+	e.Stack = CutRunes(e.Stack, logStackCap)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if !l.cleared.IsZero() && !e.Time.After(l.cleared) {

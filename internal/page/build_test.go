@@ -332,7 +332,7 @@ func TestResultPartial(t *testing.T) {
 
 // TestHeadingLevelsAndLinkURLs (bladebro-ideas 01): a Page heading
 // carries its level and a link its URL, as the Page's address makes it
-// short: a path on the same site, a domain and path elsewhere, cut at 60
+// short: a path on the same origin, a domain and path elsewhere, cut at 60
 // characters, never a javascript: URL, a data: URL only as "data:…". A
 // tree item's level and an image's URL are not printed.
 func TestHeadingLevelsAndLinkURLs(t *testing.T) {
@@ -343,7 +343,7 @@ func TestHeadingLevelsAndLinkURLs(t *testing.T) {
 		{"https://example.test/search?q=mugs&page=2", "/search?q=mugs&page=2"},
 		{"https://example.test/login#help", "#help"},
 		{"https://example.test/about#team", "/about#team"},
-		{"http://example.test/plain", "/plain"},
+		{"http://example.test/plain", "example.test/plain"}, // another origin: http
 		{"https://www.github.com/", "github.com"},
 		{"https://github.com/hoangvu12/winuse/issues", "github.com/hoangvu12/winuse/issues"},
 		{long, "docs.example.org/guides/" + strings.Repeat("a", 35) + "…"},

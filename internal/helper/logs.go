@@ -39,7 +39,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,7 +46,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/hoangvu12/winuse/internal/cdp"
-	"github.com/hoangvu12/winuse/internal/notes"
 	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
 )
@@ -57,6 +55,9 @@ const logNoteNamed = 3
 
 // logNoteText caps the text of another error a note quotes.
 const logNoteText = 160
+
+// logNoteURL caps a failed request's URL in a note.
+const logNoteURL = 80
 
 // logMark is where a Tab's log stood when a Page Action began.
 type logMark struct {
@@ -233,7 +234,7 @@ func logNoteLines(errs []page.LogEntry, pageURL string, windowID uint64) []strin
 				noun = "error"
 			}
 		}
-		line := plural(len(others), noun) + ": " + capText(page.Collapse(others[0].Text), logNoteText)
+		line := plural(len(others), noun) + ": " + page.CutRunes(page.Collapse(others[0].Text), logNoteText)
 		if len(others) > 1 {
 			line += fmt.Sprintf("; %d more: winuse logs %d", len(others)-1, windowID)
 		}
@@ -245,7 +246,7 @@ func logNoteLines(errs []page.LogEntry, pageURL string, windowID uint64) []strin
 // thrownText is an exception as a note quotes it: its text without
 // Chrome's "Uncaught " and with where it was thrown ("app.js:120").
 func thrownText(e page.LogEntry) string {
-	text := capText(page.Collapse(strings.TrimPrefix(e.Text, "Uncaught ")), logNoteText)
+	text := page.CutRunes(page.Collapse(strings.TrimPrefix(e.Text, "Uncaught ")), logNoteText)
 	if place := page.ScriptPlace(e.URL, e.Line); place != "" {
 		text += " (" + place + ")"
 	}
@@ -258,14 +259,6 @@ func entries(n int) string {
 		return "entry"
 	}
 	return "entries"
-}
-
-// capText cuts s at n characters, marking the cut.
-func capText(s string, n int) string {
-	if r := []rune(s); len(r) > n {
-		return strings.TrimSpace(string(r[:n])) + "..."
-	}
-	return s
 }
 
 // requestFailure is how a failed request ended, from Chrome's text: the
@@ -289,25 +282,11 @@ func requestFailure(text string) string {
 	return "failed"
 }
 
-// shortRequest is a request's URL in a note: its path (and query) on the
-// Page's own site, else its host and path, cut at 80 characters.
+// shortRequest is a request's URL in a note: page.SiteURL's rule, the one
+// `read` prints links by (its path on the Page's own site, else its host
+// and path), cut at logNoteURL characters.
 func shortRequest(raw, pageURL string) string {
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" {
-		return capText(raw, 80)
-	}
-	path := u.EscapedPath()
-	if path == "" {
-		path = "/"
-	}
-	if u.RawQuery != "" {
-		path += "?" + u.RawQuery
-	}
-	site, ok := notes.SiteKey(raw)
-	if own, pok := notes.SiteKey(pageURL); ok && pok && site == own {
-		return capText(path, 80)
-	}
-	return capText(u.Host+path, 80)
+	return page.CutRunes(page.SiteURL(raw, pageURL), logNoteURL)
 }
 
 // logsCommand runs `winuse logs`.

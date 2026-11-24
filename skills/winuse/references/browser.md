@@ -274,7 +274,7 @@ winuse drag <window> <element> <element|@x,y>
   they are. The first line names what it picked; when that is the wrong
   part, pass `--root <element>` (an Element Index, `name:` or `id:` from
   your latest read) to read that Element's subtree. Links on the same site
-  print as paths and others as a shortened domain and path; `--urls full`
+  (`www.x.com` and `x.com` are one site) print as paths and others as a shortened domain and path; `--urls full`
   prints them whole. It is cut at 28000 characters with a
   `(cut at N of M characters)` line: `--max-chars N` (0 for no cap), or
   `--out <file>` to write it whole. A short Page that looks like a

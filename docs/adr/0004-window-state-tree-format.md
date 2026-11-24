@@ -318,12 +318,13 @@ goes, and `find --role heading` could not show an outline.
   `find --role heading` is the Page's outline.
 - **Link URL: a field, only where asked.** `...[ URL: <url>][ Hint: ...]`,
   after the rest of Codex's line and before a hint. The URL is shortened
-  by `page.LinkURL`, the rule `read` uses (`internal/page/read.js`
-  shortURL): the Page's own host prints the path, query and fragment (only
-  `#fragment` for a place on the same Page); another host prints its
-  domain without `www.` and the path. Every URL is cut at 60 characters
-  with `…`. A `javascript:` URL prints nothing; a `data:` URL prints
-  `data:…`.
+  by `page.LinkURL`: the Page's own origin (scheme, host and port) prints
+  the path, query and fragment (only `#fragment` for a place on the same
+  Page); another origin prints its host without `www.` and the path.
+  Every URL is cut at 60 characters with `…`. A `javascript:` URL prints
+  nothing; a `data:` URL prints `data:…`. `read` shares the rule
+  (`page.SiteURL`) with the Page's site (its registrable domain) in place
+  of its origin, and leaves a URL on that site uncut.
 - **Where it prints.** Not in a default read: `--urls` adds it to a read,
   `--root` or `--observe`. `find`, a `--diff`/`--observe` diff line and an
   ambiguous reference's candidates always print it, as they print the
