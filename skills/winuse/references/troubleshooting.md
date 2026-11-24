@@ -35,7 +35,12 @@ Put `--json` before the command for one JSON line instead:
 `{"ok":false,"command":"click","out":"","error":{"code":"STALE_REF",...}}`.
 `error` carries the message, hint, a code, and the phrases above as
 `delivery` (`not_delivered`, `delivered_unverified`, `delivery_uncertain`)
-and `retry` (`safe` or `unsafe`). A Window State stays text in `out`.
+and `retry` (`safe` or `unsafe`). A Window State stays text in `out`. A
+Page `click` or `press-key` that succeeded adds `effect`: `navigated`,
+`changed`, `text` (only text changed), `none` or `unknown` (topic
+`browser`). `navigate`, `back`, `forward` and `reload` add
+`"http_status":404` (the code) when the Page answered 4xx or 5xx, as their
+`Note: the Page answered HTTP` line says.
 
 After `click`, `perform-secondary-action` Expand or Select, `press-key`,
 `set-value` and a Batch, winuse watches the App's Windows for a moment and

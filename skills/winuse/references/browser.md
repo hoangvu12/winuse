@@ -149,6 +149,21 @@ winuse drag <window> <element> <element|@x,y>
 
 - Open a URL with `navigate`; keys sent into the address bar do nothing
   Headless.
+- When `navigate`, `back`, `forward`, `reload`, or a Page click or key that
+  navigated, lands on a short Page that looks like a CAPTCHA or block wall
+  (Cloudflare, DataDome, PerimeterX, reCAPTCHA, Akamai, or a rate limit),
+  it stays `ok` and adds
+  `Note: the Page looks like a <kind> wall; ask the user to handle it`
+  (`--json` adds `"wall": "<kind>"`). Stop there and ask the user, as
+  Safety says: never click the challenge or try to solve it. A docs page
+  that mentions a rate limit, or a login form with a CAPTCHA widget, gets
+  no Note.
+- `Note: the Page answered HTTP 404 Not Found` (or 429, 503 ...) after
+  `navigate`, `back`, `forward` or `reload` means the Page you see is the
+  site's error page, not the content: the navigation still says `ok`.
+  `with an empty body; Chrome shows its error page` means the Tab shows
+  Chrome's own page for it. On a 429 or 503, wait before you retry, and
+  never in a tight loop.
 - After an Action that loads or changes the Page, `wait` for what you
   expect (10 seconds by default, `--timeout <seconds>` up to 300), then
   read the Window State. A Page Element goes stale when the Page navigates
@@ -162,6 +177,13 @@ winuse drag <window> <element> <element|@x,y>
 - `set-value` fills a text field, picks a list option by label or value,
   and turns a check box, switch or radio button `on` or `off` (turn another
   radio button on to turn one off).
+- `set-value` and `type-text --into` work on rich-text editors too
+  (Lexical, ProseMirror, Slate, a comment box). A placeholder box that
+  hands its focus to the real editor gets the text in that editor, with
+  `Note: the field handed its focus to edit "<name>"; the text went there`.
+  An editor that replaces itself as you type is read back, or typed on, in
+  the editor that took its place, and a note says so. Each line of the
+  value becomes a paragraph.
 - `set-value` also picks an option of a custom combobox or listbox (Radix,
   Headless UI, MUI, React Select) by its name, exactly or in any case, in
   one call: name the combobox, its button or the listbox. winuse opens it
@@ -174,6 +196,18 @@ winuse drag <window> <element> <element|@x,y>
   picking a suggestion.
 - A covered, disabled, hidden or off-screen Page Element is refused with
   nothing sent, naming any covering Element, such as a cookie banner.
+- A Page `click` or `press-key` watches the Page until it settles (up to
+  1 s) and says what it saw, still with `ok` since the input was delivered:
+  `Note: the Page navigated to <url>`; `Note: the Page is navigating to
+  <url> and had not loaded when winuse looked` (then `wait <window> load`);
+  `Note: the Page changed (text only)`; or `Note: no change seen in the
+  Page; the click was delivered, so read the Page before repeating it`,
+  which names an Element that now covers the click point or is gone. Do not
+  repeat a click on that note alone: read the Page first, because a late
+  reaction or a repeat can act twice. Other changes print no note. Under
+  `--observe` only the navigation note prints; the diff shows the rest.
+  `--json` gives the same as an `effect` field (`navigated`, `changed`,
+  `text`, `none` or `unknown`).
 - A click or key that opens a JavaScript dialog (alert, confirm, prompt,
   leave-this-page) prints `ok` and a `Note:` line with its text; do not
   repeat it. Every Page Action then fails naming the dialog until you

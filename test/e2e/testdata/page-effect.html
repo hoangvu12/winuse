@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>winuse e2e page effect</title>
+<style>
+  body { font: 16px sans-serif; margin: 24px; }
+  button, a { display: block; margin: 12px 0; }
+</style>
+</head>
+<body>
+<h1>Page effect</h1>
+<!-- .scratch/bladebro-ideas ticket 06: what a click did. -->
+<a href="browser-pages-next.html">e2e effect link</a>
+<button id="text" onclick="document.getElementById('status').firstChild.data = 'clicked ' + (++window.e2eTextClicks)">e2e effect text</button>
+<p id="status">idle</p>
+<button id="nothing">e2e effect nothing</button>
+<effect-host></effect-host>
+<script>
+  window.e2eTextClicks = 0;
+  window.e2eNothingClicks = 0;
+  document.getElementById('nothing').addEventListener('pointerdown', () => window.e2eNothingClicks++);
+  customElements.define('effect-host', class extends HTMLElement {
+    connectedCallback() {
+      const root = this.attachShadow({mode: 'open'});
+      root.innerHTML = '<button>e2e effect shadow</button><ul></ul>';
+      root.querySelector('button').addEventListener('click', () => {
+        const li = document.createElement('li');
+        li.textContent = 'e2e shadow item';
+        root.querySelector('ul').appendChild(li);
+      });
+    }
+  });
+</script>
+</body>
+</html>

@@ -5,7 +5,12 @@ package cli
 // JSON line on stdout instead of its text:
 //
 //	{"ok":true,"command":"click","out":"..."}
+//	{"ok":true,"command":"click","out":"...","effect":"navigated"}
 //	{"ok":false,"command":"click","out":"","error":{"code":"STALE_REF","message":"...","hint":"...","delivery":"not_delivered","retry":"safe"}}
+//	{"ok":true,"command":"navigate","out":"ok ...\nNote: the Page answered HTTP 404 Not Found\n","http_status":404}
+//
+// A Page that looks like a challenge or block wall adds "wall" (its kind,
+// from the Note line in out).
 //
 // The command runs exactly as without the flag; its stdout and stderr are
 // captured and become the line. out is the text it printed (a Window
@@ -35,11 +40,25 @@ var lastResponse *protocol.Response
 
 // jsonLine is the one line --json prints.
 type jsonLine struct {
-	OK      bool       `json:"ok"`
-	Command string     `json:"command"`
-	Out     string     `json:"out"`
-	Error   *jsonError `json:"error,omitempty"`
+	OK      bool   `json:"ok"`
+	Command string `json:"command"`
+	Out     string `json:"out"`
+	// Effect is what a Headless Page click or key did (bladebro-ideas
+	// ticket 06): navigated, changed, text, none or unknown.
+	Effect string     `json:"effect,omitempty"`
+	Error  *jsonError `json:"error,omitempty"`
+	// HTTPStatus is the 4xx/5xx a navigation's Page answered, from its
+	// note (bladebro-ideas 02).
+	HTTPStatus int `json:"http_status,omitempty"`
+	// Wall names the challenge or block wall a Page Note said the Page
+	// looks like (bladebro-ideas 05, protocol.WallOf): Cloudflare,
+	// DataDome, PerimeterX, reCAPTCHA, Akamai or rate-limit.
+	Wall string `json:"wall,omitempty"`
 }
+
+// navCommands are the commands whose output can carry the HTTP status
+// note.
+var navCommands = map[string]bool{"navigate": true, "back": true, "forward": true, "reload": true}
 
 // jsonError is a failed command's error object.
 type jsonError struct {
@@ -110,8 +129,14 @@ func runJSON(command string, run func() int) int {
 // jsonLineFor builds the line of a command that exited with code after
 // printing stdout and stderr; resp is the helper's last answer, if any.
 func jsonLineFor(command string, code int, stdout, stderr string, resp *protocol.Response) jsonLine {
-	line := jsonLine{OK: code == 0, Command: command, Out: stdout}
+	line := jsonLine{OK: code == 0, Command: command, Out: stdout, Wall: protocol.WallOf(stdout)}
 	if line.OK {
+		if resp != nil && resp.OK {
+			line.Effect = resp.Effect
+		}
+		if navCommands[command] {
+			line.HTTPStatus = protocol.HTTPStatusIn(stdout)
+		}
 		return line
 	}
 	var r protocol.Response
