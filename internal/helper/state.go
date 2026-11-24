@@ -367,6 +367,10 @@ type Services struct {
 	tabHolds  *tabHolds
 	tabStates *tabStateStore
 
+	// assetBlocks are the Tabs tab new opened and what each blocking Tab
+	// blocks (assets.go, bladebro-ideas 28). Created by defaultServices.
+	assetBlocks *assetBlocks
+
 	// The Notes a Window State shows (ADR 0024, windownotes.go): NoteStore
 	// opens the Notes store, nil showing none (offline tests that do not
 	// set a temp store; Main wires notes.Default); notesSeen is the keys
@@ -933,6 +937,9 @@ func defaultServices(s Services) Services {
 	}
 	if s.tabStates == nil {
 		s.tabStates = newTabStateStore()
+	}
+	if s.assetBlocks == nil {
+		s.assetBlocks = newAssetBlocks()
 	}
 	if s.notesSeen == nil {
 		s.notesSeen = newNotesSeen()

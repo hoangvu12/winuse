@@ -49,14 +49,48 @@ func takeWait(tokens []string) (rest []string, wait string, err error) {
 	return rest, wait, nil
 }
 
+// takeBlock takes a --block <classes> or --block=<classes> option out of
+// tokens (bladebro-ideas 28) and returns its canonical value, "" when
+// there is none.
+func takeBlock(tokens []string) (rest []string, block string, err error) {
+	given, value := false, ""
+	for i := 0; i < len(tokens); i++ {
+		t := tokens[i]
+		switch {
+		case t == "--block":
+			given = true
+			if i+1 < len(tokens) && !strings.HasPrefix(tokens[i+1], "--") {
+				value = tokens[i+1]
+				i++
+			}
+		case strings.HasPrefix(t, "--block="):
+			given, value = true, strings.TrimPrefix(t, "--block=")
+		default:
+			rest = append(rest, t)
+		}
+	}
+	if !given {
+		return rest, "", nil
+	}
+	block, err = protocol.ParseBlock(value)
+	return rest, block, err
+}
+
 // parseNavArgs parses navigate, back, forward and reload after the Window
 // (a Batch step has none).
 func parseNavArgs(cmd string, tokens []string) (protocol.NavigateArgs, error) {
+	tokens, block, err := takeBlock(tokens)
+	if err != nil {
+		return protocol.NavigateArgs{}, err
+	}
+	if block != "" && cmd != "navigate" {
+		return protocol.NavigateArgs{}, fmt.Errorf("%s takes no --block: the Tab keeps what it blocks; to change it, run winuse navigate <window>:<tab> <url> --block ...", cmd)
+	}
 	rest, wait, err := takeWait(tokens)
 	if err != nil {
 		return protocol.NavigateArgs{}, err
 	}
-	a := protocol.NavigateArgs{Wait: wait}
+	a := protocol.NavigateArgs{Wait: wait, Block: block}
 	if cmd == "navigate" {
 		if len(rest) != 1 {
 			return a, errors.New("navigate takes one URL")

@@ -494,6 +494,13 @@ func pageNav(s Services, cmd string) Command {
 		if err != nil {
 			return "", Fail(cmd+": "+err.Error(), hint)
 		}
+		var block []string // --block (assets.go): checked before anything is sent
+		if a.Block != "" {
+			var rerr *Error
+			if block, rerr = s.checkNavBlock(ctx, cmd, a); rerr != nil {
+				return "", rerr
+			}
+		}
 		target := page.NavURL(a.URL)
 		label := cmd
 		if cmd == "navigate" {
@@ -511,6 +518,12 @@ func pageNav(s Services, cmd string) Command {
 				return nil
 			},
 			act: func(ctx context.Context, pw pageWin, stopped func() bool) (string, bool, *Error) {
+				if a.Block != "" {
+					// The new document loads under the block.
+					if rerr := s.blockBeforeNavigate(ctx, &pw, block); rerr != nil {
+						return "", false, rerr
+					}
+				}
 				return s.navigate(ctx, pw, cmd, target, state, stopped)
 			},
 		})

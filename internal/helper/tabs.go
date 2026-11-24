@@ -79,7 +79,7 @@ func tabCommands(s Services) map[string]Command {
 func tabUsageHint(cmd string) string {
 	switch cmd {
 	case "tab-new":
-		return "usage: winuse tab new <window> [url]"
+		return "usage: winuse tab new <window> [url] [--block images,fonts,media|none]"
 	case "tab-close":
 		return "usage: winuse tab close <window> <tab>"
 	case "tab-switch":
@@ -213,12 +213,29 @@ func tabNew(s Services) Command {
 		if e != nil {
 			return "", e
 		}
+		var classes []string
+		if a.Block != "" {
+			canon, err := protocol.ParseBlock(a.Block)
+			if err != nil {
+				return "", Fail("tab-new: "+err.Error(), tabUsageHint("tab-new"))
+			}
+			classes = protocol.BlockList(canon)
+		}
 		tw, e := s.tabWindow(ctx, a.Window)
 		if e != nil {
 			return "", nothingSent(e)
 		}
 		return s.tabHeadless(ctx, tw, nil, "open tab", func(ctx context.Context) (string, *Error, bool) {
-			id, err := page.NewTab(ctx, tw.conn, tw.tabs.WindowID, a.URL, s.agentTabGroup(ctx))
+			// --block (assets.go): the Tab opens on about:blank, blocks, and
+			// only then goes to the URL, so its first load is blocked too.
+			url := a.URL
+			if len(classes) > 0 {
+				url = ""
+			}
+			id, err := page.NewTab(ctx, tw.conn, tw.tabs.WindowID, url, s.agentTabGroup(ctx))
+			if id != "" && s.assetBlocks != nil {
+				s.assetBlocks.markOpened(id) // winuse's own Tab: --block may go there later
+			}
 			var other *page.OtherWindowError
 			switch {
 			case errors.As(err, &other):
@@ -231,6 +248,11 @@ func tabNew(s Services) Command {
 			}
 			// The read-back found the new Tab in the Window's browser window.
 			tw.g.Memory.Remember(tw.conn.Client, tw.g, tw.tabs.WindowID)
+			if len(classes) > 0 {
+				if e := s.blockNewTab(ctx, tw, id, a.URL, classes); e != nil {
+					return "", e, true
+				}
+			}
 			return "ok " + page.TabID(id) + "\n", nil, true
 		})
 	}
