@@ -133,6 +133,8 @@ func runCommand(args []string) (code int) {
 		return pageCmd(args[0], args[1:]) // page.go, browser merge ticket 06
 	case "read":
 		return readCmd(args[1:]) // read.go, bladebro-ideas ticket 25
+	case "logs":
+		return logsCmd(args[1:]) // logs.go, bladebro-ideas ticket 29
 	case "list-displays":
 		return listDisplaysCmd(args[1:]) // display.go, desktop-parity ticket 08
 	case "screenshot":

@@ -759,6 +759,7 @@ func (r *Reader) session(ctx context.Context, conn *browser.Connection, targetID
 	ts := r.tabs[key]
 	r.mu.Unlock()
 	if ts != nil {
+		WatchLog(ctx, conn.Client, ts.id, targetID) // on again after the extension's idle detach (logs.go)
 		return ts, nil
 	}
 	c := conn.Client
@@ -775,7 +776,8 @@ func (r *Reader) session(ctx context.Context, conn *browser.Connection, targetID
 		return nil, err
 	}
 	ts = &tabSession{id: id, children: map[string]string{}, read: map[string]time.Time{}}
-	Watch(ctx, c, id) // dialogs and file choosers (watch.go, ticket 06)
+	Watch(ctx, c, id)              // dialogs and file choosers (watch.go, ticket 06)
+	WatchLog(ctx, c, id, targetID) // failed requests and CSP errors (logs.go, bladebro-ideas 29)
 	attached := c.Subscribe(id, "Target.attachedToTarget")
 	detached := c.Subscribe(id, "Target.detachedFromTarget")
 	ts.subs = []*cdp.Subscription{attached, detached}
@@ -814,6 +816,7 @@ func (r *Reader) drop(key tabKey) {
 	if ts != nil {
 		ts.close()
 		Unwatch(key.c, ts.id)
+		UnwatchLog(key.c, ts.id)
 	}
 }
 
