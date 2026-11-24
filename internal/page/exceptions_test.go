@@ -83,6 +83,17 @@ func TestCaptureInstallsAMainWorldListenerAndAnIsolatedBuffer(t *testing.T) {
 		t.Error("the first Capture did not say it was the first")
 	}
 	waitFor(t, "both scripts", func() bool { return len(scripts()) == 2 })
+	// Chrome runs the scripts in a new document only with Page on: it goes
+	// out first.
+	var order []string
+	for _, m := range f.srv.Received() {
+		if m.SessionID == "S" && (m.Method == "Page.enable" || m.Method == "Page.addScriptToEvaluateOnNewDocument") {
+			order = append(order, m.Method)
+		}
+	}
+	if len(order) == 0 || order[0] != "Page.enable" {
+		t.Errorf("sent %v; want Page.enable before the scripts", order)
+	}
 	got := scripts()
 	iso, main := got[0], got[1]
 	if iso["worldName"] != exceptionWorld || iso["runImmediately"] != true {
@@ -167,8 +178,10 @@ func TestCaptureAgainAfterTheIdleDetach(t *testing.T) {
 func TestPullExceptionsAddsTheRecordsToTheRing(t *testing.T) {
 	f := newFakeTab(t)
 	addScripts(f.srv)
-	at := time.Now().Truncate(time.Millisecond)
-	ms := func(t time.Time) float64 { return float64(t.UnixNano()) / 1e6 }
+	// Times to the microsecond, the finest a record keeps (a float64 of
+	// nanoseconds since the epoch is not exact).
+	at := time.Now().Truncate(time.Microsecond)
+	ms := func(t time.Time) float64 { return float64(t.UnixMicro()) / 1000 }
 	buffer := map[string]any{"c": true, "d": 0, "r": []map[string]any{
 		{"t": ms(at), "m": "Uncaught TypeError: x is undefined", "u": "https://shop.test/static/app.js", "l": 120,
 			"s": "TypeError: x is undefined\n    at render (https://shop.test/static/app.js:120:7)\n    at https://shop.test/static/app.js:200:3"},

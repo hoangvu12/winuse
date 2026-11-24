@@ -19,7 +19,9 @@ package page
 //   - When. Capture turns it on for the Tab's life: by default in a
 //     browser winuse launched or cloned (Reader.session) and in a Tab tab
 //     new opened; in the user's own Tabs only after winuse logs --capture.
-//     It installs in a session once, and again after the extension's
+//     It turns the Page domain on (without it Chrome runs neither script
+//     in a new document) and installs in a session once, and again after
+//     the extension's
 //     silent idle detach (logEnableAgain), removing the old scripts first.
 //     The event name stays the Tab's, so a Page loaded under an earlier
 //     session still reaches the new buffer (exceptions_world.js asks).
@@ -101,6 +103,11 @@ func (l *TabLog) Capture(ctx context.Context, session string) bool {
 	event := l.event
 	l.mu.Unlock()
 
+	// Chrome runs the scripts in a new document only while the session has
+	// the Page domain on (the e2e test found the listener silent without
+	// it; the watch turns it on in the Reader's sessions, but not again
+	// after the extension's idle detach). A Page cannot detect it.
+	l.c.Send(session, "Page.enable", nil)
 	if prev != nil {
 		// The old scripts, gone with an idle detach or not: removing one
 		// that is gone fails harmlessly, and one left would run twice.
@@ -269,8 +276,10 @@ func (l *TabLog) PullExceptions(ctx context.Context, session string) (covered, o
 func exceptionEntry(r exceptionRecord) LogEntry {
 	e := LogEntry{Source: "exception", Level: "error", Text: r.M, URL: r.U, Line: r.L}
 	if r.T > 0 {
+		// Whole milliseconds apart from the fraction, rounded to the
+		// microsecond, as parseLogEntry does.
 		ms := math.Floor(r.T)
-		e.Time = time.UnixMilli(int64(ms)).Add(time.Duration(math.Round((r.T - ms) * float64(time.Millisecond))))
+		e.Time = time.UnixMilli(int64(ms)).Add(time.Duration(math.Round((r.T-ms)*1000)) * time.Microsecond)
 	}
 	var frames []string
 	for _, line := range strings.Split(r.S, "\n") {
