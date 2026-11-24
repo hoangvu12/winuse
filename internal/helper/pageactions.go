@@ -394,7 +394,7 @@ func (s Services) runPage(ctx context.Context, run pageRun) (string, *Error) {
 	if err != nil {
 		return "", pageFailure(err, run, in.Sent)
 	}
-	return okOutput, nil
+	return okWith(in.Notes...), nil // what the input noted: a field that handed its focus over (bladebro-ideas 09)
 }
 
 // dialogNote turns a JavaScript dialog that the Action's input opened

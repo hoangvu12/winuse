@@ -700,7 +700,11 @@ func (s Services) tabWindowState(ctx context.Context, bt *bgTab, args json.RawMe
 	if rerr != nil {
 		return "", rerr
 	}
-	out, rerr := renderState(tree, a, "", before, what) // no --root hint: a Tab target takes none
+	// No --root hint: a Tab target takes none. The Notes are the Tab's
+	// site's, then the browser's (windownotes.go).
+	out, rerr := s.stateWithNotes(ctx, a, tabNoteKeys(bt), func(a windowRef) (string, *Error) {
+		return renderState(tree, a, "", before, what)
+	})
 	if rerr != nil {
 		return "", rerr
 	}

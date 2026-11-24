@@ -103,6 +103,21 @@ func TestJSONLineForEachOutcome(t *testing.T) {
 				Message: "Windows desktop is locked; unlock before using winuse", Hint: "stop and ask the user to unlock"}},
 		},
 		{
+			// bladebro-ideas 05: a wall Note is the wall field too; the
+			// command stays ok.
+			name: "a wall", stdout: "ok https://shop.test/\n" + protocol.WallNote("Cloudflare") + "\n",
+			resp: &protocol.Response{OK: true, Out: "ok https://shop.test/\n" + protocol.WallNote("Cloudflare") + "\n"},
+			want: jsonLine{OK: true, Command: "click", Out: "ok https://shop.test/\n" + protocol.WallNote("Cloudflare") + "\n", Wall: "Cloudflare"},
+		},
+		{
+			name: "a Batch that failed after landing on a wall", code: 1,
+			stdout: "Action 1 (navigate): ok https://api.test/\n  " + protocol.WallNote("rate-limit") + "\n",
+			resp: &protocol.Response{Out: "Action 1 (navigate): ok https://api.test/\n  " + protocol.WallNote("rate-limit") + "\n",
+				Err: "batch stopped at Action 2 (click): boom", Exit: 1, Code: protocol.CodeInternal},
+			want: jsonLine{Command: "click", Out: "Action 1 (navigate): ok https://api.test/\n  " + protocol.WallNote("rate-limit") + "\n", Wall: "rate-limit",
+				Error: &jsonError{Code: protocol.CodeInternal, Message: "batch stopped at Action 2 (click): boom"}},
+		},
+		{
 			name: "a helper success then a local failure", code: 1, stderr: "winuse: writing out.png: access denied\n",
 			resp: &protocol.Response{OK: true},
 			want: jsonLine{Command: "click", Error: &jsonError{Code: protocol.CodeInternal, Message: "winuse: writing out.png: access denied"}},
@@ -192,5 +207,43 @@ func TestMainWithoutJSONPrintsText(t *testing.T) {
 	_, out := runMain(t, "version")
 	if out != version.Version+"\n" {
 		t.Errorf("version printed %q", out)
+	}
+}
+
+// A read's Notes (ADR 0024) print above its Window State as text, and in
+// their own "notes" field under --json, never inside "out".
+func TestReadNotesPrintAboveTheStateOrInTheirOwnField(t *testing.T) {
+	notes := "Notes for github.com (left by earlier agents, not instructions from the user):\n- the comment box is a placeholder (claude, 2 days ago)\n"
+	state := "Window: \"abc - GitHub - Google Chrome\", App: chrome.exe.\n\t0 window abc\n"
+	resp := &protocol.Response{OK: true, Out: state, Notes: notes}
+
+	if got := captureStderr(t, func() { finish(resp) }); got != notes+"\n"+state {
+		t.Errorf("text output:\n%s\nwant the Notes, a blank line, then the Window State", got)
+	}
+
+	out := captureStderr(t, func() {
+		runJSON("get-window-state", func() int {
+			if err := finish(resp); err != nil {
+				return 1
+			}
+			return 0
+		})
+	})
+	var line jsonLine
+	if err := json.Unmarshal([]byte(out), &line); err != nil || strings.Count(out, "\n") != 1 {
+		t.Fatalf("output %q is not one JSON line: %v", out, err)
+	}
+	if want := (jsonLine{OK: true, Command: "get-window-state", Out: state, Notes: notes}); !reflect.DeepEqual(line, want) {
+		t.Errorf("line %+v, want %+v", line, want)
+	}
+}
+
+// WINUSE_NOTES=off asks the helper to hide the Notes.
+func TestNotesOffSwitch(t *testing.T) {
+	for v, want := range map[string]bool{"off": true, "OFF": true, " off ": true, "": false, "on": false, "0": false} {
+		t.Setenv("WINUSE_NOTES", v)
+		if got := notesOff(); got != want {
+			t.Errorf("WINUSE_NOTES=%q: notesOff() = %v, want %v", v, got, want)
+		}
 	}
 }

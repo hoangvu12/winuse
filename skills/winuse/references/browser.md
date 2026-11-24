@@ -126,8 +126,8 @@ winuse extract <window> --as table|list|jsonld # force a mode; --limit N (defaul
   `no list found: the Page looks like a <Cloudflare|...> wall; ask the user to handle it`:
   stop and ask the user, as the safety rules say.
 - It only reads, in an isolated world the Page cannot see, and prints no
-  Element Indexes. It takes `<window>:<tab>`. Pages only: on a native
-  Window, use `get-window-state` or `find`.
+  Element Indexes. It takes `<window>:<tab>`. On a native Window it reads
+  the Window's list or grid instead (`winuse skill reading`).
 
 ### Act on a Page
 
@@ -149,6 +149,15 @@ winuse drag <window> <element> <element|@x,y>
 
 - Open a URL with `navigate`; keys sent into the address bar do nothing
   Headless.
+- When `navigate`, `back`, `forward`, `reload`, or a Page click or key that
+  navigated, lands on a short Page that looks like a CAPTCHA or block wall
+  (Cloudflare, DataDome, PerimeterX, reCAPTCHA, Akamai, or a rate limit),
+  it stays `ok` and adds
+  `Note: the Page looks like a <kind> wall; ask the user to handle it`
+  (`--json` adds `"wall": "<kind>"`). Stop there and ask the user, as
+  Safety says: never click the challenge or try to solve it. A docs page
+  that mentions a rate limit, or a login form with a CAPTCHA widget, gets
+  no Note.
 - `Note: the Page answered HTTP 404 Not Found` (or 429, 503 ...) after
   `navigate`, `back`, `forward` or `reload` means the Page you see is the
   site's error page, not the content: the navigation still says `ok`.
@@ -175,6 +184,13 @@ winuse drag <window> <element> <element|@x,y>
 - `set-value` fills a text field, picks a list option by label or value,
   and turns a check box, switch or radio button `on` or `off` (turn another
   radio button on to turn one off).
+- `set-value` and `type-text --into` work on rich-text editors too
+  (Lexical, ProseMirror, Slate, a comment box). A placeholder box that
+  hands its focus to the real editor gets the text in that editor, with
+  `Note: the field handed its focus to edit "<name>"; the text went there`.
+  An editor that replaces itself as you type is read back, or typed on, in
+  the editor that took its place, and a note says so. Each line of the
+  value becomes a paragraph.
 - `set-value` also picks an option of a custom combobox or listbox (Radix,
   Headless UI, MUI, React Select) by its name, exactly or in any case, in
   one call: name the combobox, its button or the listbox. winuse opens it

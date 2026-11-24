@@ -69,7 +69,7 @@ func (rr *readResult) scrolls() bool { return rr.page || rr.scrollBox != nil }
 // Indexes are the ones the next Action uses.
 func (r *runner) read() (*readResult, error) {
 	zero := 0
-	resp, err := sendRequest("get-window-state", windowArgs{Window: r.a.window, MaxChars: &zero, MarkOffscreen: true}, nil)
+	resp, err := sendRequest("get-window-state", windowArgs{Window: r.a.window, MaxChars: &zero, MarkOffscreen: true}, hideNotes)
 	if err != nil {
 		return nil, err
 	}
