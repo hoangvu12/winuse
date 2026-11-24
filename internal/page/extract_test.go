@@ -244,9 +244,9 @@ func nodeOrigin(t *testing.T, ctx context.Context, c *cdp.Client, session, sel s
 		} `json:"node"`
 	}
 	json.Unmarshal(res, &d)
-	frame, _, err := mainFrameOf(ctx, c, session)
+	frame, err := mainFrame(ctx, c, session)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Origin{Client: c, SessionID: session, FrameID: frame, BackendNodeID: d.Node.BackendNodeID}
+	return &Origin{Client: c, SessionID: session, FrameID: frame.ID, BackendNodeID: d.Node.BackendNodeID}
 }

@@ -13,7 +13,6 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 )
@@ -70,33 +69,4 @@ func BlockKind(ctx context.Context, c Caller, session string) (string, error) {
 		return "", nil
 	}
 	return kind, nil
-}
-
-// isolatedWorld makes an isolated world named name in frameID (the
-// session's main frame when "") and returns its execution context.
-func isolatedWorld(ctx context.Context, c Caller, session, frameID, name string) (int, error) {
-	if frameID == "" {
-		res, err := c.CallSession(ctx, session, "Page.getFrameTree", nil)
-		if err != nil {
-			return 0, err
-		}
-		var ft struct {
-			FrameTree frameTree `json:"frameTree"`
-		}
-		if err := json.Unmarshal(res, &ft); err != nil {
-			return 0, err
-		}
-		frameID = ft.FrameTree.Frame.ID
-	}
-	res, err := c.CallSession(ctx, session, "Page.createIsolatedWorld", map[string]any{"frameId": frameID, "worldName": name})
-	if err != nil {
-		return 0, staleOr(err)
-	}
-	var w struct {
-		ExecutionContextID int `json:"executionContextId"`
-	}
-	if json.Unmarshal(res, &w) != nil || w.ExecutionContextID == 0 {
-		return 0, errors.New("the browser gave no isolated world to read the Page in")
-	}
-	return w.ExecutionContextID, nil
 }

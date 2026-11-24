@@ -12,7 +12,6 @@ package page
 import (
 	"context"
 	"encoding/json"
-	"errors"
 )
 
 // statusWorld names the isolated world the status is read in.
@@ -46,38 +45,19 @@ func (s HTTPStatus) Failed() bool { return s.Code >= 400 && s.Code <= 599 }
 // ReadHTTPStatus reads the main document's HTTP status in an isolated
 // world of the session's main frame.
 func ReadHTTPStatus(ctx context.Context, c Caller, session string) (HTTPStatus, error) {
-	res, err := c.CallSession(ctx, session, "Page.getFrameTree", nil)
+	fr, err := mainFrame(ctx, c, session)
 	if err != nil {
 		return HTTPStatus{}, err
 	}
-	var ft struct {
-		FrameTree struct {
-			Frame struct {
-				ID             string `json:"id"`
-				URL            string `json:"url"`
-				UnreachableURL string `json:"unreachableUrl"`
-			} `json:"frame"`
-		} `json:"frameTree"`
-	}
-	if err := json.Unmarshal(res, &ft); err != nil {
-		return HTTPStatus{}, err
-	}
-	fr := ft.FrameTree.Frame
 	st := HTTPStatus{URL: fr.URL}
 	if fr.UnreachableURL != "" {
 		st.ErrorPage, st.URL = true, fr.UnreachableURL
 	}
-	res, err = c.CallSession(ctx, session, "Page.createIsolatedWorld", map[string]any{"frameId": fr.ID, "worldName": statusWorld})
+	world, err := isolatedWorld(ctx, c, session, fr.ID, statusWorld)
 	if err != nil {
-		return st, staleOr(err)
+		return st, err
 	}
-	var w struct {
-		ExecutionContextID int `json:"executionContextId"`
-	}
-	if json.Unmarshal(res, &w) != nil || w.ExecutionContextID == 0 {
-		return st, errors.New("the browser gave no isolated world to read the status in")
-	}
-	res, err = c.CallSession(ctx, session, "Runtime.evaluate", map[string]any{"expression": statusJS, "contextId": w.ExecutionContextID, "returnByValue": true, "silent": true})
+	res, err := c.CallSession(ctx, session, "Runtime.evaluate", map[string]any{"expression": statusJS, "contextId": world, "returnByValue": true, "silent": true})
 	if err != nil {
 		return st, staleOr(err)
 	}
