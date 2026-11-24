@@ -5,7 +5,9 @@
 // This file works out a Note's key. A key is never typed freely:
 //   - a site is its registrable domain (gist.github.com → github.com), from
 //     the Public Suffix List (golang.org/x/net/publicsuffix), except
-//     localhost and IP addresses, which keep their port;
+//     localhost and IP addresses, which keep their port; a Unicode host is
+//     keyed in its ASCII (punycode) form (golang.org/x/net/idna), as the
+//     browser reports it;
 //   - an App is its exe file name, lower-cased (excel.exe).
 //
 // Classify sorts a `note` target into one of those, a Window reference the
@@ -20,8 +22,9 @@ import (
 	"path"
 	"regexp"
 	"strings"
-	"unicode"
+	"unicode/utf8"
 
+	"golang.org/x/net/idna"
 	"golang.org/x/net/publicsuffix"
 )
 
@@ -192,8 +195,8 @@ func hostKey(host, port, scheme string, explicit bool) (string, bool) {
 		}
 		return h, true
 	}
-	ascii := strings.ToLower(strings.TrimSuffix(host, "."))
-	if !validHost(ascii) {
+	ascii, ok := asciiHost(strings.TrimSuffix(host, "."))
+	if !ok || !validHost(ascii) {
 		return "", false
 	}
 	if ascii == "localhost" || strings.HasSuffix(ascii, ".localhost") {
@@ -214,11 +217,34 @@ func hostKey(host, port, scheme string, explicit bool) (string, bool) {
 	return site, true
 }
 
-// validHost reports whether h is a host name: dot-separated labels of
-// letters, digits, hyphens and underscores, none empty. A browser reports
-// a Page's host in its ASCII (punycode) form; a Unicode host typed by hand
-// is kept lower-cased as typed (no IDNA mapping, which would need
-// golang.org/x/text).
+// asciiHost lower-cases a host and turns a Unicode one into its ASCII
+// (punycode) form, as a browser reports a Page's host (bücher.de →
+// xn--bcher-kva.de), so a Note added for the Unicode name keys as the Page
+// it is for. An ASCII host is only lower-cased: IDNA's lookup rules would
+// refuse the underscores some intranet hosts carry.
+func asciiHost(host string) (string, bool) {
+	lower := strings.ToLower(host)
+	if isASCII(lower) {
+		return lower, true
+	}
+	a, err := idna.Lookup.ToASCII(lower)
+	if err != nil {
+		return "", false
+	}
+	return a, true
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
+
+// validHost reports whether h is an ASCII host name: dot-separated labels
+// of letters, digits, hyphens and underscores, none empty.
 func validHost(h string) bool {
 	if h == "" || len(h) > 253 {
 		return false
@@ -227,8 +253,9 @@ func validHost(h string) bool {
 		if label == "" || len(label) > 63 {
 			return false
 		}
-		for _, r := range label {
-			if r != '-' && r != '_' && !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+		for i := 0; i < len(label); i++ {
+			c := label[i]
+			if c != '-' && c != '_' && !('a' <= c && c <= 'z') && !('0' <= c && c <= '9') {
 				return false
 			}
 		}
