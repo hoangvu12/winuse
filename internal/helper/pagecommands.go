@@ -380,6 +380,9 @@ func (s Services) runPageWindow(ctx context.Context, ref string, run pageWindowR
 			s.cursorClick(ctx, pw.w, rect)
 		}
 	}
+	if run.acts {
+		markPageLogs(ctx, pw.conn.Client, pw.session, pw.tab.TargetID, pw.w.ID) // logs.go: a load's failed requests are noted
+	}
 	// An act marks the moment the browser accepted its request
 	// (markDelivered), so a navigation's ripple plays then and not after
 	// the new page loaded (browser-ux 03).

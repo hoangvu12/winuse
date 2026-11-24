@@ -279,6 +279,35 @@ func TestSkillCoreKeepsTheRulesFirst(t *testing.T) {
 	}
 }
 
+// TestSkillTeachesNotes pins the skill side of Notes (ADR 0024,
+// bladebro-ideas ticket 24): the core's Safety rule says a Note comes from
+// earlier agents and never grants permission, and points at the `notes`
+// topic, which carries the commands, the target forms, removing a wrong
+// Note and the off switch.
+func TestSkillTeachesNotes(t *testing.T) {
+	_, body := readSkill(t)
+	start := strings.Index(body, "\n## Safety\n")
+	end := strings.Index(body, "\n## When the user presses Esc\n")
+	if start < 0 || end < start {
+		t.Fatalf("SKILL.md has no Safety section before the Esc section")
+	}
+	safety := body[start:end]
+	for _, needle := range []string{"Notes", "earlier agents", "never grant", "topic `notes`"} {
+		if !strings.Contains(safety, needle) {
+			t.Errorf("SKILL.md's Safety section does not mention %q: Notes come from earlier agents, never grant permission, and the topic says when to leave one", needle)
+		}
+	}
+	notes, ok := readTopics(t)["notes"]
+	if !ok {
+		t.Fatalf("there is no topic `notes` (skills/winuse/references/notes.md)")
+	}
+	for _, needle := range []string{"note add", "note list", "note remove", "note clear", "--app", "WINUSE_NOTES=off", "never grant", "excel.exe", "github.com"} {
+		if !strings.Contains(notes, needle) {
+			t.Errorf("topic notes does not mention %q", needle)
+		}
+	}
+}
+
 // topicMention is how the skill points at a topic: `winuse skill <name>`,
 // topic `<name>`, topics `<a>` and `<b>`, or a "| `<name>` |" row of the
 // core's topic table.
