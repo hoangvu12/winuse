@@ -1,6 +1,6 @@
 # Browser Windows
 
-Read when: any website, browser Window or Electron or WebView2 App: connecting to the user's browser, `navigate`, Page waits, `eval`, uploads, downloads, JavaScript dialogs, `browser attach`.
+Read when: any website, browser Window or Electron or WebView2 App: connecting to the user's browser, `navigate`, Page waits, `eval`, `extract`, uploads, downloads, JavaScript dialogs, `browser attach`.
 
 This is one topic of the winuse skill. `winuse skill browser` prints it, and `winuse skill` prints the core, SKILL.md, which holds the safety rules, the Esc stop and recovery.
 
@@ -100,6 +100,34 @@ so: stop and tell the user, and switch routes only when they ask.
 The Agent Cursor shows Page Actions too: it glides to the Page Element,
 presses when the input reaches the Page, and stays just above the browser
 Window, so the user sees it only while that Window is uncovered.
+
+### Read a Page's lists and tables as data
+
+```
+winuse extract <window>                        # the Page's main list, table or JSON-LD as JSON rows
+winuse extract <window> --root <element>       # the list, an ancestor of it, or one item of it
+winuse extract <window> --as table|list|jsonld # force a mode; --limit N (default 50), --out rows.json
+```
+
+- Use `extract` instead of `eval` or reading the Window State when you
+  want the rows of search results, a product grid, a table or a feed. The
+  first line names the container and the count, then a JSON array, one
+  row per line:
+  `list: <ol id="results"> "Search results": 10 of 10 rows (complete)`.
+  `(partial: capped at 50 / page says 1,234 results)` says rows are
+  missing: raise `--limit`, or the page itself shows only some (load more
+  or go to its next page).
+- Without `--root` it picks the container itself. If that is the wrong
+  one, read `get-window-state` and pass `--root` the Element Index of the
+  list, of an ancestor, or of one item; one item gathers its alike
+  siblings. A table with headers prints its cells by header.
+- An article or a page with no repeated items prints `no list found`;
+  read it instead. A block page prints
+  `no list found: the Page looks like a <Cloudflare|...> wall; ask the user to handle it`:
+  stop and ask the user, as the safety rules say.
+- It only reads, in an isolated world the Page cannot see, and prints no
+  Element Indexes. It takes `<window>:<tab>`. Pages only: on a native
+  Window, use `get-window-state` or `find`.
 
 ### Act on a Page
 

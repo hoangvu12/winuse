@@ -18,6 +18,7 @@ close-app <app> [--force]           # --force ends what is still running: the on
 get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--timeout <s>]
 find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
+extract <window> [--root <element>] [--as list|table|jsonld] [--limit N] [--max-chars N | --out <file>]   # a Page's list, table or JSON-LD as JSON rows
 click <window> <ref> [--count 1|2|3] [--button left|middle|right] [--post] [--modifiers ctrl,shift,alt]
 # --modifiers: Headless on a Page and for ctrl or shift on a multi-select list item; else --post or --headed
 set-value <window> <ref> <value|on|off|item name> | --stdin | --file <path>   # flags before <ref>: a value ending with winuse flags is refused; -- <value> sets it as written

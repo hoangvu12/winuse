@@ -31,6 +31,7 @@ var observeCommands = map[string]bool{
 	"get-window":         true,
 	"get-window-state":   true,
 	"find":               true,
+	"extract":            true,
 	"record-tree":        true,
 	"zoom":               true,
 	"list-apps":          true,

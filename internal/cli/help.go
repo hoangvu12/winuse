@@ -243,6 +243,20 @@ commands:
   zoom <window> <x>,<y>,<w>,<h>
                                save a full-resolution crop of a region of the
                                Window's latest screenshot and print its path
+  extract <window>[:<tab>] [--root <element>] [--as list|table|jsonld] [--limit N] [--max-chars N | --out <file>]
+                               a browser Page's repeated items as rows: a
+                               header line naming the container and "N of M
+                               rows (complete)" or "(partial: capped at N /
+                               page says N results)", then a JSON array, one
+                               row per line. Without --root it picks the
+                               list, a table with headers or the page's
+                               JSON-LD, and says "no list found" on an
+                               article or a page with no list; --root takes
+                               the list, an ancestor or one item of it.
+                               --as forces a mode; --limit (default 50, up to
+                               1000); stops before 28000 characters; --out
+                               writes the array to a file. Prints no Element
+                               Indexes and reads in an isolated world
   click <window> <element index | name: | id: | @x,y> [options]
                                click an Element of a Window by Element Index,
                                name: or id: reference, or at @x,y
@@ -616,10 +630,10 @@ screenshot's pixels) name an Element of the Window's latest Window State.
 A Tab target, <window>:<tab> (a tab id from tab list or tab new), names a Tab
 of that browser shown or not: get-window-state, click, set-value, scroll,
 hover, drag, select-text, type-text, press-key, upload, navigate, back,
-forward, reload, dialog, wait, eval and batch read and act on that Tab
-through its Browser Connection, headless, without switching the Tab the
-user sees; its Element Indexes are its own, and --headed, --post and @x,y
-are refused
+forward, reload, dialog, wait, eval, read, extract and batch read and act
+on that Tab through its Browser Connection, headless, without switching
+the Tab the user sees; its Element Indexes are its own, and --headed,
+--post and @x,y are refused
 `
 
 // Usage is the full reference, `winuse help all` (it grows as tickets
@@ -710,6 +724,10 @@ var commandGroups = []struct {
 			"winuse jev check"}},
 		{"zoom", "a full-resolution crop of the latest screenshot", []string{
 			"winuse zoom 4242 100,80,400,300"}},
+		{"extract", "a Page's list, table or JSON-LD as JSON rows", []string{
+			"winuse extract 4242",
+			"winuse extract 4242 --root 57 --limit 200",
+			"winuse extract 4242:1a2b3c4d --as table --out rows.json"}},
 	}},
 	{"Act in a Window (Headless unless --headed)", []commandHelp{
 		{"click", "click an Element, or at an @x,y point", []string{

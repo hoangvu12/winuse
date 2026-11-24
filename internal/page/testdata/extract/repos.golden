@@ -1,0 +1,9 @@
+list: <ul class="repo-list"> "Repositories": 5 of 5 rows (partial: page says 208 results)
+[
+{"title":"acme/widgets","url":"https://code.example/acme/widgets","stars":12300,"date":"3 days ago","description":"A small library of UI widgets for the web."},
+{"title":"acme/gadgets","url":"https://code.example/acme/gadgets","stars":980,"date":"5 days ago","description":"Gadgets and gizmos for command line tools."},
+{"title":"bolt/widget-kit","url":"https://code.example/bolt/widget-kit","stars":1204,"date":"2 weeks ago","description":"A widget toolkit with themes and icons."},
+{"title":"core/widgetd","url":"https://code.example/core/widgetd","stars":45,"date":"1 month ago","description":"A daemon that serves widgets over HTTP."},
+{"title":"dash/widgets-py","url":"https://code.example/dash/widgets-py","stars":2100,"date":"3 months ago","description":"Python bindings for the widgets library."}
+]
+hint: if this is the wrong list, pass --root <index> of the list or of one item, from winuse get-window-state 301
