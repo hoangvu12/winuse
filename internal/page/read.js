@@ -22,8 +22,9 @@
 //   - data tables render as Markdown tables with their header row and every
 //     row (winuse discloses its own cut); layout tables render as lines;
 //   - block elements break lines; lists indent by depth;
-//   - a short page with a challenge or block sign is named (block), from
-//     the generic signs of bladebro's detect_block.js;
+//   - a short page with a challenge or block sign is named (block) by
+//     block.js, the port of bladebro's detect_block.js that read.go puts
+//     in here;
 //   - no budget here: winuse cuts the Markdown and says where.
 //
 // It runs in an isolated world, through Runtime.callFunctionOn: on an
@@ -394,24 +395,11 @@ function (opts) {
     return cl ? s + '.' + cl : s;
   }
 
-  // ---- a block or challenge page (bladebro detect_block.js, generic signs) ----
+  // ---- a block or challenge page ----
 
-  function blockKind(d) {
-    var body = d.body;
-    if (!body) return '';
-    var text = (body.innerText || '').replace(/\s+/g, ' ').trim();
-    if (text.length > 1500) return '';
-    var lower = text.toLowerCase();
-    var title = (d.title || '').toLowerCase();
-    var q = function (sel) { try { return !!d.querySelector(sel); } catch (e) { return false; } };
-    if (/just a moment|attention required/.test(title) || q('#challenge-form,#cf-challenge-running,.cf-browser-verification,#challenge-stage')) return 'Cloudflare';
-    if (q('iframe[src*="captcha-delivery"],iframe[src*="geo.captcha-delivery"]')) return 'DataDome';
-    if (q('#px-captcha,[class*="px-captcha"]')) return 'PerimeterX';
-    if (q('iframe[src*="recaptcha"],.g-recaptcha,iframe[src*="hcaptcha"],.h-captcha') && /(not a robot|prove you|verify you|human)/.test(lower)) return 'reCAPTCHA';
-    if (/access denied/.test(lower + ' ' + title) && /(reference|akamai)/.test(lower)) return 'Akamai';
-    if (/too many requests|rate limit/.test(lower + ' ' + title)) return 'rate-limit';
-    return '';
-  }
+  // blockKind is block.js, the one wall check navigate's Note uses too;
+  // read.go puts it in place of the marker.
+  var blockKind = /* winuse:block.js */ null;
 
   var scoped = (typeof Element !== 'undefined') && (this instanceof Element);
   if (!scores) scores = {set: function () {}, get: function () { return 0; }};

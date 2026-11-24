@@ -549,6 +549,25 @@ type Input struct {
 	// and its read-back (browser-ux 03).
 	OnDelivered func()
 	acted       bool
+
+	// Notes are what the input did that the agent should know although
+	// the Action succeeded, one line each, printed after its `ok` as
+	// `Note: ...` (a field that handed its focus to another element, an
+	// editor that replaced its node; bladebro-ideas 09).
+	Notes []string
+}
+
+// note adds one of Notes, once; a nil Input drops it.
+func (in *Input) note(s string) {
+	if in == nil {
+		return
+	}
+	for _, n := range in.Notes {
+		if n == s {
+			return
+		}
+	}
+	in.Notes = append(in.Notes, s)
 }
 
 // accepted counts an event the Page took and fires OnDelivered on the
@@ -781,21 +800,23 @@ func (in *Input) PressKeys(ctx context.Context, chord keys.Chord) error {
 // exactly as a person's typing would.
 func (in *Input) TypeText(ctx context.Context, text string) error {
 	for _, part := range TextParts(text) {
-		var err error
-		if part.Key != "" {
-			chord, perr := keys.Parse(part.Key)
-			if perr != nil {
-				return perr
-			}
-			err = in.PressKeys(ctx, chord)
-		} else {
-			err = in.InsertText(ctx, part.Text)
-		}
-		if err != nil {
+		if err := in.typePart(ctx, part); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// typePart sends one TextPart: its run inserted, or its key pressed.
+func (in *Input) typePart(ctx context.Context, part TextPart) error {
+	if part.Key == "" {
+		return in.InsertText(ctx, part.Text)
+	}
+	chord, err := keys.Parse(part.Key)
+	if err != nil {
+		return err
+	}
+	return in.PressKeys(ctx, chord)
 }
 
 // TextPart is one piece of typed text: a run to insert, or a key to press.
@@ -1051,12 +1072,139 @@ const selectJS = `function() {
   return true;
 }`
 
-// readJS reads a field's value back: value for inputs and textareas, the
-// text for contenteditable.
+// The JS helpers set-value and type-text --into share (bladebro-ideas 09).
+// They are pasted inside the functions below, which carry the winuse
+// markers; these carry none.
+//
+// activeOf is the element that holds the focus in el's document, through
+// same-origin frames and open shadow roots (focusJS's loop): a
+// cross-origin frame's element stops at the iframe.
+//
+// fieldOf says whether a is an element text can be typed into, connected,
+// enabled and writable, and which kind: "text" or "editable"; empty when
+// not.
+//
+// labelOf is a's Window State role word (the ARIA role, or none) and its
+// name, for the notes.
+//
+// editText is the text of editable text by its blocks: each block
+// element's text (paragraphs, divs, list items, at any depth) is one
+// line, a <br> breaks a line, and the <br> a block ends with (the
+// placeholder of an empty one, or the trailing break) adds none; zero-width
+// caret anchors are dropped. innerText instead puts a blank line between
+// <p> blocks, so "a\nb" set into Lexical, ProseMirror or a plain
+// contenteditable read back as "a\n\nb", while Slate's and a bare div's
+// <div> blocks read "a\nb"; and a blank line the agent asked for is an
+// empty <p><br></p> in the first, an empty <div><br></div> in the second.
+// Reading the blocks gives the text as typed in all of them, and keeps a
+// blank line that went missing a mismatch, which collapsing newlines in
+// ValueMatches could not.
+const fieldHelpersJS = `
+  const activeOf = el => {
+    let a = el.ownerDocument.activeElement;
+    while (a && (a.tagName === 'IFRAME' || a.tagName === 'FRAME')) {
+      let inner = null;
+      try { inner = a.contentDocument; } catch (x) {}
+      if (!inner) break;
+      a = inner.activeElement;
+    }
+    while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+    return a || null;
+  };
+  const fieldOf = a => {
+    if (!a || a.nodeType !== 1 || !a.isConnected || a.readOnly || a.matches(':disabled')) return '';
+    if (a.tagName === 'TEXTAREA') return 'text';
+    if (a.tagName === 'INPUT') return /^(button|submit|reset|checkbox|radio|file|image|range|color|hidden)$/.test((a.getAttribute('type') || '').toLowerCase()) ? '' : 'text';
+    return a.isContentEditable ? 'editable' : '';
+  };
+  const labelOf = el => {
+    const role = (el.getAttribute('role') || '').trim().split(/\s+/)[0].toLowerCase();
+    let name = el.getAttribute('aria-label') || '';
+    if (!name) name = (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean)
+      .map(id => { const n = el.ownerDocument.getElementById(id); return n ? n.textContent : ''; }).join(' ');
+    if (!name && el.labels && el.labels.length) name = el.labels[0].innerText || '';
+    if (!name) name = el.getAttribute('placeholder') || el.getAttribute('aria-placeholder') || el.getAttribute('title') || '';
+    return {role: role, name: String(name).replace(/\s+/g, ' ').trim().slice(0, 60)};
+  };
+  const editText = root => {
+    const lines = [];
+    let run = null;
+    const css = n => (n.ownerDocument.defaultView || window).getComputedStyle(n);
+    const flush = () => { if (run !== null) { lines.push(run.replace(/\n$/, '')); run = null; } };
+    const walk = n => {
+      for (const c of n.childNodes) {
+        if (c.nodeType === 3) {
+          const ws = c.parentElement ? css(c.parentElement).whiteSpace : 'normal';
+          let t = c.data;
+          if (!/^(pre|break-spaces)/.test(ws)) t = t.replace(/[\n\r\t]/g, ' ');
+          if (!/^(pre|pre-wrap|break-spaces)$/.test(ws)) {
+            t = t.replace(/ +/g, ' ');
+            if (run === null || run.endsWith(' ') || run.endsWith('\n')) t = t.replace(/^ /, '');
+          }
+          if (t !== '') run = (run === null ? '' : run) + t;
+          continue;
+        }
+        if (c.nodeType !== 1) continue;
+        if (c.tagName === 'BR') { run = (run === null ? '' : run) + '\n'; continue; }
+        const d = css(c).display;
+        if (d === 'none') continue;
+        if (d.startsWith('inline') || d === 'contents' || d.startsWith('ruby')) { walk(c); continue; }
+        flush(); walk(c); flush();
+      }
+    };
+    walk(root); flush();
+    const zw = String.fromCharCode(0x200B) + String.fromCharCode(0xFEFF);
+    return lines.join('\n').split('').filter(ch => zw.indexOf(ch) < 0).join('');
+  };
+  const valueOf = el => el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' ? String(el.value) : editText(el);
+`
+
+// readJS reads a field's value back: value for inputs and textareas,
+// editText for editable text. A node that left the document (an editor
+// that replaced itself on the input) is never read: the answer is then an
+// object, {replaced, value, kind, role, name} read from the focused field
+// that took its place, or {replaced, lost} when nothing editable holds the
+// focus. A connected node's answer is the plain string.
 const readJS = `function() {
   /* winuse:read */
+  const el = this.nodeType === 1 ? this : this.parentElement;` + fieldHelpersJS + `
+  if (el.isConnected) return valueOf(el);
+  const a = activeOf(el), kind = fieldOf(a);
+  if (!kind) return {replaced: true, lost: true};
+  return Object.assign({replaced: true, value: valueOf(a), kind: kind}, labelOf(a));
+}`
+
+// followJS finds where the text goes when the field is not the element
+// that holds the focus (bladebro-ideas 09). mode "focus", right after
+// DOM.focus: the focused element when it is another field, outside this
+// one and not inside it (a placeholder textarea that mounted the real
+// editor and handed it the focus), else null. mode "replaced", between
+// typed parts: null while this node is in the document; once it left it
+// (an editor that replaced its node), the focused field that took its
+// place, with the caret put at its end, or "lost" when nothing editable
+// holds the focus.
+const followJS = `function(mode) {
+  /* winuse:follow */
   const el = this.nodeType === 1 ? this : this.parentElement;
-  return el.value !== undefined && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') ? String(el.value) : String(el.innerText || '');
+  if (!el) return mode === 'replaced' ? 'lost' : null;
+  if (mode === 'replaced' && el.isConnected) return null;` + fieldHelpersJS + `
+  const a = activeOf(el), ok = a && a !== el && fieldOf(a) !== '';
+  if (mode !== 'replaced') return ok && !el.contains(a) && !a.contains(el) ? a : null;
+  if (!ok) return 'lost';
+  if (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') {
+    try { const n = a.value.length; a.setSelectionRange(n, n); } catch (x) {}
+  } else {
+    const d = a.ownerDocument, s = d.getSelection(), r = d.createRange();
+    r.selectNodeContents(a); r.collapse(false); s.removeAllRanges(); s.addRange(r);
+  }
+  return a;
+}`
+
+// labelJS is a field's role and name, for a note (fieldHelpersJS labelOf).
+const labelJS = `function() {
+  /* winuse:label */
+  const el = this.nodeType === 1 ? this : this.parentElement;` + fieldHelpersJS + `
+  return labelOf(el);
 }`
 
 // NotSettableError says a node takes no typed text, or refuses it.
@@ -1101,53 +1249,117 @@ func (f Field) Refusal() error {
 // to, and the field fires change itself when the focus leaves it. f is the
 // field's ReadField answer; a failed read-back is a *VerifyError that never
 // shows a password field's value.
+//
+// A field that hands its focus to another one (a placeholder that mounts
+// the real editor, bladebro-ideas 09) is written and read back where the
+// focus went, with a note in in.Notes; one that replaces its own node on
+// the input is read back through the field that took its place
+// (CheckValue).
 func (o Origin) SetValue(ctx context.Context, in *Input, f Field, value string) error {
-	if err := o.ReplaceText(ctx, in, value); err != nil {
+	w, err := o.ReplaceText(ctx, in, value)
+	if err != nil {
 		return err
 	}
-	return o.CheckValue(ctx, f, value)
+	return o.CheckWritten(ctx, in, w, f, value)
 }
 
 // ReplaceText is SetValue without the read-back: DOM.focus, select all,
-// then Input.insertText (an empty value: a Backspace).
-func (o Origin) ReplaceText(ctx context.Context, in *Input, value string) error {
+// then Input.insertText (an empty value: a Backspace). It returns the node
+// it wrote to: o, or the field o handed its focus to on DOM.focus (noted
+// in in.Notes), selected and written instead.
+func (o Origin) ReplaceText(ctx context.Context, in *Input, value string) (Origin, error) {
 	c, err := o.caller()
 	if err != nil {
-		return err
+		return o, err
 	}
 	if _, err := c.CallSession(ctx, o.SessionID, "DOM.focus", map[string]any{"backendNodeId": o.BackendNodeID}); err != nil {
-		return staleOr(err)
+		return o, staleOr(err)
 	}
-	if err := callWith(ctx, c, o.SessionID, o.BackendNodeID, selectJS, nil, nil); err != nil {
-		return staleOr(err)
+	w := o
+	if next, label, err := follow(ctx, c, o, "focus"); err == nil && next != nil {
+		w = *next
+		in.note("the field handed its focus to " + label + "; the text went there")
+	}
+	if err := callWith(ctx, c, w.SessionID, w.BackendNodeID, selectJS, nil, nil); err != nil {
+		return w, staleOr(err)
 	}
 	if value == "" {
 		chord, _ := keys.Parse("BackSpace")
-		return in.PressKeys(ctx, chord)
+		return w, in.PressKeys(ctx, chord)
 	}
-	return in.InsertText(ctx, value)
+	return w, in.InsertText(ctx, value)
+}
+
+// CheckWritten is SetValue's read-back of w, the node ReplaceText wrote
+// to: CheckValue, with w's own field when it is not o (a placeholder
+// textarea handed over to editable text), keeping f's password flag.
+func (o Origin) CheckWritten(ctx context.Context, in *Input, w Origin, f Field, value string) error {
+	if w.BackendNodeID != o.BackendNodeID || w.SessionID != o.SessionID {
+		if wf, err := w.ReadField(ctx); err == nil && wf.Kind != "" {
+			wf.Password = wf.Password || f.Password
+			f = wf
+		}
+	}
+	return w.CheckValue(ctx, in, f, value)
 }
 
 // CheckValue is SetValue's read-back: the field holds value (ValueMatches),
-// else a *VerifyError.
-func (o Origin) CheckValue(ctx context.Context, f Field, value string) error {
+// else a *VerifyError. It never reads a node that left the document: an
+// editor that replaced its node on the input is read through the focused
+// field that took its place, noted in in.Notes (in may be nil), and with
+// none the read-back fails as not possible.
+func (o Origin) CheckValue(ctx context.Context, in *Input, f Field, value string) error {
+	unread := &VerifyError{Msg: "the value was delivered, but the field could not be read back"}
 	c, err := o.caller()
 	if err != nil {
-		return &VerifyError{Msg: "the value was delivered, but the field could not be read back"}
+		return unread
+	}
+	var raw json.RawMessage
+	if err := callWith(ctx, c, o.SessionID, o.BackendNodeID, readJS, nil, &raw); err != nil {
+		return unread
 	}
 	var got string
-	if err := callWith(ctx, c, o.SessionID, o.BackendNodeID, readJS, nil, &got); err != nil {
-		return &VerifyError{Msg: "the value was delivered, but the field could not be read back"}
+	if json.Unmarshal(raw, &got) == nil {
+		return ValueMatches(f, value, got)
 	}
-	return ValueMatches(f, value, got)
+	var r struct {
+		Lost  bool   `json:"lost"`
+		Value string `json:"value"`
+		Kind  string `json:"kind"`
+		Role  string `json:"role"`
+		Name  string `json:"name"`
+	}
+	if json.Unmarshal(raw, &r) != nil {
+		return unread
+	}
+	if r.Lost {
+		return &VerifyError{Msg: "the value was delivered, but the field left the document afterwards and nothing editable holds the focus, so it could not be read back"}
+	}
+	if r.Kind != "" {
+		f.Kind = r.Kind
+	}
+	label := fieldLabel(r.Role, r.Name)
+	if err := ValueMatches(f, value, r.Value); err != nil {
+		return &VerifyError{Msg: err.Error() + "; the field was replaced after the input, and this is the focused " + label + " that took its place"}
+	}
+	in.note("the field was replaced after the input; its value was read back from the focused " + label)
+	return nil
 }
 
 // TypeInto types text into a field the way type-text types into the
-// Page's focus, with no OS focus: DOM.focus, then TypeText (runs through
-// Input.insertText, a newline as Return, a tab as Tab). The text lands at
-// the field's own caret or replaces its selection, as typing does, so a
-// select-text before it makes a replacement. There is no read-back: the
-// text may be only part of the field's value.
+// Page's focus, with no OS focus: DOM.focus, then the text's parts (runs
+// through Input.insertText, a newline as Return, a tab as Tab). The text
+// lands at the field's own caret or replaces its selection, as typing
+// does, so a select-text before it makes a replacement. There is no
+// read-back: the text may be only part of the field's value.
+//
+// A field that hands its focus over on DOM.focus is noted, as for
+// SetValue. Before each part after the first, a field that left the
+// document (an editor that replaced its node on the input, which puts the
+// caret back at its start) hands over to the focused field that took its
+// place, with the caret put at its end; with nothing editable focused the
+// typing stops there, a failure that may have taken effect, rather than
+// type the rest somewhere else (bladebro-ideas 09).
 func (o Origin) TypeInto(ctx context.Context, in *Input, text string) error {
 	c, err := o.caller()
 	if err != nil {
@@ -1159,17 +1371,153 @@ func (o Origin) TypeInto(ctx context.Context, in *Input, text string) error {
 	if _, err := c.CallSession(ctx, o.SessionID, "DOM.focus", map[string]any{"backendNodeId": o.BackendNodeID}); err != nil {
 		return staleOr(err)
 	}
-	return in.TypeText(ctx, text)
+	cur := o
+	if next, label, err := follow(ctx, c, o, "focus"); err == nil && next != nil {
+		cur = *next
+		in.note("the field handed its focus to " + label + "; the text went there")
+	}
+	for i, part := range TextParts(text) {
+		if i > 0 {
+			next, label, err := follow(ctx, c, cur, "replaced")
+			if errors.Is(err, errLost) {
+				return fmt.Errorf("the field left the document while typing, and nothing editable holds the focus; the typing stopped before %s", partName(part))
+			}
+			if err == nil && next != nil {
+				cur = *next
+				in.note("the field was replaced while typing; the rest of the text went to the focused " + label + ", at its end")
+			}
+		}
+		if err := in.typePart(ctx, part); err != nil {
+			return err
+		}
+	}
+	return nil
 }
+
+// partName names a TextPart in a message: its key, or its run.
+func partName(p TextPart) string {
+	if p.Key != "" {
+		return "a " + p.Key + " key"
+	}
+	r := []rune(p.Text)
+	if len(r) > 40 {
+		return fmt.Sprintf("%q...", string(r[:40]))
+	}
+	return fmt.Sprintf("%q", p.Text)
+}
+
+// errLost is follow's answer for a replaced field with nothing editable
+// focused.
+var errLost = errors.New("the field left the document, and nothing editable holds the focus")
+
+// follow runs followJS on o in mode. It returns the field the text goes
+// to instead of o, with its label for a note, or nil when it is o; errLost
+// when o was replaced and nothing editable holds the focus (also when o no
+// longer resolves at all in mode "replaced"). Any other failure is
+// returned as is, and callers keep o.
+func follow(ctx context.Context, c Caller, o Origin, mode string) (*Origin, string, error) {
+	res, err := c.CallSession(ctx, o.SessionID, "DOM.resolveNode", map[string]any{"backendNodeId": o.BackendNodeID, "objectGroup": objectGroup})
+	var rn struct {
+		Object struct {
+			ObjectID string `json:"objectId"`
+		} `json:"object"`
+	}
+	if err == nil && (json.Unmarshal(res, &rn) != nil || rn.Object.ObjectID == "") {
+		err = fmt.Errorf("%w: the node no longer resolves", ErrStale)
+	}
+	if err != nil {
+		if mode == "replaced" && errors.Is(staleOr(err), ErrStale) {
+			return nil, "", errLost
+		}
+		return nil, "", err
+	}
+	release := func(id string) {
+		c.CallSession(context.WithoutCancel(ctx), o.SessionID, "Runtime.releaseObject", map[string]any{"objectId": id})
+	}
+	defer release(rn.Object.ObjectID)
+	res, err = c.CallSession(ctx, o.SessionID, "Runtime.callFunctionOn", map[string]any{
+		"objectId": rn.Object.ObjectID, "functionDeclaration": followJS, "arguments": []map[string]any{{"value": mode}},
+		"objectGroup": objectGroup, "silent": true,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	var cr struct {
+		Result struct {
+			Type     string `json:"type"`
+			ObjectID string `json:"objectId"`
+		} `json:"result"`
+		ExceptionDetails *struct {
+			Text string `json:"text"`
+		} `json:"exceptionDetails"`
+	}
+	if err := json.Unmarshal(res, &cr); err != nil {
+		return nil, "", err
+	}
+	if cr.ExceptionDetails != nil {
+		return nil, "", fmt.Errorf("following the focus failed: %s", cr.ExceptionDetails.Text)
+	}
+	if cr.Result.Type == "string" {
+		return nil, "", errLost
+	}
+	if cr.Result.ObjectID == "" {
+		return nil, "", nil
+	}
+	defer release(cr.Result.ObjectID)
+	res, err = c.CallSession(ctx, o.SessionID, "DOM.describeNode", map[string]any{"objectId": cr.Result.ObjectID})
+	if err != nil {
+		return nil, "", err
+	}
+	var dn struct {
+		Node struct {
+			BackendNodeID int64 `json:"backendNodeId"`
+		} `json:"node"`
+	}
+	if err := json.Unmarshal(res, &dn); err != nil {
+		return nil, "", err
+	}
+	if dn.Node.BackendNodeID == 0 || dn.Node.BackendNodeID == o.BackendNodeID {
+		return nil, "", nil
+	}
+	next := o
+	next.BackendNodeID = dn.Node.BackendNodeID
+	var lb struct {
+		Role string `json:"role"`
+		Name string `json:"name"`
+	}
+	_ = callWith(ctx, c, next.SessionID, next.BackendNodeID, labelJS, nil, &lb)
+	return &next, fieldLabel(lb.Role, lb.Name), nil
+}
+
+// fieldLabel is a field's role word in the Window State (edit, unless its
+// ARIA role says otherwise) and its quoted name, for a note.
+func fieldLabel(ariaRole, name string) string {
+	role := "edit"
+	if r, ok := roleTable[ariaRole]; ok && r.role != "" {
+		role = r.role
+	}
+	if name == "" {
+		return role
+	}
+	return fmt.Sprintf("%s %q", role, name)
+}
+
+// zeroWidth drops the zero-width caret anchors editors put in editable
+// text: U+200B and U+FEFF (Slate's zero-width spans).
+var zeroWidth = strings.NewReplacer(string(rune(0x200B)), "", string(rune(0xFEFF)), "")
 
 // ValueMatches compares a field's read-back with the value sent, line
 // breaks aside (a text area stores CRLF as LF; linebreak): exactly
-// otherwise for inputs and text areas, and for editable text with spaces
-// and the trailing newline normalized too. A mismatch never shows a
-// password field's value, only the lengths.
+// otherwise for inputs and text areas, and for editable text with spaces,
+// zero-width caret anchors (U+200B, U+FEFF) and the trailing newline
+// normalized too. Editable text's paragraph newlines are handled where it
+// is read (readJS's editText reads it by its blocks), not here: collapsing
+// "\n\n" here would also pass a blank line that went missing. A mismatch
+// never shows a password field's value, only the lengths.
 func ValueMatches(f Field, sent, got string) error {
 	if f.Kind == "editable" {
 		norm := func(s string) string {
+			s = zeroWidth.Replace(s)
 			s = strings.ReplaceAll(s, " ", " ")
 			return strings.TrimRight(linebreak.Normalize(s), "\n")
 		}

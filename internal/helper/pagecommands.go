@@ -380,6 +380,9 @@ func (s Services) runPageWindow(ctx context.Context, ref string, run pageWindowR
 			s.cursorClick(ctx, pw.w, rect)
 		}
 	}
+	if run.acts {
+		markPageLogs(ctx, pw.conn.Client, pw.session, pw.tab.TargetID, pw.w.ID) // logs.go: a load's failed requests are noted
+	}
 	// An act marks the moment the browser accepted its request
 	// (markDelivered), so a navigation's ripple plays then and not after
 	// the new page loaded (browser-ux 03).
@@ -628,6 +631,9 @@ func (s Services) navWait(ctx context.Context, pw pageWin, cmd, state string, co
 	// it is read only once the navigation landed; --wait none waits for
 	// nothing.
 	readStatus := emptyHTTP != nil || landed && state != page.LoadNone
+	// The wall check (bladebro-ideas 05) reads the landed document too,
+	// after the status; Chrome's own error page is no wall.
+	checkWall := landed && state != page.LoadNone && emptyHTTP == nil
 	var dialog *page.DialogError
 	var slow *page.LoadTimeoutError
 	switch {
@@ -636,24 +642,32 @@ func (s Services) navWait(ctx context.Context, pw pageWin, cmd, state string, co
 	case errors.As(err, &dialog):
 		return "", true, Fail("the "+cmd+" was delivered, and "+dialog.Error(), dialogHint(id)+"; do not repeat the "+cmd)
 	case errors.As(err, &slow):
-		u, note := page.CurrentURL(ctx, c, sess), ""
+		shown := page.CurrentURL(ctx, c, sess)
+		u, note := shown, ""
 		if readStatus {
 			u, note = httpStatusNote(ctx, pw, u)
 		}
 		if emptyHTTP != nil && note == "" {
 			return s.navFailure(emptyHTTP, pw, "navigation")
 		}
+		if checkWall && !strings.HasPrefix(shown, chromeErrorPage) {
+			note += pageWallNote(ctx, c, sess)
+		}
 		return fmt.Sprintf("ok %s (%s; winuse wait %s load waits longer)\n%s", u, slow.Error(), id, note), true, nil
 	case err != nil:
 		return "", true, Fail(fmt.Sprintf("the %s was delivered, and waiting for the page failed: %v", cmd, err),
 			"read winuse get-window-state "+id+" before repeating it")
 	}
-	u, note := page.CurrentURL(ctx, c, sess), ""
+	shown := page.CurrentURL(ctx, c, sess)
+	u, note := shown, ""
 	if readStatus {
 		u, note = httpStatusNote(ctx, pw, u)
 	}
 	if emptyHTTP != nil && note == "" {
 		return s.navFailure(emptyHTTP, pw, "navigation")
+	}
+	if checkWall && !strings.HasPrefix(shown, chromeErrorPage) {
+		note += pageWallNote(ctx, c, sess)
 	}
 	return "ok " + u + "\n" + note, true, nil
 }
@@ -677,6 +691,30 @@ func httpStatusNote(ctx context.Context, pw pageWin, u string) (string, string) 
 		u = st.URL
 	}
 	return u, protocol.HTTPStatusNote(st.Code, page.StatusReason(st.Code), st.ErrorPage) + "\n"
+}
+
+// wallCheckBound bounds the wall check after a navigation.
+const wallCheckBound = 2 * time.Second
+
+// chromeErrorPage is the address of Chrome's own error page, which is no
+// wall: the wall check skips it.
+const chromeErrorPage = "chrome-error://"
+
+// pageWallNote is the wall Note line (bladebro-ideas 05) for the Page a
+// navigation landed on: page.BlockKind, one isolated-world call, names a
+// short challenge or block page. "" for an ordinary Page, or when the check
+// fails (the navigation landed; the Note is only a hint). winuse never
+// clicks or solves anything there: the Note sends the agent to the user. A
+// Page Action whose effect navigated (bladebro-ideas 06) adds it the same
+// way.
+func pageWallNote(ctx context.Context, c page.Caller, session string) string {
+	cctx, cancel := context.WithTimeout(ctx, wallCheckBound)
+	defer cancel()
+	kind, err := page.BlockKind(cctx, c, session)
+	if err != nil || kind == "" {
+		return ""
+	}
+	return protocol.WallNote(kind) + "\n"
 }
 
 // browserPagePoll is how often navigateFromBrowserPage reads the Tab while

@@ -122,7 +122,9 @@ func TestExtractRefusals(t *testing.T) {
 		{protocol.ExtractArgs{Window: "301", Limit: two}, "--limit takes 1 to 1000 rows"},
 		{protocol.ExtractArgs{Window: "301", MaxChars: &two, Out: `C:\x.json`}, "pass --out or --max-chars"},
 		{protocol.ExtractArgs{}, "a window reference is required"},
-		{protocol.ExtractArgs{Window: "101"}, "is not a browser Window"},
+		// A native Window goes to the UIA client's table read
+		// (extractnative_test.go); this rig's tree reader has none.
+		{protocol.ExtractArgs{Window: "101"}, "extract is unavailable: no UIA client"},
 		{protocol.ExtractArgs{Window: "301", Root: "list"}, "is not an Element Index, name: or"},
 	}
 	for _, c := range cases {

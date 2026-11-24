@@ -23,6 +23,7 @@ func TestMainUsageErrors(t *testing.T) {
 		{"get-window-state with two arguments", []string{"get-window-state", "101", "extra"}, "usage: winuse get-window-state <window>"},
 		{"record-tree without a file", []string{"record-tree", "101"}, "usage: winuse record-tree <window> <file>"},
 		{"record-tree with three arguments", []string{"record-tree", "101", "a", "b"}, "usage: winuse record-tree <window> <file>"},
+		{"record-tree with an unknown flag", []string{"record-tree", "101", "a.json", "--grid"}, "usage: winuse record-tree <window> <file> [--table]"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

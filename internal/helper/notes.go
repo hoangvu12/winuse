@@ -319,13 +319,7 @@ func (n noteCmds) windowKey(ctx context.Context, t notes.Target, app bool) (note
 	if t.Tab != "" {
 		from = "tab " + t.Window + ":" + t.Tab
 	}
-	name := ""
-	if n.s.Pages != nil {
-		name = n.s.Pages.Browser(w)
-	}
-	// An Electron or WebView2 App winuse reads through CDP is an App, not
-	// a site.
-	isBrowser := name != "" && name != browser.AppElectron && name != browser.AppWebView2
+	isBrowser := n.s.siteBrowser(w)
 	if t.Tab != "" && !isBrowser {
 		return noteKey{}, Fail(fmt.Sprintf("window %d is not a browser Window, so it has no Tabs", w.ID), noteTargetsHint)
 	}
@@ -347,6 +341,18 @@ func (n noteCmds) windowKey(ctx context.Context, t notes.Target, app bool) (note
 			fmt.Sprintf("open a site first, or leave the Note on the browser: winuse note add %s --app <text>", t.Window))
 	}
 	return noteKey{key: key, from: from}, nil
+}
+
+// siteBrowser reports whether w is a browser Window, whose Notes are its
+// Page's site's: an Electron or WebView2 App winuse reads through CDP is an
+// App, not a site. The note commands and the Window State's Notes
+// (windownotes.go) key a Window by it.
+func (s Services) siteBrowser(w win.WindowInfo) bool {
+	if s.Pages == nil {
+		return false
+	}
+	name := s.Pages.Browser(w)
+	return name != "" && name != browser.AppElectron && name != browser.AppWebView2
 }
 
 // maxNoteMatches caps the Windows a free-form refusal lists.

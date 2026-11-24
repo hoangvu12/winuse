@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "source": "hand-authored from ticket 13's probe of Services (MMC, a list view through UI Automation's Win32 proxy): Table and Grid present, cells with no GridItem, so they are placed by position; replace with winuse record-tree <window> <file> --table",
+  "role": "list",
+  "table": true,
+  "rowCount": 3,
+  "headers": ["Name", "Description", "Status", "Startup Type", "Log On As"],
+  "children": [
+    {"role": "header", "children": [
+      {"role": "header item", "name": "Name"},
+      {"role": "header item", "name": "Description"},
+      {"role": "header item", "name": "Status"},
+      {"role": "header item", "name": "Startup Type"},
+      {"role": "header item", "name": "Log On As"}
+    ]},
+    {"role": "list item", "name": "Application Information", "children": [
+      {"role": "text", "name": "Application Information"},
+      {"role": "text", "name": "Facilitates the running of interactive applications with additional administrative privileges."},
+      {"role": "text", "name": "Running"},
+      {"role": "text", "name": "Manual (Trigger Start)"},
+      {"role": "text", "name": "Local System"}
+    ]},
+    {"role": "list item", "name": "Background Intelligent Transfer Service", "children": [
+      {"role": "text", "name": "Background Intelligent Transfer Service"},
+      {"role": "text", "name": "Transfers files in the background using idle network bandwidth."},
+      {"role": "text", "name": ""},
+      {"role": "text", "name": "Manual"},
+      {"role": "text", "name": "Local System"}
+    ]},
+    {"role": "list item", "name": "Windows Update", "children": [
+      {"role": "text", "name": "Windows Update"},
+      {"role": "text", "name": "Enables the detection, download, and installation of updates for Windows and other programs."},
+      {"role": "text", "name": "Running"},
+      {"role": "text", "name": "Manual (Trigger Start)"},
+      {"role": "text", "name": "Local System"}
+    ]}
+  ]
+}

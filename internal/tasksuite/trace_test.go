@@ -131,3 +131,20 @@ func TestTaskEnvLeavesTracingToTheHarness(t *testing.T) {
 		t.Error("no PATH in the task env")
 	}
 }
+
+func TestTaskEnvTurnsNotesOff(t *testing.T) {
+	// Notes left by earlier runs, or by the user, must not change a run
+	// (ADR 0024): every child of the task gets WINUSE_NOTES=off.
+	t.Setenv("WINUSE_NOTES", "on")
+	rs := &runState{}
+	env := rs.taskEnv(&armState{binDir: `C:\run\bin`}, `C:\run\scratch`, "")
+	var got []string
+	for _, e := range env {
+		if strings.HasPrefix(strings.ToUpper(e), "WINUSE_NOTES=") {
+			got = append(got, e)
+		}
+	}
+	if len(got) != 1 || got[0] != "WINUSE_NOTES=off" {
+		t.Errorf("task env has %q, want exactly WINUSE_NOTES=off", got)
+	}
+}

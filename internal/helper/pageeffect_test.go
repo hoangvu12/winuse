@@ -29,6 +29,8 @@ type effectWorld struct {
 	mu      sync.Mutex
 	armed   bool
 	armArgs []any
+	wall    string // what the wall check (block.js, bladebro-ideas 05) answers; "" none
+	walls   int    // how many times it ran
 }
 
 func (r *pageRig) effectWorld(t *testing.T, final map[string]any, onPoll func(c *cdptest.Conn, n int)) *effectWorld {
@@ -71,6 +73,11 @@ func (r *pageRig) effectWorld(t *testing.T, final map[string]any, onPoll func(c 
 			v = map[string]any{"n": 0, "ago": 1000}
 		case strings.Contains(p.Fn, "winuse:effect-read"):
 			v = final
+		case strings.Contains(p.Fn, "/* winuse:block */"):
+			ew.mu.Lock()
+			ew.walls++
+			v = ew.wall
+			ew.mu.Unlock()
 		case strings.Contains(p.Fn, "winuse:aim"):
 			v = map[string]any{"state": "ok", "l": 10.0, "t": 20.0, "w": 50.0, "h": 10.0, "x": 35.0, "y": 25.0, "chain": true, "dpr": 1.5, "name": "page name"}
 		case strings.Contains(p.Fn, "isConnected"):
@@ -190,6 +197,42 @@ func TestPagePressKeySaysWhatItDid(t *testing.T) {
 	out, e, effect = r.runEffect(t, "press-key", protocol.PressKeyArgs{Window: "301", Key: "Return"}, false)
 	if e != nil || out != "ok\nNote: the Page navigated to https://site.test/search?q=x\n" || effect != "navigated" {
 		t.Errorf("Return that submitted: %q, %+v, effect %q", out, e, effect)
+	}
+}
+
+// A click or key that navigated onto a challenge or block wall adds the
+// wall Note (bladebro-ideas 05) after its own; one that changed the Page
+// without navigating is not checked.
+func TestPageActionThatNavigatedOntoAWall(t *testing.T) {
+	r := newPageRig(t)
+	ew := r.effectWorld(t, map[string]any{}, navigatedTo("https://site.test/next"))
+	ew.wall = "Cloudflare"
+	out, e, effect := r.runEffect(t, "click", protocol.ClickArgs{Window: "301", ElementIndex: idx(7)}, false)
+	want := "ok\nNote: the Page navigated to https://site.test/next\n" + protocol.WallNote("Cloudflare") + "\n"
+	if e != nil || out != want || effect != "navigated" {
+		t.Errorf("click onto a wall: %q, %+v, effect %q; want %q", out, e, effect, want)
+	}
+	if n := r.pressed(); n != 1 {
+		t.Errorf("%d presses sent: %v", n, r.sent())
+	}
+
+	r = newPageRig(t)
+	ew = r.effectWorld(t, map[string]any{}, navigatedTo("https://site.test/search?q=x"))
+	ew.wall = "rate-limit"
+	out, _, _ = r.runEffect(t, "press-key", protocol.PressKeyArgs{Window: "301", Key: "Return"}, false)
+	if want := "ok\nNote: the Page navigated to https://site.test/search?q=x\n" + protocol.WallNote("rate-limit") + "\n"; out != want {
+		t.Errorf("Return onto a wall: %q, want %q", out, want)
+	}
+
+	r = newPageRig(t)
+	ew = r.effectWorld(t, map[string]any{"text": 3}, nil)
+	ew.wall = "Cloudflare"
+	out, _, _ = r.runEffect(t, "click", protocol.ClickArgs{Window: "301", ElementIndex: idx(7)}, false)
+	ew.mu.Lock()
+	walls := ew.walls
+	ew.mu.Unlock()
+	if out != "ok\nNote: the Page changed (text only)\n" || walls != 0 {
+		t.Errorf("a click that only changed text: %q, %d wall checks", out, walls)
 	}
 }
 

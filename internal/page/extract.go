@@ -12,14 +12,16 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/hoangvu12/winuse/internal/extract"
 )
 
 //go:embed extract.js
-var extractJS string
+var extractSource string
+
+// extractJS is extract.js with block.js, the shared wall check, in it.
+var extractJS = withBlockCheck(extractSource)
 
 // extractWorld is the isolated world extract.js runs in.
 const extractWorld = "winuse-extract"
@@ -53,7 +55,7 @@ func Extract(ctx context.Context, c Caller, session string, root *Origin, o Extr
 	var err error
 	if root != nil {
 		var world int
-		if world, err = isolatedWorld(ctx, c, root.SessionID, root.FrameID); err != nil {
+		if world, err = isolatedWorld(ctx, c, root.SessionID, root.FrameID, extractWorld); err != nil {
 			return extract.Result{}, err
 		}
 		res, err = callIn(ctx, c, root.SessionID, world, root.BackendNodeID, extractJS, o)
@@ -63,7 +65,7 @@ func Extract(ctx context.Context, c Caller, session string, root *Origin, o Extr
 			return extract.Result{}, err
 		}
 		var world int
-		if world, err = isolatedWorld(ctx, c, session, frame); err != nil {
+		if world, err = isolatedWorld(ctx, c, session, frame, extractWorld); err != nil {
 			return extract.Result{}, err
 		}
 		res, err = c.CallSession(ctx, session, "Runtime.evaluate", map[string]any{
@@ -113,22 +115,6 @@ func mainFrameOf(ctx context.Context, c Caller, session string) (frame, loader s
 		return "", "", err
 	}
 	return ft.FrameTree.Frame.ID, ft.FrameTree.Frame.LoaderID, nil
-}
-
-// isolatedWorld creates (or, by name, finds again) winuse's isolated
-// world in a frame and returns its execution context id.
-func isolatedWorld(ctx context.Context, c Caller, session, frame string) (int, error) {
-	res, err := c.CallSession(ctx, session, "Page.createIsolatedWorld", map[string]any{"frameId": frame, "worldName": extractWorld})
-	if err != nil {
-		return 0, err
-	}
-	var w struct {
-		ExecutionContextID int `json:"executionContextId"`
-	}
-	if json.Unmarshal(res, &w) != nil || w.ExecutionContextID == 0 {
-		return 0, errors.New("the browser made no isolated world for extract")
-	}
-	return w.ExecutionContextID, nil
 }
 
 // callIn resolves a node in the world and calls fn on it with arg.

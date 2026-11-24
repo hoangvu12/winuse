@@ -79,10 +79,10 @@ func (s Services) pageSetARIA(ctx context.Context, w win.WindowInfo, index int, 
 			return pick.click(ctx, in, list, i)
 		},
 	})
-	if rerr != nil || out != okOutput || len(notes) == 0 {
+	if rerr != nil || !isOK(out) || len(notes) == 0 {
 		return out, rerr
 	}
-	return okWith(notes...), nil
+	return withNotes(out, okWith(notes...)[len(okOutput):]), nil
 }
 
 // ariaPick is one set-value on a custom list, past the read before it.
@@ -103,7 +103,8 @@ type ariaPick struct {
 // note naming the options.
 func (p ariaPick) typeAndPick(ctx context.Context, in *page.Input, value string) error {
 	f := page.Field{Kind: p.ch.Field}
-	if err := p.o.ReplaceText(ctx, in, value); err != nil {
+	wrote, err := p.o.ReplaceText(ctx, in, value)
+	if err != nil {
 		return err
 	}
 	list, i, err := p.o.WaitARIAOption(ctx, value, true)
@@ -111,9 +112,9 @@ func (p ariaPick) typeAndPick(ctx context.Context, in *page.Input, value string)
 	var nl *page.NoListError
 	switch {
 	case err == nil && i < 0:
-		return p.o.CheckValue(ctx, f, value) // no list: free text
+		return p.o.CheckWritten(ctx, in, wrote, f, value) // no list: free text
 	case errors.As(err, &oe) && !oe.Several, errors.As(err, &nl):
-		if verr := p.o.CheckValue(ctx, f, value); verr != nil {
+		if verr := p.o.CheckWritten(ctx, in, wrote, f, value); verr != nil {
 			return verr
 		}
 		*p.notes = append(*p.notes, fmt.Sprintf("element %d holds the text typed, but no option was picked: %s", p.index, err.Error()))
