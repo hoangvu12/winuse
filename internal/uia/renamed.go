@@ -4,7 +4,8 @@ package uia
 // files are list items whose Value is their name, and setting it renames
 // the file. The write rebuilds the item, so the Element winuse wrote to
 // reads "" afterwards, although the rename took (measured in the
-// 2026-11-03 Task Suite run). Before reporting that as a mismatch, the
+// 2026-11-03 Task Suite run); a stale item may instead read its old name
+// (bladebro-ideas 21). Before reporting either as a mismatch, the
 // set-value read-back looks among the Element's siblings for one now
 // named as asked; finding it is the read-back. Only a name that is new
 // counts: a sibling named so before the write (a label "Name" beside the
@@ -13,6 +14,7 @@ package uia
 
 import (
 	"errors"
+	"strconv"
 	"unsafe"
 
 	"github.com/hoangvu12/winuse/internal/linebreak"
@@ -25,11 +27,26 @@ func readEmpty(err error) bool {
 	return errors.As(err, &v) && v.Action == "set-value" && v.Observed == `""`
 }
 
-// renamedInPlace decides the read-back of a write that read "": the
-// write took when no sibling was named value before it and one is now
-// (namedAfter, asked only then).
-func renamedInPlace(err error, namedBefore bool, namedAfter func() bool) bool {
-	return readEmpty(err) && !namedBefore && namedAfter()
+// readStale reports whether err is a set-value read-back that found the
+// Element reading "" or old, its value before the write, line breaks
+// aside (bladebro-ideas 21): an item the write rebuilt may read either.
+func readStale(err error, old string) bool {
+	if readEmpty(err) {
+		return true
+	}
+	var v *VerifyError
+	if !errors.As(err, &v) || v.Action != "set-value" {
+		return false
+	}
+	got, uerr := strconv.Unquote(v.Observed)
+	return uerr == nil && linebreak.Same(got, old)
+}
+
+// renamedInPlace decides the read-back of a write that read "" or the
+// Element's old value: the write took when no sibling was named value
+// before it and one is now (namedAfter, asked only then).
+func renamedInPlace(err error, old string, namedBefore bool, namedAfter func() bool) bool {
+	return readStale(err, old) && !namedBefore && namedAfter()
 }
 
 // parentOf is el's parent in the raw view, or nil; the caller releases it.

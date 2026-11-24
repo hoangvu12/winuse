@@ -50,7 +50,9 @@ func TestNamedAs(t *testing.T) {
 
 func TestRenamedInPlaceNeedsANewName(t *testing.T) {
 	empty := &VerifyError{Action: "set-value", Expected: `"summary.txt"`, Observed: `""`}
-	other := &VerifyError{Action: "set-value", Expected: `"summary.txt"`, Observed: `"draft.txt"`}
+	old := &VerifyError{Action: "set-value", Expected: `"summary.txt"`, Observed: `"draft.txt"`}
+	other := &VerifyError{Action: "set-value", Expected: `"summary.txt"`, Observed: `"notes.txt"`}
+	typed := &VerifyError{Action: "type-text", Expected: `"summary.txt"`, Observed: `"draft.txt"`}
 	asked := 0
 	after := func(v bool) func() bool { return func() bool { asked++; return v } }
 	for _, c := range []struct {
@@ -62,16 +64,41 @@ func TestRenamedInPlaceNeedsANewName(t *testing.T) {
 		{"the item is found under its new name", empty, false, true, true},
 		{"a sibling was named so already", empty, true, true, false},
 		{"no sibling is named so", empty, false, false, false},
-		{"the Element reads another value", other, false, true, false},
+		// bladebro-ideas 21: the written item may still read its old name
+		// while a new sibling carries the new one.
+		{"the stale item reads its old name, a new sibling the new one", old, false, true, true},
+		{"the item reads its old name and no sibling is named so", old, false, false, false},
+		{"the item reads its old name, a sibling was named so already", old, true, true, false},
+		{"the Element reads neither its old name nor nothing", other, false, true, false},
+		{"another Action's read-back", typed, false, true, false},
 		{"the write read back", nil, false, true, false},
 	} {
-		if got := renamedInPlace(c.err, c.before, after(c.now)); got != c.want {
+		if got := renamedInPlace(c.err, "draft.txt", c.before, after(c.now)); got != c.want {
 			t.Errorf("%s: renamedInPlace = %v, want %v", c.name, got, c.want)
 		}
 	}
-	// The siblings are read again only when the read-back is "" and the
-	// name was new: the first and third cases.
-	if asked != 2 {
-		t.Errorf("the siblings were read %d times after the write, want 2", asked)
+	// The siblings are read again only when the read-back is "" or the old
+	// name and the name was new: the first, third, fourth and fifth cases.
+	if asked != 4 {
+		t.Errorf("the siblings were read %d times after the write, want 4", asked)
+	}
+}
+
+// An Element that read "" before the write is the original case: "" is
+// still its old name, read back.
+func TestRenamedInPlaceFromAnEmptyOldName(t *testing.T) {
+	empty := &VerifyError{Action: "set-value", Expected: `"summary.txt"`, Observed: `""`}
+	if !renamedInPlace(empty, "", false, func() bool { return true }) {
+		t.Error(`an Element that reads "" before and after, with a new sibling named so, was not renamed in place`)
+	}
+}
+
+// The old name is matched line breaks aside, as the read-back is: an
+// Element whose old value held CRLF and reads it back with CR is still
+// stale.
+func TestRenamedInPlaceOldNameLineBreaks(t *testing.T) {
+	stale := &VerifyError{Action: "set-value", Expected: `"b"`, Observed: fmt.Sprintf("%q", "two\rlines")}
+	if !renamedInPlace(stale, "two\r\nlines", false, func() bool { return true }) {
+		t.Error("an old name read back with other line breaks was not recognized")
 	}
 }
