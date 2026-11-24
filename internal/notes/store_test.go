@@ -227,15 +227,22 @@ func TestCorruptFileIsMovedAsideAndReported(t *testing.T) {
 		t.Errorf("after recovery: %+v", got)
 	}
 
-	// A second corruption replaces the older .bad file.
-	if err := os.WriteFile(s.Path, []byte("not json"), 0o600); err != nil {
-		t.Fatal(err)
+	// A second corruption never overwrites the older .bad file: it goes to
+	// the next free numbered name, and so does a third.
+	for i, want := range []string{s.Path + ".bad.2", s.Path + ".bad.3"} {
+		body := fmt.Sprintf("not json %d", i)
+		if err := os.WriteFile(s.Path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, bad, err := s.Add("github.com", "again", "x"); err != nil || bad != want {
+			t.Fatalf("Add on a corrupt file = %q, %v; want it moved to %s and reported", bad, err, want)
+		}
+		if kept, _ := os.ReadFile(want); string(kept) != body {
+			t.Errorf("%s holds %q, want %q", want, kept, body)
+		}
 	}
-	if _, bad, err := s.Add("github.com", "again", "x"); err != nil || bad == "" {
-		t.Fatalf("Add on a corrupt file = %q, %v; want it moved aside and reported", bad, err)
-	}
-	if kept, _ := os.ReadFile(s.Path + ".bad"); string(kept) != "not json" {
-		t.Errorf(".bad holds %q", kept)
+	if kept, _ := os.ReadFile(s.Path + ".bad"); string(kept) != string(garbage) {
+		t.Errorf("the first .bad file now holds %q; want the first corrupt bytes kept", kept)
 	}
 }
 
