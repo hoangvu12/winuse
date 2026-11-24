@@ -8,4 +8,5 @@ type TabArgs struct {
 	Tab    string `json:"tab,omitempty"`    // tab-close, tab-switch: a tab id from tab list, at least 4 characters
 	URL    string `json:"url,omitempty"`    // tab-new: the page to open; empty opens about:blank
 	Headed bool   `json:"headed,omitempty"` // tab-switch on a launched or cloned browser: the activate-and-keys switch instead of the tab strip's Select (headless-max 05)
+	Block  string `json:"block,omitempty"`  // tab-new: the asset classes to block in the new Tab, canonical (ParseBlock), or "none" (bladebro-ideas 28)
 }

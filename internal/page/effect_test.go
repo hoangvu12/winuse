@@ -9,6 +9,7 @@ package page
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -329,6 +330,37 @@ func TestEffectUnknown(t *testing.T) {
 	p.set(func() { p.pollGone = true })
 	if got := p.watch(t, nil); got.Kind != EffectUnknown {
 		t.Errorf("world lost: effect %+v, want unknown", got)
+	}
+}
+
+// A wheel's watch (bladebro-ideas 03) is armed at the wheel point in its
+// scroll mode, and its read carries where the scrollers were before the
+// wheel and where they settled after it.
+func TestScrollWatchReportsBeforeAndAfter(t *testing.T) {
+	p := newEffectPage(t)
+	p.set(func() {
+		p.final = map[string]any{"scroll": map[string]any{
+			"before": map[string]any{"y": 100.0, "maxY": 900.0, "x": 0.0, "maxX": 0.0, "v": map[string]any{"el": `<div id="list">`, "at": 500.0, "max": 500.0}},
+			"after":  map[string]any{"y": 100.0, "maxY": 900.0, "x": 0.0, "maxX": 0.0, "v": map[string]any{"el": `<div id="list">`, "at": 500.0, "max": 500.0}},
+		}}
+	})
+	ctx := context.Background()
+	got := ArmScroll(ctx, p.client, "S", Point{X: 200, Y: 150}).Read(ctx)
+	want := ScrollReport{
+		Before: ScrollPos{Y: 100, MaxY: 900, V: &ScrollerPos{El: `<div id="list">`, At: 500, Max: 500}},
+		After:  ScrollPos{Y: 100, MaxY: 900, V: &ScrollerPos{El: `<div id="list">`, At: 500, Max: 500}},
+	}
+	if got.Scroll == nil || !reflect.DeepEqual(*got.Scroll, want) {
+		t.Errorf("scroll report %+v, want %+v", got.Scroll, want)
+	}
+	if len(p.armArgs) != 3 || p.armArgs[0] != 200.0 || p.armArgs[1] != 150.0 || p.armArgs[2] != true {
+		t.Errorf("the watch was armed with %v, want the wheel point 200,150 in scroll mode", p.armArgs)
+	}
+
+	// A click's watch carries no scroll report.
+	p = newEffectPage(t)
+	if got := p.watch(t, &Point{X: 1, Y: 1}); got.Scroll != nil {
+		t.Errorf("a click's watch reported a scroll: %+v", got.Scroll)
 	}
 }
 

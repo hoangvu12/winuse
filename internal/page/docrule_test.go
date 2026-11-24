@@ -131,7 +131,7 @@ func TestMergeAfterAHeadlessTabSwitch(t *testing.T) {
 			5 toolbar ID: view_1000
 				6 edit (settable, string) Address and search bar Value: 127.0.0.1:49901/browser-pages.html
 			7 document ID: view_1033
-				8 heading Sign in to Example
+				8 heading (level 1) Sign in to Example
 				9 edit (settable, string) Email Value: ada@example.com
 				10 edit (settable, string) Password
 				11 check box Remember me off Secondary Actions: Toggle

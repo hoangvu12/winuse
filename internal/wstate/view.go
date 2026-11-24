@@ -52,6 +52,11 @@ type View struct {
 	// container, its shared ID left out) into its parent.
 	Compact bool
 
+	// URLs prints a Page link's URL after its line, as " URL: <url>"
+	// (--urls, bladebro-ideas 01). Off by default: on a page of links most
+	// lines would carry one.
+	URLs bool
+
 	// MaxChars stops printing Element lines before the output passes this
 	// many characters, with a note naming the Elements not printed (0: no
 	// cap). The header and the tail (the focused Element and the notes)
@@ -237,7 +242,8 @@ func viewLines(t *Tree, v View, shared map[string]bool) ([]PrintedLine, int) {
 			e.MoreChildren = max(e.MoreChildren, directChildren(t.Elements, i))
 		}
 		hint := v.viewHint(t, hints, i)
-		if !v.prints(i, &e) && !(hint != "" && v.unfolded().prints(i, &e)) { // --compact keeps a hinted line
+		extra := hint != "" || v.URLs && Collapse(e.URL) != ""
+		if !v.prints(i, &e) && !(extra && v.unfolded().prints(i, &e)) { // --compact keeps a hinted line, and one with a URL it prints
 			hidden++
 			continue
 		}
@@ -256,6 +262,9 @@ func viewLines(t *Tree, v View, shared map[string]bool) ([]PrintedLine, int) {
 			text = idx + OffscreenMark + " " + strings.TrimPrefix(text, idx)
 		}
 		b.WriteString(text)
+		if v.URLs {
+			writeURL(&b, &e)
+		}
 		writeHint(&b, hint)
 		b.WriteByte('\n')
 		out = append(out, PrintedLine{i, b.String()})

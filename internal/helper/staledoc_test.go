@@ -66,7 +66,7 @@ func TestWindowStateAfterAHeadlessTabSwitch(t *testing.T) {
 	if want := wstate.Render(m.Tree); out != want {
 		t.Errorf("Window State:\n%s\nwant:\n%s", out, want)
 	}
-	if strings.Contains(out, "Learn more") || strings.Contains(out, "Note:") || !strings.Contains(out, "\t\t\t4 document ID: view_1033\n\t\t\t\t5 heading Sign in to Example\n") {
+	if strings.Contains(out, "Learn more") || strings.Contains(out, "Note:") || !strings.Contains(out, "\t\t\t4 document ID: view_1033\n\t\t\t\t5 heading (level 1) Sign in to Example\n") {
 		t.Errorf("Window State:\n%s", out)
 	}
 	if len(trees.reads) != 1 || trees.reads[0].cut != -1 {

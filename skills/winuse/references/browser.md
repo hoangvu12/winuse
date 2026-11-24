@@ -165,6 +165,13 @@ winuse drag <window> <element> <element|@x,y>
   `with an empty body; Chrome shows its error page` means the Tab shows
   Chrome's own page for it. On a 429 or 503, wait before you retry, and
   never in a tight loop.
+- To load pages faster in a Tab of your own, block their images, fonts
+  and media: `winuse tab new <window> <url> --block images,fonts,media`,
+  or `winuse navigate <window>:<tab> <url> --block images` on a Tab you
+  opened (any Tab of a browser winuse launched or cloned); `--block none`
+  turns it off. The text and alt text stay, so reads are the same. It
+  matches file extensions, so images whose URLs have none still load.
+  On the user's own Tabs it is refused. More in topic `tabs`.
 - After an Action that loads or changes the Page, `wait` for what you
   expect (10 seconds by default, `--timeout <seconds>` up to 300), then
   read the Window State. A Page Element goes stale when the Page navigates
@@ -209,6 +216,12 @@ winuse drag <window> <element> <element|@x,y>
   `--observe` only the navigation note prints; the diff shows the rest.
   `--json` gives the same as an `effect` field (`navigated`, `changed`,
   `text`, `none` or `unknown`).
+- A Page `scroll` that moved nothing says why, still with `ok`:
+  `Note: nothing scrolled; the Page is at its bottom` (or top, an edge, or
+  `does not scroll`), or `<div id="list"> is at its end` for the scroller
+  under the wheel. Stop scrolling that way. One that reached the end says
+  `Note: the Page is now at its bottom`. `scroll <el> into-view` on an
+  Element already on screen says `was already in view`.
 - A Page Action during which requests failed or the Page logged a CSP or
   security error stays `ok` and adds a note, such as
   `Note: 2 failed requests: 404 /api/save, 500 /api/user` (paths on the
@@ -242,6 +255,11 @@ winuse drag <window> <element> <element|@x,y>
   `winuse wait <window> download` prints the file's path when done.
   Downloads land in `Downloads\winuse` (shown by `winuse browser status`),
   only on a browser winuse launched or cloned.
+- To learn where a link goes, read with `--urls` or `find <window> --role
+  link`, not `eval`: a link's line then ends with `URL: /path` on the
+  Page's own site, or the domain and path elsewhere. A heading's line says
+  its level, so `find <window> --role heading` is the Page's outline (see
+  `winuse skill reading`).
 - To read a Page's text (an article, docs, search results, a table), use
   `read`, not `eval` with `innerText`. It prints the main content as
   Markdown with headings, lists, links and tables with their headers,

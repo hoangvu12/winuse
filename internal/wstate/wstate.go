@@ -104,6 +104,16 @@ type Element struct {
 	Hint    string `json:"hint,omitempty"`
 	RowText string `json:"rowText,omitempty"`
 
+	// Level is a Page heading's level (1-6), rendered as the "level N"
+	// state on every line (bladebro-ideas 01). UIA headings have none.
+	Level int `json:"level,omitempty"`
+
+	// URL is a Page link's address as the reader shortened it
+	// (page.LinkURL). Not part of Codex's line: it prints as " URL: <url>"
+	// after the line only where asked (View.URLs, URLLine), never under
+	// --full; a diff counts it.
+	URL string `json:"url,omitempty"`
+
 	// Offscreen says the Element's box lies wholly outside the Page's
 	// viewport: scrolled away. Only a Page read through its Browser
 	// Connection sets it (the Tab's own document); it is not printed, and

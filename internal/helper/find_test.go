@@ -253,7 +253,47 @@ func TestFindAndRootOnABrowserWindow(t *testing.T) {
 	}
 	// A Page Element itself.
 	out, e = runCommand(t, cmds, "get-window-state", windowRef{Window: "301", Root: "9"})
-	if e != nil || !strings.Contains(out, "\t9 heading Sign in to Example\n") {
+	if e != nil || !strings.Contains(out, "\t9 heading (level 1) Sign in to Example\n") {
 		t.Errorf("--root 9: %q, %+v", out, e)
+	}
+}
+
+// TestFindShowsHeadingLevelsAndLinkURLs (bladebro-ideas 01): find
+// --role heading lists the Page's outline with levels; find prints a
+// link's URL, as it prints its hint, since its lines have no tree around
+// them; --full prints Codex's line without it.
+func TestFindShowsHeadingLevelsAndLinkURLs(t *testing.T) {
+	raw := pageFixture(t, "login-form")
+	s, trees := pageServices(t, &fakePages{raw: raw}, -1)
+	s.Actions = storedPageTrees{trees}
+	cmds := CommandsWith(s)
+	out, e := runCommand(t, cmds, "find", protocol.FindArgs{Window: "301", Role: "heading"})
+	if e != nil || !strings.Contains(out, "\t9 heading (level 1) Sign in to Example\n") {
+		t.Errorf("find --role heading: %q, %+v", out, e)
+	}
+	out, e = runCommand(t, cmds, "find", protocol.FindArgs{Window: "301", Role: "link"})
+	if e != nil || !strings.Contains(out, "\t14 link Forgot your password? URL: /reset\n") {
+		t.Errorf("find --role link: %q, %+v", out, e)
+	}
+	out, e = runCommand(t, cmds, "find", protocol.FindArgs{Window: "301", Role: "link", Full: true})
+	if e != nil || !strings.Contains(out, "\t14 link Forgot your password?\n") {
+		t.Errorf("find --role link --full: %q, %+v", out, e)
+	}
+
+	// A read prints the URL with --urls only; --root under the same flag.
+	out, e = runCommand(t, cmds, "get-window-state", windowRef{Window: "301"})
+	if e != nil || strings.Contains(out, "URL:") || !strings.Contains(out, "\t\t\t\t14 link Forgot your password?\n") {
+		t.Errorf("a plain read: %q, %+v", out, e)
+	}
+	out, e = runCommand(t, cmds, "get-window-state", windowRef{Window: "301", URLs: true})
+	if e != nil || !strings.Contains(out, "\t\t\t\t14 link Forgot your password? URL: /reset\n") || !strings.Contains(out, "\t\t\t\t9 heading (level 1) Sign in to Example\n") {
+		t.Errorf("--urls: %q, %+v", out, e)
+	}
+	out, e = runCommand(t, cmds, "get-window-state", windowRef{Window: "301", Root: "8", URLs: true})
+	if e != nil || !strings.Contains(out, "\t\t14 link Forgot your password? URL: /reset\n") {
+		t.Errorf("--root 8 --urls: %q, %+v", out, e)
+	}
+	if _, e = runCommand(t, cmds, "get-window-state", windowRef{Window: "301", URLs: true, Full: true}); e == nil || !strings.Contains(e.Msg, "--urls") {
+		t.Errorf("--full --urls: %+v", e)
 	}
 }

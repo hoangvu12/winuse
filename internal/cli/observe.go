@@ -3,7 +3,7 @@ package cli
 // --observe, CLI side (speed observe, ADR 0021): an Action or a Batch that
 // prints the Window State after it.
 //
-//	winuse <action> ... --observe[=diff|full] [--interactive] [--depth N] [--compact] [--max-chars N | --out <file>] [--full]
+//	winuse <action> ... --observe[=diff|full] [--interactive] [--depth N] [--compact] [--urls] [--max-chars N | --out <file>] [--full]
 //	winuse batch <window> --observe[=diff|full] [...] <action> ... [then ...]
 //
 // A bare --observe is diff. The output budgets after it shape the
@@ -26,7 +26,7 @@ import (
 const observeFlag = "--observe"
 
 // observeUsage is --observe's usage line.
-const observeUsage = "usage: winuse <action> ... --observe[=diff|full] [--interactive] [--depth N] [--compact] [--max-chars N | --out <file>] [--full]\n" +
+const observeUsage = "usage: winuse <action> ... --observe[=diff|full] [--interactive] [--depth N] [--compact] [--urls] [--max-chars N | --out <file>] [--full]\n" +
 	"       winuse batch <window> --observe[=diff|full] [...] <action> ... [then ...]"
 
 // activeObserve is the running command's --observe, which runRequest puts
@@ -38,7 +38,7 @@ var activeObserve *protocol.Observe
 func observeFlagLen(args []string) int {
 	name, _, inline := strings.Cut(args[0], "=")
 	switch name {
-	case observeFlag, "--interactive", "--compact", "--full":
+	case observeFlag, "--interactive", "--compact", "--full", "--urls":
 		return 1
 	case "--depth", "--max-chars", "--out":
 		if inline || len(args) < 2 {
@@ -173,6 +173,6 @@ func parseObserve(taken []string) (*protocol.Observe, error) {
 	if len(rest) > 0 {
 		return nil, fmt.Errorf("%s needs a value", rest[0])
 	}
-	o.Interactive, o.Depth, o.Compact, o.MaxChars, o.Out, o.Full = sh.Interactive, sh.Depth, sh.Compact, sh.MaxChars, sh.Out, sh.Full
+	o.Interactive, o.Depth, o.Compact, o.MaxChars, o.Out, o.Full, o.URLs = sh.Interactive, sh.Depth, sh.Compact, sh.MaxChars, sh.Out, sh.Full, sh.URLs
 	return o, nil
 }

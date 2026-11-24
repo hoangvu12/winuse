@@ -86,6 +86,8 @@ function (opts) {
 
   // ---- links ----
 
+  // shortURL's rule is also page.LinkURL's (linkurl.go), for a link's
+  // URL on a Page line; keep the two alike.
   function shortURL(href) {
     if (!href) return '';
     var u;

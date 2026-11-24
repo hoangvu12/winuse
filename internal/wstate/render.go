@@ -116,7 +116,8 @@ func writeElement(b *strings.Builder, index int, e *Element, indent bool) {
 // order: selectable, selected, disabled, collapsed/expanded/partially
 // expanded, then "settable, string" (writable ValuePattern) or
 // "settable, float" (RangeValue), then "password" (a secret field whose
-// Value is withheld; winuse's one word beyond Codex's grammar).
+// Value is withheld) and "level N" (a Page heading's level), winuse's
+// words beyond Codex's grammar.
 func (e *Element) states() string {
 	var parts []string
 	if e.Selectable {
@@ -137,5 +138,27 @@ func (e *Element) states() string {
 	if e.Password {
 		parts = append(parts, "password")
 	}
+	if e.Level > 0 {
+		parts = append(parts, "level "+strconv.Itoa(e.Level))
+	}
 	return strings.Join(parts, ", ")
+}
+
+// writeURL adds " URL: <url>" to a line, when the Element has one: a Page
+// link's address (bladebro-ideas 01), after Codex's line and before a
+// hint.
+func writeURL(b *strings.Builder, e *Element) {
+	if u := Collapse(e.URL); u != "" {
+		b.WriteString(" URL: ")
+		b.WriteString(u)
+	}
+}
+
+// URLLine is Line with the Element's URL after it: the line find, a diff
+// and an ambiguous reference print, without the tree around them.
+func URLLine(index int, e *Element) string {
+	var b strings.Builder
+	writeElement(&b, index, e, false)
+	writeURL(&b, e)
+	return b.String()
 }

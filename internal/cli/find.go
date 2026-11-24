@@ -153,11 +153,12 @@ type windowShape struct {
 	MaxChars    *int   // nil: the helper's default cap (speed 13)
 	Out         string // absolute
 	Full        bool
+	URLs        bool // a Page link's URL after its line (bladebro-ideas 01)
 }
 
 // takeShapeFlags takes --root <element>, --depth N, --interactive,
-// --skeleton, --compact, --max-chars N, --out <file> and --full out of
-// get-window-state's arguments and returns the rest.
+// --skeleton, --compact, --urls, --max-chars N, --out <file> and --full
+// out of get-window-state's arguments and returns the rest.
 func takeShapeFlags(args []string) ([]string, windowShape, error) {
 	var sh windowShape
 	var rest []string
@@ -169,13 +170,15 @@ func takeShapeFlags(args []string) ([]string, windowShape, error) {
 		}
 		name, value, inline := strings.Cut(tok[2:], "=")
 		switch name {
-		case "interactive", "visible", "skeleton", "compact", "full":
+		case "interactive", "visible", "skeleton", "compact", "full", "urls":
 			if inline {
 				return nil, sh, fmt.Errorf("--%s is a flag (no value)", name)
 			}
 			switch name {
 			case "interactive":
 				sh.Interactive = true
+			case "urls":
+				sh.URLs = true
 			case "visible":
 				sh.Visible = true
 			case "skeleton":
@@ -232,6 +235,9 @@ func takeShapeFlags(args []string) ([]string, windowShape, error) {
 	}
 	if sh.Full && (sh.Compact || sh.Visible || sh.MaxChars != nil || sh.Root == "" && (sh.Interactive || sh.Depth != 0)) {
 		return nil, sh, errors.New("--full prints the Window State as Codex does, whole and uncut: it takes no --interactive, --visible, --depth, --compact or --max-chars (with --root, --depth and --interactive still shape the read)")
+	}
+	if sh.Full && sh.URLs {
+		return nil, sh, errors.New("--full prints the Window State as Codex does, with no URLs: pass --urls or --full, not both")
 	}
 	return rest, sh, nil
 }
