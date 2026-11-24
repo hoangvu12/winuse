@@ -20,9 +20,9 @@ From: ADR 0024 (`docs/adr/0024-notes.md`), ticket 16
   - **Exe name:** lower-cased file name.
   - **Free-form text:** refused, and the hint lists the Windows whose App
     name or title matches.
-  - Decide the Public Suffix List source (`golang.org/x/net/publicsuffix`
-    or a small built-in rule), and write the choice in the ticket.
-    `AGENTS.md` may require asking before adding a dependency.
+  - **Public Suffix List source: decided 2026-11-24 by the user — add
+    `golang.org/x/net/publicsuffix`** as a new Go dependency (correct for
+    every suffix, including `co.uk`, `github.io`, `vercel.app`).
 - **Commands:**
   - `winuse note add <target> [--app] <text> | --stdin | --file <path>`
     - one line, about 200 characters at most. A longer text is refused,

@@ -92,10 +92,11 @@ var tabTargetCommands = map[string]bool{
 	"navigate": true, "back": true, "forward": true, "reload": true,
 	"dialog": true, "wait": true, "eval": true,
 	"batch": true,
+	"read":  true, // read.go, bladebro-ideas ticket 25
 }
 
 // tabTargetsWord names them in a refusal's hint.
-const tabTargetsWord = "get-window-state, click, set-value, scroll, hover, drag, select-text, type-text, press-key, upload, navigate, back, forward, reload, dialog, wait, eval and batch"
+const tabTargetsWord = "get-window-state, click, set-value, scroll, hover, drag, select-text, type-text, press-key, upload, navigate, back, forward, reload, dialog, wait, eval, read and batch"
 
 // pageWaitKinds are the waits a Tab target takes: the Page's.
 var pageWaitKinds = map[string]bool{page.WaitLoadKind: true, page.WaitURL: true, page.WaitDownload: true, page.WaitSelector: true, page.WaitText: true, page.WaitIdle: true, page.WaitJS: true}
