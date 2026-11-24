@@ -481,15 +481,9 @@ func pageNav(s Services, cmd string) Command {
 		if strings.TrimSpace(a.Window) == "" {
 			return "", Fail(cmd+": a window reference is required", hint)
 		}
-		switch {
-		case cmd == "navigate" && strings.TrimSpace(a.URL) == "":
-			return "", Fail("navigate: a URL is required", hint)
-		case cmd != "navigate" && a.URL != "":
-			return "", Fail(cmd+" takes no URL; to open one, run winuse navigate "+a.Window+" <url>", hint)
-		}
-		state, err := page.ParseLoadState(a.Wait)
-		if err != nil {
-			return "", Fail(cmd+": "+err.Error(), hint)
+		state, nerr := navInput(cmd, a)
+		if nerr != nil {
+			return "", nerr
 		}
 		target := page.NavURL(a.URL)
 		label := cmd
@@ -512,6 +506,25 @@ func pageNav(s Services, cmd string) Command {
 			},
 		})
 	}
+}
+
+// navInput checks navigate's, back's, forward's and reload's arguments
+// alone, before anything resolves: a URL for navigate and none for the
+// others, and --wait's load state, returned. A Batch runs it on such a
+// step while it prepares (batchcheck.go).
+func navInput(cmd string, a protocol.NavigateArgs) (string, *Error) {
+	hint := protocol.PageUsage(cmd)
+	switch {
+	case cmd == "navigate" && strings.TrimSpace(a.URL) == "":
+		return "", Fail("navigate: a URL is required", hint)
+	case cmd != "navigate" && a.URL != "":
+		return "", Fail(cmd+" takes no URL; to open one, run winuse navigate "+a.Window+" <url>", hint)
+	}
+	state, err := page.ParseLoadState(a.Wait)
+	if err != nil {
+		return "", Fail(cmd+": "+err.Error(), hint)
+	}
+	return state, nil
 }
 
 // hostOf is a URL's host for the Agent Cursor's label.
@@ -822,6 +835,21 @@ func pageWaitContext(ctx context.Context, want time.Duration) (context.Context, 
 	return context.WithTimeout(ctx, d)
 }
 
+// dialogInput checks dialog's arguments alone, before anything resolves:
+// accept or dismiss, returned lower-case, and text only with accept.
+// Whether a prompt is open is read live. A Batch runs it on a dialog step
+// while it prepares (batchcheck.go).
+func dialogInput(a protocol.DialogArgs) (string, *Error) {
+	action := strings.ToLower(strings.TrimSpace(a.Action))
+	if action != "accept" && action != "dismiss" {
+		return "", Fail(fmt.Sprintf("dialog: the answer must be accept or dismiss, got %q", a.Action), dialogUsageHint)
+	}
+	if a.Text != nil && action != "accept" {
+		return "", Fail("dialog: text answers a prompt, so it goes with accept", dialogUsageHint)
+	}
+	return action, nil
+}
+
 // pageDialog runs `winuse dialog <window> accept|dismiss [text]`.
 func pageDialog(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
@@ -832,12 +860,9 @@ func pageDialog(s Services) Command {
 		if strings.TrimSpace(a.Window) == "" {
 			return "", Fail("dialog: a window reference is required", dialogUsageHint)
 		}
-		action := strings.ToLower(strings.TrimSpace(a.Action))
-		if action != "accept" && action != "dismiss" {
-			return "", Fail(fmt.Sprintf("dialog: the answer must be accept or dismiss, got %q", a.Action), dialogUsageHint)
-		}
-		if a.Text != nil && action != "accept" {
-			return "", Fail("dialog: text answers a prompt, so it goes with accept", dialogUsageHint)
+		action, derr := dialogInput(a)
+		if derr != nil {
+			return "", derr
 		}
 		return s.runPageWindow(ctx, a.Window, pageWindowRun{
 			acts: true, dialogOK: true, target: s.pageDocRect, label: action + " dialog",
@@ -879,13 +904,69 @@ func pageDialog(s Services) Command {
 	}
 }
 
+// waitInput checks wait's arguments alone, before anything resolves, for
+// every kind, the Page's and the desktop's: the timeout (0 to 300 s), the
+// kind, and its value, state, Element Reference and --gone. A pause's
+// length is checked here; whether it is an open Window's ID is read at
+// the wait. A Batch runs it on a wait step while it prepares
+// (batchcheck.go).
+func waitInput(a protocol.WaitArgs) *Error {
+	if a.TimeoutMS < 0 {
+		return Fail("wait: the timeout must be positive", waitUsageHint)
+	}
+	if a.TimeoutMS > int(protocol.MaxWaitTimeout/time.Millisecond) {
+		return Fail(fmt.Sprintf("wait: --timeout takes up to %d seconds", int(protocol.MaxWaitTimeout/time.Second)), waitUsageHint)
+	}
+	switch kind := strings.ToLower(strings.TrimSpace(a.For)); kind {
+	case protocol.WaitMS:
+		if limit := int(protocol.MaxWaitTimeout / time.Millisecond); a.MS <= 0 || a.MS > limit {
+			return Fail(fmt.Sprintf("wait: a pause is a number of milliseconds above 0 and at most %d, got %d", limit, a.MS), waitUsageHint)
+		}
+	case protocol.WaitWindow:
+		if strings.TrimSpace(a.Value) == "" {
+			return Fail("wait window: an App name or a title is required", waitUsageHint)
+		}
+	case protocol.WaitNotification:
+	case protocol.WaitElement:
+		state := strings.ToLower(strings.TrimSpace(a.State))
+		if !slices.Contains(protocol.WaitStates, state) {
+			return Fail(fmt.Sprintf("wait: an element waits for one of %s, not %q", strings.Join(protocol.WaitStates, ", "), a.State), waitUsageHint)
+		}
+		if a.Value != "" && state != "value" {
+			return Fail("wait: only value takes a value", waitUsageHint)
+		}
+		if _, perr := parseElementTarget("wait", a.ElementIndex, a.Ref, nil, waitUsageHint); perr != nil {
+			return perr
+		}
+	case page.WaitDownload:
+	case page.WaitIdle:
+		if strings.TrimSpace(a.Value) != "" {
+			return Fail("wait: wait idle takes no value", waitUsageHint)
+		}
+		if a.Gone {
+			return Fail("wait: --gone goes with wait selector and wait text, not wait idle", waitUsageHint)
+		}
+	default:
+		// The Page's predicates, wait text's on the desktop too: both
+		// routes refuse it without text.
+		if _, err := page.WaitExpr(kind, a.Value, a.Gone); err != nil {
+			return Fail("wait: "+err.Error(), waitUsageHint)
+		}
+	}
+	return nil
+}
+
 // pageWait runs `winuse wait <window> <for> [value] [--timeout s]`. The
 // desktop waits (waits.go, desktop-parity ticket 03) leave here first.
+// waitInput checks every wait's arguments before either route.
 func pageWait(s Services) Command {
 	return func(ctx context.Context, args json.RawMessage) (string, *Error) {
 		var a protocol.WaitArgs
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("wait: "+err.Error(), waitUsageHint)
+		}
+		if werr := waitInput(a); werr != nil {
+			return "", werr
 		}
 		if s.desktopWait(a) {
 			return s.runDesktopWait(ctx, a)
@@ -893,20 +974,10 @@ func pageWait(s Services) Command {
 		if strings.TrimSpace(a.Window) == "" {
 			return "", Fail("wait: a window reference is required", waitUsageHint)
 		}
-		if a.TimeoutMS < 0 {
-			return "", Fail("wait: the timeout must be positive", waitUsageHint)
-		}
 		kind := strings.ToLower(strings.TrimSpace(a.For))
 		var expr string
 		switch kind {
-		case page.WaitDownload:
-		case page.WaitIdle:
-			if strings.TrimSpace(a.Value) != "" {
-				return "", Fail("wait: wait idle takes no value", waitUsageHint)
-			}
-			if a.Gone {
-				return "", Fail("wait: --gone goes with wait selector and wait text, not wait idle", waitUsageHint)
-			}
+		case page.WaitDownload, page.WaitIdle:
 		default:
 			var err error
 			if expr, err = page.WaitExpr(kind, a.Value, a.Gone); err != nil {
@@ -1041,6 +1112,23 @@ func (s Services) waitDownload(ctx context.Context, pw pageWin, stopped func() b
 	return "", false, Fail(err.Error(), "run winuse wait "+id+" download again; run winuse browser status "+pw.name+" if it keeps failing")
 }
 
+// evalInput checks eval's arguments alone, before anything resolves: an
+// expression, and --max within 1 to page.EvalMaxLimit, returned as the
+// result's cut (page.EvalLimit when not given). A Batch runs it on an eval
+// step while it prepares (batchcheck.go).
+func evalInput(a protocol.EvalArgs) (int, *Error) {
+	if strings.TrimSpace(a.Expression) == "" {
+		return 0, Fail("eval: an expression is required", evalUsageHint)
+	}
+	if a.Max < 0 || a.Max > page.EvalMaxLimit {
+		return 0, Fail(fmt.Sprintf("eval: --max takes 1 to %d characters", page.EvalMaxLimit), evalUsageHint)
+	}
+	if a.Max == 0 {
+		return page.EvalLimit, nil
+	}
+	return a.Max, nil
+}
+
 // pageEval runs `winuse eval <window> <expression>`. It is a page Action
 // with no Agent Cursor (it has no target); winuse keeps no history of
 // Window States to list it in.
@@ -1053,15 +1141,9 @@ func pageEval(s Services) Command {
 		if strings.TrimSpace(a.Window) == "" {
 			return "", Fail("eval: a window reference is required", evalUsageHint)
 		}
-		if strings.TrimSpace(a.Expression) == "" {
-			return "", Fail("eval: an expression is required", evalUsageHint)
-		}
-		if a.Max < 0 || a.Max > page.EvalMaxLimit {
-			return "", Fail(fmt.Sprintf("eval: --max takes 1 to %d characters", page.EvalMaxLimit), evalUsageHint)
-		}
-		limit := a.Max
-		if limit == 0 {
-			limit = page.EvalLimit
+		limit, eerr := evalInput(a)
+		if eerr != nil {
+			return "", eerr
 		}
 		return s.runPageWindow(ctx, a.Window, pageWindowRun{
 			acts: true,

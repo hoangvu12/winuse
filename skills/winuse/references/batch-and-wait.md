@@ -18,7 +18,9 @@ Steps take the standalone arguments without the Window. A separate `then`
 starts a new step; quote text containing it. `winuse batch -` reads stdin:
 the Window and flags on line 1, then one step per line without `then`; `"`
 groups words (`\"` inside), and blank and `#` lines are skipped. A
-malformed Batch or unknown Window sends nothing. Batch only sequences you
+malformed Batch, an unknown Window or a bad value in any step (a key name,
+an action, an Element Reference, a `wait` kind or timeout, a missing
+upload file) sends nothing and names the step. Batch only sequences you
 understand well. A Batch has 60 s; `--timeout <s>` (up to 300) after the
 Window widens it (a later one is a `wait` step's).
 

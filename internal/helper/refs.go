@@ -38,12 +38,16 @@ type elementTarget struct {
 // Reference was supplied at all.
 const elementRefRequiredHint = "read a Window's Elements with winuse get-window-state <window>, then act on one by its Element Index, name: or id: reference, or @x,y from its latest screenshot"
 
+// badRefHint is the recovery hint for a reference with no known form.
+const badRefHint = "an Element Reference is an Element Index, name:<text>, id:<AutomationId> or @x,y (the latest screenshot's pixels)"
+
 // parseElementTarget guards and validates the Element Reference forms of
 // one Element-taking Action: exactly one of an Element Index, a name:/id:
 // reference or @x,y coordinates must be present (several are a usage
-// failure naming the command; so are a negative index and negative
-// coordinates). It runs before the Action pipeline, so a bad target never
-// activates anything.
+// failure naming the command; so are a negative index, negative
+// coordinates and a reference that is not name:<text> or id:<id>). It
+// runs before the Action pipeline, so a bad target never activates
+// anything, and in a Batch's prepare loop (batchcheck.go).
 func parseElementTarget(cmd string, index *int, ref string, point *protocol.Point, usage string) (elementTarget, *Error) {
 	if n := countRefForms(point != nil, index != nil, ref != ""); n > 1 {
 		return elementTarget{}, Fail(fmt.Sprintf("%s: pass an element index, a name:/id: reference or @x,y coordinates, not several", cmd), usage)
@@ -56,6 +60,11 @@ func parseElementTarget(cmd string, index *int, ref string, point *protocol.Poin
 	}
 	if point != nil && (point.X < 0 || point.Y < 0) {
 		return elementTarget{}, Fail(fmt.Sprintf("%s: the @x,y coordinates must be non-negative integers", cmd), usage)
+	}
+	if ref != "" {
+		if _, _, err := wstate.ParseElementRef(ref); err != nil {
+			return elementTarget{}, Fail(err.Error(), badRefHint)
+		}
 	}
 	return elementTarget{index: index, ref: ref, point: point}, nil
 }
@@ -169,8 +178,7 @@ func refError(err error, w win.WindowInfo) *Error {
 	}
 	var bad *wstate.BadRefError
 	if errors.As(err, &bad) {
-		return Fail(err.Error(),
-			"an Element Reference is an Element Index, name:<text>, id:<AutomationId> or @x,y (the latest screenshot's pixels)")
+		return Fail(err.Error(), badRefHint)
 	}
 	if errors.Is(err, uia.ErrNoState) {
 		return noStateError(err, w)

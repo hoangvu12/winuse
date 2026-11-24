@@ -59,20 +59,11 @@ func find(s Services) Command {
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("find: "+err.Error(), findUsage)
 		}
-		if a.First && a.Count || a.Limit > 0 && (a.First || a.Count) {
-			return "", Fail("find: pass one of --first, --limit and --count", findUsage)
-		}
-		if a.Limit < 0 || a.MaxChars != nil && *a.MaxChars < 0 {
-			return "", Fail("find: --limit takes a positive number and --max-chars a number (0: no cap)", findUsage)
-		}
-		if a.Full && a.MaxChars != nil {
-			return "", Fail("find: --full prints every match uncut, with every ID; it takes no --max-chars", findUsage)
+		if ferr := findInput(a); ferr != nil {
+			return "", ferr
 		}
 		if a.First {
 			a.Limit = 1
-		}
-		if a.State != "" && !wstate.ValidState(a.State) {
-			return "", Fail(fmt.Sprintf("find: unknown state %q", a.State), "a state is one of "+strings.Join(wstate.States, ", "))
 		}
 		q := wstate.Query{Role: a.Role, Name: a.Name, Text: a.Text, State: a.State}
 		w, rerr := resolveWindow(s, a.Window)
@@ -99,6 +90,26 @@ func find(s Services) Command {
 		cut := newFindCut(a, res.Count, res.SharedIDs)
 		return renderAdded(w, res.Added, true, "matched "+q.String(), cut), nil
 	}
+}
+
+// findInput checks find's flags alone, before the Window resolves: one of
+// --first, --limit and --count, the numbers, --full without --max-chars,
+// and a known --state. A Batch runs it on a find step while it prepares
+// (batchcheck.go).
+func findInput(a protocol.FindArgs) *Error {
+	if a.First && a.Count || a.Limit > 0 && (a.First || a.Count) {
+		return Fail("find: pass one of --first, --limit and --count", findUsage)
+	}
+	if a.Limit < 0 || a.MaxChars != nil && *a.MaxChars < 0 {
+		return Fail("find: --limit takes a positive number and --max-chars a number (0: no cap)", findUsage)
+	}
+	if a.Full && a.MaxChars != nil {
+		return Fail("find: --full prints every match uncut, with every ID; it takes no --max-chars", findUsage)
+	}
+	if a.State != "" && !wstate.ValidState(a.State) {
+		return Fail(fmt.Sprintf("find: unknown state %q", a.State), "a state is one of "+strings.Join(wstate.States, ", "))
+	}
+	return nil
 }
 
 // findCut is what find or a region read leaves out of its answer: the
@@ -263,16 +274,8 @@ func indexList(idx []int) string {
 // Window, or its outline: --root and --skeleton. handled is false for a
 // plain read.
 func windowStateShape(s Services, ctx context.Context, w win.WindowInfo, a windowRef) (out string, rerr *Error, handled bool) {
-	if e := budgetError(a); e != nil {
-		return "", e, true
-	}
+	// getWindowState checked the flags (windowStateInput).
 	switch {
-	case a.Skeleton && a.Root != "":
-		return "", Fail("get-window-state: --skeleton reads the whole Window and --root one Element; pass one", windowStateUsage), true
-	case a.Skeleton && a.Depth != 0:
-		return "", Fail(fmt.Sprintf("get-window-state: --skeleton reads %d levels; --depth goes with a full read or --root <element>", uia.SkeletonDepth), windowStateUsage), true
-	case a.Root != "" && (a.Compact || a.Out != ""):
-		return "", Fail("get-window-state: --compact and --out shape a full read; --root takes --depth, --interactive, --max-chars and --full", windowStateUsage), true
 	case a.Skeleton:
 		tree, err := s.Trees.Capture(uia.WithSkeleton(ctx), w.ID, w.Title, win.AppExeName(w), s.Budget)
 		if err != nil {
