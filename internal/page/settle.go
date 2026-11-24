@@ -101,11 +101,13 @@ func (realClock) Sleep(ctx context.Context, d time.Duration) {
 }
 
 // settleFatal reports a probe error that ends the settle: a dialog, the Esc
-// stop, or a session or connection that is gone. Any other error (the
-// world gone with a navigation) is a busy probe.
+// stop, a session or connection that is gone, or an effect watch's own end
+// (its navigation, its lost world). Any other error (the world gone with a
+// navigation) is a busy probe.
 func settleFatal(err error) bool {
 	var d *DialogOpenError
-	return errors.As(err, &d) || errors.Is(err, ErrStopped) || errors.Is(err, ErrStale)
+	return errors.As(err, &d) || errors.Is(err, ErrStopped) || errors.Is(err, ErrStale) ||
+		errors.Is(err, errWatchNavigated) || errors.Is(err, errWatchLost)
 }
 
 // settleLoop probes until the Page settles, bound passes or ctx ends (both
@@ -152,9 +154,33 @@ func settleLoop(ctx context.Context, clk settleClock, bound time.Duration, stopp
 // settleWorld is the isolated world's name.
 const settleWorld = "winuse-settle"
 
+// requestWatchJS defines the request side of the settle, which page.Settle
+// and the effect watch share: watchRequests(s) starts a PerformanceObserver
+// that keeps s.res at the end of the latest request the Page finished
+// (s.res starts when the watch does), and readRequests(s, now) reads the
+// timeline too, since the observer's callbacks come late. Times are
+// performance.now() milliseconds.
+const requestWatchJS = `
+  const requestEnd = e => e.responseEnd || e.startTime + e.duration;
+  const watchRequests = s => {
+    try {
+      const p = new PerformanceObserver(l => { for (const e of l.getEntries()) { const end = requestEnd(e); if (end > s.res) s.res = end; } });
+      p.observe({ type: 'resource' });
+      return p;
+    } catch (e) { return null; }
+  };
+  const readRequests = (s, now) => {
+    const rs = performance.getEntriesByType('resource');
+    for (let i = Math.max(0, rs.length - 20); i < rs.length; i++) {
+      const end = requestEnd(rs[i]);
+      if (end > s.res && end <= now) s.res = end;
+    }
+  };
+`
+
 // pageSettleJS installs the observers once per world and document, and reads
 // them. Times are performance.now() milliseconds.
-const pageSettleJS = `(() => { /* winuse:settle */
+const pageSettleJS = `(() => { /* winuse:settle */` + requestWatchJS + `
   const k = '__winuseSettle', now = performance.now();
   let s = window[k];
   if (!s || s.doc !== document) {
@@ -166,18 +192,10 @@ const pageSettleJS = `(() => { /* winuse:settle */
       m.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
       s.obs.push(m);
     } catch (e) {}
-    try {
-      const p = new PerformanceObserver(l => { for (const e of l.getEntries()) { const end = e.responseEnd || e.startTime + e.duration; if (end > s.res) s.res = end; } });
-      p.observe({ type: 'resource' });
-      s.obs.push(p);
-    } catch (e) {}
+    const p = watchRequests(s);
+    if (p) s.obs.push(p);
   }
-  // The observer's callbacks come late; the timeline is read now too.
-  const rs = performance.getEntriesByType('resource');
-  for (let i = Math.max(0, rs.length - 20); i < rs.length; i++) {
-    const e = rs[i], end = e.responseEnd || e.startTime + e.duration;
-    if (end > s.res && end <= now) s.res = end;
-  }
+  readRequests(s, now);
   return { dom: now - s.mut, net: now - s.res, loading: document.readyState === 'loading' };
 })()`
 
@@ -207,21 +225,16 @@ func Settle(ctx context.Context, c *cdp.Client, session string, bound time.Durat
 		cctx, cancel := context.WithTimeout(ctx, pollCall)
 		defer cancel()
 		if world == 0 {
-			id, err := mainFrameID(cctx, c, session)
+			f, err := mainFrame(cctx, c, session)
+			if err == nil && f.ID == "" {
+				err = errors.New("the Tab has no main frame")
+			}
+			if err == nil {
+				world, err = newWorld(cctx, c, session, f.ID, settleWorld)
+			}
 			if err != nil {
 				return SettleSample{}, settleProbeErr(c, err)
 			}
-			res, err := c.CallSession(cctx, session, "Page.createIsolatedWorld", map[string]any{"frameId": id, "worldName": settleWorld})
-			if err != nil {
-				return SettleSample{}, settleProbeErr(c, err)
-			}
-			var w struct {
-				ExecutionContextID int `json:"executionContextId"`
-			}
-			if json.Unmarshal(res, &w) != nil || w.ExecutionContextID == 0 {
-				return SettleSample{}, errors.New("no isolated world")
-			}
-			world = w.ExecutionContextID
 		}
 		res, err := c.CallSession(cctx, session, "Runtime.evaluate", map[string]any{"expression": pageSettleJS, "contextId": world, "returnByValue": true, "silent": true})
 		if err == nil {
@@ -273,21 +286,3 @@ func settleProbeErr(c *cdp.Client, err error) error {
 
 // ms turns performance.now() milliseconds into a Duration.
 func ms(v float64) time.Duration { return time.Duration(v * float64(time.Millisecond)) }
-
-// mainFrameID is the Tab's main frame id.
-func mainFrameID(ctx context.Context, c *cdp.Client, session string) (string, error) {
-	res, err := c.CallSession(ctx, session, "Page.getFrameTree", nil)
-	if err != nil {
-		return "", err
-	}
-	var ft struct {
-		FrameTree frameTree `json:"frameTree"`
-	}
-	if err := json.Unmarshal(res, &ft); err != nil {
-		return "", err
-	}
-	if ft.FrameTree.Frame.ID == "" {
-		return "", errors.New("the Tab has no main frame")
-	}
-	return ft.FrameTree.Frame.ID, nil
-}

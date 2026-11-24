@@ -779,6 +779,65 @@ func TestObserveSettlesThePage(t *testing.T) {
 	}
 }
 
+// TestObserveTakesTheActionsOwnSettle: a Page click or key under
+// --observe already waited for its Page to settle (its effect watch, by
+// page.Settle's rule), so the read does not wait for the same quiet again;
+// a watch that hit the bound gives the read its note. A Batch's steps may
+// act after the watch, so a Batch settles as before.
+func TestObserveTakesTheActionsOwnSettle(t *testing.T) {
+	r := newWinRig(t)
+	watched := page.SettleResult{Settled: true}
+	act := func(ctx context.Context, args json.RawMessage) (string, *Error) {
+		r.note("act", nil)
+		recordSettled(ctx, r.conn.Client, docsSession, watched)
+		return okOutput, nil
+	}
+	run := func(name string) (string, time.Duration) {
+		ctx, cancel := context.WithTimeout(context.Background(), protocol.RequestTimeout+protocol.ObserveTimeout)
+		defer cancel()
+		r.mu.Lock()
+		r.settles = 0
+		r.mu.Unlock()
+		start := time.Now()
+		out, e := r.svc.observed(name, act)(withObserve(ctx, &protocol.Observe{Mode: protocol.ObserveFull}), json.RawMessage(`{"window":"301"}`))
+		if e != nil {
+			t.Fatalf("observe: %+v", e)
+		}
+		return out, time.Since(start)
+	}
+	settles := func() int {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		return r.settles
+	}
+	out, _ := run("click")
+	if n := settles(); n != 0 || strings.Contains(out, "had not settled") {
+		t.Errorf("a settled Action: %d settle probes after it, out:\n%s", n, out)
+	}
+
+	// The watch hit its bound: the note, and no second wait.
+	watched = page.SettleResult{Busy: page.SettleBusyNet, After: page.SettleBound}
+	r.mu.Lock()
+	r.settleDOM, r.settleNet = 1, 1 // a settle of its own would run to the bound too
+	r.mu.Unlock()
+	out, took := run("click")
+	if n := settles(); n != 0 || took >= page.SettleBound {
+		t.Errorf("a busy Action: %d settle probes, observed after %s", n, took)
+	}
+	if !strings.Contains(out, notePrefix+"the Page had not settled after 1s (it kept loading resources), so this read may miss what it does next") {
+		t.Errorf("no settle note:\n%s", out)
+	}
+
+	// A Batch settles its Page itself.
+	r.mu.Lock()
+	r.settleDOM, r.settleNet = 0, 0
+	r.mu.Unlock()
+	watched = page.SettleResult{Settled: true}
+	if run("batch"); settles() == 0 {
+		t.Error("a Batch's observation took a step's settle")
+	}
+}
+
 func TestEval(t *testing.T) {
 	r := newWinRig(t)
 	r.evalReply = map[string]any{"result": map[string]any{"type": "object", "value": map[string]any{"title": "Docs", "n": 2}}}

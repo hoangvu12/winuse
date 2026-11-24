@@ -30,8 +30,10 @@ type effectPage struct {
 	url      string         // the top frame's URL now
 	loader   string         // and its loader
 	armArgs  []any          // the arm script's point
+	armedAt  time.Time      // when the arm ran: a quiet Page has been quiet since
 	polls    int            // poll scripts answered
 	busyFor  int            // polls that report a mutation just now
+	netFor   int            // polls that report a request finished just now
 	onPoll   func(n int)    // runs on poll n (from 1), before the answer
 	final    map[string]any // the read script's answer
 	pollGone bool           // polls fail as a destroyed context does
@@ -40,9 +42,9 @@ type effectPage struct {
 
 func newEffectPage(t *testing.T) *effectPage {
 	t.Helper()
-	saveQ, saveB, saveP := EffectQuiet, EffectBound, effectPoll
-	EffectQuiet, EffectBound, effectPoll = 30*time.Millisecond, 400*time.Millisecond, 5*time.Millisecond
-	t.Cleanup(func() { EffectQuiet, EffectBound, effectPoll = saveQ, saveB, saveP })
+	saveB := EffectBound
+	EffectBound = 400 * time.Millisecond
+	t.Cleanup(func() { EffectBound = saveB })
 
 	p := &effectPage{srv: cdptest.NewServer(), world: 7, url: "https://site.test/a", loader: "L1", final: map[string]any{}}
 	t.Cleanup(p.srv.Close)
@@ -79,7 +81,7 @@ func newEffectPage(t *testing.T) *effectPage {
 		switch {
 		case strings.Contains(q.Fn, "winuse:effect-arm"):
 			p.scripts = append(p.scripts, "arm")
-			p.armArgs = nil
+			p.armArgs, p.armedAt = nil, time.Now()
 			for _, a := range q.Args {
 				p.armArgs = append(p.armArgs, a.Value)
 			}
@@ -96,11 +98,15 @@ func newEffectPage(t *testing.T) *effectPage {
 			if p.pollGone {
 				return nil, &cdptest.ReplyError{Code: -32000, Message: "Cannot find context with specified id"}
 			}
-			ago := 1000.0
+			quiet := float64(time.Since(p.armedAt)) / float64(time.Millisecond)
+			dom, net := quiet, quiet
 			if n <= p.busyFor {
-				ago = 0
+				dom = 0
 			}
-			return value(map[string]any{"n": n, "ago": ago})
+			if n <= p.netFor {
+				net = 0
+			}
+			return value(map[string]any{"dom": dom, "net": net, "loading": false})
 		case strings.Contains(q.Fn, "winuse:effect-read"):
 			p.scripts = append(p.scripts, "read")
 			return value(p.final)
@@ -130,9 +136,16 @@ func (p *effectPage) event(method string, params any) {
 // watch arms a watch at the point (nil for a key) and reads it.
 func (p *effectPage) watch(t *testing.T, at *Point) Effect {
 	t.Helper()
+	e, _ := p.watchKept(t, at)
+	return e
+}
+
+// watchKept is watch, with the watch kept for what it says afterwards.
+func (p *effectPage) watchKept(t *testing.T, at *Point) (Effect, *EffectWatch) {
+	t.Helper()
 	ctx := context.Background()
 	w := ArmEffect(ctx, p.client, "S", at)
-	return w.Read(ctx)
+	return w.Read(ctx), w
 }
 
 func TestEffectNavigatedByACommittedLoad(t *testing.T) {
@@ -293,6 +306,53 @@ func TestEffectWaitsForAQuietDOM(t *testing.T) {
 	defer p.mu.Unlock()
 	if p.polls <= 4 || p.scripts[len(p.scripts)-1] != "read" {
 		t.Errorf("scripts %v: the read came before the DOM was quiet", p.scripts)
+	}
+}
+
+// The read waits for the Page's requests too, by page.Settle's rule
+// (tickets 06, 07): a click that fetches, then renders when the answer
+// comes, is read after it, not as "no change seen" while the DOM is still
+// quiet.
+func TestEffectWaitsForRequestsToFinish(t *testing.T) {
+	p := newEffectPage(t)
+	p.set(func() { p.netFor = 4; p.final = map[string]any{"added": 2} })
+	got, w := p.watchKept(t, &Point{X: 1, Y: 1})
+	if got.Kind != EffectChanged {
+		t.Errorf("effect %+v, want changed", got)
+	}
+	p.mu.Lock()
+	polls := p.polls
+	p.mu.Unlock()
+	if polls <= 4 {
+		t.Errorf("read after %d polls, while requests were still finishing", polls)
+	}
+	if r, ok := w.Settled(); !ok || !r.Settled {
+		t.Errorf("Settled() = %+v, %v; want a settled Page", r, ok)
+	}
+}
+
+// The watch says how its wait ended, so --observe does not wait for the
+// same quiet again: settled, or the bound passed with the Page busy. A
+// navigation ends the watch without a settle of the new document.
+func TestEffectWatchReportsItsSettle(t *testing.T) {
+	p := newEffectPage(t)
+	p.set(func() { p.busyFor = 1 << 30 })
+	if _, w := p.watchKept(t, nil); true {
+		r, ok := w.Settled()
+		if !ok || r.Settled || r.Busy != SettleBusyDOM || r.After < EffectBound {
+			t.Errorf("a Page busy to the bound: Settled() = %+v, %v; want busy (%s) at the bound", r, ok, SettleBusyDOM)
+		}
+	}
+	p = newEffectPage(t)
+	p.set(func() {
+		p.onPoll = func(n int) {
+			p.event("Page.frameNavigated", map[string]any{"frame": map[string]any{"id": "F1", "loaderId": "L2", "url": "https://site.test/next"}, "type": "Navigation"})
+		}
+	})
+	if got, w := p.watchKept(t, nil); got.Kind != EffectNavigated {
+		t.Errorf("effect %+v, want navigated", got)
+	} else if r, ok := w.Settled(); ok {
+		t.Errorf("a navigation reported a settle: %+v", r)
 	}
 }
 

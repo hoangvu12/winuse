@@ -28,6 +28,7 @@ import (
 type effectWorld struct {
 	mu      sync.Mutex
 	armed   bool
+	armedAt time.Time // a quiet Page has been quiet since the arm
 	armArgs []any
 	wall    string // what the wall check (block.js, bladebro-ideas 05) answers; "" none
 	walls   int    // how many times it ran
@@ -35,9 +36,9 @@ type effectWorld struct {
 
 func (r *pageRig) effectWorld(t *testing.T, final map[string]any, onPoll func(c *cdptest.Conn, n int)) *effectWorld {
 	t.Helper()
-	saveQ, saveB := page.EffectQuiet, page.EffectBound
-	page.EffectQuiet, page.EffectBound = 20*time.Millisecond, 300*time.Millisecond
-	t.Cleanup(func() { page.EffectQuiet, page.EffectBound = saveQ, saveB })
+	saveB := page.EffectBound
+	page.EffectBound = 300 * time.Millisecond
+	t.Cleanup(func() { page.EffectBound = saveB })
 	ew := &effectWorld{}
 	polls := 0
 	r.srv.Handle("Page.createIsolatedWorld", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
@@ -56,7 +57,7 @@ func (r *pageRig) effectWorld(t *testing.T, final map[string]any, onPoll func(c 
 		switch {
 		case strings.Contains(p.Fn, "winuse:effect-arm"):
 			ew.mu.Lock()
-			ew.armed = true
+			ew.armed, ew.armedAt = true, time.Now()
 			for _, a := range p.Args {
 				ew.armArgs = append(ew.armArgs, a.Value)
 			}
@@ -66,11 +67,12 @@ func (r *pageRig) effectWorld(t *testing.T, final map[string]any, onPoll func(c 
 			ew.mu.Lock()
 			polls++
 			n := polls
+			quiet := float64(time.Since(ew.armedAt)) / float64(time.Millisecond)
 			ew.mu.Unlock()
 			if onPoll != nil {
 				onPoll(c, n)
 			}
-			v = map[string]any{"n": 0, "ago": 1000}
+			v = map[string]any{"dom": quiet, "net": quiet, "loading": false}
 		case strings.Contains(p.Fn, "winuse:effect-read"):
 			v = final
 		case strings.Contains(p.Fn, "/* winuse:block */"):

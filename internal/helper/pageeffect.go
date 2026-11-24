@@ -3,7 +3,8 @@ package helper
 // What a Page click or key did (.scratch/bladebro-ideas ticket 06). A
 // Headless Page click (any button or count) and a Page press-key arm an
 // effect watch (page.ArmEffect) just before their input and read it once
-// the input was delivered and the Page settled (up to page.EffectBound).
+// the input was delivered and the Page settled, by page.Settle's rule (up
+// to page.EffectBound); --observe then takes that settle (recordSettled).
 // The Action stays `ok`, since its input was delivered, and gets at most
 // one note:
 //
@@ -104,6 +105,9 @@ func (pe *pageEffect) settle(ctx context.Context, w *page.EffectWatch, in *page.
 		return
 	}
 	pe.e = w.Read(ctx)
+	if r, ok := w.Settled(); ok {
+		recordSettled(ctx, pe.o.Client, pe.o.TopSession(), r)
+	}
 }
 
 // wrapAim wraps a click's act.

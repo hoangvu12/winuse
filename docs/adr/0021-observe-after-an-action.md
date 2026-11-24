@@ -221,6 +221,13 @@ their calls on fixed `sleep`s and `wait`s (ticket 14).
   before.
 - **`wait <window> idle`** runs the same settle explicitly, bounded by the
   wait's timeout (10 s by default), and fails naming what kept changing.
+- **One rule, one wait.** A Page click, key or wheel's effect watch
+  (bladebro-ideas 06 and 03) waits by the same rule on its own observers
+  before it says what changed, so a click that fetches and renders late is
+  not "no change seen". Under `--observe` of that single Action the read
+  takes the watch's result instead of a second settle (a Batch settles
+  itself, as a later step may act after a watch). A watch that saw the Page
+  navigate has no result for the new document, which the read settles.
 
 Considered: `Network.enable` for an exact in-flight count (detectable, and
 ticket 11's measured cost); wrapping `fetch` and `XMLHttpRequest` in the
