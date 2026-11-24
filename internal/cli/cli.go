@@ -90,6 +90,8 @@ func runCommand(args []string) (code int) {
 		return closeAppCmd(args[1:]) // closeapp.go, desktop-parity ticket 10
 	case "zoom":
 		return zoomCmd(args[1:], headed)
+	case "extract":
+		return extractCmd(args[1:]) // extract.go, bladebro ideas ticket 26
 	case "click":
 		return clickCmd(args[1:], headed)
 	case "type-text":

@@ -1,0 +1,12 @@
+list: <div class="grid"> "Laptops": 8 of 8 rows (complete)
+[
+{"title":"Aero 13","url":"https://shop.example/p/aero-13","price":"$899.00","rating":4.5,"reviews":123,"availability":"in stock"},
+{"title":"Aero 15","url":"https://shop.example/p/aero-15","price":"$999.00","original_price":"$1,199.00","rating":4.2,"reviews":87},
+{"title":"Bolt 14","url":"https://shop.example/p/bolt-14","price":"$649.00","rating":3.9,"reviews":41,"availability":"only 3 left"},
+{"title":"Bolt 16 Pro","url":"https://shop.example/p/bolt-16-pro","price":"$1,299.00"},
+{"title":"Core 13","url":"https://shop.example/p/core-13","price":"$549.00","rating":4.8,"reviews":1024},
+{"title":"Core 15","url":"https://shop.example/p/core-15","price":"$599.00","original_price":"$749.00","rating":4.1,"reviews":230,"availability":"out of stock"},
+{"title":"Dash 14","url":"https://shop.example/p/dash-14","price":"$799.00","rating":4,"reviews":12},
+{"title":"Dash 16","url":"https://shop.example/p/dash-16","price":"$899.00","rating":4.6,"reviews":310}
+]
+hint: if this is the wrong list, pass --root <index> of the list or of one item, from winuse get-window-state 301

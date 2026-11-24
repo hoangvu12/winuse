@@ -89,6 +89,7 @@ var commandTimeouts = map[string]time.Duration{
 	"dialog":   BrowserTimeout,
 	"wait":     BrowserTimeout,
 	"eval":     BrowserTimeout,
+	"extract":  BrowserTimeout, // extract.go: a Page's rows, over the same connection
 }
 
 // CommandTimeout returns a command's explicitly configured budget, if it
