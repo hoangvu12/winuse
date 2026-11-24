@@ -151,6 +151,16 @@ func TestReadOutWritesTheWholeMarkdown(t *testing.T) {
 	}
 }
 
+// A wall read's note names is the response's wall field too (--json).
+func TestReadRecordsTheWall(t *testing.T) {
+	r := newWinRig(t)
+	p := &readPage{md: map[string]any{"markdown": "Checking your browser", "main": "body", "title": "Just a moment", "url": "https://shop.test/", "block": "Cloudflare"}}
+	p.handle(r.browser.Srv, func(string) any { return nil })
+	if _, e, f := runFields(t, r.cmds, "read", protocol.ReadArgs{Window: "301"}); e != nil || f.Wall != "Cloudflare" {
+		t.Errorf("read of a wall: %+v %+v", f, e)
+	}
+}
+
 func TestReadRefusesANativeWindow(t *testing.T) {
 	r := newWinRig(t)
 	_, e := r.run(t, "read", protocol.ReadArgs{Window: "101"})

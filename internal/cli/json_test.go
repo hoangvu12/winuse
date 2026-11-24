@@ -103,17 +103,24 @@ func TestJSONLineForEachOutcome(t *testing.T) {
 				Message: "Windows desktop is locked; unlock before using winuse", Hint: "stop and ask the user to unlock"}},
 		},
 		{
-			// bladebro-ideas 05: a wall Note is the wall field too; the
-			// command stays ok.
+			// bladebro-ideas 05: the wall the helper noted is the wall
+			// field; the command stays ok.
 			name: "a wall", stdout: "ok https://shop.test/\n" + protocol.WallNote("Cloudflare") + "\n",
-			resp: &protocol.Response{OK: true, Out: "ok https://shop.test/\n" + protocol.WallNote("Cloudflare") + "\n"},
+			resp: &protocol.Response{OK: true, Out: "ok https://shop.test/\n" + protocol.WallNote("Cloudflare") + "\n", Wall: "Cloudflare"},
 			want: jsonLine{OK: true, Command: "click", Out: "ok https://shop.test/\n" + protocol.WallNote("Cloudflare") + "\n", Wall: "Cloudflare"},
+		},
+		{
+			// The field is the helper's, never read back from the text: an
+			// eval printing the note's words is no wall.
+			name: "a wall note's words in the text", stdout: protocol.WallNote("Cloudflare") + "\n",
+			resp: &protocol.Response{OK: true, Out: protocol.WallNote("Cloudflare") + "\n"},
+			want: jsonLine{OK: true, Command: "click", Out: protocol.WallNote("Cloudflare") + "\n"},
 		},
 		{
 			name: "a Batch that failed after landing on a wall", code: 1,
 			stdout: "Action 1 (navigate): ok https://api.test/\n  " + protocol.WallNote("rate-limit") + "\n",
 			resp: &protocol.Response{Out: "Action 1 (navigate): ok https://api.test/\n  " + protocol.WallNote("rate-limit") + "\n",
-				Err: "batch stopped at Action 2 (click): boom", Exit: 1, Code: protocol.CodeInternal},
+				Err: "batch stopped at Action 2 (click): boom", Exit: 1, Code: protocol.CodeInternal, Wall: "rate-limit"},
 			want: jsonLine{Command: "click", Out: "Action 1 (navigate): ok https://api.test/\n  " + protocol.WallNote("rate-limit") + "\n", Wall: "rate-limit",
 				Error: &jsonError{Code: protocol.CodeInternal, Message: "batch stopped at Action 2 (click): boom"}},
 		},
@@ -135,12 +142,13 @@ func TestJSONLineForEachOutcome(t *testing.T) {
 	}
 }
 
-// A navigation whose Page answered 4xx/5xx carries the code in
-// http_status (bladebro-ideas 02); other commands and a 2xx never do.
+// A navigation whose Page answered 4xx/5xx carries the code the helper
+// recorded in http_status (bladebro-ideas 02); a 2xx never does, nor does
+// text that only reads like the note.
 func TestJSONLineHTTPStatus(t *testing.T) {
 	out404 := "ok https://a.test/missing\nNote: the Page answered HTTP 404 Not Found\n"
 	for _, cmd := range []string{"navigate", "back", "forward", "reload"} {
-		got := jsonLineFor(cmd, 0, out404, "", &protocol.Response{OK: true, Out: out404})
+		got := jsonLineFor(cmd, 0, out404, "", &protocol.Response{OK: true, Out: out404, HTTPStatus: 404})
 		if got.HTTPStatus != 404 || !got.OK || got.Out != out404 {
 			t.Errorf("%s: %+v", cmd, got)
 		}
@@ -155,8 +163,8 @@ func TestJSONLineHTTPStatus(t *testing.T) {
 	if b, _ := json.Marshal(jsonLineFor("navigate", 0, "ok https://a.test/\n", "", nil)); strings.Contains(string(b), "http_status") {
 		t.Errorf("a 2xx navigation printed %s", b)
 	}
-	if got := jsonLineFor("eval", 0, out404, "", nil); got.HTTPStatus != 0 {
-		t.Errorf("eval printing the note's text: %+v", got)
+	if got := jsonLineFor("navigate", 0, out404, "", &protocol.Response{OK: true, Out: out404}); got.HTTPStatus != 0 {
+		t.Errorf("a status the helper did not record: %+v", got)
 	}
 }
 

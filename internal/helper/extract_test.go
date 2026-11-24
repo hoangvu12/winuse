@@ -80,6 +80,28 @@ hint: if this is the wrong list, pass --root <index> of the list or of one item,
 	r.passiveOnly(t)
 }
 
+// A wall extract names is the response's wall field too (--json), as
+// read's and navigate's are.
+func TestExtractRecordsTheWall(t *testing.T) {
+	r := extractRig(t, map[string]any{"kind": "", "rows": []any{}, "found": 0, "wall": "DataDome"})
+	out, e, f := runFields(t, r.cmds, "extract", protocol.ExtractArgs{Window: "301"})
+	if e != nil || f.Wall != "DataDome" || !strings.Contains(out, "DataDome wall") {
+		t.Errorf("extract of a wall: %q %+v %+v", out, f, e)
+	}
+}
+
+// extract.js stops counting at its item ceiling and says so (at_least):
+// the count prints as a lower bound.
+func TestExtractCountsPastTheCeilingAsALowerBound(t *testing.T) {
+	reply := twoRows()
+	reply["found"], reply["at_least"], reply["page_says"] = 2000, true, nil
+	r := extractRig(t, reply)
+	out, e := r.run(t, "extract", protocol.ExtractArgs{Window: "301", Limit: 2})
+	if e != nil || !strings.HasPrefix(out, `list: <ol> "Results": 2 of 2000+ rows (partial: capped at 2)`) {
+		t.Errorf("extract past the ceiling: %q %+v", out, e)
+	}
+}
+
 func TestExtractNoListAndOptions(t *testing.T) {
 	r := extractRig(t, map[string]any{"kind": "", "rows": []any{}, "found": 0, "wall": ""})
 	if out, e := r.run(t, "extract", protocol.ExtractArgs{Window: "301", As: "table", Limit: 5}); e != nil || out != "no list found\n" {

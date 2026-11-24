@@ -23,47 +23,17 @@ package helper
 // navigation is noted. Nothing is ever sent again because no change was
 // seen: that would break single dispatch. --json carries the effect as its
 // `effect` field (navigated, changed, text, none or unknown), recorded on
-// the request's context and put on the response by the server.
+// the request's context (recordEffect, responsefields.go) and put on the
+// response by the server.
 
 import (
 	"context"
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/hoangvu12/winuse/internal/page"
 )
-
-// effectRecord is the request's slot for the effect its Action had.
-type effectRecord struct {
-	mu   sync.Mutex
-	kind string
-}
-
-type effectRecordKey struct{}
-
-// withEffectRecord gives a request its effect slot.
-func withEffectRecord(ctx context.Context) (context.Context, *effectRecord) {
-	r := &effectRecord{}
-	return context.WithValue(ctx, effectRecordKey{}, r), r
-}
-
-// recordEffect records the Action's effect for the response; outside a
-// request it does nothing.
-func recordEffect(ctx context.Context, kind string) {
-	if r, ok := ctx.Value(effectRecordKey{}).(*effectRecord); ok {
-		r.mu.Lock()
-		r.kind = kind
-		r.mu.Unlock()
-	}
-}
-
-func (r *effectRecord) get() string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.kind
-}
 
 // observing reports whether the Action runs under --observe (observe.go's
 // wrapper gives it the opened-Window record).

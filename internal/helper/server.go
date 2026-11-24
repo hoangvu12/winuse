@@ -255,13 +255,17 @@ func (s *Server) handle(req *protocol.Request) (resp protocol.Response) {
 	// desktop-parity ticket 19), whatever the outcome.
 	ctx, notes := withTraceNotes(ctx, req.Trace)
 	defer func() { resp.Trace = notes.report() }()
-	// What a Page click or key did, for --json (pageeffect.go). A Batch's
-	// steps each did their own, so it has none.
-	ctx, effect := withEffectRecord(ctx)
+	// What a Page click or key did, the HTTP status a navigation's Page
+	// answered and the wall a Page looked like, for --json
+	// (responsefields.go). A Batch's steps each did their own effect and
+	// status, so it has none; the wall a step noted stays, with its note.
+	ctx, fields := withResponseRecord(ctx)
 	defer func() {
+		f := fields.fields()
 		if resp.OK && req.Cmd != "batch" {
-			resp.Effect = effect.get()
+			resp.Effect, resp.HTTPStatus = f.Effect, f.HTTPStatus
 		}
+		resp.Wall = f.Wall
 	}()
 	out, cmdErr := cmd(ctx, req.Args)
 	if cmdErr != nil {

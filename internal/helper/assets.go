@@ -104,11 +104,11 @@ func (b *assetBlocks) mayBlock(bt *bgTab) bool {
 // blockAsked says a command asks for --block: navigate, back, forward or
 // reload with a block value, or a Batch with such a step.
 func blockAsked(name string, args json.RawMessage) bool {
-	switch name {
-	case "navigate", "back", "forward", "reload":
+	switch {
+	case protocol.IsNavCommand(name):
 		var a protocol.NavigateArgs
 		return json.Unmarshal(args, &a) == nil && a.Block != ""
-	case "batch":
+	case name == "batch":
 		var b protocol.BatchArgs
 		if json.Unmarshal(args, &b) != nil {
 			return false

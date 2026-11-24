@@ -113,12 +113,12 @@ func (r *pageRig) runEffect(t *testing.T, cmd string, args any, observing bool) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, rec := withEffectRecord(context.Background())
+	ctx, rec := withResponseRecord(context.Background())
 	if observing {
 		ctx = context.WithValue(ctx, openedRecordKey{}, &openedRecord{})
 	}
 	out, e := CommandsWith(r.svc)[cmd](ctx, raw)
-	return out, e, rec.get()
+	return out, e, rec.fields().Effect
 }
 
 // pressed counts the mouse presses the Page got.
@@ -321,31 +321,44 @@ func TestPageEffectOnRefusalsAndDialogs(t *testing.T) {
 	_ = ew
 }
 
-// The server puts the effect a command recorded on its response, for
-// --json; a Batch and a failure carry none.
+// The server puts the effect, HTTP status and wall a command recorded on
+// its response, for --json. A Batch and a failure carry no effect or
+// status (a Batch's steps each had their own), but the wall a step landed
+// on stays, as its note stays in the steps' text.
 func TestServerReportsTheEffect(t *testing.T) {
 	cmds := map[string]Command{
 		"click": func(ctx context.Context, args json.RawMessage) (string, *Error) {
 			recordEffect(ctx, page.EffectNone)
 			return okOutput, nil
 		},
+		"navigate": func(ctx context.Context, args json.RawMessage) (string, *Error) {
+			recordHTTPStatus(ctx, 404)
+			recordWall(ctx, "Cloudflare")
+			return okOutput, nil
+		},
 		"batch": func(ctx context.Context, args json.RawMessage) (string, *Error) {
 			recordEffect(ctx, page.EffectChanged)
+			recordHTTPStatus(ctx, 429)
+			recordWall(ctx, "rate-limit")
 			return "Action 1 (click): ok\n", nil
 		},
 		"press-key": func(ctx context.Context, args json.RawMessage) (string, *Error) {
 			recordEffect(ctx, page.EffectText)
+			recordHTTPStatus(ctx, 500)
 			return "", Fail("the Page did not answer", "")
 		},
 	}
 	srv := New("v1", time.Minute, time.Second, cmds, log.New(io.Discard, "", 0))
-	if resp := srv.handle(&protocol.Request{V: protocol.Version, Ver: "v1", Cmd: "click"}); !resp.OK || resp.Effect != "none" {
+	if resp := srv.handle(&protocol.Request{V: protocol.Version, Ver: "v1", Cmd: "click"}); !resp.OK || resp.Effect != "none" || resp.HTTPStatus != 0 || resp.Wall != "" {
 		t.Errorf("click: %+v, want effect none", resp)
 	}
-	if resp := srv.handle(&protocol.Request{V: protocol.Version, Ver: "v1", Cmd: "batch"}); !resp.OK || resp.Effect != "" {
-		t.Errorf("batch: %+v, want no effect", resp)
+	if resp := srv.handle(&protocol.Request{V: protocol.Version, Ver: "v1", Cmd: "navigate"}); !resp.OK || resp.HTTPStatus != 404 || resp.Wall != "Cloudflare" {
+		t.Errorf("navigate: %+v, want status 404 and wall Cloudflare", resp)
 	}
-	if resp := srv.handle(&protocol.Request{V: protocol.Version, Ver: "v1", Cmd: "press-key"}); resp.OK || resp.Effect != "" {
-		t.Errorf("failure: %+v, want no effect", resp)
+	if resp := srv.handle(&protocol.Request{V: protocol.Version, Ver: "v1", Cmd: "batch"}); !resp.OK || resp.Effect != "" || resp.HTTPStatus != 0 || resp.Wall != "rate-limit" {
+		t.Errorf("batch: %+v, want only the wall", resp)
+	}
+	if resp := srv.handle(&protocol.Request{V: protocol.Version, Ver: "v1", Cmd: "press-key"}); resp.OK || resp.Effect != "" || resp.HTTPStatus != 0 {
+		t.Errorf("failure: %+v, want no effect or status", resp)
 	}
 }

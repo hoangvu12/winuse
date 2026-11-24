@@ -85,17 +85,21 @@ func splitTabRef(ref string) (window, tab string, ok bool) {
 
 // tabTargetCommands are the commands a Tab target takes: the Page's own
 // reads and Actions. Every one of them reaches the Tab over CDP alone.
-var tabTargetCommands = map[string]bool{
-	"get-window-state": true,
-	"click":            true, "set-value": true, "scroll": true, "hover": true, "drag": true,
-	"select-text": true, "type-text": true, "press-key": true, "upload": true,
-	"navigate": true, "back": true, "forward": true, "reload": true,
-	"dialog": true, "wait": true, "eval": true,
-	"batch":   true,
-	"read":    true, // read.go, bladebro-ideas ticket 25
-	"extract": true, // extract.go, bladebro-ideas ticket 26
-	"logs":    true, // logs.go, bladebro-ideas ticket 29
-}
+var tabTargetCommands = func() map[string]bool {
+	m := map[string]bool{
+		"get-window-state": true,
+		"click":            true, "set-value": true, "scroll": true, "hover": true, "drag": true,
+		"select-text": true, "type-text": true, "press-key": true,
+		"batch":   true,
+		"read":    true, // read.go, bladebro-ideas ticket 25
+		"extract": true, // extract.go, bladebro-ideas ticket 26
+		"logs":    true, // logs.go, bladebro-ideas ticket 29
+	}
+	for _, c := range protocol.PageCommands { // the navigations, upload, dialog, wait, eval
+		m[c] = true
+	}
+	return m
+}()
 
 // tabTargetsWord names them in a refusal's hint.
 const tabTargetsWord = "get-window-state, click, set-value, scroll, hover, drag, select-text, type-text, press-key, upload, navigate, back, forward, reload, dialog, wait, eval, read, extract, logs and batch"

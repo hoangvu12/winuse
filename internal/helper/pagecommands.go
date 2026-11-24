@@ -716,6 +716,7 @@ func httpStatusNote(ctx context.Context, pw pageWin, u string) (string, string) 
 	if st.ErrorPage && st.URL != "" {
 		u = st.URL
 	}
+	recordHTTPStatus(ctx, st.Code)
 	return u, protocol.HTTPStatusNote(st.Code, page.StatusReason(st.Code), st.ErrorPage) + "\n"
 }
 
@@ -750,6 +751,7 @@ func wallNoteBy(ctx context.Context, c page.Caller, session string, check func(c
 	if err != nil || kind == "" {
 		return ""
 	}
+	recordWall(ctx, kind)
 	return protocol.WallNote(kind) + "\n"
 }
 

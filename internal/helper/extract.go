@@ -184,6 +184,7 @@ func (s Services) extractPage(ctx context.Context, pw pageWin, a protocol.Extrac
 		return "", Fail(fmt.Sprintf("extract failed in window %d: %v", pw.w.ID, err),
 			"retry; run winuse browser status "+pw.name+" if it keeps failing")
 	}
+	recordWall(ctx, res.Wall)
 	hint := ""
 	if root == nil {
 		hint = stateCmd

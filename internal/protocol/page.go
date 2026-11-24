@@ -5,9 +5,18 @@ package protocol
 // browser Window with a Browser Connection. Their names, usage lines and
 // arguments live here, where the CLI and the helper both read them.
 
+import "slices"
+
+// NavCommands are the navigations: navigate, back, forward and reload,
+// which take NavigateArgs.
+var NavCommands = []string{"navigate", "back", "forward", "reload"}
+
+// IsNavCommand reports whether cmd is one of NavCommands.
+func IsNavCommand(cmd string) bool { return slices.Contains(NavCommands, cmd) }
+
 // PageCommands are the page-only Actions' command names, also their Batch
 // step kinds.
-var PageCommands = []string{"navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval"}
+var PageCommands = append(slices.Clone(NavCommands), "upload", "dialog", "wait", "eval")
 
 // PageUsage is a page-only Action's usage line: what the CLI prints on a
 // usage error, and the helper's hint for bad arguments.

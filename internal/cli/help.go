@@ -61,8 +61,10 @@ global options:
                                "effect": navigated, changed, text, none or
                                unknown, navigate, back, forward and reload
                                add "http_status" when the Page answered 4xx
-                               or 5xx, and a read's Notes go in "notes",
-                               never in "out". Exit codes are unchanged
+                               or 5xx, a Page that looks like a CAPTCHA or
+                               block wall adds "wall", and a read's Notes go
+                               in "notes", never in "out". Exit codes are
+                               unchanged
   --help, -h                  print the command's usage and examples instead
                                of running it, as winuse help <command> does
 
@@ -508,7 +510,7 @@ const usageTail = `);
                                back, forward and reload) adds
                                Note: the Page answered HTTP <code> <reason>;
                                a short Page that looks like a CAPTCHA or
-                               block wall adds a Note too: ask the user to
+                               block wall adds a note too: ask the user to
                                handle it. --block sets what a Tab target
                                blocks (as tab new --block), only on a Tab
                                winuse opened or in a browser it launched or

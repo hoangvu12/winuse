@@ -8,6 +8,7 @@ package helper
 // on real pages is test/e2e's TestWallCheck. No browser runs.
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"sync"
@@ -125,6 +126,37 @@ func TestNavigationWallNoteFollowsTheStatusNote(t *testing.T) {
 	out, e = r.run(t, "reload", protocol.NavigateArgs{Window: "301"})
 	if e != nil || strings.Contains(out, "wall") || p.count() != before {
 		t.Errorf("reload of Chrome's error page: %q %+v, %d checks (before %d)", out, e, p.count(), before)
+	}
+}
+
+// runFields runs a command as the server does, with the record of what its
+// response carries beside its text for --json (responsefields.go).
+func runFields(t *testing.T, cmds map[string]Command, cmd string, args any) (string, *Error, responseFields) {
+	t.Helper()
+	raw, err := json.Marshal(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, rec := withResponseRecord(context.Background())
+	out, e := cmds[cmd](ctx, raw)
+	return out, e, rec.fields()
+}
+
+// The status and the wall a navigation noted travel as the response's own
+// fields (--json's http_status and wall), not read back from its text.
+func TestNavigationRecordsTheStatusAndTheWall(t *testing.T) {
+	r := newWinRig(t)
+	r.statuses = map[string]int{"https://api.test/busy": 429}
+	p := &wallPage{kind: "rate-limit"}
+	p.handle(r.browser.Srv)
+	_, e, f := runFields(t, r.cmds, "navigate", protocol.NavigateArgs{Window: "301", URL: "https://api.test/busy"})
+	if e != nil || f.HTTPStatus != 429 || f.Wall != "rate-limit" {
+		t.Errorf("a 429 wall: %+v %+v, want status 429 and wall rate-limit", f, e)
+	}
+	p.set("")
+	_, e, f = runFields(t, r.cmds, "navigate", protocol.NavigateArgs{Window: "301", URL: "https://shop.test/"})
+	if e != nil || f != (responseFields{}) {
+		t.Errorf("an ordinary page: %+v %+v, want no fields", f, e)
 	}
 }
 

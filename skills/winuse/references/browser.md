@@ -123,8 +123,9 @@ winuse extract <window> --as table|list|jsonld # force a mode; --limit N (defaul
   siblings. A table with headers prints its cells by header.
 - An article or a page with no repeated items prints `no list found`;
   read it instead. A block page prints
-  `no list found: the Page looks like a <Cloudflare|...> wall; ask the user to handle it`:
-  stop and ask the user, as the safety rules say.
+  `no list found: the Page looks like a <Cloudflare|...> wall; ask the user to handle it`
+  (`--json` adds `"wall": "<kind>"`): stop and ask the user, as the
+  safety rules say.
 - It only reads, in an isolated world the Page cannot see, and prints no
   Element Indexes. It takes `<window>:<tab>`. On a native Window it reads
   the Window's list or grid instead (`winuse skill reading`).
@@ -282,7 +283,8 @@ winuse drag <window> <element> <element|@x,y>
   printed. `--max-chars N` sets the cap (0 for none), `--out <file>`
   writes the Markdown whole. A short Page that looks like a
   CAPTCHA or block wall adds
-  `Note: the Page looks like a <kind> wall; ask the user to handle it`.
+  `Note: the Page looks like a <kind> wall; ask the user to handle it`
+  (`--json` adds `"wall": "<kind>"`).
   On a native Window, read with `get-window-state` instead.
 - `eval` prints a string as is and anything else as JSON, cut at 4000
   characters; `--max <n>` raises the cut up to 100000, so do not page a

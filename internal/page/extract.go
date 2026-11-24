@@ -81,6 +81,7 @@ func Extract(ctx context.Context, c Caller, session string, root *Origin, o Extr
 		Label     string            `json:"label"`
 		Rows      []json.RawMessage `json:"rows"`
 		Found     int               `json:"found"`
+		AtLeast   bool              `json:"at_least"`
 		PageSays  *extract.Claim    `json:"page_says"`
 		Wall      string            `json:"wall"`
 	}
@@ -88,7 +89,7 @@ func Extract(ctx context.Context, c Caller, session string, root *Origin, o Extr
 		return extract.Result{}, fmt.Errorf("reading extract's answer: %v", err)
 	}
 	r := extract.Result{Kind: got.Kind, Container: got.Container, Label: got.Label, Found: got.Found,
-		Limit: o.Limit, PageSays: got.PageSays, Wall: got.Wall}
+		AtLeast: got.AtLeast, Limit: o.Limit, PageSays: got.PageSays, Wall: got.Wall}
 	for _, row := range got.Rows {
 		var b bytes.Buffer
 		if json.Compact(&b, row) == nil {

@@ -10,7 +10,8 @@ package cli
 //	{"ok":true,"command":"navigate","out":"ok ...\nNote: the Page answered HTTP 404 Not Found\n","http_status":404}
 //
 // A Page that looks like a challenge or block wall adds "wall" (its kind,
-// from the Note line in out).
+// whose note out carries). effect, http_status and wall are the helper's
+// own response fields (protocol.Response), never read back from out.
 //
 // The command runs exactly as without the flag; its stdout and stderr are
 // captured and become the line. out is the text it printed (a Window
@@ -53,18 +54,14 @@ type jsonLine struct {
 	// ticket 06): navigated, changed, text, none or unknown.
 	Effect string     `json:"effect,omitempty"`
 	Error  *jsonError `json:"error,omitempty"`
-	// HTTPStatus is the 4xx/5xx a navigation's Page answered, from its
-	// note (bladebro-ideas 02).
+	// HTTPStatus is the 4xx/5xx a navigation's Page answered
+	// (bladebro-ideas 02, protocol.Response.HTTPStatus).
 	HTTPStatus int `json:"http_status,omitempty"`
-	// Wall names the challenge or block wall a Page Note said the Page
-	// looks like (bladebro-ideas 05, protocol.WallOf): Cloudflare,
-	// DataDome, PerimeterX, reCAPTCHA, hCaptcha, Akamai or rate-limit.
+	// Wall names the challenge or block wall a Page looks like
+	// (bladebro-ideas 05, protocol.Response.Wall): one of
+	// protocol.WallKinds. A failure keeps it, as its out keeps the note.
 	Wall string `json:"wall,omitempty"`
 }
-
-// navCommands are the commands whose output can carry the HTTP status
-// note.
-var navCommands = map[string]bool{"navigate": true, "back": true, "forward": true, "reload": true}
 
 // jsonError is a failed command's error object.
 type jsonError struct {
@@ -137,16 +134,13 @@ func runJSON(command string, run func() int) int {
 // jsonLineFor builds the line of a command that exited with code after
 // printing stdout and stderr; resp is the helper's last answer, if any.
 func jsonLineFor(command string, code int, stdout, stderr string, resp *protocol.Response) jsonLine {
-	line := jsonLine{OK: code == 0, Command: command, Out: stdout, Wall: protocol.WallOf(stdout)}
+	line := jsonLine{OK: code == 0, Command: command, Out: stdout}
 	if resp != nil {
-		line.Notes = resp.Notes
+		line.Notes, line.Wall = resp.Notes, resp.Wall
 	}
 	if line.OK {
 		if resp != nil && resp.OK {
-			line.Effect = resp.Effect
-		}
-		if navCommands[command] {
-			line.HTTPStatus = protocol.HTTPStatusIn(stdout)
+			line.Effect, line.HTTPStatus = resp.Effect, resp.HTTPStatus
 		}
 		return line
 	}
