@@ -120,7 +120,7 @@ func TestSettleBoundSaysWhatKeptChanging(t *testing.T) {
 	cases := []struct {
 		name string
 		page func(p *settlingPage)
-		busy string
+		busy SettleBusy
 	}{
 		{"dom", func(p *settlingPage) { p.mutations = every(50*time.Millisecond, 5*time.Second) }, SettleBusyDOM},
 		{"requests", func(p *settlingPage) { p.requests = every(100*time.Millisecond, 5*time.Second) }, SettleBusyNet},

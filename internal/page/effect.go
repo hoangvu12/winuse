@@ -27,18 +27,22 @@ import (
 	"github.com/hoangvu12/winuse/internal/cdp"
 )
 
+// EffectKind is what kind of effect a Page Action had: one of the Effect
+// constants, also --json's effect field.
+type EffectKind string
+
 // The effects a Page Action can have.
 const (
-	EffectNavigated = "navigated" // the top frame loaded another document or changed its URL
-	EffectChanged   = "changed"   // elements, attributes, a control's state, the focus or a scroll changed
-	EffectText      = "text"      // only text changed
-	EffectNone      = "none"      // nothing changed that the watch can see
-	EffectUnknown   = "unknown"   // the watch could not be armed or read
+	EffectNavigated EffectKind = "navigated" // the top frame loaded another document or changed its URL
+	EffectChanged   EffectKind = "changed"   // elements, attributes, a control's state, the focus or a scroll changed
+	EffectText      EffectKind = "text"      // only text changed
+	EffectNone      EffectKind = "none"      // nothing changed that the watch can see
+	EffectUnknown   EffectKind = "unknown"   // the watch could not be armed or read
 )
 
 // Effect is what an Action did to its Page.
 type Effect struct {
-	Kind string
+	Kind EffectKind
 	// URL is the top frame's URL after a navigation (or the URL a pending
 	// load asked for, "" when the browser did not say).
 	URL string

@@ -10,6 +10,8 @@ package helper
 import (
 	"context"
 	"sync"
+
+	"github.com/hoangvu12/winuse/internal/page"
 )
 
 // responseFields are the recorded values; zero is none.
@@ -43,8 +45,8 @@ func record(ctx context.Context, set func(*responseFields)) {
 }
 
 // recordEffect records the Action's effect.
-func recordEffect(ctx context.Context, kind string) {
-	record(ctx, func(f *responseFields) { f.Effect = kind })
+func recordEffect(ctx context.Context, kind page.EffectKind) {
+	record(ctx, func(f *responseFields) { f.Effect = string(kind) })
 }
 
 // recordHTTPStatus records the 4xx/5xx a navigation's Page answered.

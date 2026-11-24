@@ -49,12 +49,16 @@ const (
 	SettlePoll = 50 * time.Millisecond
 )
 
+// SettleBusy is what kept a settle from ending, worded for its note: one of
+// the SettleBusy constants.
+type SettleBusy string
+
 // What kept a settle from ending, for its note.
 const (
-	SettleBusyDOM        = "its DOM kept changing"
-	SettleBusyNet        = "it kept loading resources"
-	SettleBusyLoading    = "its document was still loading"
-	SettleBusyNavigating = "it was navigating"
+	SettleBusyDOM        SettleBusy = "its DOM kept changing"
+	SettleBusyNet        SettleBusy = "it kept loading resources"
+	SettleBusyLoading    SettleBusy = "its document was still loading"
+	SettleBusyNavigating SettleBusy = "it was navigating"
 )
 
 // SettleSample is one probe of the Page: how long its DOM and its finished
@@ -70,7 +74,7 @@ type SettleSample struct {
 // took.
 type SettleResult struct {
 	Settled bool
-	Busy    string
+	Busy    SettleBusy
 	After   time.Duration
 }
 
@@ -115,7 +119,7 @@ func settleFatal(err error) bool {
 // session are errors.
 func settleLoop(ctx context.Context, clk settleClock, bound time.Duration, stopped func() bool, probe func(context.Context) (SettleSample, error)) (SettleResult, error) {
 	start := clk.Now()
-	busy := ""
+	var busy SettleBusy
 	for {
 		if stopped != nil && stopped() {
 			return SettleResult{}, ErrStopped
