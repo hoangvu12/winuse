@@ -7,6 +7,7 @@ package cli
 //	{"ok":true,"command":"click","out":"..."}
 //	{"ok":true,"command":"click","out":"...","effect":"navigated"}
 //	{"ok":false,"command":"click","out":"","error":{"code":"STALE_REF","message":"...","hint":"...","delivery":"not_delivered","retry":"safe"}}
+//	{"ok":true,"command":"navigate","out":"ok ...\nNote: the Page answered HTTP 404 Not Found\n","http_status":404}
 //
 // The command runs exactly as without the flag; its stdout and stderr are
 // captured and become the line. out is the text it printed (a Window
@@ -43,7 +44,14 @@ type jsonLine struct {
 	// ticket 06): navigated, changed, text, none or unknown.
 	Effect string     `json:"effect,omitempty"`
 	Error  *jsonError `json:"error,omitempty"`
+	// HTTPStatus is the 4xx/5xx a navigation's Page answered, from its
+	// note (bladebro-ideas 02).
+	HTTPStatus int `json:"http_status,omitempty"`
 }
+
+// navCommands are the commands whose output can carry the HTTP status
+// note.
+var navCommands = map[string]bool{"navigate": true, "back": true, "forward": true, "reload": true}
 
 // jsonError is a failed command's error object.
 type jsonError struct {
@@ -118,6 +126,9 @@ func jsonLineFor(command string, code int, stdout, stderr string, resp *protocol
 	if line.OK {
 		if resp != nil && resp.OK {
 			line.Effect = resp.Effect
+		}
+		if navCommands[command] {
+			line.HTTPStatus = protocol.HTTPStatusIn(stdout)
 		}
 		return line
 	}

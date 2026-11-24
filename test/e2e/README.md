@@ -953,6 +953,23 @@ set WINUSE_E2E=1
 go test -tags e2e -v -timeout 10m -run "TestPageReadSnapshot$" ./test/e2e
 ```
 
+## The HTTP status test
+
+`http_status_test.go` (bladebro-ideas ticket 02) checks the status
+navigate reports. `TestHTTPStatus` starts Chrome or Edge headless on a
+throwaway profile and reads the main document's status in process
+(`page.ReadHTTPStatus`, as the helper does) after 200, 404, 429 and 503
+pages, a redirect chain that ends in 404, and 429 and 503 with an empty
+body, which Chrome replaces with its own error page. TestBrowserPages's
+`http-status` subtest runs the real `navigate`, `back`, `forward` and
+`reload` on the same pages and checks the note and `--json`'s
+`http_status`.
+
+```
+set WINUSE_E2E=1
+go test -tags e2e -v -timeout 10m -run "TestHTTPStatus$" ./test/e2e
+```
+
 ## The occlusion flag test
 
 `browser_occlusion_test.go` (ticket 04 of `.scratch/headless-max/`)
