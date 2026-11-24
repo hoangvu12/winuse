@@ -1,0 +1,7 @@
+list: <ul id="parts"> "All parts": 3 of 2000+ rows (partial: capped at 3)
+[
+{"title":"Replacement part number 1","url":"https://parts.example/1","availability":"in stock","description":"at the warehouse"},
+{"title":"Replacement part number 2","url":"https://parts.example/2","availability":"in stock","description":"at the warehouse"},
+{"title":"Replacement part number 3","url":"https://parts.example/3","availability":"in stock","description":"at the warehouse"}
+]
+hint: if this is the wrong list, pass --root <index> of the list or of one item, from winuse get-window-state 301

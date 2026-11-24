@@ -51,6 +51,13 @@ var extractCases = []struct {
 	{name: "wall", fixture: "wall"},
 	{name: "qa", fixture: "qa"},
 	{name: "repos", fixture: "repos"},
+	// More items than extract.js reads: the total is a lower bound.
+	{name: "huge-limit", fixture: "huge", limit: 3},
+	// --root on a list inside one of several alike cards is that list;
+	// --root on the card, whose tags are a small part of it, is an item of
+	// the cards.
+	{name: "cards-root-inner-list", fixture: "cards", root: "#cards > article:nth-child(2) ul.tags"},
+	{name: "cards-root-card", fixture: "cards", root: "#cards > article:nth-child(2)"},
 }
 
 func TestExtractGolden(t *testing.T) {

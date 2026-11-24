@@ -116,11 +116,13 @@ winuse extract <window> --as table|list|jsonld # force a mode; --limit N (defaul
   `list: <ol id="results"> "Search results": 10 of 10 rows (complete)`.
   `(partial: capped at 50 / page says 1,234 results)` says rows are
   missing: raise `--limit`, or the page itself shows only some (load more
-  or go to its next page).
+  or go to its next page). `of 2000+` means extract stopped counting
+  there.
 - Without `--root` it picks the container itself. If that is the wrong
   one, read `get-window-state` and pass `--root` the Element Index of the
   list, of an ancestor, or of one item; one item gathers its alike
-  siblings. A table with headers prints its cells by header.
+  siblings, unless a list inside it is most of it (the root is then that
+  list's container). A table with headers prints its cells by header.
 - An article or a page with no repeated items prints `no list found`;
   read it instead. A block page prints
   `no list found: the Page looks like a <Cloudflare|...> wall; ask the user to handle it`
