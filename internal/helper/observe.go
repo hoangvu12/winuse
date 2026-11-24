@@ -41,7 +41,10 @@ package helper
 // request finished), up to page.SettleBound. A Page still changing then is
 // read anyway, with a note saying so and why. A settle that cannot run (no
 // Browser Connection, a browser page, a dialog) is skipped: the read says
-// what it finds.
+// what it finds. A Page click, key or wheel already waited by the same rule
+// (its effect watch, page.EffectWatch.Settled) and records how that ended
+// (recordSettled): the read takes it instead of a second wait. A Batch
+// does not, as a later step may act after the watch.
 
 import (
 	"context"
@@ -120,6 +123,9 @@ func (s Services) observed(name string, cmd Command) Command {
 		}
 		if e := checkObserve(name, o); e != nil {
 			return "", e
+		}
+		if name != "batch" {
+			ctx = context.WithValue(ctx, settledRecordKey{}, &settledRecord{})
 		}
 		// The command keeps the budget it has without --observe
 		// (protocol.Budget added ObserveTimeout for the read).
@@ -339,17 +345,63 @@ func (s Services) settleWindow(ctx context.Context, w win.WindowInfo) string {
 }
 
 // settleNote settles a Page (page.Settle, up to page.SettleBound) and
-// returns the note for one that did not settle.
+// returns the note for one that did not settle. When the Action's own
+// effect watch settled that Page already (recordSettled), its result
+// stands and nothing waits again.
 func (s Services) settleNote(ctx context.Context, c *cdp.Client, session string) string {
-	var stopped func() bool
-	if s.Esc != nil {
-		stopped = s.Esc.Stopped
+	r, ok := settledOf(ctx, c, session)
+	if !ok {
+		var stopped func() bool
+		if s.Esc != nil {
+			stopped = s.Esc.Stopped
+		}
+		var err error
+		if r, err = page.Settle(ctx, c, session, page.SettleBound, stopped); err != nil {
+			return ""
+		}
 	}
-	r, err := page.Settle(ctx, c, session, page.SettleBound, stopped)
-	if err != nil || r.Settled {
+	if r.Settled {
 		return ""
 	}
 	return notePrefix + r.Note() + "\n"
+}
+
+// settledRecord is how the Action's effect watch found its Page settling,
+// for the --observe read of a single Action.
+type settledRecord struct {
+	mu      sync.Mutex
+	c       *cdp.Client
+	session string
+	r       page.SettleResult
+	set     bool
+}
+
+type settledRecordKey struct{}
+
+// recordSettled records how a Page Action's effect watch found the Page of
+// session settling; outside an --observe of a single Action it does
+// nothing. The latest call wins.
+func recordSettled(ctx context.Context, c *cdp.Client, session string, r page.SettleResult) {
+	if rec, ok := ctx.Value(settledRecordKey{}).(*settledRecord); ok {
+		rec.mu.Lock()
+		rec.c, rec.session, rec.r, rec.set = c, session, r, true
+		rec.mu.Unlock()
+	}
+}
+
+// settledOf is the recorded settle of the Page of session, if the Action
+// recorded one for it.
+func settledOf(ctx context.Context, c *cdp.Client, session string) (page.SettleResult, bool) {
+	rec, ok := ctx.Value(settledRecordKey{}).(*settledRecord)
+	if !ok {
+		return page.SettleResult{}, false
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if !rec.set || rec.c != c || rec.session != session {
+		return page.SettleResult{}, false
+	}
+	return rec.r, true
 }
 
 // storedState is the Agent's latest Window State of hwnd, every Element

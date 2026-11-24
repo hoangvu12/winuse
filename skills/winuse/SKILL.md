@@ -34,7 +34,7 @@ Esc is the user's hard stop. Everything else is your judgment.
   own consent to winuse's connection ("Allow remote debugging?", the
   Developer mode switch and Load unpacked for the winuse extension) when
   the user asked you to work in their browser: see "Get a Browser
-  Connection" in topic `browser`. A Page's wall Note is such a stop: never
+  Connection" in topic `browser`. A Page's wall note is such a stop: never
   click or solve the challenge.
 - Run shell commands in your own shell, not through terminal apps, the Run
   dialog or file dialogs.

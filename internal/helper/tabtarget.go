@@ -85,17 +85,21 @@ func splitTabRef(ref string) (window, tab string, ok bool) {
 
 // tabTargetCommands are the commands a Tab target takes: the Page's own
 // reads and Actions. Every one of them reaches the Tab over CDP alone.
-var tabTargetCommands = map[string]bool{
-	"get-window-state": true,
-	"click":            true, "set-value": true, "scroll": true, "hover": true, "drag": true,
-	"select-text": true, "type-text": true, "press-key": true, "upload": true,
-	"navigate": true, "back": true, "forward": true, "reload": true,
-	"dialog": true, "wait": true, "eval": true,
-	"batch":   true,
-	"read":    true, // read.go, bladebro-ideas ticket 25
-	"extract": true, // extract.go, bladebro-ideas ticket 26
-	"logs":    true, // logs.go, bladebro-ideas ticket 29
-}
+var tabTargetCommands = func() map[string]bool {
+	m := map[string]bool{
+		"get-window-state": true,
+		"click":            true, "set-value": true, "scroll": true, "hover": true, "drag": true,
+		"select-text": true, "type-text": true, "press-key": true,
+		"batch":   true,
+		"read":    true, // read.go, bladebro-ideas ticket 25
+		"extract": true, // extract.go, bladebro-ideas ticket 26
+		"logs":    true, // logs.go, bladebro-ideas ticket 29
+	}
+	for _, c := range protocol.PageCommands { // the navigations, upload, dialog, wait, eval
+		m[c] = true
+	}
+	return m
+}()
 
 // tabTargetsWord names them in a refusal's hint.
 const tabTargetsWord = "get-window-state, click, set-value, scroll, hover, drag, select-text, type-text, press-key, upload, navigate, back, forward, reload, dialog, wait, eval, read, extract, logs and batch"
@@ -151,7 +155,11 @@ func (s Services) tabTargeted(name string, cmd Command) Command {
 		}
 		window, tabRef, ok := splitTabRef(a.Window)
 		if !ok {
-			return cmd(ctx, args)
+			out, e := cmd(ctx, args)
+			if blockReads[name] || observeOf(ctx) != nil {
+				out, e = s.endWithWindowBlockNote(ctx, a.Window, out, e) // assets.go: the Window shows a blocking Tab
+			}
+			return out, e
 		}
 		if first, _, twice := strings.Cut(window, ":"); twice {
 			// 301:301:ab12cd34: the Window named twice. Refused rather than
@@ -182,11 +190,11 @@ func (s Services) tabTargeted(name string, cmd Command) Command {
 		if name == "get-window-state" {
 			// Worded for the Tab already, and the rest is the Page's own text.
 			out, e = s.tabWindowState(ctx, bt, plain)
-			return s.endWithBlockNote(bt, out, e)
+			return s.endWithBlockNote(bt.tab.TargetID, out, e)
 		}
 		out, e = cmd(ctx, plain)
 		if blockReads[name] || observeOf(ctx) != nil {
-			out, e = s.endWithBlockNote(bt, out, e) // assets.go: a blocking Tab says so
+			out, e = s.endWithBlockNote(bt.tab.TargetID, out, e) // assets.go: a blocking Tab says so
 		}
 		return bt.retargetOut(out), bt.retargetErr(e)
 	}

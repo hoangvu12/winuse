@@ -116,15 +116,18 @@ winuse extract <window> --as table|list|jsonld # force a mode; --limit N (defaul
   `list: <ol id="results"> "Search results": 10 of 10 rows (complete)`.
   `(partial: capped at 50 / page says 1,234 results)` says rows are
   missing: raise `--limit`, or the page itself shows only some (load more
-  or go to its next page).
+  or go to its next page). `of 2000+` means extract stopped counting
+  there.
 - Without `--root` it picks the container itself. If that is the wrong
   one, read `get-window-state` and pass `--root` the Element Index of the
   list, of an ancestor, or of one item; one item gathers its alike
-  siblings. A table with headers prints its cells by header.
+  siblings, unless a list inside it is most of it (the root is then that
+  list's container). A table with headers prints its cells by header.
 - An article or a page with no repeated items prints `no list found`;
   read it instead. A block page prints
-  `no list found: the Page looks like a <Cloudflare|...> wall; ask the user to handle it`:
-  stop and ask the user, as the safety rules say.
+  `no list found: the Page looks like a <Cloudflare|...> wall; ask the user to handle it`
+  (`--json` adds `"wall": "<kind>"`): stop and ask the user, as the
+  safety rules say.
 - It only reads, in an isolated world the Page cannot see, and prints no
   Element Indexes. It takes `<window>:<tab>`. On a native Window it reads
   the Window's list or grid instead (`winuse skill reading`).
@@ -152,13 +155,13 @@ winuse drag <window> <element> <element|@x,y>
   Headless.
 - When `navigate`, `back`, `forward`, `reload`, or a Page click or key that
   navigated, lands on a short Page that looks like a CAPTCHA or block wall
-  (Cloudflare, DataDome, PerimeterX, reCAPTCHA, Akamai, or a rate limit),
-  it stays `ok` and adds
+  (Cloudflare, DataDome, PerimeterX, reCAPTCHA, hCaptcha, Akamai, or a rate
+  limit), it stays `ok` and adds
   `Note: the Page looks like a <kind> wall; ask the user to handle it`
   (`--json` adds `"wall": "<kind>"`). Stop there and ask the user, as
   Safety says: never click the challenge or try to solve it. A docs page
   that mentions a rate limit, or a login form with a CAPTCHA widget, gets
-  no Note.
+  no note.
 - `Note: the Page answered HTTP 404 Not Found` (or 429, 503 ...) after
   `navigate`, `back`, `forward` or `reload` means the Page you see is the
   site's error page, not the content: the navigation still says `ok`.
@@ -234,12 +237,14 @@ winuse drag <window> <element> <element|@x,y>
   last, with time, source, level and text (and an exception's stack),
   including failed requests from before winuse attached; `--clear` empties
   the list after printing it, and `--json` answers with JSON.
-- Exceptions are captured in Tabs you opened with `tab new` and in every
-  Tab of a browser winuse launched or cloned. In the user's own Tab, run
+- Exceptions are captured in Tabs you opened with `tab new` (from their
+  first page) and in every Tab of a browser winuse launched or cloned. In
+  the user's own Tab, run
   `winuse logs <window> --capture` first: it lasts while the Tab is open
   and covers pages loaded after it, so `reload` to cover the current one.
   `console` calls are never captured: winuse never turns on the debugger's
-  Runtime or Network domains, which a site can detect.
+  Runtime domain, and never its Network domain except on a Tab where
+  `--block` is on; a site can detect both.
 - A click or key that opens a JavaScript dialog (alert, confirm, prompt,
   leave-this-page) prints `ok` and a `Note:` line with its text; do not
   repeat it. Every Page Action then fails naming the dialog until you
@@ -273,12 +278,15 @@ winuse drag <window> <element> <element|@x,y>
   they are. The first line names what it picked; when that is the wrong
   part, pass `--root <element>` (an Element Index, `name:` or `id:` from
   your latest read) to read that Element's subtree. Links on the same site
-  print as paths and others as a shortened domain and path; `--urls full`
-  prints them whole. It is cut at 28000 characters with a
-  `(cut at N of M characters)` line: `--max-chars N` (0 for no cap), or
-  `--out <file>` to write it whole. A short Page that looks like a
+  (`www.x.com` and `x.com` are one site) print as paths and others as a
+  shortened domain and path; `--urls full` prints them whole. The output
+  stays within 28000 characters, header and notes included: the Markdown
+  is cut, with a `(cut at N of M characters)` line saying how much of it
+  printed. `--max-chars N` sets the cap (0 for none), `--out <file>`
+  writes the Markdown whole. A short Page that looks like a
   CAPTCHA or block wall adds
-  `Note: the Page looks like a <kind> wall; ask the user to handle it`.
+  `Note: the Page looks like a <kind> wall; ask the user to handle it`
+  (`--json` adds `"wall": "<kind>"`).
   On a native Window, read with `get-window-state` instead.
 - `eval` prints a string as is and anything else as JSON, cut at 4000
   characters; `--max <n>` raises the cut up to 100000, so do not page a

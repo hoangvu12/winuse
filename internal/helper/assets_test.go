@@ -155,6 +155,7 @@ func indexOf(list []string, s string) int {
 	return -1
 }
 
+// lastIndexOf is the last index of s in list, -1 for none.
 func lastIndexOf(list []string, s string) int {
 	for i := len(list) - 1; i >= 0; i-- {
 		if list[i] == s {
@@ -216,6 +217,52 @@ func TestTabNewBlockBlocksBeforeTheLoad(t *testing.T) {
 	if e != nil || !strings.HasPrefix(out, "ok ") || len(r.blockCalls(t)) != 2 {
 		t.Errorf("tab new without --block: %q %+v %+v", out, e, r.blockCalls(t))
 	}
+}
+
+// TestTabNewCapturesItsFirstPage (bladebro-ideas 30): tab new <url> opens
+// the Tab on about:blank, installs the exception listener in it, and only
+// then sends it to the URL, so the first page's exceptions are caught too,
+// as with --block. Nothing turns Network on.
+func TestTabNewCapturesItsFirstPage(t *testing.T) {
+	r := newBgRig(t)
+	out, e := r.as(t, "claude", "tab-new", protocol.TabArgs{Window: "301", URL: "https://news.test/"})
+	if e != nil || out != "ok "+newTabShort+"\n" {
+		t.Fatalf("tab new: %q %+v", out, e)
+	}
+	var created struct {
+		URL string `json:"url"`
+	}
+	for _, c := range r.ext.Commands() {
+		if c.Method == "Target.createTarget" {
+			json.Unmarshal(c.Params, &created)
+		}
+	}
+	if created.URL != "about:blank" {
+		t.Errorf("the Tab was created on %q, which loads before the listener", created.URL)
+	}
+	var listener, navigate = -1, -1
+	for i, c := range r.ext.Commands() {
+		switch {
+		case c.Method == "Page.addScriptToEvaluateOnNewDocument" && c.SessionID == newTabTarget && listener < 0:
+			listener = i
+		case c.Method == "Page.navigate" && c.SessionID == newTabTarget:
+			navigate = i
+		}
+	}
+	if listener < 0 || navigate < 0 || listener > navigate {
+		t.Errorf("the listener went in at %d, the navigation at %d: %v", listener, navigate, r.methodOrder())
+	}
+	r.mu.Lock()
+	went := r.navigated[newTabTarget]
+	r.mu.Unlock()
+	if went != "https://news.test/" {
+		t.Errorf("the new Tab went to %q", went)
+	}
+	if len(r.blockCalls(t)) != 0 {
+		t.Errorf("tab new without --block blocked: %+v", r.blockCalls(t))
+	}
+	r.networkOnlyOn(t)
+	r.usersTabUntouched(t)
 }
 
 // TestBlockingTabReadsEndWithTheNote: get-window-state, its screenshot and
@@ -290,7 +337,7 @@ func TestNavigateBlockOnATabWinuseOpened(t *testing.T) {
 		t.Errorf("blocked: %+v", calls)
 	}
 	order := r.methodOrder()
-	if b, n := indexOf(order, "Network.setBlockedURLs"), indexOf(order, "Page.navigate"); b < 0 || b > n {
+	if b, n := indexOf(order, "Network.setBlockedURLs"), lastIndexOf(order, "Page.navigate"); b < 0 || b > n {
 		t.Errorf("the block came after the navigation: %v", order)
 	}
 	if out, e := r.as(t, "claude", "get-window-state", protocol.GetWindowArgs{Window: ref}); e != nil || !strings.HasSuffix(out, "Note: images are blocked in this Tab\n") {

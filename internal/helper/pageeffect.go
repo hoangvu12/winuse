@@ -3,7 +3,8 @@ package helper
 // What a Page click or key did (.scratch/bladebro-ideas ticket 06). A
 // Headless Page click (any button or count) and a Page press-key arm an
 // effect watch (page.ArmEffect) just before their input and read it once
-// the input was delivered and the Page settled (up to page.EffectBound).
+// the input was delivered and the Page settled, by page.Settle's rule (up
+// to page.EffectBound); --observe then takes that settle (recordSettled).
 // The Action stays `ok`, since its input was delivered, and gets at most
 // one note:
 //
@@ -12,7 +13,7 @@ package helper
 //	Note: the Page changed (text only)
 //	Note: no change seen in the Page[; element N is now covered by <x> at its centre | ; element N is gone from the Page]; the click was delivered, so read the Page before repeating it
 //
-// A navigation that landed adds the wall Note (bladebro-ideas 05) after
+// A navigation that landed adds the wall note (bladebro-ideas 05) after
 // its own when the new Page looks like a challenge or block wall.
 //
 // A change to elements, attributes, a control's state, the focus or a
@@ -22,47 +23,17 @@ package helper
 // navigation is noted. Nothing is ever sent again because no change was
 // seen: that would break single dispatch. --json carries the effect as its
 // `effect` field (navigated, changed, text, none or unknown), recorded on
-// the request's context and put on the response by the server.
+// the request's context (recordEffect, responsefields.go) and put on the
+// response by the server.
 
 import (
 	"context"
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/hoangvu12/winuse/internal/page"
 )
-
-// effectRecord is the request's slot for the effect its Action had.
-type effectRecord struct {
-	mu   sync.Mutex
-	kind string
-}
-
-type effectRecordKey struct{}
-
-// withEffectRecord gives a request its effect slot.
-func withEffectRecord(ctx context.Context) (context.Context, *effectRecord) {
-	r := &effectRecord{}
-	return context.WithValue(ctx, effectRecordKey{}, r), r
-}
-
-// recordEffect records the Action's effect for the response; outside a
-// request it does nothing.
-func recordEffect(ctx context.Context, kind string) {
-	if r, ok := ctx.Value(effectRecordKey{}).(*effectRecord); ok {
-		r.mu.Lock()
-		r.kind = kind
-		r.mu.Unlock()
-	}
-}
-
-func (r *effectRecord) get() string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.kind
-}
 
 // observing reports whether the Action runs under --observe (observe.go's
 // wrapper gives it the opened-Window record).
@@ -104,6 +75,9 @@ func (pe *pageEffect) settle(ctx context.Context, w *page.EffectWatch, in *page.
 		return
 	}
 	pe.e = w.Read(ctx)
+	if r, ok := w.Settled(); ok {
+		recordSettled(ctx, pe.o.Client, pe.o.TopSession(), r)
+	}
 }
 
 // wrapAim wraps a click's act.
@@ -136,10 +110,11 @@ func (pe *pageEffect) finish(ctx context.Context, windowID uint64, out string, r
 	}
 	recordEffect(ctx, pe.e.Kind)
 	// A navigation that landed gets the wall check (bladebro-ideas 05), its
-	// Note after the effect's.
+	// note after the effect's, once the new document has its body: the
+	// watch saw the commit.
 	wall := ""
 	if pe.e.Kind == page.EffectNavigated && !pe.e.Pending && pe.o != nil && pe.o.Client != nil {
-		wall = pageWallNote(ctx, pe.o.Client, pe.o.TopSession())
+		wall = pageWallNoteOnceLoaded(ctx, pe.o.Client, pe.o.TopSession())
 	}
 	if out != okOutput {
 		return out + wall, nil

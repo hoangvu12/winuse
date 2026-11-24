@@ -40,6 +40,7 @@ type slowWire struct {
 	waves    int // the deepest wave any command was sent in
 	calls    atomic.Int64
 	methods  map[string]int
+	inflight sync.WaitGroup // commands whose answer is not delivered yet
 }
 
 func newSlowWire(oneWay time.Duration, serve func(cdptest.Message, func(string, string, any)) (any, error)) *slowWire {
@@ -52,6 +53,7 @@ func (w *slowWire) WriteText(data []byte) error {
 		return err
 	}
 	w.calls.Add(1)
+	w.inflight.Add(1)
 	w.mu.Lock()
 	wave := w.depth + 1
 	if wave > w.waves {
@@ -110,6 +112,7 @@ func (w *slowWire) WriteText(data []byte) error {
 					w.depth = wave
 				}
 				w.mu.Unlock()
+				defer w.inflight.Done()
 				for _, b := range msgs {
 					select {
 					case w.out <- b:
@@ -151,6 +154,13 @@ func (w *slowWire) Close() error {
 	w.once.Do(func() { close(w.closed) })
 	return nil
 }
+
+// idle waits until every command sent so far has its answer delivered. A
+// command the read does not wait for (the Tab log's Log.enable, ticket 29)
+// can answer after the read ends; an answer that lands after a reset would
+// start the next read's waves from its own (TestReadOverlapsItsRoundTrips
+// saw 26 under load).
+func (w *slowWire) idle() { w.inflight.Wait() }
 
 // reset starts counting a new read: waves count from the next command.
 func (w *slowWire) reset() {
@@ -357,6 +367,7 @@ func benchRead(tb testing.TB, oneWay time.Duration, rows int, js bool) (*slowWir
 		return raw
 	}
 	read() // attach, auto-attach and the first enables: the helper pays them once
+	w.idle()
 	return w, read
 }
 

@@ -153,6 +153,21 @@ func New(t testing.TB, windows ...Window) *Browser {
 		}
 		return map[string]any{"success": true}, nil
 	})
+	// Page.navigate takes the Tab to the URL at once (tab new opens on
+	// about:blank and navigates).
+	s.Handle("Page.navigate", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
+		var p struct {
+			URL string `json:"url"`
+		}
+		json.Unmarshal(m.Params, &p)
+		target := strings.TrimPrefix(m.SessionID, "session-")
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		if w, i := b.find(target); w != nil {
+			w.Tabs[i].URL, w.Tabs[i].Title = p.URL, p.URL
+		}
+		return map[string]any{"frameId": target, "loaderId": "L-" + target}, nil
+	})
 	s.Handle("Runtime.evaluate", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
 		target := strings.TrimPrefix(m.SessionID, "session-")
 		b.mu.Lock()

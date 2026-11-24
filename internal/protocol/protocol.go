@@ -747,6 +747,17 @@ type Response struct {
 	// unknown; "" for any other command, a Batch and a failure. Printed
 	// only under --json.
 	Effect string `json:"effect,omitempty"`
+
+	// HTTPStatus is the 4xx/5xx a navigation's Page answered, whose note
+	// Out carries (bladebro-ideas 02); 0 for none, a Batch and a failure.
+	// Printed only under --json.
+	HTTPStatus int `json:"http_status,omitempty"`
+
+	// Wall is the challenge or block wall (one of WallKinds) a Page the
+	// command landed on or read looks like, whose note Out carries
+	// (bladebro-ideas 05): the last one, a Batch step's too. Printed only
+	// under --json.
+	Wall string `json:"wall,omitempty"`
 }
 
 // ErrLineTooLarge is returned when a line exceeds MaxLine.

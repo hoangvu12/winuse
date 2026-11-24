@@ -75,6 +75,8 @@ func TestBatchChecksStepValuesBeforeTheFirstStep(t *testing.T) {
 		{"a drag to a negative point", stepOf("drag", protocol.DragArgs{FromX: 1, FromY: 1, ToX: -2, ToY: 2}), "drag: the @x,y coordinates must be non-negative integers"},
 		{"a drag from an Element to a negative point", stepOf("drag", protocol.DragArgs{FromIndex: intPtrBatch(2), ToX: -2, ToY: 2}), "drag: the @x,y coordinates must be non-negative integers"},
 		{"a drag to a bad reference", stepOf("drag", protocol.DragArgs{FromIndex: intPtrBatch(2), ToRef: "id:"}), "invalid element reference"},
+		{"a drag from a bad reference", stepOf("drag", protocol.DragArgs{FromRef: "Save", ToIndex: intPtrBatch(3)}), "invalid element reference"},
+		{"a drag to an Element with no Element to start from", stepOf("drag", protocol.DragArgs{ToIndex: intPtrBatch(3)}), "drag: a drag to an Element needs an Element to start from"},
 		{"a hover at a negative point", stepOf("hover", protocol.HoverArgs{X: 3, Y: -3}), "hover: the @x,y coordinates must be non-negative integers"},
 		{"a hover on a bad reference", stepOf("hover", protocol.HoverArgs{Ref: "Save"}), "invalid element reference"},
 
@@ -128,8 +130,18 @@ func TestBatchChecksStepValuesBeforeTheFirstStep(t *testing.T) {
 		{"get-window-state --diff with --skeleton", stepOf("get-window-state", windowRef{Diff: true, Skeleton: true}), "--diff compares a full read"},
 		{"get-window-state a negative --depth", stepOf("get-window-state", windowRef{Depth: -1}), "--depth takes a positive number"},
 		{"get-window-state --skeleton with --root", stepOf("get-window-state", windowRef{Skeleton: true, Root: "5"}), "--skeleton reads the whole Window and --root one Element"},
+		{"get-window-state a negative --max-chars", stepOf("get-window-state", windowRef{MaxChars: &neg}), "--max-chars a number (0: no cap)"},
+		{"get-window-state --full with --compact", stepOf("get-window-state", windowRef{Full: true, Compact: true}), "--full prints the Window State as Codex does, whole and uncut"},
+		{"get-window-state --full with --max-chars", stepOf("get-window-state", windowRef{Full: true, MaxChars: &big}), "--full prints the Window State as Codex does, whole and uncut"},
+		{"get-window-state --full with --urls", stepOf("get-window-state", windowRef{Full: true, URLs: true}), "pass --urls or --full, not both"},
+		{"get-window-state --out with --max-chars", stepOf("get-window-state", windowRef{Out: filepath.Join(dir, "state.txt"), MaxChars: &big}), "pass --out or --max-chars, not both"},
+		{"get-window-state --compact with --root", stepOf("get-window-state", windowRef{Compact: true, Root: "5"}), "--compact and --out shape a full read"},
 		{"find --first and --count", stepOf("find", protocol.FindArgs{First: true, Count: true}), "pass one of --first, --limit and --count"},
 		{"find an unknown state", stepOf("find", protocol.FindArgs{State: "shiny"}), `find: unknown state "shiny"`},
+		{"find --limit with --first", stepOf("find", protocol.FindArgs{Limit: 3, First: true}), "pass one of --first, --limit and --count"},
+		{"find a negative --limit", stepOf("find", protocol.FindArgs{Limit: -1}), "find: --limit takes a positive number"},
+		{"find a negative --max-chars", stepOf("find", protocol.FindArgs{MaxChars: &neg}), "--max-chars a number (0: no cap)"},
+		{"find --full with --max-chars", stepOf("find", protocol.FindArgs{Full: true, MaxChars: &big}), "find: --full prints every match uncut"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

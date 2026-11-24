@@ -7,10 +7,12 @@ package helper
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/hoangvu12/winuse/internal/cdp/cdptest"
 	"github.com/hoangvu12/winuse/internal/protocol"
@@ -75,31 +77,45 @@ func TestReadPrintsThePagesMainContent(t *testing.T) {
 	r.passiveOnly(t)
 }
 
+// TestReadCutsAtMaxCharsAndSaysSo: --max-chars bounds the whole output,
+// header, cut line and wall note included, as it does on the other reads;
+// the cut line counts the Markdown kept.
 func TestReadCutsAtMaxCharsAndSaysSo(t *testing.T) {
 	r := newWinRig(t)
-	body := strings.Repeat("word ", 100) // 500 characters
-	p := &readPage{md: map[string]any{"markdown": body, "main": "main", "title": "Docs", "url": "https://docs.test/"}}
+	body := strings.Repeat("word ", 400) // 2000 characters
+	p := &readPage{md: map[string]any{"markdown": body, "main": "main", "title": "Docs", "url": "https://docs.test/", "wall": "Cloudflare"}}
 	p.handle(r.browser.Srv, func(string) any { return nil })
 
-	n := 120
+	n := 500
 	out, e := r.run(t, "read", protocol.ReadArgs{Window: "301", MaxChars: &n})
 	if e != nil {
 		t.Fatalf("read: %+v", e)
 	}
-	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
-	last := lines[len(lines)-1]
-	if last != "(cut at 120 of 500 characters; --max-chars raises the cut, 0 lifts it, --out <file> writes it whole)" {
-		t.Errorf("the cut line is %q", last)
+	if got := utf8.RuneCountInString(out); got > n {
+		t.Errorf("read --max-chars %d printed %d characters:\n%s", n, got, out)
 	}
-	if got := lines[2]; got != strings.TrimSpace(body[:120]) {
-		t.Errorf("the Markdown printed is %q", got)
+	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
+	if last := lines[len(lines)-1]; last != protocol.WallNote("Cloudflare") {
+		t.Errorf("the wall note is not last: %q", last)
+	}
+	var kept int
+	cut := lines[len(lines)-2]
+	if _, err := fmt.Sscanf(cut, "(cut at %d of 2000 characters;", &kept); err != nil || !strings.HasSuffix(cut, "; --max-chars raises the cut, 0 lifts it, --out <file> writes it whole)") {
+		t.Fatalf("the cut line is %q (%v)", cut, err)
+	}
+	if kept < 100 {
+		t.Errorf("kept only %d characters of the Markdown", kept)
+	}
+	if got := lines[2]; got != strings.TrimSpace(body[:kept]) {
+		t.Errorf("the Markdown kept is %q, want its first %d characters", got, kept)
 	}
 
 	// The default cap is the other reads' (28000 characters).
+	delete(p.md, "wall")
 	p.md["markdown"] = strings.Repeat("x", defaultMaxChars+10)
 	out, _ = r.run(t, "read", protocol.ReadArgs{Window: "301"})
-	if !strings.Contains(out, "(cut at 28000 of 28010 characters") {
-		t.Errorf("no default cut: %d characters", len(out))
+	if got := utf8.RuneCountInString(out); got > defaultMaxChars || !strings.Contains(out, " of 28010 characters") {
+		t.Errorf("no default cut: %d characters", got)
 	}
 	zero := 0
 	out, _ = r.run(t, "read", protocol.ReadArgs{Window: "301", MaxChars: &zero})
@@ -111,7 +127,7 @@ func TestReadCutsAtMaxCharsAndSaysSo(t *testing.T) {
 func TestReadOutWritesTheWholeMarkdown(t *testing.T) {
 	r := newWinRig(t)
 	body := strings.Repeat("word ", 10000)
-	p := &readPage{md: map[string]any{"markdown": body, "main": "main", "title": "Docs", "url": "https://docs.test/", "block": "Cloudflare"}}
+	p := &readPage{md: map[string]any{"markdown": body, "main": "main", "title": "Docs", "url": "https://docs.test/", "wall": "Cloudflare"}}
 	p.handle(r.browser.Srv, func(string) any { return nil })
 	file := filepath.Join(t.TempDir(), "page.md")
 
@@ -132,6 +148,16 @@ func TestReadOutWritesTheWholeMarkdown(t *testing.T) {
 	n := 10
 	if _, e := r.run(t, "read", protocol.ReadArgs{Window: "301", Out: file, MaxChars: &n}); e == nil {
 		t.Error("--out with --max-chars was accepted")
+	}
+}
+
+// A wall read's note names is the response's wall field too (--json).
+func TestReadRecordsTheWall(t *testing.T) {
+	r := newWinRig(t)
+	p := &readPage{md: map[string]any{"markdown": "Checking your browser", "main": "body", "title": "Just a moment", "url": "https://shop.test/", "wall": "Cloudflare"}}
+	p.handle(r.browser.Srv, func(string) any { return nil })
+	if _, e, f := runFields(t, r.cmds, "read", protocol.ReadArgs{Window: "301"}); e != nil || f.Wall != "Cloudflare" {
+		t.Errorf("read of a wall: %+v %+v", f, e)
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/hoangvu12/winuse/internal/cdp/cdptest"
+	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
 )
 
@@ -32,7 +33,7 @@ func extractRig(t *testing.T, reply map[string]any) *winRig {
 
 func twoRows() map[string]any {
 	return map[string]any{"kind": "list", "container": "<ol>", "label": "Results", "found": 2,
-		"rows": []any{map[string]any{"title": "A", "url": "https://a.test/"}, map[string]any{"title": "B", "url": "https://b.test/"}},
+		"rows":      []any{map[string]any{"title": "A", "url": "https://a.test/"}, map[string]any{"title": "B", "url": "https://b.test/"}},
 		"page_says": map[string]any{"total": 1234, "noun": "results"}, "wall": ""}
 }
 
@@ -78,6 +79,57 @@ hint: if this is the wrong list, pass --root <index> of the list or of one item,
 		t.Errorf("extract showed the Agent Cursor: %v", r.cursor.labels)
 	}
 	r.passiveOnly(t)
+}
+
+// A wall extract names is the response's wall field too (--json), as
+// read's and navigate's are.
+func TestExtractRecordsTheWall(t *testing.T) {
+	r := extractRig(t, map[string]any{"kind": "", "rows": []any{}, "found": 0, "wall": "DataDome"})
+	out, e, f := runFields(t, r.cmds, "extract", protocol.ExtractArgs{Window: "301"})
+	if e != nil || f.Wall != "DataDome" || !strings.Contains(out, "DataDome wall") {
+		t.Errorf("extract of a wall: %q %+v %+v", out, f, e)
+	}
+}
+
+// extract.js stops counting at its item ceiling and says so (at_least):
+// the count prints as a lower bound.
+func TestExtractCountsPastTheCeilingAsALowerBound(t *testing.T) {
+	reply := twoRows()
+	reply["found"], reply["at_least"], reply["page_says"] = 2000, true, nil
+	r := extractRig(t, reply)
+	out, e := r.run(t, "extract", protocol.ExtractArgs{Window: "301", Limit: 2})
+	if e != nil || !strings.HasPrefix(out, `list: <ol> "Results": 2 of 2000+ rows (partial: capped at 2)`) {
+		t.Errorf("extract past the ceiling: %q %+v", out, e)
+	}
+}
+
+// TestBlockNoteOnEveryReadOfTheTab (bladebro-ideas 28): extract on a
+// blocking Tab ends with the note, and so does a read through the Window ID
+// of a Window that shows a blocking Tab (get-window-state, read, extract).
+func TestBlockNoteOnEveryReadOfTheTab(t *testing.T) {
+	r := extractRig(t, twoRows())
+	(&readPage{md: map[string]any{"markdown": "# Docs", "main": "main", "title": "Docs", "url": "https://docs.test/"}}).handle(r.browser.Srv, func(string) any { return nil })
+	r.svc.assetBlocks = newAssetBlocks()
+	r.cmds = CommandsWith(r.svc)
+	r.svc.assetBlocks.set(tDocs, []string{"images"}) // a Tab of a browser winuse launched may block
+	const note = "Note: images are blocked in this Tab\n"
+	for _, tc := range []struct {
+		cmd  string
+		args any
+	}{
+		{"extract", protocol.ExtractArgs{Window: "301:" + page.TabID(tDocs)}},
+		{"get-window-state", protocol.GetWindowArgs{Window: "301"}},
+		{"read", protocol.ReadArgs{Window: "301"}},
+		{"extract", protocol.ExtractArgs{Window: "301"}},
+	} {
+		if out, e := r.run(t, tc.cmd, tc.args); e != nil || !strings.HasSuffix(out, note) || strings.Count(out, note) != 1 {
+			t.Errorf("%s %+v: %q %+v", tc.cmd, tc.args, out, e)
+		}
+	}
+	r.svc.assetBlocks.set(tDocs, nil)
+	if out, e := r.run(t, "extract", protocol.ExtractArgs{Window: "301"}); e != nil || strings.Contains(out, "blocked") {
+		t.Errorf("a Window whose Tab blocks nothing: %q %+v", out, e)
+	}
 }
 
 func TestExtractNoListAndOptions(t *testing.T) {

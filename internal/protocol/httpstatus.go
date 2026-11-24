@@ -2,14 +2,10 @@ package protocol
 
 // The HTTP status note of navigate, back, forward and reload
 // (bladebro-ideas ticket 02): the helper prints it after the ok line when
-// the main document answered 4xx or 5xx, and --json reads its code back
-// into the http_status field.
+// the main document answered 4xx or 5xx; under --json its code is the
+// http_status field (Response.HTTPStatus).
 
-import (
-	"fmt"
-	"strconv"
-	"strings"
-)
+import "strconv"
 
 // httpStatusNote starts the note's line.
 const httpStatusNote = "Note: the Page answered HTTP "
@@ -26,20 +22,4 @@ func HTTPStatusNote(code int, reason string, emptyBody bool) string {
 		s += " with an empty body; Chrome shows its error page"
 	}
 	return s
-}
-
-// HTTPStatusIn is the code of the HTTP status note in a command's output,
-// 0 when it has none.
-func HTTPStatusIn(out string) int {
-	for _, line := range strings.Split(out, "\n") {
-		rest, ok := strings.CutPrefix(line, httpStatusNote)
-		if !ok {
-			continue
-		}
-		var code int
-		if _, err := fmt.Sscanf(rest, "%d", &code); err == nil && code >= 100 && code <= 999 {
-			return code
-		}
-	}
-	return 0
 }

@@ -119,7 +119,7 @@ winuse get-window-state <window> --interactive --compact   # a full read, printi
 winuse get-window-state <window> --max-chars 20000 # stop the tree before 20000 characters, with a note
 winuse get-window-state <window> --out state.txt   # write it to a file, uncut; prints the path and the notes
 winuse get-window-state <window> --urls            # a Page link's line ends with its URL
-winuse get-window-state <window> --full            # Codex's text byte for byte: every ID, no cap, no hint, no URL
+winuse get-window-state <window> --full            # Codex's text byte for byte: every ID, no cap, no hint, no URL, no heading level
 ```
 
 By default a read, `find` and `--root` stop before 28000 characters
@@ -145,7 +145,8 @@ chrome before content:
 ```
 
 The folded Elements' indexes still work. One that holds the focus, or an
-Element changed since your last read, stays open.
+Element changed since your last read, stays open. A Tab target takes no
+`--root`, so its fold line says `--out <file> writes them` instead.
 
 On a full read, `--interactive`, `--depth N` and `--compact` (folds
 unnamed containers) print less, but the Window State is kept whole:

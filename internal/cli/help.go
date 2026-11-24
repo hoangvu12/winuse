@@ -61,8 +61,10 @@ global options:
                                "effect": navigated, changed, text, none or
                                unknown, navigate, back, forward and reload
                                add "http_status" when the Page answered 4xx
-                               or 5xx, and a read's Notes go in "notes",
-                               never in "out". Exit codes are unchanged
+                               or 5xx, a Page that looks like a CAPTCHA or
+                               block wall adds "wall", and a read's Notes go
+                               in "notes", never in "out". Exit codes are
+                               unchanged
   --help, -h                  print the command's usage and examples instead
                                of running it, as winuse help <command> does
 
@@ -188,7 +190,7 @@ commands:
                                lines around it do not show it); a hint is
                                not a name: name: never matches it. --full
                                prints Codex's text byte for byte: every ID,
-                               no cap, no hint, no URL.
+                               no cap, no hint, no URL, no heading level.
                                A Page heading says its level, as in
                                "heading (level 2) Install". --urls ends a
                                Page link's line with "URL: /path" (on the
@@ -508,7 +510,7 @@ const usageTail = `);
                                back, forward and reload) adds
                                Note: the Page answered HTTP <code> <reason>;
                                a short Page that looks like a CAPTCHA or
-                               block wall adds a Note too: ask the user to
+                               block wall adds a note too: ask the user to
                                handle it. --block sets what a Tab target
                                blocks (as tab new --block), only on a Tab
                                winuse opened or in a browser it launched or
@@ -566,12 +568,14 @@ const usageTail = `);
                                latest read). Same-site links print as paths,
                                others as a shortened domain and path, images
                                as their alt text; --urls full prints them
-                               whole. Cut at 28000 characters with a "(cut at
-                               N of M characters)" line (--max-chars N, 0 for
-                               none), or --out writes it whole to a file. A
-                               short Page that looks like a CAPTCHA or block
-                               wall gets a Note. Pages only: read a native
-                               Window with get-window-state
+                               whole. The output stays within 28000
+                               characters, header included: the Markdown is
+                               cut, with a "(cut at N of M characters)" line
+                               (--max-chars N, 0 for none), or --out writes
+                               it whole to a file. A short Page that looks
+                               like a CAPTCHA or block wall gets a note.
+                               Pages only: read a native Window with
+                               get-window-state
   logs <window> [--capture] [--clear] [--max-chars N | --out <file>]
                                print the Tab's log, newest last: the requests
                                that failed and the CSP or security errors its
@@ -586,7 +590,9 @@ const usageTail = `);
                                Cut at 28000 characters, keeping the newest
                                (--max-chars N, 0 for none), or --out writes
                                them all to a file. --clear empties it after
-                               printing; --json answers with JSON.
+                               printing; --json answers with JSON, within
+                               the same cap ("left_out" counts the older
+                               entries it dropped).
                                A Page Action that made requests fail or the
                                Page throw stays ok and adds "Note: 2 failed
                                requests: 404 /api/save, ..." or "Note: the

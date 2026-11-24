@@ -232,6 +232,11 @@ func dragInput(a protocol.DragArgs) (time.Duration, *Error) {
 		}
 		return drop, nil
 	}
+	if a.ToIndex != nil || a.ToRef != "" {
+		// The point form goes from @x,y to @x,y: an Element to drop on with
+		// no Element to start from has lost its first end.
+		return 0, Fail("drag: a drag to an Element needs an Element to start from", dragUsageHint)
+	}
 	if a.FromX < 0 || a.FromY < 0 || a.ToX < 0 || a.ToY < 0 {
 		return 0, Fail("drag: the @x,y coordinates must be non-negative integers", dragUsageHint)
 	}

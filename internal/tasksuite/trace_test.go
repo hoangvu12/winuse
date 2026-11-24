@@ -13,7 +13,7 @@ func TestCommandKind(t *testing.T) {
 		"list-windows":             KindObserve,
 		"find":                     KindObserve,
 		"extract":                  KindObserve,
-		"screenshot":              KindObserve,
+		"screenshot":               KindObserve,
 		"tab-list":                 KindObserve,
 		"clipboard-get":            KindObserve,
 		"click":                    KindAct,

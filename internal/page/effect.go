@@ -8,9 +8,11 @@ package page
 // (a control's checked state or value, the focus, the scroll offsets). The
 // Tab's own Page events tell a navigation: a committed load or a
 // same-document one of the top frame, or a load it started. Read, after
-// the input, waits for the DOM to stay quiet for EffectQuiet, up to
-// EffectBound (and to the bound while a load is pending), then says what
-// changed. It never sends input, and nothing in the Page's own world sees
+// the input, waits for the Page to settle by page.Settle's own rule
+// (settleLoop: its DOM quiet for SettleDOMQuiet and no request finished
+// for SettleNetQuiet, tickets 06 and 07), up to EffectBound (and to the
+// bound while a load is pending), then says what changed and how its wait
+// ended (Settled), so --observe does not wait for the same quiet again. It never sends input, and nothing in the Page's own world sees
 // it: no Runtime.enable, no binding, no global of the Page's. ArmScroll is
 // the same watch for a wheel (ticket 03): it reads the scrollers under the
 // wheel point before and after, and waits until they stop moving too.
@@ -25,18 +27,22 @@ import (
 	"github.com/hoangvu12/winuse/internal/cdp"
 )
 
+// EffectKind is what kind of effect a Page Action had: one of the Effect
+// constants, also --json's effect field.
+type EffectKind string
+
 // The effects a Page Action can have.
 const (
-	EffectNavigated = "navigated" // the top frame loaded another document or changed its URL
-	EffectChanged   = "changed"   // elements, attributes, a control's state, the focus or a scroll changed
-	EffectText      = "text"      // only text changed
-	EffectNone      = "none"      // nothing changed that the watch can see
-	EffectUnknown   = "unknown"   // the watch could not be armed or read
+	EffectNavigated EffectKind = "navigated" // the top frame loaded another document or changed its URL
+	EffectChanged   EffectKind = "changed"   // elements, attributes, a control's state, the focus or a scroll changed
+	EffectText      EffectKind = "text"      // only text changed
+	EffectNone      EffectKind = "none"      // nothing changed that the watch can see
+	EffectUnknown   EffectKind = "unknown"   // the watch could not be armed or read
 )
 
 // Effect is what an Action did to its Page.
 type Effect struct {
-	Kind string
+	Kind EffectKind
 	// URL is the top frame's URL after a navigation (or the URL a pending
 	// load asked for, "" when the browser did not say).
 	URL string
@@ -86,15 +92,9 @@ type ScrollerPos struct {
 	Max float64 `json:"max"`
 }
 
-// The watch's timing; tests shrink it.
-var (
-	// EffectQuiet is how long the DOM must stay unchanged before the read.
-	EffectQuiet = 150 * time.Millisecond
-	// EffectBound caps the wait, whatever the Page does.
-	EffectBound = time.Second
-	// effectPoll is the pause between two looks at the DOM's quiet.
-	effectPoll = 40 * time.Millisecond
-)
+// EffectBound caps the watch's wait, whatever the Page does: the settle's
+// bound. Tests shrink it.
+var EffectBound = SettleBound
 
 // effectWorld names the isolated world the watch runs in.
 const effectWorld = "winuse-effect"
@@ -107,8 +107,11 @@ const effectWorld = "winuse-effect"
 // vertical and horizontal one under the point, walking up through shadow
 // hosts and same-origin frames.
 const effectArmJS = `function(px, py, wheel) {
-  /* winuse:effect-arm */
+  /* winuse:effect-arm */` + requestWatchJS + `
   const S = {n: 0, added: 0, removed: 0, text: 0, attrs: 0, last: performance.now(), observers: [], blind: false, budget: 20000};
+  S.res = S.last;
+  S.perf = watchRequests(S);
+  S.requests = now => readRequests(S, now);
   const opts = {subtree: true, childList: true, characterData: true, attributes: true};
   const seen = new WeakSet();
   const frameDoc = el => { if (el.tagName !== 'IFRAME' && el.tagName !== 'FRAME') return undefined; try { return el.contentDocument; } catch (e) { return null; } };
@@ -252,16 +255,19 @@ const effectArmJS = `function(px, py, wheel) {
   return {ok: true};
 }`
 
-// effectPollJS reports how many mutations the watch counted and how long
-// ago the last one (or the arm) was, in ms. A wheel's watch counts a
-// scroller that moved since the last poll as activity too, so a smooth
+// effectPollJS is the watch's settle sample, as pageSettleJS's: how long
+// ago the last mutation (or the arm) was and the last request finished, in
+// ms, and whether the document is still loading. A wheel's watch counts a
+// scroller that moved since the last poll as a mutation too, so a smooth
 // scroll is read once it settled.
 const effectPollJS = `function() {
   /* winuse:effect-poll */
   const S = globalThis.__winuseEffect;
   if (!S) return null;
-  if (S.wheel) { const k = JSON.stringify(S.pos()); if (k !== S.pk) { S.pk = k; S.last = performance.now(); } }
-  return {n: S.n, ago: performance.now() - S.last};
+  const now = performance.now();
+  if (S.wheel) { const k = JSON.stringify(S.pos()); if (k !== S.pk) { S.pk = k; S.last = now; } }
+  S.requests(now);
+  return {dom: now - S.last, net: now - S.res, loading: document.readyState === 'loading'};
 }`
 
 // effectReadJS ends the watch and reports what changed.
@@ -271,6 +277,7 @@ const effectReadJS = `function() {
   if (!S) return null;
   delete globalThis.__winuseEffect;
   for (const mo of S.observers) { S.count(mo.takeRecords()); mo.disconnect(); }
+  if (S.perf) S.perf.disconnect();
   const now = S.snap();
   const out = {added: S.added, removed: S.removed, text: S.text, attrs: S.attrs, state: S.changed(S.before, now), gone: false, by: '', blind: S.blind};
   if (S.hit) {
@@ -328,7 +335,8 @@ type EffectWatch struct {
 	url     string
 	world   int
 	armed   bool
-	ended   bool // the read script ended the observers
+	ended   bool          // the read script ended the observers
+	settled *SettleResult // how Read's wait ended, when it read the same document
 	sub     *cdp.Subscription
 	once    sync.Once
 
@@ -365,31 +373,17 @@ func armEffect(ctx context.Context, c *cdp.Client, session string, args []any) *
 	}
 	w.sub = c.Subscribe(session, "")
 	go w.listen(w.sub)
-	res, err := c.CallSession(ctx, session, "Page.getFrameTree", nil)
-	if err != nil {
-		return w
-	}
-	var ft struct {
-		FrameTree frameTree `json:"frameTree"`
-	}
-	if json.Unmarshal(res, &ft) != nil || ft.FrameTree.Frame.ID == "" {
+	f, err := mainFrame(ctx, c, session)
+	if err != nil || f.ID == "" {
 		return w
 	}
 	w.mu.Lock()
-	w.frameID = ft.FrameTree.Frame.ID
+	w.frameID = f.ID
 	w.mu.Unlock()
-	w.loader, w.url = ft.FrameTree.Frame.LoaderID, ft.FrameTree.Frame.URL
-	res, err = c.CallSession(ctx, session, "Page.createIsolatedWorld", map[string]any{"frameId": ft.FrameTree.Frame.ID, "worldName": effectWorld})
-	if err != nil {
+	w.loader, w.url = f.LoaderID, f.URL
+	if w.world, err = newWorld(ctx, c, session, f.ID, effectWorld); err != nil {
 		return w
 	}
-	var iw struct {
-		ExecutionContextID int `json:"executionContextId"`
-	}
-	if json.Unmarshal(res, &iw) != nil || iw.ExecutionContextID == 0 {
-		return w
-	}
-	w.world = iw.ExecutionContextID
 	var ok struct {
 		OK bool `json:"ok"`
 	}
@@ -464,17 +458,10 @@ func (w *EffectWatch) navigation() (e Effect, committed, pending bool) {
 // frameMoved reads the top frame again: another loader or URL than the
 // arm saw is a navigation the events did not show.
 func (w *EffectWatch) frameMoved(ctx context.Context) (Effect, bool) {
-	res, err := w.c.CallSession(ctx, w.session, "Page.getFrameTree", nil)
-	if err != nil {
+	f, err := mainFrame(ctx, w.c, w.session)
+	if err != nil || f.ID == "" {
 		return Effect{}, false
 	}
-	var ft struct {
-		FrameTree frameTree `json:"frameTree"`
-	}
-	if json.Unmarshal(res, &ft) != nil || ft.FrameTree.Frame.ID == "" {
-		return Effect{}, false
-	}
-	f := ft.FrameTree.Frame
 	if f.LoaderID != w.loader || f.URL != w.url {
 		return Effect{Kind: EffectNavigated, URL: f.URL}, true
 	}
@@ -514,40 +501,47 @@ func (w *EffectWatch) call(ctx context.Context, fn string, args []any, out any) 
 	return json.Unmarshal(cr.Result.Value, out)
 }
 
+// The watch's own ends of its settle: the top frame navigated, or the
+// watch's world went away. settleLoop stops at both (settleFatal).
+var (
+	errWatchNavigated = errors.New("the top frame navigated")
+	errWatchLost      = errors.New("the effect watch is gone")
+)
+
 // Read waits for the Page to settle after the input and says what changed;
 // it closes the watch. A committed navigation answers at once. Otherwise it
-// reads once the DOM was quiet for EffectQuiet, at EffectBound at the
-// latest, or at the bound while a load the top frame started is pending.
+// waits by settleLoop, page.Settle's rule, on the watch's own observers (a
+// load the top frame started counts as a document still loading), and
+// reads once the Page settled or at EffectBound.
 func (w *EffectWatch) Read(ctx context.Context) Effect {
 	defer w.Close()
 	if !w.armed {
 		return Effect{Kind: EffectUnknown}
 	}
-	start := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, EffectBound+time.Second)
 	defer cancel()
-	quietMS := float64(EffectQuiet) / float64(time.Millisecond)
-	for {
-		if e, committed, _ := w.navigation(); committed {
-			return e
+	probe := func(ctx context.Context) (SettleSample, error) {
+		if _, committed, _ := w.navigation(); committed {
+			return SettleSample{}, errWatchNavigated
 		}
 		var p struct {
-			N   int     `json:"n"`
-			Ago float64 `json:"ago"`
+			DOM     float64 `json:"dom"`
+			Net     float64 `json:"net"`
+			Loading bool    `json:"loading"`
 		}
 		if err := w.call(ctx, effectPollJS, nil, &p); err != nil {
-			return w.lost(ctx)
+			return SettleSample{}, errWatchLost
 		}
 		_, _, pending := w.navigation()
-		since := time.Since(start)
-		if (!pending && since >= EffectQuiet && p.Ago >= quietMS) || since >= EffectBound {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return Effect{Kind: EffectUnknown}
-		case <-time.After(effectPoll):
-		}
+		return SettleSample{DOMQuiet: ms(p.DOM), NetQuiet: ms(p.Net), Loading: p.Loading || pending}, nil
+	}
+	settled, err := settleLoop(ctx, realClock{}, EffectBound, nil, probe)
+	switch {
+	case errors.Is(err, errWatchNavigated):
+		e, _, _ := w.navigation()
+		return e
+	case err != nil:
+		return w.lost(ctx)
 	}
 	if e, committed, pending := w.navigation(); committed || pending {
 		return e
@@ -560,7 +554,19 @@ func (w *EffectWatch) Read(ctx context.Context) Effect {
 		return w.lost(ctx)
 	}
 	w.ended = true
+	w.settled = &settled
 	return r.effect()
+}
+
+// Settled is how Read's wait for the Page to settle ended, when it read
+// the document it was armed on: ok is false for a watch that was not read,
+// saw a navigation, or lost its world. --observe takes it in place of a
+// settle of its own (bladebro-ideas 07).
+func (w *EffectWatch) Settled() (SettleResult, bool) {
+	if w == nil || w.settled == nil {
+		return SettleResult{}, false
+	}
+	return *w.settled, true
 }
 
 // lost answers a watch whose world went away: a navigation if one shows,
@@ -575,7 +581,7 @@ func (w *EffectWatch) lost(ctx context.Context) Effect {
 	// The commit's event may trail the world's end by a moment.
 	select {
 	case <-ctx.Done():
-	case <-time.After(2 * effectPoll):
+	case <-time.After(2 * SettlePoll):
 	}
 	if e, committed, _ := w.navigation(); committed {
 		return e
@@ -611,5 +617,6 @@ const effectEndJS = `function() {
   if (!S) return null;
   delete globalThis.__winuseEffect;
   for (const mo of S.observers) mo.disconnect();
+  if (S.perf) S.perf.disconnect();
   return true;
 }`

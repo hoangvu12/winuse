@@ -10,8 +10,9 @@ package page
 // found that a Page cannot detect it, that it replays the entries stored
 // before it was turned on with their original times, and that without
 // Runtime it reports failed requests (source network, level error) and CSP
-// and security errors only. Runtime.enable and Network.enable are never
-// sent: a Page can detect both.
+// and security errors only. Runtime.enable is never sent, and
+// Network.enable never except on a Tab where --block is on (assets.go,
+// ticket 28): a Page can detect both.
 //
 // The ring is the Tab's (its connection and target id), not a session's:
 // the extension detaches a Tab nobody drove for 5 minutes, and the session
@@ -55,15 +56,10 @@ const (
 	// logEnableWait bounds the wait for Log.enable's answer, which carries
 	// no data (the replay comes before it, as events).
 	logEnableWait = 5 * time.Second
-	// logSettleMax bounds how long Mark and Settle wait for a Log.enable
+	// logReplayMax bounds how long Mark and WaitReplay wait for a Log.enable
 	// sent just now to answer.
-	logSettleMax = 750 * time.Millisecond
+	logReplayMax = 750 * time.Millisecond
 )
-
-// logEnableAgain is how long after a session's last use Log.enable is sent
-// again: the extension's silent idle detach turns every domain off (as
-// reader.go's enableAgain).
-const logEnableAgain = enableAgain
 
 // LogEntry is one entry of a Tab's log.
 type LogEntry struct {
@@ -125,9 +121,9 @@ var tabLogs = struct {
 }{m: map[logKey]*TabLog{}}
 
 // WatchLog returns the Tab's log, turning Log on in session the first time
-// (and again after logEnableAgain unused): the entries it replays and every
+// (and again after enableAgain unused): the entries it replays and every
 // later one join the Tab's ring. Log.enable goes out without waiting for its
-// answer; Mark and Settle wait for it. session "" (a Tab that shows a
+// answer; Mark and WaitReplay wait for it. session "" (a Tab that shows a
 // browser page, not attached) only finds the log. Nil for a nil client.
 func WatchLog(ctx context.Context, c *cdp.Client, session, targetID string) *TabLog {
 	if c == nil || targetID == "" {
@@ -153,7 +149,7 @@ func WatchLog(ctx context.Context, c *cdp.Client, session, targetID string) *Tab
 	l.mu.Lock()
 	s := l.sessions[session]
 	now := time.Now()
-	if s != nil && now.Sub(s.used) <= logEnableAgain {
+	if s != nil && now.Sub(s.used) <= enableAgain {
 		s.used = now
 		l.mu.Unlock()
 		return l
@@ -275,14 +271,6 @@ func parseLogEntry(raw json.RawMessage) (LogEntry, bool) {
 	return e, true
 }
 
-// capRunes cuts s at n characters, marking the cut.
-func capRunes(s string, n int) string {
-	if r := []rune(s); len(r) > n {
-		return string(r[:n]) + "..."
-	}
-	return s
-}
-
 // Add puts an entry in the Tab's ring, unless the ring holds it already, it
 // is older than a full ring's oldest, or it is no newer than the newest
 // entry the last Clear emptied. An entry with no time is stamped now.
@@ -296,9 +284,9 @@ func (l *TabLog) Add(e LogEntry) {
 	if e.Time.IsZero() {
 		e.Time = time.Now()
 	}
-	e.Text = capRunes(e.Text, logTextCap)
-	e.URL = capRunes(e.URL, logURLCap)
-	e.Stack = capRunes(e.Stack, logStackCap)
+	e.Text = CutRunes(e.Text, logTextCap)
+	e.URL = CutRunes(e.URL, logURLCap)
+	e.Stack = CutRunes(e.Stack, logStackCap)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if !l.cleared.IsZero() && !e.Time.After(l.cleared) {
@@ -336,14 +324,14 @@ func (l *TabLog) Entries() []LogEntry {
 	return append([]LogEntry(nil), l.entries...)
 }
 
-// Mark is the log now, for Since. It first waits (Settle) for a Log.enable
+// Mark is the log now, for Since. It first waits (WaitReplay) for a Log.enable
 // sent just now, so the entries it replays, logged before the mark, are in
 // the ring already and not counted after it.
 func (l *TabLog) Mark(ctx context.Context) LogMark {
 	if l == nil {
 		return LogMark{}
 	}
-	l.Settle(ctx)
+	l.WaitReplay(ctx)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return LogMark{seq: l.seq}
@@ -367,15 +355,15 @@ func (l *TabLog) Since(m LogMark) []LogEntry {
 	return out
 }
 
-// Settle waits, within logSettleMax, for the Log.enable of the Tab's
+// WaitReplay waits, within logReplayMax, for the Log.enable of the Tab's
 // sessions to answer. The entries it replayed came before its answer, so
 // they are in the ring then, and a read right after the first attach shows
 // them. A session turned on long ago returns at once.
-func (l *TabLog) Settle(ctx context.Context) {
+func (l *TabLog) WaitReplay(ctx context.Context) {
 	if l == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(ctx, logSettleMax)
+	ctx, cancel := context.WithTimeout(ctx, logReplayMax)
 	defer cancel()
 	l.mu.Lock()
 	var waits []chan struct{}

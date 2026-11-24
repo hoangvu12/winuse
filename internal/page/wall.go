@@ -1,0 +1,93 @@
+package page
+
+// The wall check (.scratch/bladebro-ideas ticket 05): wall.js (a port of
+// bladebro's detect_block.js, Apache-2.0, third_party/bladebro/LICENSE)
+// names the wall a short challenge or block page shows. It is the one
+// copy: WallKind runs it alone after navigate, back, forward and reload,
+// and read.go puts it into read.js, so `winuse read` and any later reader
+// (extract) name walls the same way. It runs in an isolated world of the
+// main frame, never sends Runtime.enable, and only reads: it never clicks,
+// types or solves anything.
+
+import (
+	"context"
+	_ "embed"
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
+//go:embed wall.js
+var wallJS string
+
+// wallMarker is where read.js takes wall.js.
+const wallMarker = "/* winuse:wall.js */ null"
+
+// wallWorld names the isolated world WallKind runs wall.js in.
+const wallWorld = "winuse-wall"
+
+// withWallCheck puts wall.js into a reader's script in place of its
+// marker; a script without the marker is a bug, so it panics at start.
+func withWallCheck(js string) string {
+	if !strings.Contains(js, wallMarker) {
+		panic("page: a reader script lacks " + wallMarker)
+	}
+	return strings.Replace(js, wallMarker, wallJS, 1)
+}
+
+// WallKind runs wall.js on the main frame's document of session and
+// returns the wall it names, "" for none (an ordinary page, or a value
+// that is no name).
+func WallKind(ctx context.Context, c Caller, session string) (string, error) {
+	return wallKind(ctx, c, session, wallJS, false)
+}
+
+// WallKindOnceLoaded is WallKind once the document has its body
+// (DOMContentLoaded): a Page Action's effect watch says it navigated at
+// the commit, when the new body may still be on its way. ctx bounds the
+// wait; a document replaced meanwhile fails the call.
+func WallKindOnceLoaded(ctx context.Context, c Caller, session string) (string, error) {
+	return wallKind(ctx, c, session, wallOnceLoadedJS, true)
+}
+
+// wallOnceLoadedJS runs wall.js at once on a parsed document, else at
+// its DOMContentLoaded.
+var wallOnceLoadedJS = `function () {
+  const check = ` + wallJS + `;
+  if (document.readyState !== 'loading') return check(document);
+  return new Promise(done => document.addEventListener('DOMContentLoaded', () => done(check(document)), {once: true}));
+}`
+
+func wallKind(ctx context.Context, c Caller, session, fn string, await bool) (string, error) {
+	ctxID, err := isolatedWorld(ctx, c, session, "", wallWorld)
+	if err != nil {
+		return "", err
+	}
+	res, err := c.CallSession(ctx, session, "Runtime.callFunctionOn", map[string]any{
+		"functionDeclaration": fn,
+		"executionContextId":  ctxID,
+		"returnByValue":       true,
+		"awaitPromise":        await,
+		"silent":              true,
+	})
+	if err != nil {
+		return "", staleOr(err)
+	}
+	var cr struct {
+		Result struct {
+			Value json.RawMessage `json:"value"`
+		} `json:"result"`
+		ExceptionDetails *exceptionDetails `json:"exceptionDetails"`
+	}
+	if err := json.Unmarshal(res, &cr); err != nil {
+		return "", err
+	}
+	if cr.ExceptionDetails != nil {
+		return "", fmt.Errorf("checking the Page for a wall failed: %s", cr.ExceptionDetails.message())
+	}
+	var kind string
+	if json.Unmarshal(cr.Result.Value, &kind) != nil {
+		return "", nil
+	}
+	return kind, nil
+}

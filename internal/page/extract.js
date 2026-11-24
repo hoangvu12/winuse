@@ -10,7 +10,7 @@
 //     redirect unwrapping and the page's result count)
 //   - src/adapters/js/jsonld.js          (schema.org JSON-LD)
 //   - src/page/js/detect_block.js        (the generic block-wall check,
-//                                         block.js, put in by extract.go)
+//                                         wall.js, put in by extract.go)
 // Changed for winuse (ticket 12's findings): the site adapters and site
 // branches are gone; items group loosely (same tag and class, or most
 // children shared); sibling rows of one record merge (two rows per story);
@@ -23,8 +23,9 @@
 // are fields, not description; bot walls are named.
 //
 // opts: {as: 'auto'|'list'|'table'|'jsonld', limit: N}.
-// Returns {kind, container, label, rows, found, page_says, wall}; kind ''
-// means no list found.
+// Returns {kind, container, label, rows, found, at_least, page_says, wall};
+// kind '' means no list found, and at_least says found stopped at
+// MAX_ITEMS with more items left.
 function (opts) {
 'use strict';
 opts = opts || {};
@@ -32,7 +33,7 @@ const LIMIT = opts.limit > 0 ? opts.limit : 50;
 const MODE = opts.as || 'auto';
 const ROOT = (this && this.nodeType === 1) ? this : null;
 const SCOPE = ROOT || document.body || document.documentElement;
-const MAX_ITEMS = 2000; // rows counted past the limit, at most
+const MAX_ITEMS = 2000; // rows counted past the limit, at most (then found is at_least)
 
 // ---- text and visibility ----
 const textCache = new WeakMap();
@@ -77,10 +78,10 @@ function num(s) {
 const NUM = '(\\d[\\d.,]*(?:[kKmM]\\b)?)';
 
 // ---- the block wall ----
-// wall is block.js (detect_block.js, its generic part), the one wall check
+// wall is wall.js (detect_block.js, its generic part), the one wall check
 // navigate's Note and read use too; extract.go puts it in place of the
 // marker. Called with no document, it checks this one.
-const wall = /* winuse:block.js */ null;
+const wall = /* winuse:wall.js */ null;
 
 // ---- what the page says it holds ----
 const NOUNS = 'results?|items?|listings?|products?|entries|matches|hits|questions|repositories|repos|packages|articles|posts|jobs|stories|videos|users|issues|pull requests|recipes|threads|topics|courses|books|homes|properties|companies|people';
@@ -611,8 +612,8 @@ function proseChars() {
 }
 
 // ---- the answer ----
-function answer(kind, container, label, rows) {
-  return { kind, container, label, rows: rows.slice(0, LIMIT), found: rows.length, page_says: kind ? pageSays() : null, wall: '' };
+function answer(kind, container, label, rows, atLeast) {
+  return { kind, container, label, rows: rows.slice(0, LIMIT), found: rows.length, at_least: !!atLeast, page_says: kind ? pageSays() : null, wall: '' };
 }
 const none = () => answer('', '', '', []);
 function listAnswer(best) {
@@ -624,15 +625,16 @@ function listAnswer(best) {
   }
   const rows = [];
   const seen = new Set();
+  let more = false;
   for (const rec of best.items) {
-    if (rows.length >= MAX_ITEMS) break;
+    if (rows.length >= MAX_ITEMS) { more = true; break; }
     const f = fields(rec);
     if (!Object.keys(f.row).length) continue;
     if (f.key) { if (seen.has(f.key)) continue; seen.add(f.key); }
     rows.push(f.row);
   }
   const box = (c.tagName === 'TBODY' && c.parentElement) ? c.parentElement : c;
-  return answer('list', describe(box), labelOf(box), rows);
+  return answer('list', describe(box), labelOf(box), rows, more);
 }
 function tableAnswer() {
   let t = ROOT ? ROOT.closest('table') : null;
@@ -650,16 +652,21 @@ function jsonldAnswer(withArticles) {
 }
 
 const w = wall();
-if (w) return { kind: '', container: '', label: '', rows: [], found: 0, page_says: null, wall: w };
+if (w) return { kind: '', container: '', label: '', rows: [], found: 0, at_least: false, page_says: null, wall: w };
 if (MODE === 'jsonld') return jsonldAnswer(true) || none();
 if (MODE === 'table') return tableAnswer();
 
 let best;
 if (ROOT) {
-  // --root is the list or an ancestor of it, or one item of the list.
+  // --root is the list or an ancestor of it, or one item of the list. A
+  // list inside it wins when the root is its container: the list's own
+  // element, or one whose text is mostly the list's. Else the root may be
+  // one item, and its alike siblings win when there are more of them.
   const inside = bestIn(ROOT);
   const ex = exampleOf(ROOT);
-  best = ex && (!inside || ex.items.length > inside.items.length) ? ex : inside;
+  const holds = !!inside && (inside.c === ROOT ||
+    inside.items.reduce((n, r) => n + recText(r).length, 0) * 2 >= text(ROOT).length);
+  best = ex && !holds && (!inside || ex.items.length > inside.items.length) ? ex : inside;
 } else {
   best = bestIn(SCOPE);
 }

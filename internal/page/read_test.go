@@ -100,6 +100,39 @@ func TestReadMarkdownOnANodeResolvesItInTheIsolatedWorld(t *testing.T) {
 	}
 }
 
+// TestReadMarkdownPrintsLinksByTheSiteRule (bladebro-ideas 25): read.js
+// hands each link back whole, and Go prints it by SiteURL's rule, the one
+// the Page lines' LinkURL shares; a link whose text is its URL prints
+// once; --urls full keeps every URL whole.
+func TestReadMarkdownPrintsLinksByTheSiteRule(t *testing.T) {
+	link := func(text, href string) string { return "\x01" + text + "\x1f" + href + "\x02" }
+	body := strings.Join([]string{
+		"See " + link("the docs", "https://docs.example.com/guide?x=1") + ".",
+		"- " + link("Other", "https://www.other.org/p/q"),
+		"- " + link("other.org/p", "https://other.org/p"),
+		"- " + link("Top", "https://www.example.com/a#top"),
+		"| " + link(`a \| b`, "https://example.com/t") + " |",
+	}, "\n")
+	want := strings.Join([]string{
+		"See [the docs](/guide?x=1).",
+		"- [Other](other.org/p/q)",
+		"- other.org/p",
+		"- [Top](#top)",
+		`| [a \| b](/t) |`,
+	}, "\n")
+	f := &readCaller{reply: mdReply(map[string]any{"markdown": body, "url": "https://www.example.com/a"})}
+	md, err := ReadMarkdown(context.Background(), f, "S", "", 0, ReadOptions{})
+	if err != nil || md.Text != want {
+		t.Fatalf("got %q, %v; want %q", md.Text, err, want)
+	}
+
+	f = &readCaller{reply: mdReply(map[string]any{"markdown": "See " + link("the docs", "https://docs.example.com/guide") + ".", "url": "https://www.example.com/a"})}
+	md, err = ReadMarkdown(context.Background(), f, "S", "", 0, ReadOptions{FullURLs: true})
+	if err != nil || md.Text != "See [the docs](https://docs.example.com/guide)." {
+		t.Fatalf("--urls full: got %q, %v", md.Text, err)
+	}
+}
+
 func TestReadMarkdownFailures(t *testing.T) {
 	f := &readCaller{resolve: &cdp.Error{Code: -32000, Message: "No node with given id found"}}
 	if _, err := ReadMarkdown(context.Background(), f, "S", "F1", 9, ReadOptions{}); !errors.Is(err, ErrStale) {

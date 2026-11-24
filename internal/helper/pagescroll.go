@@ -54,6 +54,9 @@ func (sw *pageScrollWatch) wheel(ctx context.Context, o *page.Origin, in *page.I
 		return err
 	}
 	sw.rep = w.Read(ctx).Scroll
+	if r, ok := w.Settled(); ok {
+		recordSettled(ctx, o.Client, o.TopSession(), r)
+	}
 	return nil
 }
 

@@ -716,6 +716,7 @@ func httpStatusNote(ctx context.Context, pw pageWin, u string) (string, string) 
 	if st.ErrorPage && st.URL != "" {
 		u = st.URL
 	}
+	recordHTTPStatus(ctx, st.Code)
 	return u, protocol.HTTPStatusNote(st.Code, page.StatusReason(st.Code), st.ErrorPage) + "\n"
 }
 
@@ -726,20 +727,31 @@ const wallCheckBound = 2 * time.Second
 // wall: the wall check skips it.
 const chromeErrorPage = "chrome-error://"
 
-// pageWallNote is the wall Note line (bladebro-ideas 05) for the Page a
-// navigation landed on: page.BlockKind, one isolated-world call, names a
+// pageWallNote is the wall note line (bladebro-ideas 05) for the Page a
+// navigation landed on: page.WallKind, one isolated-world call, names a
 // short challenge or block page. "" for an ordinary Page, or when the check
-// fails (the navigation landed; the Note is only a hint). winuse never
-// clicks or solves anything there: the Note sends the agent to the user. A
+// fails (the navigation landed; the note only informs). winuse never
+// clicks or solves anything there: the note sends the agent to the user. A
 // Page Action whose effect navigated (bladebro-ideas 06) adds it the same
 // way.
 func pageWallNote(ctx context.Context, c page.Caller, session string) string {
+	return wallNoteBy(ctx, c, session, page.WallKind)
+}
+
+// pageWallNoteOnceLoaded is pageWallNote once the Page's document has its
+// body: a Page Action's effect watch sees a navigation at its commit.
+func pageWallNoteOnceLoaded(ctx context.Context, c page.Caller, session string) string {
+	return wallNoteBy(ctx, c, session, page.WallKindOnceLoaded)
+}
+
+func wallNoteBy(ctx context.Context, c page.Caller, session string, check func(context.Context, page.Caller, string) (string, error)) string {
 	cctx, cancel := context.WithTimeout(ctx, wallCheckBound)
 	defer cancel()
-	kind, err := page.BlockKind(cctx, c, session)
+	kind, err := check(cctx, c, session)
 	if err != nil || kind == "" {
 		return ""
 	}
+	recordWall(ctx, kind)
 	return protocol.WallNote(kind) + "\n"
 }
 

@@ -312,18 +312,20 @@ goes, and `find --role heading` could not show an outline.
 
 - **Heading level: a state word.** A Page heading's line ends its states
   with `level N`: `heading (level 1) Sign in to Example`,
-  `heading (disabled, level 2) ...`. It is in every view, `--full`
-  included, like `password`: there are no Codex Page lines to match, a
-  UIA heading has no level, so native Windows print exactly as before.
+  `heading (disabled, level 2) ...`. It is in every view but `--full`:
+  `--full` is Codex's text byte for byte, and Codex prints no level, so
+  it leaves the word out (Element.Level is still read). A UIA heading has
+  no level, so native Windows print exactly as before.
   `find --role heading` is the Page's outline.
 - **Link URL: a field, only where asked.** `...[ URL: <url>][ Hint: ...]`,
   after the rest of Codex's line and before a hint. The URL is shortened
-  by `page.LinkURL`, the rule `read` uses (`internal/page/read.js`
-  shortURL): the Page's own host prints the path, query and fragment (only
-  `#fragment` for a place on the same Page); another host prints its
-  domain without `www.` and the path. Every URL is cut at 60 characters
-  with `…`. A `javascript:` URL prints nothing; a `data:` URL prints
-  `data:…`.
+  by `page.LinkURL`: the Page's own origin (scheme, host and port) prints
+  the path, query and fragment (only `#fragment` for a place on the same
+  Page); another origin prints its host without `www.` and the path.
+  Every URL is cut at 60 characters with `…`. A `javascript:` URL prints
+  nothing; a `data:` URL prints `data:…`. `read` shares the rule
+  (`page.SiteURL`) with the Page's site (its registrable domain) in place
+  of its origin, and leaves a URL on that site uncut.
 - **Where it prints.** Not in a default read: `--urls` adds it to a read,
   `--root` or `--observe`. `find`, a `--diff`/`--observe` diff line and an
   ambiguous reference's candidates always print it, as they print the
@@ -358,7 +360,8 @@ like content. The cut note gave a count and an index only.
   `footer` and `complementary` that holds 3 or more Elements, the outer
   one of two nested:
   `...[ (+N Elements folded; --root <index> shows them)]`, after the rest
-  of the line (no `--root` part on a Tab target, which takes none). The
+  of the line (on a Tab target, which takes no `--root`,
+  `; --out <file> writes them` instead). The
   note names the fold: `folding unnamed containers (as --compact does)
   and Page landmarks to fit --max-chars N left out ...`. The stored Window
   State stays whole and every folded index resolves; `--root` on a Page

@@ -22,8 +22,10 @@ package helper
 //     session the helper attached anew (the extension's idle detach, a
 //     reconnect) blocks too. `--block none` ends it. A helper that died
 //     leaves nothing: the browser drops the block with the session.
-//   - Disclosure. get-window-state (its screenshot included), read and
-//     --observe on a blocking Tab end with protocol.BlockNote.
+//   - Disclosure. The reads (get-window-state, its screenshot included,
+//     find, read and extract) and --observe on a blocking Tab end with
+//     protocol.BlockNote, on the Tab target and through the Window ID of a
+//     Window that shows the Tab (endWithWindowBlockNote).
 
 import (
 	"context"
@@ -74,6 +76,16 @@ func (b *assetBlocks) set(target string, classes []string) {
 	b.on[target] = append([]string(nil), classes...)
 }
 
+// any says some Tab blocks something.
+func (b *assetBlocks) any() bool {
+	if b == nil {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.on) > 0
+}
+
 // classes is what a Tab blocks, nil for nothing.
 func (b *assetBlocks) classes(target string) []string {
 	if b == nil {
@@ -104,11 +116,11 @@ func (b *assetBlocks) mayBlock(bt *bgTab) bool {
 // blockAsked says a command asks for --block: navigate, back, forward or
 // reload with a block value, or a Batch with such a step.
 func blockAsked(name string, args json.RawMessage) bool {
-	switch name {
-	case "navigate", "back", "forward", "reload":
+	switch {
+	case protocol.IsNavCommand(name):
 		var a protocol.NavigateArgs
 		return json.Unmarshal(args, &a) == nil && a.Block != ""
-	case "batch":
+	case name == "batch":
 		var b protocol.BatchArgs
 		if json.Unmarshal(args, &b) != nil {
 			return false
@@ -159,14 +171,38 @@ func (s Services) keepBlocking(ctx context.Context, bt *bgTab) {
 }
 
 // blockReads are the commands whose output a blocking Tab's note ends:
-// the reads (a screenshot is get-window-state's). --observe adds any
-// Action.
-var blockReads = map[string]bool{"get-window-state": true, "read": true}
+// the reads (a screenshot is get-window-state's; find takes no Tab
+// target, only a Window). --observe adds any Action.
+var blockReads = map[string]bool{"get-window-state": true, "find": true, "read": true, "extract": true}
+
+// endWithWindowBlockNote is endWithBlockNote for a command that named a
+// Window: the Tab the browser Window shows now, when it blocks. With no
+// Tab blocking anywhere it reads nothing.
+func (s Services) endWithWindowBlockNote(ctx context.Context, ref string, out string, e *Error) (string, *Error) {
+	if !s.assetBlocks.any() || s.Pages == nil {
+		return out, e
+	}
+	m, ok := s.Pages.(pageTabMatcher)
+	if !ok {
+		return out, e
+	}
+	w, rerr := resolveWindow(s, ref)
+	if rerr != nil || s.Pages.Browser(w) == "" {
+		return out, e
+	}
+	tctx, cancel := context.WithTimeout(ctx, pageProbeBudget)
+	defer cancel()
+	target, err := m.PageActiveTab(tctx, w)
+	if err != nil {
+		return out, e
+	}
+	return s.endWithBlockNote(target, out, e)
+}
 
 // endWithBlockNote ends a read's output (or, under a failure, a Batch's
-// observation) with the blocking Tab's note line.
-func (s Services) endWithBlockNote(bt *bgTab, out string, e *Error) (string, *Error) {
-	note := protocol.BlockNote(s.assetBlocks.classes(bt.tab.TargetID))
+// observation) with the note line of the Tab target blocks, if it does.
+func (s Services) endWithBlockNote(target string, out string, e *Error) (string, *Error) {
+	note := protocol.BlockNote(s.assetBlocks.classes(target))
 	if note == "" {
 		return out, e
 	}
@@ -240,36 +276,46 @@ func (s Services) blockBeforeNavigate(ctx context.Context, pw *pageWin, classes 
 	return nil
 }
 
-// blockNewTab blocks the classes in a Tab tab new just opened on
-// about:blank, then sends it to url ("" stays on about:blank). A Tab that
-// could not block is closed again, so nothing is left loading what the
-// agent asked to block.
-func (s Services) blockNewTab(ctx context.Context, tw tabWindow, targetID, url string, classes []string) *Error {
+// startNewTab readies a Tab tab new just opened on about:blank, then sends
+// it to url ("" stays on about:blank): it blocks the classes (--block),
+// and installs the exception listener (page/exceptions.go, bladebro-ideas
+// 30), so the first page the Tab loads is blocked and captured too. A Tab
+// that could not block is closed again, so nothing is left loading what
+// the agent asked to block.
+func (s Services) startNewTab(ctx context.Context, tw tabWindow, targetID, url string, classes []string) *Error {
 	short := page.TabID(targetID)
 	session, err := tw.reader.TabSession(ctx, tw.conn, targetID)
-	if err == nil {
+	if err == nil && len(classes) > 0 {
 		err = page.BlockAssets(ctx, tw.conn.Client, session, classes)
 	}
-	if err != nil {
+	switch {
+	case err != nil && len(classes) > 0:
 		if cerr := page.CloseTab(ctx, tw.conn.Client, targetID); cerr != nil {
 			return Fail(fmt.Sprintf("tab %s opened, and setting --block in it failed (%v), and closing it again failed: %v", short, err, cerr),
 				"close it: winuse tab close "+tw.id()+" "+short)
 		}
 		return Fail(fmt.Sprintf("setting --block in the new tab failed (%v), so winuse closed it again", err),
 			"retry; run winuse browser status "+tw.name+" if it keeps failing")
+	case err != nil:
+		return Fail(fmt.Sprintf("tab %s opened on about:blank, and attaching it to send it to %s failed: %v", short, url, err),
+			"read winuse tab list "+tw.id()+", then run winuse navigate "+tw.id()+":"+short+" "+url)
 	}
-	s.assetBlocks.set(targetID, classes)
+	if len(classes) > 0 {
+		s.assetBlocks.set(targetID, classes)
+	}
 	if url == "" {
 		return nil
 	}
-	// The exception listener (page/exceptions.go) goes in on about:blank
-	// too, so the page the Tab loads has it.
 	page.WatchLog(ctx, tw.conn.Client, session, targetID).Capture(ctx, session)
 	_, err = page.Navigate(ctx, tw.conn.Client, session, page.NavURL(url))
 	var nav *page.NavigateError
 	if err == nil || errors.As(err, &nav) || errors.Is(err, page.ErrDownloadStarted) {
-		return nil // the Tab shows the page, or the browser's error page, as tab new without --block would
+		return nil // the Tab shows the page, or the browser's error page
 	}
-	return Fail(fmt.Sprintf("tab %s opened and blocks %s, and sending it to %s failed: %v", short, strings.Join(classes, ", "), url, err),
+	what := "opened"
+	if len(classes) > 0 {
+		what = "opened and blocks " + strings.Join(classes, ", ")
+	}
+	return Fail(fmt.Sprintf("tab %s %s, and sending it to %s failed: %v", short, what, url, err),
 		"read winuse tab list "+tw.id()+", then run winuse navigate "+tw.id()+":"+short+" "+url)
 }

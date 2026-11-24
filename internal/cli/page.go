@@ -243,9 +243,10 @@ func parseWaitArgs(tokens []string) (protocol.WaitArgs, error) {
 // parsePageArgs parses a page command's arguments after the Window into
 // its wire arguments (without the Window).
 func parsePageArgs(cmd string, tokens []string) (any, error) {
-	switch cmd {
-	case "navigate", "back", "forward", "reload":
+	if protocol.IsNavCommand(cmd) {
 		return parseNavArgs(cmd, tokens)
+	}
+	switch cmd {
 	case "upload":
 		return parseUploadArgs(tokens)
 	case "dialog":

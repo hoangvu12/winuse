@@ -62,9 +62,11 @@ winuse navigate 4242:1a2b3c4d https://example.com/3 --block none     # stop bloc
 - Pages load sooner and send less; their text and the images' alt text
   stay, so the Window State and `read` say the same.
 - It lasts for the Tab's life, for every agent working in it, until
-  `--block none`. Reads, `--observe` and screenshots of the Tab end with
+  `--block none`. Reads (`read` and `extract` too), `--observe` and
+  screenshots of the Tab end with
   `Note: images, fonts and media are blocked in this Tab` (naming the
-  classes that are on). Check there before you trust how a Page looks.
+  classes that are on), also through the Window's ID while the Window
+  shows it. Check there before you trust how a Page looks.
 - It matches file extensions (`.png`, `.woff2`, `.mp4` ...), so images
   whose URLs have no file extension still load.
 - Only on Tabs that are yours: a Tab `tab new` opened, or any Tab of a

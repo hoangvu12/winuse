@@ -1,5 +1,5 @@
-// block.js - names the wall a short challenge or block page shows, for the
-// Note after navigate, back, forward and reload, and for `winuse read`.
+// wall.js - names the wall a short challenge or block page shows, for the
+// note after navigate, back, forward and reload, and for `winuse read`.
 //
 // Derived from bladebro src/page/js/detect_block.js (bladebro 4.8.3,
 // https://github.com/dondai44423/bladebro at d50ee9e), Copyright the
@@ -11,7 +11,7 @@
 //   - only the generic signs are kept: the Reddit branches and every
 //     solving or remediation step are left out, and the kinds are named as
 //     winuse prints them (Cloudflare, DataDome, PerimeterX, reCAPTCHA,
-//     Akamai, rate-limit), "" for none;
+//     hCaptcha, Akamai, rate-limit), "" for none;
 //   - it is one function expression over a document (the current one when
 //     none is given), so read.js and extract.js embed it and the
 //     navigation check calls it alone;
@@ -20,10 +20,11 @@
 //   - a few more signs: the Cloudflare titles "attention required" and
 //     "checking your browser" and its older challenge elements, PerimeterX's
 //     "press & hold" wording, and the reCAPTCHA wording "not a robot",
-//     "verify you are human" and "unusual traffic";
+//     "verify you are human" and "unusual traffic", and hCaptcha's widget
+//     (which winuse's first read.js check caught too);
 //   - it never clicks, types or waits.
 function (d) {
-  /* winuse:block */
+  /* winuse:wall */
   d = d || document;
   var body = d.body;
   if (!body) return '';
@@ -66,10 +67,15 @@ function (d) {
   if (bl < 1200 && (has('iframe[src*="captcha-delivery"]') || has('iframe') && text.indexOf('datadome') >= 0)) return 'DataDome';
   // PerimeterX: its captcha box or script, or its press-and-hold wording.
   if (bl < 1500 && (has('#px-captcha,script[src*="px-captcha"]') || any(text, ['press & hold', 'press and hold']))) return 'PerimeterX';
-  // reCAPTCHA: the widget with wording that asks to prove a human (or
-  // Google's "unusual traffic" page).
+  // The wording that asks to prove a human (or Google's "unusual traffic"
+  // page).
+  var HUMAN = ['prove your humanity', 'are you human', 'not a robot', 'verify you are human', 'verify you are a human', 'unusual traffic'];
+  // reCAPTCHA: the widget with that wording.
   if (bl < 1500 && has('.g-recaptcha,iframe[src*="recaptcha"]') &&
-      (any(title, ['prove', 'humanity', 'robot']) || any(text, ['prove your humanity', 'are you human', 'not a robot', 'verify you are human', 'verify you are a human', 'unusual traffic']))) return 'reCAPTCHA';
+      (any(title, ['prove', 'humanity', 'robot']) || any(text, HUMAN))) return 'reCAPTCHA';
+  // hCaptcha: its widget with the same wording.
+  if (bl < 1500 && has('.h-captcha,iframe[src*="hcaptcha"]') &&
+      (any(title, ['prove', 'humanity', 'robot']) || any(text, HUMAN))) return 'hCaptcha';
   // Akamai: access denied with its reference number.
   if (bl < 1000 && text.indexOf('access denied') >= 0 && (text.indexOf('reference') >= 0 || text.indexOf('akamai') >= 0)) return 'Akamai';
   // A rate limit: a real 429 page is tiny, so docs that mention one are not.

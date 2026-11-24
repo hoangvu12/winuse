@@ -20,10 +20,11 @@ import (
 
 // View shapes how RenderView prints a Window State. The zero View prints
 // every Element and leaves out only the shared IDs; Full prints exactly
-// what Render does.
+// what RenderCodex does.
 type View struct {
-	// Full prints the Window State as Render does, byte for byte: Codex's
-	// text, shared IDs included, never cut. The other fields are ignored.
+	// Full prints the Window State as RenderCodex does, byte for byte:
+	// Codex's text, shared IDs included, no Page heading level, never cut.
+	// The other fields are ignored.
 	Full bool
 
 	// Interactive prints only the Elements an agent acts on (ActedOn),
@@ -137,7 +138,7 @@ func (v View) flags() string {
 // content. A read that fits prints as before.
 func RenderView(t *Tree, v View) string {
 	if v.Full {
-		return Render(t)
+		return RenderCodex(t)
 	}
 	shared := SharedIDs(t.Elements)
 	out, cut := renderView(t, v, shared)
@@ -409,6 +410,8 @@ func viewLines(t *Tree, v View, shared map[string]bool) ([]PrintedLine, int) {
 			fmt.Fprintf(&b, " (+%d Elements folded", folded)
 			if v.Ref != "" {
 				fmt.Fprintf(&b, "; --root %d shows them", i)
+			} else {
+				b.WriteString("; --out <file> writes them") // a Tab target takes no --root
 			}
 			b.WriteString(")\n")
 			out = append(out, PrintedLine{Index: i, Text: b.String(), Role: e.Role})

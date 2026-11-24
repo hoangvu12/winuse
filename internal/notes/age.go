@@ -21,14 +21,15 @@ func Age(added, now time.Time) string {
 	case d < day:
 		return fmt.Sprintf("%d h ago", int(d/time.Hour))
 	case d < 60*day:
-		return plural(int(d/day), "day")
+		return unitsAgo(int(d/day), "day")
 	case d < 365*day:
-		return plural(int(d/(30*day)), "month")
+		return unitsAgo(int(d/(30*day)), "month")
 	}
-	return plural(int(d/(365*day)), "year")
+	return unitsAgo(int(d/(365*day)), "year")
 }
 
-func plural(n int, unit string) string {
+// unitsAgo is "1 day ago" or "3 days ago".
+func unitsAgo(n int, unit string) string {
 	if n == 1 {
 		return "1 " + unit + " ago"
 	}

@@ -18,17 +18,21 @@ func linkTree() *Tree {
 }
 
 // TestHeadingLevelIsAState (bladebro-ideas 01): a heading's level is one
-// of its states, on every line that prints the heading, --full's too.
+// of its states, on every line that prints the heading, except --full's:
+// --full is Codex's text byte for byte, and Codex prints no level.
 func TestHeadingLevelIsAState(t *testing.T) {
 	tree := linkTree()
-	for name, out := range map[string]string{
-		"full":    Render(tree),
-		"default": RenderView(tree, View{}),
-	} {
-		if !strings.Contains(out, "\t\t1 heading (level 2) Install\n") {
-			t.Errorf("%s:\n%s", name, out)
-		}
+	if out := RenderView(tree, View{}); !strings.Contains(out, "\t\t1 heading (level 2) Install\n") {
+		t.Errorf("default:\n%s", out)
 	}
+	if out := RenderView(tree, View{Full: true}); !strings.Contains(out, "\t\t1 heading Install\n") || strings.Contains(out, "level") {
+		t.Errorf("--full printed a level:\n%s", out)
+	}
+	tree.FocusedIndex = 1
+	if out := RenderView(tree, View{Full: true}); !strings.Contains(out, "The focused UI element is 1 heading Install.") {
+		t.Errorf("--full's focus sentence printed a level:\n%s", out)
+	}
+	tree.FocusedIndex = -1
 	if got := Line(1, &tree.Elements[1]); got != "1 heading (level 2) Install" {
 		t.Errorf("Line = %q", got)
 	}
@@ -52,8 +56,8 @@ func TestLinkURLPrintsWhereAsked(t *testing.T) {
 	if full := Render(tree); strings.Contains(full, "URL:") {
 		t.Errorf("--full printed a URL:\n%s", full)
 	}
-	if full := RenderView(tree, View{Full: true, URLs: true}); full != Render(tree) {
-		t.Errorf("--full is Render's text whatever else is set:\n%s", full)
+	if full := RenderView(tree, View{Full: true, URLs: true}); full != RenderCodex(tree) {
+		t.Errorf("--full is RenderCodex's text whatever else is set:\n%s", full)
 	}
 	urls := RenderView(tree, View{URLs: true})
 	for _, want := range []string{"\t\t2 link Download URL: /download\n", "\t\t3 link Source URL: github.com/x/y\n", "\t\t4 button Search\n", "\t\t1 heading (level 2) Install\n"} {

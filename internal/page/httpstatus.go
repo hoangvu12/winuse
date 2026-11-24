@@ -3,7 +3,8 @@ package page
 // The main document's HTTP status (bladebro-ideas ticket 02, method from
 // ticket 11): performance.getEntriesByType('navigation')[0].responseStatus,
 // read in an isolated world of the main frame once a navigation lands. It
-// needs no domain (never Runtime.enable or Network.enable), stays right
+// needs no domain (never Runtime.enable, and Network.enable never except
+// on a Tab where --block is on), stays right
 // through redirect chains, and still gives the real status on Chrome's own
 // error page for an empty-body 4xx/5xx. It gives no headers, so no
 // Retry-After.
@@ -11,7 +12,6 @@ package page
 import (
 	"context"
 	"encoding/json"
-	"errors"
 )
 
 // statusWorld names the isolated world the status is read in.
@@ -45,38 +45,19 @@ func (s HTTPStatus) Failed() bool { return s.Code >= 400 && s.Code <= 599 }
 // ReadHTTPStatus reads the main document's HTTP status in an isolated
 // world of the session's main frame.
 func ReadHTTPStatus(ctx context.Context, c Caller, session string) (HTTPStatus, error) {
-	res, err := c.CallSession(ctx, session, "Page.getFrameTree", nil)
+	fr, err := mainFrame(ctx, c, session)
 	if err != nil {
 		return HTTPStatus{}, err
 	}
-	var ft struct {
-		FrameTree struct {
-			Frame struct {
-				ID             string `json:"id"`
-				URL            string `json:"url"`
-				UnreachableURL string `json:"unreachableUrl"`
-			} `json:"frame"`
-		} `json:"frameTree"`
-	}
-	if err := json.Unmarshal(res, &ft); err != nil {
-		return HTTPStatus{}, err
-	}
-	fr := ft.FrameTree.Frame
 	st := HTTPStatus{URL: fr.URL}
 	if fr.UnreachableURL != "" {
 		st.ErrorPage, st.URL = true, fr.UnreachableURL
 	}
-	res, err = c.CallSession(ctx, session, "Page.createIsolatedWorld", map[string]any{"frameId": fr.ID, "worldName": statusWorld})
+	world, err := isolatedWorld(ctx, c, session, fr.ID, statusWorld)
 	if err != nil {
-		return st, staleOr(err)
+		return st, err
 	}
-	var w struct {
-		ExecutionContextID int `json:"executionContextId"`
-	}
-	if json.Unmarshal(res, &w) != nil || w.ExecutionContextID == 0 {
-		return st, errors.New("the browser gave no isolated world to read the status in")
-	}
-	res, err = c.CallSession(ctx, session, "Runtime.evaluate", map[string]any{"expression": statusJS, "contextId": w.ExecutionContextID, "returnByValue": true, "silent": true})
+	res, err := c.CallSession(ctx, session, "Runtime.evaluate", map[string]any{"expression": statusJS, "contextId": world, "returnByValue": true, "silent": true})
 	if err != nil {
 		return st, staleOr(err)
 	}

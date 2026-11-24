@@ -11,8 +11,9 @@ package uia
 //   - Table and Grid give only the headers (GetCurrentColumnHeaders) and
 //     RowCount. GridPattern.GetItem is never called: it is broken in
 //     Services and .NET 8 and scrolls a WPF grid.
-//   - A grid whose RowCount is within the limit is read in one cached
-//     request of its subtree (no live Elements); anything else, or a bulk
+//   - A grid whose RowCount is within the limit, and whose children,
+//     counted within a bound, agree with it (bulkTrusted), is read in one
+//     cached request of its subtree (no live Elements); anything else, or a bulk
 //     read that does not answer in time, is read one row at a time with
 //     the row's subtree cached, and stops one data row past the limit or at
 //     the time limit (stepRows). Nothing is ever asked for every row.
@@ -171,7 +172,7 @@ func (th *thread) readBox(src *comSource, box comPtr, e wstate.Element, limit in
 	}
 
 	rows, bulk := 0, false
-	if n.RowCount > 0 && n.RowCount <= limit {
+	if n.RowCount > 0 && n.RowCount <= limit && bulkTrusted(n.RowCount, countKids(src, box, deadline), limit) {
 		if kids, err := th.bulkRows(src, box, time.Until(deadline)); err == nil {
 			n.Children, bulk = kids, true
 			for _, k := range kids {
@@ -196,6 +197,25 @@ func (th *thread) readBox(src *comSource, box comPtr, e wstate.Element, limit in
 
 	if rows <= limit && n.Stopped == "" && (n.RowCount == 0 || n.RowCount <= rows) && propBool(box, propIsItemContainerAvailable) {
 		n.Items, n.ItemsCut = countItems(box, min(time.Until(deadline), itemsBudget))
+	}
+	return n
+}
+
+// bulkTrusted says a grid's rows may be read in one cached request of its
+// whole subtree: its RowCount is within limit, and its children (-1: not
+// counted in time) are no more than RowCount and a header row (groups make
+// fewer). A provider whose RowCount understates its rows would otherwise
+// send every one at once.
+func bulkTrusted(rowCount, children, limit int) bool {
+	return rowCount > 0 && rowCount <= limit && children >= 0 && children <= rowCount+1
+}
+
+// countKids is box's child count within countBudget, -1 when it does not
+// come back.
+func countKids(src *comSource, box comPtr, deadline time.Time) int {
+	n, err := src.CountChildren(box, max(min(time.Until(deadline), countBudget), time.Millisecond))
+	if err != nil {
+		return -1
 	}
 	return n
 }

@@ -2,8 +2,9 @@ package helper
 
 // Failed requests and CSP errors (.scratch/bladebro-ideas ticket 29, after
 // tickets 11 and 19). Every Page session winuse works in has the browser's
-// Log domain on (page/logs.go): never Runtime or Network, which a Page can
-// detect. Each Tab keeps a ring of its last page.LogRingSize entries.
+// Log domain on (page/logs.go): never Runtime, and never Network except on
+// a Tab where --block is on (assets.go), both of which a Page can detect.
+// Each Tab keeps a ring of its last page.LogRingSize entries.
 //
 // After a Page Action (runPage, runPageInput, and the page-only Actions
 // of runPageWindow), new error entries the Page logged while it ran, or
@@ -39,7 +40,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,7 +47,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/hoangvu12/winuse/internal/cdp"
-	"github.com/hoangvu12/winuse/internal/notes"
 	"github.com/hoangvu12/winuse/internal/page"
 	"github.com/hoangvu12/winuse/internal/protocol"
 )
@@ -57,6 +56,9 @@ const logNoteNamed = 3
 
 // logNoteText caps the text of another error a note quotes.
 const logNoteText = 160
+
+// logNoteURL caps a failed request's URL in a note.
+const logNoteURL = 80
 
 // logMark is where a Tab's log stood when a Page Action began.
 type logMark struct {
@@ -209,7 +211,7 @@ func logNoteLines(errs []page.LogEntry, pageURL string, windowID uint64) []strin
 		for _, e := range reqs[:min(len(reqs), logNoteNamed)] {
 			named = append(named, strings.TrimSpace(requestFailure(e.Text)+" "+shortRequest(e.URL, pageURL)))
 		}
-		line := plural(len(reqs), "failed request") + ": " + strings.Join(named, ", ")
+		line := countOf(len(reqs), "failed request") + ": " + strings.Join(named, ", ")
 		if len(reqs) > logNoteNamed {
 			line += fmt.Sprintf(", and %d more: winuse logs %d", len(reqs)-logNoteNamed, windowID)
 		}
@@ -233,7 +235,7 @@ func logNoteLines(errs []page.LogEntry, pageURL string, windowID uint64) []strin
 				noun = "error"
 			}
 		}
-		line := plural(len(others), noun) + ": " + capText(page.Collapse(others[0].Text), logNoteText)
+		line := countOf(len(others), noun) + ": " + page.CutRunes(page.Collapse(others[0].Text), logNoteText)
 		if len(others) > 1 {
 			line += fmt.Sprintf("; %d more: winuse logs %d", len(others)-1, windowID)
 		}
@@ -245,27 +247,19 @@ func logNoteLines(errs []page.LogEntry, pageURL string, windowID uint64) []strin
 // thrownText is an exception as a note quotes it: its text without
 // Chrome's "Uncaught " and with where it was thrown ("app.js:120").
 func thrownText(e page.LogEntry) string {
-	text := capText(page.Collapse(strings.TrimPrefix(e.Text, "Uncaught ")), logNoteText)
+	text := page.CutRunes(page.Collapse(strings.TrimPrefix(e.Text, "Uncaught ")), logNoteText)
 	if place := page.ScriptPlace(e.URL, e.Line); place != "" {
 		text += " (" + place + ")"
 	}
 	return text
 }
 
-// entries is "entry" or "entries" after n.
-func entries(n int) string {
+// entryNoun is "entry" or "entries", the noun after n.
+func entryNoun(n int) string {
 	if n == 1 {
 		return "entry"
 	}
 	return "entries"
-}
-
-// capText cuts s at n characters, marking the cut.
-func capText(s string, n int) string {
-	if r := []rune(s); len(r) > n {
-		return strings.TrimSpace(string(r[:n])) + "..."
-	}
-	return s
 }
 
 // requestFailure is how a failed request ended, from Chrome's text: the
@@ -289,25 +283,11 @@ func requestFailure(text string) string {
 	return "failed"
 }
 
-// shortRequest is a request's URL in a note: its path (and query) on the
-// Page's own site, else its host and path, cut at 80 characters.
+// shortRequest is a request's URL in a note: page.SiteURL's rule, the one
+// `read` prints links by (its path on the Page's own site, else its host
+// and path), cut at logNoteURL characters.
 func shortRequest(raw, pageURL string) string {
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" {
-		return capText(raw, 80)
-	}
-	path := u.EscapedPath()
-	if path == "" {
-		path = "/"
-	}
-	if u.RawQuery != "" {
-		path += "?" + u.RawQuery
-	}
-	site, ok := notes.SiteKey(raw)
-	if own, pok := notes.SiteKey(pageURL); ok && pok && site == own {
-		return capText(path, 80)
-	}
-	return capText(u.Host+path, 80)
+	return page.CutRunes(page.SiteURL(raw, pageURL), logNoteURL)
 }
 
 // logsCommand runs `winuse logs`.
@@ -354,7 +334,7 @@ func logsCommand(s Services) Command {
 					cancel()
 					view.capturing, view.uncovered = true, ok && !covered
 				}
-				l.Settle(ctx) // the replay of a session turned on just now
+				l.WaitReplay(ctx) // the replay of a session turned on just now
 				list := l.Entries()
 				if a.Clear {
 					l.Clear(ctx)
@@ -406,10 +386,11 @@ type logsView struct {
 }
 
 // renderLogs prints the entries under a header naming the Page and what
-// its log holds: the newest within the cap (--max-chars, else
-// defaultMaxChars) after a line counting the older ones left out, or every
-// one written to --out; JSON under --json. A capture just turned on, or a
-// Page loaded before it, says that reload covers the Page.
+// its log holds: the newest that fit the cap (--max-chars, else
+// defaultMaxChars), which bounds the whole output, after a line counting
+// the older ones left out, or every one written to --out; JSON under
+// --json, within the same cap. A capture just turned on, or a Page loaded
+// before it, says that reload covers the Page.
 func renderLogs(pageURL string, list []page.LogEntry, a protocol.LogsArgs, v logsView) (string, *Error) {
 	if a.JSON {
 		return renderLogsJSON(pageURL, list, a, v)
@@ -426,10 +407,10 @@ func renderLogs(pageURL string, list []page.LogEntry, a protocol.LogsArgs, v log
 		fmt.Fprintf(&b, "Page: %s - no log entries (%s show here; --capture adds JavaScript exceptions)\n", pageURL, what)
 	case v.capturing:
 		fmt.Fprintf(&b, "Page: %s - %d log %s, newest last (%s; winuse keeps the last %d per Tab)\n",
-			pageURL, len(list), entries(len(list)), what, page.LogRingSize)
+			pageURL, len(list), entryNoun(len(list)), what, page.LogRingSize)
 	default:
 		fmt.Fprintf(&b, "Page: %s - %d log %s, newest last (%s; --capture adds JavaScript exceptions; winuse keeps the last %d per Tab)\n",
-			pageURL, len(list), entries(len(list)), what, page.LogRingSize)
+			pageURL, len(list), entryNoun(len(list)), what, page.LogRingSize)
 	}
 	switch {
 	case v.first:
@@ -441,39 +422,71 @@ func renderLogs(pageURL string, list []page.LogEntry, a protocol.LogsArgs, v log
 	for i, e := range list {
 		lines[i] = logLine(e)
 	}
+	tail := ""
+	if a.Clear {
+		tail = "(cleared: the next winuse logs lists only later entries)\n"
+	}
 	if a.Out != "" {
 		if err := writeFileAtomic(a.Out, []byte(b.String()+strings.Join(lines, ""))); err != nil {
 			return "", Fail("writing the logs to "+a.Out+" failed: "+err.Error(), "pass --out a file in a folder you can write to")
 		}
-		fmt.Fprintf(&b, "Logs: %s (%d %s)\n", a.Out, len(list), entries(len(list)))
-	} else {
-		limit := defaultMaxChars
-		if a.MaxChars != nil {
-			limit = *a.MaxChars
-		}
-		first, used := 0, 0
-		for i := len(lines) - 1; i >= 0; i-- {
-			n := utf8.RuneCountInString(lines[i])
-			if limit > 0 && used+n > limit {
-				first = i + 1
-				break
-			}
-			used += n
-		}
-		if first > 0 {
-			fmt.Fprintf(&b, "(%d older %s left out to stay within %d characters; --max-chars raises the cut, 0 lifts it, --out <file> writes them all)\n",
-				first, entries(first), limit)
-		}
-		b.WriteString(strings.Join(lines[first:], ""))
+		fmt.Fprintf(&b, "Logs: %s (%d %s)\n", a.Out, len(list), entryNoun(len(list)))
+		return b.String() + tail, nil
 	}
-	if a.Clear {
-		b.WriteString("(cleared: the next winuse logs lists only later entries)\n")
+	limit := logsLimit(a)
+	head := b.String()
+	all := strings.Join(lines, "")
+	if limit <= 0 || utf8.RuneCountInString(head+all+tail) <= limit {
+		return head + all + tail, nil
 	}
-	return b.String(), nil
+	cutLine := func(n int) string {
+		return fmt.Sprintf("(%d older %s left out to stay within %d characters; --max-chars raises the cut, 0 lifts it, --out <file> writes them all)\n",
+			n, entryNoun(n), limit)
+	}
+	// The cut line at its longest (every entry left out) keeps the room
+	// left for the entries from being overstated.
+	sizes := make([]int, len(lines))
+	for i, l := range lines {
+		sizes[i] = utf8.RuneCountInString(l)
+	}
+	first := newestThatFit(sizes, limit-utf8.RuneCountInString(head+cutLine(len(lines))+tail))
+	return head + cutLine(first) + strings.Join(lines[first:], "") + tail, nil
+}
+
+// logsLimit is logs' cap: --max-chars, else defaultMaxChars (0: none).
+func logsLimit(a protocol.LogsArgs) int {
+	if a.MaxChars != nil {
+		return *a.MaxChars
+	}
+	return defaultMaxChars
+}
+
+// newestThatFit is the first of the newest items whose sizes sum to at
+// most room: len(sizes) when none fits.
+func newestThatFit(sizes []int, room int) int {
+	used := 0
+	for i := len(sizes) - 1; i >= 0; i-- {
+		if used+sizes[i] > room {
+			return i + 1
+		}
+		used += sizes[i]
+	}
+	return 0
+}
+
+// logsJSON is logs' --json object; LeftOut counts the older entries the
+// cap left out.
+type logsJSON struct {
+	URL       string    `json:"url"`
+	Capturing bool      `json:"capturing"`
+	Entries   []logJSON `json:"entries"`
+	LeftOut   int       `json:"left_out,omitempty"`
+	Cleared   bool      `json:"cleared"`
 }
 
 // renderLogsJSON is logs' --json answer: {"url","capturing","entries",
-// "cleared"}, or with --out the same object in the file and {"url","file",
+// "cleared"}, the newest entries that fit the cap with "left_out" counting
+// the older ones, or with --out every entry in the file and {"url","file",
 // "count","cleared"} printed. capturing says the Tab captures its
 // JavaScript exceptions.
 func renderLogsJSON(pageURL string, list []page.LogEntry, a protocol.LogsArgs, view logsView) (string, *Error) {
@@ -481,12 +494,11 @@ func renderLogsJSON(pageURL string, list []page.LogEntry, a protocol.LogsArgs, v
 	for _, e := range list {
 		items = append(items, logJSON{Time: e.Time, Source: e.Source, Level: e.Level, Text: e.Text, URL: e.URL, Line: e.Line, Stack: e.Stack})
 	}
-	var v any = struct {
-		URL       string    `json:"url"`
-		Capturing bool      `json:"capturing"`
-		Entries   []logJSON `json:"entries"`
-		Cleared   bool      `json:"cleared"`
-	}{pageURL, view.capturing, items, a.Clear}
+	whole := logsJSON{URL: pageURL, Capturing: view.capturing, Entries: items, Cleared: a.Clear}
+	var v any = whole
+	if limit := logsLimit(a); a.Out == "" && limit > 0 {
+		v = fitLogsJSON(whole, limit)
+	}
 	if a.Out != "" {
 		data, err := json.Marshal(v)
 		if err != nil {
@@ -507,4 +519,28 @@ func renderLogsJSON(pageURL string, list []page.LogEntry, a protocol.LogsArgs, v
 		return "", Fail("encoding the logs: "+err.Error(), "")
 	}
 	return string(data) + "\n", nil
+}
+
+// fitLogsJSON keeps the newest entries of v whose JSON line, newline
+// included, stays within limit characters.
+func fitLogsJSON(v logsJSON, limit int) logsJSON {
+	size := func(x any) int {
+		data, _ := json.Marshal(x)
+		return utf8.RuneCount(data)
+	}
+	if size(v)+1 <= limit {
+		return v
+	}
+	// The object with no entries and the most left out: the rest, less the
+	// newline, is the entries' room, each costing its JSON and a comma (the
+	// last none, which pays for the newline).
+	empty := v
+	empty.Entries, empty.LeftOut = []logJSON{}, len(v.Entries)
+	sizes := make([]int, len(v.Entries))
+	for i, e := range v.Entries {
+		sizes[i] = size(e) + 1
+	}
+	first := newestThatFit(sizes, limit-size(empty))
+	v.LeftOut, v.Entries = first, v.Entries[first:]
+	return v
 }

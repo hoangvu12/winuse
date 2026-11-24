@@ -279,7 +279,8 @@ type fakePage struct {
 	recentred map[int64]map[string]any
 	// Placeholder and remounting editors (bladebro-ideas 09): follow holds,
 	// per node, the answers of its winuse:follow calls in order (a node id
-	// the focus went to, "lost", or nil for none; nil once they run out);
+	// the focus went to, "lost", "throw" for a check that throws, or nil
+	// for none; nil once they run out);
 	// fields and reads override a node's winuse:field and winuse:read
 	// answers; labels are winuse:label's. selected and readFrom record the
 	// nodes the select and the read-back ran on.
@@ -346,6 +347,9 @@ func newFakePage(t *testing.T) (*fakePage, *cdp.Client) {
 			case int:
 				return map[string]any{"result": map[string]any{"type": "object", "subtype": "node", "objectId": fmt.Sprintf("follow:%d", n)}}, nil
 			case string:
+				if n == "throw" {
+					return map[string]any{"result": map[string]any{"type": "object"}, "exceptionDetails": map[string]any{"text": "Uncaught"}}, nil
+				}
 				return map[string]any{"result": map[string]any{"type": "string", "value": n}}, nil
 			}
 			return map[string]any{"result": map[string]any{"type": "object", "subtype": "null", "value": nil}}, nil
@@ -953,6 +957,30 @@ func TestTypeIntoStopsWhenTheFieldIsLost(t *testing.T) {
 	var v *VerifyError
 	if err == nil || errors.As(err, &v) || errors.Is(err, ErrStale) || !strings.Contains(err.Error(), "left the document while typing") {
 		t.Fatalf("lost field: %v", err)
+	}
+	if got := f.log(); !reflect.DeepEqual(got, []string{"focus", "S Input.insertText one"}) || in.Sent != 1 {
+		t.Errorf("typed %v (sent %d), want only the first part", got, in.Sent)
+	}
+}
+
+// A focus check between parts that fails in any other way stops the
+// typing too: winuse cannot tell where the rest would go.
+func TestTypeIntoStopsWhenTheFocusCheckFails(t *testing.T) {
+	f, c := newFakePage(t)
+	ctx := context.Background()
+	o := Origin{Client: c, SessionID: "S", FrameID: "F1", LoaderID: "L1", BackendNodeID: 7}
+	f.mu.Lock()
+	f.follow = map[int64][]any{7: {nil, "throw"}}
+	f.mu.Unlock()
+	in, err := NewInput(ctx, c, "S", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	err = o.TypeInto(ctx, in, "one\ntwo")
+	var v *VerifyError
+	if err == nil || errors.As(err, &v) || errors.Is(err, ErrStale) || !strings.Contains(err.Error(), "the typing stopped before a Return key") {
+		t.Fatalf("a failed focus check: %v", err)
 	}
 	if got := f.log(); !reflect.DeepEqual(got, []string{"focus", "S Input.insertText one"}) || in.Sent != 1 {
 		t.Errorf("typed %v (sent %d), want only the first part", got, in.Sent)

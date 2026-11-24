@@ -172,17 +172,8 @@ func Reload(ctx context.Context, c *cdp.Client, session string) error {
 // MainFrame is the Tab's main frame: its loaderId and URL (no script, so
 // it answers while a dialog is open).
 func MainFrame(ctx context.Context, c *cdp.Client, session string) (loaderID, url string, err error) {
-	res, err := c.CallSession(ctx, session, "Page.getFrameTree", nil)
-	if err != nil {
-		return "", "", err
-	}
-	var ft struct {
-		FrameTree frameTree `json:"frameTree"`
-	}
-	if err := json.Unmarshal(res, &ft); err != nil {
-		return "", "", err
-	}
-	return ft.FrameTree.Frame.LoaderID, ft.FrameTree.Frame.URL, nil
+	f, err := mainFrame(ctx, c, session)
+	return f.LoaderID, f.URL, err
 }
 
 // LoadTimeoutError is a wait for a load state that ran out of time: the

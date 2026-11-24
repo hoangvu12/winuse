@@ -1,0 +1,8 @@
+list: <section id="cards"> "Courses": 5 of 5 rows (complete)
+[
+{"title":"Go for working programmers","url":"https://courses.example/go","description":"A hands-on course that builds a web service from an empty folder to production, with tests and profiling at every step. Backend services Concurrency basics Testing in practice"},
+{"title":"SQL from the ground up","url":"https://courses.example/sql","description":"Queries, joins, indexes and transactions, taught on a real shop database that you break and repair along the way. Relational databases Query planning Data modelling"},
+{"title":"Layout with modern CSS","url":"https://courses.example/css","description":"Grid, flexbox and container queries, with exercises that rebuild the layouts of well-known sites from scratch. Responsive design Grid and flexbox Accessibility first"},
+{"title":"Rust without fear","url":"https://courses.example/rust","description":"Ownership, borrowing and lifetimes explained with small programs, then a command line tool you ship at the end. Systems programming Memory safety Command line tools"},
+{"title":"Machine learning basics","url":"https://courses.example/ml","description":"Regression, classification and evaluation on open data sets, with notebooks you can run on any laptop you own. Statistics refresher Model evaluation Python notebooks"}
+]

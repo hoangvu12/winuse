@@ -1357,9 +1357,10 @@ func (o Origin) CheckValue(ctx context.Context, in *Input, f Field, value string
 // SetValue. Before each part after the first, a field that left the
 // document (an editor that replaced its node on the input, which puts the
 // caret back at its start) hands over to the focused field that took its
-// place, with the caret put at its end; with nothing editable focused the
-// typing stops there, a failure that may have taken effect, rather than
-// type the rest somewhere else (bladebro-ideas 09).
+// place, with the caret put at its end; with nothing editable focused, or
+// a check that fails, the typing stops there, a failure that may have
+// taken effect, rather than type the rest somewhere else (bladebro-ideas
+// 09).
 func (o Origin) TypeInto(ctx context.Context, in *Input, text string) error {
 	c, err := o.caller()
 	if err != nil {
@@ -1379,10 +1380,13 @@ func (o Origin) TypeInto(ctx context.Context, in *Input, text string) error {
 	for i, part := range TextParts(text) {
 		if i > 0 {
 			next, label, err := follow(ctx, c, cur, "replaced")
-			if errors.Is(err, errLost) {
+			switch {
+			case errors.Is(err, errLost):
 				return fmt.Errorf("the field left the document while typing, and nothing editable holds the focus; the typing stopped before %s", partName(part))
+			case err != nil:
+				return fmt.Errorf("checking where the focus is while typing failed (%v); the typing stopped before %s", err, partName(part))
 			}
-			if err == nil && next != nil {
+			if next != nil {
 				cur = *next
 				in.note("the field was replaced while typing; the rest of the text went to the focused " + label + ", at its end")
 			}

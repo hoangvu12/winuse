@@ -36,10 +36,16 @@ func TestClassifyWorksOutSiteKeys(t *testing.T) {
 		{"http://intranet/wiki", "intranet"},
 		{"devbox:8080", "devbox"},
 		{"https://example.com:8443/", "example.com"},
-		// Punycode, as browsers report a Unicode host, and a Unicode
-		// subdomain typed by hand.
+		// Punycode, as browsers report a Unicode host, and a Unicode host
+		// typed by hand: both key as the ASCII form, so a Note added for
+		// bücher.de shows on the Page the browser reports as
+		// xn--bcher-kva.de.
 		{"https://shop.xn--bcher-kva.de/", "xn--bcher-kva.de"},
 		{"https://bücher.example.de/", "example.de"},
+		{"bücher.de", "xn--bcher-kva.de"},
+		{"https://shop.BÜCHER.de/x", "xn--bcher-kva.de"},
+		{"münchen.de:8080", "xn--mnchen-3ya.de"},
+		{"例え.jp", "xn--r8jz45g.jp"},
 	}
 	for _, c := range cases {
 		got := Classify(c.target)

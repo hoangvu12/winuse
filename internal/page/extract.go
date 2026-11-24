@@ -20,8 +20,8 @@ import (
 //go:embed extract.js
 var extractSource string
 
-// extractJS is extract.js with block.js, the shared wall check, in it.
-var extractJS = withBlockCheck(extractSource)
+// extractJS is extract.js with wall.js, the shared wall check, in it.
+var extractJS = withWallCheck(extractSource)
 
 // extractWorld is the isolated world extract.js runs in.
 const extractWorld = "winuse-extract"
@@ -60,12 +60,8 @@ func Extract(ctx context.Context, c Caller, session string, root *Origin, o Extr
 		}
 		res, err = callIn(ctx, c, root.SessionID, world, root.BackendNodeID, extractJS, o)
 	} else {
-		var frame string
-		if frame, _, err = mainFrameOf(ctx, c, session); err != nil {
-			return extract.Result{}, err
-		}
 		var world int
-		if world, err = isolatedWorld(ctx, c, session, frame, extractWorld); err != nil {
+		if world, err = isolatedWorld(ctx, c, session, "", extractWorld); err != nil {
 			return extract.Result{}, err
 		}
 		res, err = c.CallSession(ctx, session, "Runtime.evaluate", map[string]any{
@@ -85,6 +81,7 @@ func Extract(ctx context.Context, c Caller, session string, root *Origin, o Extr
 		Label     string            `json:"label"`
 		Rows      []json.RawMessage `json:"rows"`
 		Found     int               `json:"found"`
+		AtLeast   bool              `json:"at_least"`
 		PageSays  *extract.Claim    `json:"page_says"`
 		Wall      string            `json:"wall"`
 	}
@@ -92,7 +89,7 @@ func Extract(ctx context.Context, c Caller, session string, root *Origin, o Extr
 		return extract.Result{}, fmt.Errorf("reading extract's answer: %v", err)
 	}
 	r := extract.Result{Kind: got.Kind, Container: got.Container, Label: got.Label, Found: got.Found,
-		Limit: o.Limit, PageSays: got.PageSays, Wall: got.Wall}
+		AtLeast: got.AtLeast, Limit: o.Limit, PageSays: got.PageSays, Wall: got.Wall}
 	for _, row := range got.Rows {
 		var b bytes.Buffer
 		if json.Compact(&b, row) == nil {
@@ -100,21 +97,6 @@ func Extract(ctx context.Context, c Caller, session string, root *Origin, o Extr
 		}
 	}
 	return r, nil
-}
-
-// mainFrameOf is the Tab's main frame id and loader.
-func mainFrameOf(ctx context.Context, c Caller, session string) (frame, loader string, err error) {
-	res, err := c.CallSession(ctx, session, "Page.getFrameTree", nil)
-	if err != nil {
-		return "", "", err
-	}
-	var ft struct {
-		FrameTree frameTree `json:"frameTree"`
-	}
-	if err := json.Unmarshal(res, &ft); err != nil {
-		return "", "", err
-	}
-	return ft.FrameTree.Frame.ID, ft.FrameTree.Frame.LoaderID, nil
 }
 
 // callIn resolves a node in the world and calls fn on it with arg.

@@ -7,7 +7,8 @@ package notes
 // requests during an update), reads the file, and a write goes to a temp
 // file that is then renamed over it, so a reader never sees half a file.
 //
-// A file that does not parse is moved aside to notes.json.bad, never
+// A file that does not parse is moved aside to notes.json.bad (or the next
+// free notes.json.bad.N, so an older one is never overwritten), never
 // dropped silently: the operation goes on with no Notes and returns the
 // .bad path, and the command says so.
 
@@ -286,7 +287,9 @@ func (s *Store) update(bad *string, change func(f *file) (write bool, err error)
 }
 
 // load reads the file: no file is no Notes; a file that does not parse is
-// moved to <path>.bad (its path returned) and counts as no Notes.
+// moved to <path>.bad, or <path>.bad.2, .bad.3... when that is taken (its
+// path returned), and counts as no Notes. An older .bad file is never
+// overwritten.
 func (s *Store) load() (f file, moved string, err error) {
 	data, err := os.ReadFile(s.Path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -299,13 +302,26 @@ func (s *Store) load() (f file, moved string, err error) {
 		return file{Version: fileVersion}, "", nil
 	}
 	if perr := parse(data, &f); perr != nil {
-		moved = s.Path + ".bad"
+		moved = freeBadName(s.Path)
 		if err := renameRetry(s.Path, moved); err != nil {
 			return file{}, "", fmt.Errorf("%s does not parse (%v), and moving it to %s failed: %w", s.Path, perr, moved, err)
 		}
 		return file{Version: fileVersion}, moved, nil
 	}
 	return f, "", nil
+}
+
+// freeBadName is the first of <path>.bad, <path>.bad.2, <path>.bad.3...
+// that no file has. load runs under the store's lock, so no other winuse
+// takes the name between this check and the rename.
+func freeBadName(path string) string {
+	name := path + ".bad"
+	for n := 2; ; n++ {
+		if _, err := os.Lstat(name); errors.Is(err, os.ErrNotExist) {
+			return name
+		}
+		name = fmt.Sprintf("%s.bad.%d", path, n)
+	}
 }
 
 // parse decodes the file and checks what a hand edit could break: every

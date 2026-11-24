@@ -20,6 +20,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/hoangvu12/winuse/internal/browser"
 	"github.com/hoangvu12/winuse/internal/cdp/cdptest"
@@ -340,6 +341,42 @@ func TestLogsJSON(t *testing.T) {
 	}
 }
 
+// logs --json stays within --max-chars too (bladebro-ideas 19 and 29): the
+// newest entries that fit, and left_out counting the older ones.
+func TestLogsJSONKeepsTheNewestWithinMaxChars(t *testing.T) {
+	r := newWinRig(t)
+	base := time.Now().Add(-time.Hour)
+	var entries []map[string]any
+	for i := 0; i < 10; i++ {
+		entries = append(entries, logParams(base.Add(time.Duration(i)*time.Second), "network", "error", status404, fmt.Sprintf("https://docs.test/file-%d", i)))
+	}
+	replayLog(r.browser.Srv, entries...)
+	n := 700
+	out, e := r.run(t, "logs", protocol.LogsArgs{Window: "301", JSON: true, MaxChars: &n})
+	if e != nil {
+		t.Fatalf("logs --json --max-chars: %+v", e)
+	}
+	if got := utf8.RuneCountInString(out); got > n {
+		t.Errorf("--json --max-chars %d printed %d characters:\n%s", n, got, out)
+	}
+	var got struct {
+		Entries []struct {
+			URL string `json:"url"`
+		} `json:"entries"`
+		LeftOut int `json:"left_out"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out)
+	}
+	if len(got.Entries) == 0 || got.Entries[len(got.Entries)-1].URL != "https://docs.test/file-9" || got.LeftOut != 10-len(got.Entries) || got.LeftOut == 0 {
+		t.Errorf("kept %+v, left out %d; want the newest, the rest counted", got.Entries, got.LeftOut)
+	}
+	zero := 0
+	if out, _ := r.run(t, "logs", protocol.LogsArgs{Window: "301", JSON: true, MaxChars: &zero}); strings.Contains(out, "left_out") || strings.Count(out, "file-") != 10 {
+		t.Errorf("--max-chars 0 cut the JSON: %s", out)
+	}
+}
+
 func TestLogsCutKeepsTheNewestAndOutWritesAll(t *testing.T) {
 	r := newWinRig(t)
 	base := time.Now().Add(-time.Hour)
@@ -348,7 +385,7 @@ func TestLogsCutKeepsTheNewestAndOutWritesAll(t *testing.T) {
 		entries = append(entries, logParams(base.Add(time.Duration(i)*time.Second), "network", "error", status404, fmt.Sprintf("https://docs.test/file-%d", i)))
 	}
 	replayLog(r.browser.Srv, entries...)
-	n := 400
+	n := 600
 	out, e := r.run(t, "logs", protocol.LogsArgs{Window: "301", MaxChars: &n})
 	if e != nil {
 		t.Fatalf("logs --max-chars: %+v", e)
@@ -356,8 +393,11 @@ func TestLogsCutKeepsTheNewestAndOutWritesAll(t *testing.T) {
 	if !strings.Contains(out, "https://docs.test/file-9\n") || strings.Contains(out, "https://docs.test/file-0\n") {
 		t.Errorf("the cut kept the wrong entries:\n%s", out)
 	}
-	if !strings.Contains(out, "older entries left out to stay within 400 characters; --max-chars raises the cut, 0 lifts it, --out <file> writes them all)") {
+	if !strings.Contains(out, "older entries left out to stay within 600 characters; --max-chars raises the cut, 0 lifts it, --out <file> writes them all)") {
 		t.Errorf("the cut does not say so:\n%s", out)
+	}
+	if got := utf8.RuneCountInString(out); got > n {
+		t.Errorf("--max-chars %d printed %d characters, header included:\n%s", n, got, out)
 	}
 
 	file := filepath.Join(t.TempDir(), "logs.txt")

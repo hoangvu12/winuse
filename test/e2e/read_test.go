@@ -185,7 +185,7 @@ func readGolden(t *testing.T, ctx context.Context, conn *browser.Connection, u, 
 	if err != nil {
 		t.Fatalf("reading %s: %v", u, err)
 	}
-	block := md.Block
+	block := md.Wall
 	if block == "" {
 		block = "none"
 	}

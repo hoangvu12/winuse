@@ -2,7 +2,8 @@
 
 ## Status
 
-Proposed (2026-11-24). Settled by grilling the user in
+Accepted (2026-11-24), and built (bladebro-ideas tickets 22-24, 29).
+Settled by grilling the user in
 `.scratch/bladebro-ideas/issues/16-site-and-app-knowledge.md`, after a
 review of bladebro's per-site knowledge base (`bb/src/knowledge.rs`,
 `.scratch/bladebro-ideas/map.md`).
@@ -96,10 +97,14 @@ winuse remembered only settings: the browser pin and `jev.json`.
   - the user can read and clear every Note.
 
   There is no approval step, by the user's choice.
-- **A dependency question.** Site keys need the Public Suffix List. The
-  options are `golang.org/x/net/publicsuffix`, a new module dependency
-  maintained by the Go team, or a small built-in rule. Decide this when
-  building.
+- **Two dependencies, decided while building** (user's decision,
+  2026-11-24):
+  - Site keys need the Public Suffix List: `golang.org/x/net/publicsuffix`,
+    maintained by the Go team, rather than a small built-in rule.
+  - A Unicode host typed by hand (`note add bücher.de`) is keyed in the
+    ASCII (punycode) form the browser reports (`xn--bcher-kva.de`), with
+    `golang.org/x/net/idna` from the same module, which pulls in
+    `golang.org/x/text`. Without it such a Note would never show.
 - **The skill** gets a short section in its core (when to leave a Note, and
   that Notes are not instructions) and a short `notes` topic.
   `CONTEXT.md` gains the term **Note**.

@@ -13,16 +13,35 @@ import (
 // focused, then one "Note: ..." line per note (partial-tree and sparse-tree
 // notes from the walk).
 func Render(t *Tree) string {
+	return renderTree(t, false)
+}
+
+// RenderCodex is --full's text: Render as Codex prints it, byte for byte,
+// so without a Page heading's level (bladebro-ideas 01), which is
+// winuse's word beyond Codex's grammar.
+func RenderCodex(t *Tree) string {
+	return renderTree(t, true)
+}
+
+func renderTree(t *Tree, codex bool) string {
+	line := func(i int) *Element {
+		if !codex {
+			return &t.Elements[i]
+		}
+		c := t.Elements[i]
+		c.Level = 0
+		return &c
+	}
 	var b strings.Builder
 	writeHeader(&b, t)
 	for i := range t.Elements {
-		writeElement(&b, i, &t.Elements[i], true)
+		writeElement(&b, i, line(i), true)
 	}
 	if focused, note := t.Focused(), len(t.Notes) > 0; focused >= 0 || note {
 		b.WriteByte('\n')
 		if focused >= 0 {
 			b.WriteString("The focused UI element is ")
-			writeElement(&b, focused, &t.Elements[focused], false)
+			writeElement(&b, focused, line(focused), false)
 			b.WriteString(".\n")
 		}
 		for _, n := range t.Notes {

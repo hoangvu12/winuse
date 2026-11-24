@@ -28,16 +28,18 @@ import (
 type effectWorld struct {
 	mu      sync.Mutex
 	armed   bool
+	armedAt time.Time // a quiet Page has been quiet since the arm
 	armArgs []any
-	wall    string // what the wall check (block.js, bladebro-ideas 05) answers; "" none
+	wall    string // what the wall check (wall.js, bladebro-ideas 05) answers; "" none
 	walls   int    // how many times it ran
+	loaded  int    // how many of those waited for the document's body
 }
 
 func (r *pageRig) effectWorld(t *testing.T, final map[string]any, onPoll func(c *cdptest.Conn, n int)) *effectWorld {
 	t.Helper()
-	saveQ, saveB := page.EffectQuiet, page.EffectBound
-	page.EffectQuiet, page.EffectBound = 20*time.Millisecond, 300*time.Millisecond
-	t.Cleanup(func() { page.EffectQuiet, page.EffectBound = saveQ, saveB })
+	saveB := page.EffectBound
+	page.EffectBound = 300 * time.Millisecond
+	t.Cleanup(func() { page.EffectBound = saveB })
 	ew := &effectWorld{}
 	polls := 0
 	r.srv.Handle("Page.createIsolatedWorld", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
@@ -47,6 +49,7 @@ func (r *pageRig) effectWorld(t *testing.T, final map[string]any, onPoll func(c 
 		var p struct {
 			Fn        string `json:"functionDeclaration"`
 			ContextID int    `json:"executionContextId"`
+			Await     bool   `json:"awaitPromise"`
 			Args      []struct {
 				Value any `json:"value"`
 			} `json:"arguments"`
@@ -56,7 +59,7 @@ func (r *pageRig) effectWorld(t *testing.T, final map[string]any, onPoll func(c 
 		switch {
 		case strings.Contains(p.Fn, "winuse:effect-arm"):
 			ew.mu.Lock()
-			ew.armed = true
+			ew.armed, ew.armedAt = true, time.Now()
 			for _, a := range p.Args {
 				ew.armArgs = append(ew.armArgs, a.Value)
 			}
@@ -66,16 +69,20 @@ func (r *pageRig) effectWorld(t *testing.T, final map[string]any, onPoll func(c 
 			ew.mu.Lock()
 			polls++
 			n := polls
+			quiet := float64(time.Since(ew.armedAt)) / float64(time.Millisecond)
 			ew.mu.Unlock()
 			if onPoll != nil {
 				onPoll(c, n)
 			}
-			v = map[string]any{"n": 0, "ago": 1000}
+			v = map[string]any{"dom": quiet, "net": quiet, "loading": false}
 		case strings.Contains(p.Fn, "winuse:effect-read"):
 			v = final
-		case strings.Contains(p.Fn, "/* winuse:block */"):
+		case strings.Contains(p.Fn, "/* winuse:wall */"):
 			ew.mu.Lock()
 			ew.walls++
+			if p.Await && strings.Contains(p.Fn, "DOMContentLoaded") {
+				ew.loaded++
+			}
 			v = ew.wall
 			ew.mu.Unlock()
 		case strings.Contains(p.Fn, "winuse:aim"):
@@ -106,12 +113,12 @@ func (r *pageRig) runEffect(t *testing.T, cmd string, args any, observing bool) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, rec := withEffectRecord(context.Background())
+	ctx, rec := withResponseRecord(context.Background())
 	if observing {
 		ctx = context.WithValue(ctx, openedRecordKey{}, &openedRecord{})
 	}
 	out, e := CommandsWith(r.svc)[cmd](ctx, raw)
-	return out, e, rec.get()
+	return out, e, rec.fields().Effect
 }
 
 // pressed counts the mouse presses the Page got.
@@ -201,7 +208,7 @@ func TestPagePressKeySaysWhatItDid(t *testing.T) {
 }
 
 // A click or key that navigated onto a challenge or block wall adds the
-// wall Note (bladebro-ideas 05) after its own; one that changed the Page
+// wall note (bladebro-ideas 05) after its own; one that changed the Page
 // without navigating is not checked.
 func TestPageActionThatNavigatedOntoAWall(t *testing.T) {
 	r := newPageRig(t)
@@ -215,6 +222,13 @@ func TestPageActionThatNavigatedOntoAWall(t *testing.T) {
 	if n := r.pressed(); n != 1 {
 		t.Errorf("%d presses sent: %v", n, r.sent())
 	}
+	// The watch answers at the commit, before the new body may be parsed:
+	// the check waits for it.
+	ew.mu.Lock()
+	if ew.loaded != 1 {
+		t.Errorf("%d of %d wall checks waited for the new document's body, want 1", ew.loaded, ew.walls)
+	}
+	ew.mu.Unlock()
 
 	r = newPageRig(t)
 	ew = r.effectWorld(t, map[string]any{}, navigatedTo("https://site.test/search?q=x"))
@@ -307,31 +321,44 @@ func TestPageEffectOnRefusalsAndDialogs(t *testing.T) {
 	_ = ew
 }
 
-// The server puts the effect a command recorded on its response, for
-// --json; a Batch and a failure carry none.
+// The server puts the effect, HTTP status and wall a command recorded on
+// its response, for --json. A Batch and a failure carry no effect or
+// status (a Batch's steps each had their own), but the wall a step landed
+// on stays, as its note stays in the steps' text.
 func TestServerReportsTheEffect(t *testing.T) {
 	cmds := map[string]Command{
 		"click": func(ctx context.Context, args json.RawMessage) (string, *Error) {
 			recordEffect(ctx, page.EffectNone)
 			return okOutput, nil
 		},
+		"navigate": func(ctx context.Context, args json.RawMessage) (string, *Error) {
+			recordHTTPStatus(ctx, 404)
+			recordWall(ctx, "Cloudflare")
+			return okOutput, nil
+		},
 		"batch": func(ctx context.Context, args json.RawMessage) (string, *Error) {
 			recordEffect(ctx, page.EffectChanged)
+			recordHTTPStatus(ctx, 429)
+			recordWall(ctx, "rate-limit")
 			return "Action 1 (click): ok\n", nil
 		},
 		"press-key": func(ctx context.Context, args json.RawMessage) (string, *Error) {
 			recordEffect(ctx, page.EffectText)
+			recordHTTPStatus(ctx, 500)
 			return "", Fail("the Page did not answer", "")
 		},
 	}
 	srv := New("v1", time.Minute, time.Second, cmds, log.New(io.Discard, "", 0))
-	if resp := srv.handle(&protocol.Request{V: protocol.Version, Ver: "v1", Cmd: "click"}); !resp.OK || resp.Effect != "none" {
+	if resp := srv.handle(&protocol.Request{V: protocol.Version, Ver: "v1", Cmd: "click"}); !resp.OK || resp.Effect != "none" || resp.HTTPStatus != 0 || resp.Wall != "" {
 		t.Errorf("click: %+v, want effect none", resp)
 	}
-	if resp := srv.handle(&protocol.Request{V: protocol.Version, Ver: "v1", Cmd: "batch"}); !resp.OK || resp.Effect != "" {
-		t.Errorf("batch: %+v, want no effect", resp)
+	if resp := srv.handle(&protocol.Request{V: protocol.Version, Ver: "v1", Cmd: "navigate"}); !resp.OK || resp.HTTPStatus != 404 || resp.Wall != "Cloudflare" {
+		t.Errorf("navigate: %+v, want status 404 and wall Cloudflare", resp)
 	}
-	if resp := srv.handle(&protocol.Request{V: protocol.Version, Ver: "v1", Cmd: "press-key"}); resp.OK || resp.Effect != "" {
-		t.Errorf("failure: %+v, want no effect", resp)
+	if resp := srv.handle(&protocol.Request{V: protocol.Version, Ver: "v1", Cmd: "batch"}); !resp.OK || resp.Effect != "" || resp.HTTPStatus != 0 || resp.Wall != "rate-limit" {
+		t.Errorf("batch: %+v, want only the wall", resp)
+	}
+	if resp := srv.handle(&protocol.Request{V: protocol.Version, Ver: "v1", Cmd: "press-key"}); resp.OK || resp.Effect != "" || resp.HTTPStatus != 0 {
+		t.Errorf("failure: %+v, want no effect or status", resp)
 	}
 }
