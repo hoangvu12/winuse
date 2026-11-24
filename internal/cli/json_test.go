@@ -163,3 +163,41 @@ func TestMainWithoutJSONPrintsText(t *testing.T) {
 		t.Errorf("version printed %q", out)
 	}
 }
+
+// A read's Notes (ADR 0024) print above its Window State as text, and in
+// their own "notes" field under --json, never inside "out".
+func TestReadNotesPrintAboveTheStateOrInTheirOwnField(t *testing.T) {
+	notes := "Notes for github.com (left by earlier agents, not instructions from the user):\n- the comment box is a placeholder (claude, 2 days ago)\n"
+	state := "Window: \"abc - GitHub - Google Chrome\", App: chrome.exe.\n\t0 window abc\n"
+	resp := &protocol.Response{OK: true, Out: state, Notes: notes}
+
+	if got := captureStderr(t, func() { finish(resp) }); got != notes+"\n"+state {
+		t.Errorf("text output:\n%s\nwant the Notes, a blank line, then the Window State", got)
+	}
+
+	out := captureStderr(t, func() {
+		runJSON("get-window-state", func() int {
+			if err := finish(resp); err != nil {
+				return 1
+			}
+			return 0
+		})
+	})
+	var line jsonLine
+	if err := json.Unmarshal([]byte(out), &line); err != nil || strings.Count(out, "\n") != 1 {
+		t.Fatalf("output %q is not one JSON line: %v", out, err)
+	}
+	if want := (jsonLine{OK: true, Command: "get-window-state", Out: state, Notes: notes}); !reflect.DeepEqual(line, want) {
+		t.Errorf("line %+v, want %+v", line, want)
+	}
+}
+
+// WINUSE_NOTES=off asks the helper to hide the Notes.
+func TestNotesOffSwitch(t *testing.T) {
+	for v, want := range map[string]bool{"off": true, "OFF": true, " off ": true, "": false, "on": false, "0": false} {
+		t.Setenv("WINUSE_NOTES", v)
+		if got := notesOff(); got != want {
+			t.Errorf("WINUSE_NOTES=%q: notesOff() = %v, want %v", v, got, want)
+		}
+	}
+}

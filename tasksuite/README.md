@@ -239,9 +239,10 @@ For each task, in a fixed order:
    leave a Check-readable end state.
 5. Runs the Harness (`claude -p` or `pi --mode json`) with the task's
    prompt on stdin, the scratch folder as its working directory, the
-   run's `winuse.exe` first on its PATH and `WINUSE_TRACE` pointing at
-   the run's `trace.jsonl` — under the time limit, killing the process
-   tree if it runs out.
+   run's `winuse.exe` first on its PATH, `WINUSE_TRACE` pointing at
+   the run's `trace.jsonl` and `WINUSE_NOTES=off`, so Notes left by
+   earlier runs or the user never change a run (ADR 0024) — under the
+   time limit, killing the process tree if it runs out.
 6. Runs the task's `check.ps1`. Exit 0 = the task passed; anything else
    = failed, and the script's first output line is the reason.
 7. Cleans up: the processes the task started are killed one by one —

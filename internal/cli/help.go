@@ -57,7 +57,8 @@ global options:
   --json                      print one JSON line instead of the text:
                                {"ok","command","out"} and, on a failure,
                                "error" with its code, message, hint, delivery
-                               and retry. Exit codes are unchanged
+                               and retry; a read's Notes go in "notes", never
+                               in "out". Exit codes are unchanged
   --help, -h                  print the command's usage and examples instead
                                of running it, as winuse help <command> does
 
@@ -190,7 +191,14 @@ commands:
                                --observe=diff does after an Action; with no
                                earlier read, or past 60% changed, the whole
                                Window State prints with a note. It takes the
-                               budgets above, not --root or --skeleton
+                               budgets above, not --root or --skeleton.
+                               Your first read of a site or App prints its
+                               Notes above the Window: line (the newest 10,
+                               then a note list line; a browser Window's
+                               site, then the browser's), once per agent;
+                               they count toward --max-chars and shrink
+                               first. --diff, --observe and find print none;
+                               WINUSE_NOTES=off hides them
   find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N | --full]
                                search the Window's whole live tree, past the
                                Window State's caps: print the matching
