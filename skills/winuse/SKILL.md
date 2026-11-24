@@ -153,7 +153,7 @@ characters with a note on what it left out (`--max-chars N` sets the cap,
   Element under it and name it in a `Note:`.
 
 Matching is exact and case-sensitive; a name or ID that matches several
-Elements fails and lists them. One match counts only in a read that saw the
+Elements fails and lists them (a control and its own label are one). One match counts only in a read that saw the
 whole Window: when your read and winuse's fresh one are both partial (a
 partial note, `--skeleton`, a `(truncated: ...)` line) it fails with `1
 match in the part read; the read was partial` and that match's index; narrow

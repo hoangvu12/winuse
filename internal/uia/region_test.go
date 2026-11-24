@@ -166,6 +166,33 @@ func TestResolveBaseFirstOffsetsAddedCandidates(t *testing.T) {
 	}
 }
 
+// TestResolveBaseFirstOwnLabelOnlyInTheRead: a control and its own label
+// resolve to the control in the read itself, a depth-first tree; among the
+// Elements finds and region reads added after it, a list whose depths say
+// nothing of who is inside whom, the same pair stays ambiguous.
+func TestResolveBaseFirstOwnLabelOnlyInTheRead(t *testing.T) {
+	read := []wstate.Element{
+		{Depth: 0, Role: "window", Name: "W"},
+		{Depth: 1, Role: "button", Name: "Go"},
+		{Depth: 2, Role: "text", Name: "Go"},
+	}
+	if i, err := resolveBaseFirst(read, len(read), "name:Go"); err != nil || i != 1 {
+		t.Errorf("own label in the read: %d, %v, want 1", i, err)
+	}
+	added := []wstate.Element{
+		{Depth: 0, Role: "window", Name: "W"},
+		{Depth: 1, Role: "button", Name: "Go"},
+		{Depth: 2, Role: "text", Name: "Go"},
+	}
+	var several *wstate.AmbiguousRefError
+	if _, err := resolveBaseFirst(added, 1, "name:Go"); !errors.As(err, &several) || !slices.Equal(several.Matches, []int{1, 2}) {
+		t.Errorf("the pair among added Elements: %v, want ambiguous among 1 and 2", err)
+	}
+	if _, err := resolveBaseFirst(added[1:], 0, "name:Go"); !errors.As(err, &several) || !slices.Equal(several.Matches, []int{0, 1}) {
+		t.Errorf("the pair added without a read: %v, want ambiguous among 0 and 1", err)
+	}
+}
+
 func TestPartialOnly(t *testing.T) {
 	if got := partialOnly([]string{nearEmptyNote, partialNotePrefix + " x"}); !slices.Equal(got, []string{partialNotePrefix + " x"}) {
 		t.Errorf("notes %v", got)
