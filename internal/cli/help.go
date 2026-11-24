@@ -59,9 +59,10 @@ global options:
                                "error" with its code, message, hint, delivery
                                and retry; a Page click or press-key adds
                                "effect": navigated, changed, text, none or
-                               unknown, and navigate, back, forward and
-                               reload add "http_status" when the Page
-                               answered 4xx or 5xx. Exit codes are unchanged
+                               unknown, navigate, back, forward and reload
+                               add "http_status" when the Page answered 4xx
+                               or 5xx, and a read's Notes go in "notes",
+                               never in "out". Exit codes are unchanged
   --help, -h                  print the command's usage and examples instead
                                of running it, as winuse help <command> does
 
@@ -194,7 +195,14 @@ commands:
                                --observe=diff does after an Action; with no
                                earlier read, or past 60% changed, the whole
                                Window State prints with a note. It takes the
-                               budgets above, not --root or --skeleton
+                               budgets above, not --root or --skeleton.
+                               Your first read of a site or App prints its
+                               Notes above the Window: line (the newest 10,
+                               then a note list line; a browser Window's
+                               site, then the browser's), once per agent;
+                               they count toward --max-chars and shrink
+                               first. --diff, --observe and find print none;
+                               WINUSE_NOTES=off hides them
   find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N | --full]
                                search the Window's whole live tree, past the
                                Window State's caps: print the matching

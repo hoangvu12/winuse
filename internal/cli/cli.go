@@ -512,6 +512,7 @@ func sendRequest(cmd string, args any, edit func(*protocol.Request)) (*protocol.
 	if err != nil {
 		return nil, err
 	}
+	req.NoNotes = notesOff() // notes.go: WINUSE_NOTES=off
 	if edit != nil {
 		edit(req)
 	}
@@ -531,6 +532,7 @@ func sendRequest(cmd string, args any, edit func(*protocol.Request)) (*protocol.
 // the failure's code and delivery from the response it records (json.go).
 func finish(resp *protocol.Response) error {
 	lastResponse = resp
+	printNotes(resp) // notes.go: a read's Notes go above its Window State
 	os.Stdout.WriteString(resp.Out)
 	if resp.OK {
 		return nil

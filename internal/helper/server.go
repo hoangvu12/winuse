@@ -247,6 +247,10 @@ func (s *Server) handle(req *protocol.Request) (resp protocol.Response) {
 	if req.NoWait {
 		ctx = withNoWait(ctx) // briefwait.go: a refusal fails at once
 	}
+	// The Notes its reads show travel apart from the text (windownotes.go,
+	// ADR 0024), whatever the outcome.
+	ctx, shown := withWindowNotes(ctx, req.NoNotes)
+	defer func() { resp.Notes = shown.String() }()
 	// A traced request gets what its command noted (trace.go,
 	// desktop-parity ticket 19), whatever the outcome.
 	ctx, notes := withTraceNotes(ctx, req.Trace)

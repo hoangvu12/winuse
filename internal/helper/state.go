@@ -18,6 +18,7 @@ import (
 	"github.com/hoangvu12/winuse/internal/browser"
 	"github.com/hoangvu12/winuse/internal/extract"
 	"github.com/hoangvu12/winuse/internal/keys"
+	"github.com/hoangvu12/winuse/internal/notes"
 	"github.com/hoangvu12/winuse/internal/protocol"
 	"github.com/hoangvu12/winuse/internal/shot"
 	"github.com/hoangvu12/winuse/internal/uia"
@@ -365,6 +366,13 @@ type Services struct {
 	// of its Tab targets. Created by defaultServices.
 	tabHolds  *tabHolds
 	tabStates *tabStateStore
+
+	// The Notes a Window State shows (ADR 0024, windownotes.go): NoteStore
+	// opens the Notes store, nil showing none (offline tests that do not
+	// set a temp store; Main wires notes.Default); notesSeen is the keys
+	// each Agent's reads covered, created by defaultServices.
+	NoteStore func() (*notes.Store, error)
+	notesSeen *notesSeen
 }
 
 // CommandsWith builds the command registry over the given services.
@@ -924,6 +932,9 @@ func defaultServices(s Services) Services {
 	if s.tabStates == nil {
 		s.tabStates = newTabStateStore()
 	}
+	if s.notesSeen == nil {
+		s.notesSeen = newNotesSeen()
+	}
 	if s.WindowThread == nil {
 		s.WindowThread = win.WindowThreadID
 	}
@@ -996,7 +1007,12 @@ func getWindowState(s Services, ctx context.Context, args json.RawMessage) (stri
 			"drop --diff to read the part, or --root/--skeleton to diff the whole Window")
 	}
 	if out, serr, ok := windowStateShape(s, ctx, w, a); ok {
-		return out, serr
+		if serr != nil {
+			return out, serr
+		}
+		// A partial read merges no Page: a browser Window covers its App's
+		// Notes only, and its site's on its next full read.
+		return s.stateWithNotes(ctx, a, s.stateNoteKeys(w, ""), func(windowRef) (string, *Error) { return out, nil })
 	}
 	if a.Screenshot {
 		// The screenshot path captures with the indicator and the Agent
@@ -1007,11 +1023,14 @@ func getWindowState(s Services, ctx context.Context, args json.RawMessage) (stri
 		})(ctx, args)
 	}
 	before, what := s.baselineOf(ctx, w, a)
-	tree, terr := readWindowTree(s, ctx, w)
+	var pageURL string // the merged Page's, for its Notes (windownotes.go)
+	tree, terr := readWindowTree(s, withReadURL(ctx, &pageURL), w)
 	if terr != nil {
 		return "", terr
 	}
-	return renderState(tree, a, strconv.FormatUint(w.ID, 10), before, what)
+	return s.stateWithNotes(ctx, a, s.stateNoteKeys(w, pageURL), func(a windowRef) (string, *Error) {
+		return renderState(tree, a, strconv.FormatUint(w.ID, 10), before, what)
+	})
 }
 
 // baselineOf is what a --diff read of w compares with: the Agent's latest
