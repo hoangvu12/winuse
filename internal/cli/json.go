@@ -5,6 +5,7 @@ package cli
 // JSON line on stdout instead of its text:
 //
 //	{"ok":true,"command":"click","out":"..."}
+//	{"ok":true,"command":"click","out":"...","effect":"navigated"}
 //	{"ok":false,"command":"click","out":"","error":{"code":"STALE_REF","message":"...","hint":"...","delivery":"not_delivered","retry":"safe"}}
 //
 // A Page that looks like a challenge or block wall adds "wall" (its kind,
@@ -41,6 +42,9 @@ type jsonLine struct {
 	OK      bool   `json:"ok"`
 	Command string `json:"command"`
 	Out     string `json:"out"`
+	// Effect is what a Headless Page click or key did (bladebro-ideas
+	// ticket 06): navigated, changed, text, none or unknown.
+	Effect string `json:"effect,omitempty"`
 	// Wall names the challenge or block wall a Page Note said the Page
 	// looks like (bladebro-ideas 05, protocol.WallOf): Cloudflare,
 	// DataDome, PerimeterX, reCAPTCHA, Akamai or rate-limit.
@@ -119,6 +123,9 @@ func runJSON(command string, run func() int) int {
 func jsonLineFor(command string, code int, stdout, stderr string, resp *protocol.Response) jsonLine {
 	line := jsonLine{OK: code == 0, Command: command, Out: stdout, Wall: protocol.WallOf(stdout)}
 	if line.OK {
+		if resp != nil && resp.OK {
+			line.Effect = resp.Effect
+		}
 		return line
 	}
 	var r protocol.Response

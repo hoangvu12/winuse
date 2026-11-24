@@ -57,7 +57,9 @@ global options:
   --json                      print one JSON line instead of the text:
                                {"ok","command","out"} and, on a failure,
                                "error" with its code, message, hint, delivery
-                               and retry. Exit codes are unchanged
+                               and retry; a Page click or press-key adds
+                               "effect": navigated, changed, text, none or
+                               unknown. Exit codes are unchanged
   --help, -h                  print the command's usage and examples instead
                                of running it, as winuse help <command> does
 

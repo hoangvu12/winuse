@@ -149,9 +149,10 @@ winuse drag <window> <element> <element|@x,y>
 
 - Open a URL with `navigate`; keys sent into the address bar do nothing
   Headless.
-- When `navigate`, `back`, `forward` or `reload` lands on a short Page that
-  looks like a CAPTCHA or block wall (Cloudflare, DataDome, PerimeterX,
-  reCAPTCHA, Akamai, or a rate limit), it stays `ok` and adds
+- When `navigate`, `back`, `forward`, `reload`, or a Page click or key that
+  navigated, lands on a short Page that looks like a CAPTCHA or block wall
+  (Cloudflare, DataDome, PerimeterX, reCAPTCHA, Akamai, or a rate limit),
+  it stays `ok` and adds
   `Note: the Page looks like a <kind> wall; ask the user to handle it`
   (`--json` adds `"wall": "<kind>"`). Stop there and ask the user, as
   Safety says: never click the challenge or try to solve it. A docs page
@@ -182,6 +183,18 @@ winuse drag <window> <element> <element|@x,y>
   picking a suggestion.
 - A covered, disabled, hidden or off-screen Page Element is refused with
   nothing sent, naming any covering Element, such as a cookie banner.
+- A Page `click` or `press-key` watches the Page until it settles (up to
+  1 s) and says what it saw, still with `ok` since the input was delivered:
+  `Note: the Page navigated to <url>`; `Note: the Page is navigating to
+  <url> and had not loaded when winuse looked` (then `wait <window> load`);
+  `Note: the Page changed (text only)`; or `Note: no change seen in the
+  Page; the click was delivered, so read the Page before repeating it`,
+  which names an Element that now covers the click point or is gone. Do not
+  repeat a click on that note alone: read the Page first, because a late
+  reaction or a repeat can act twice. Other changes print no note. Under
+  `--observe` only the navigation note prints; the diff shows the rest.
+  `--json` gives the same as an `effect` field (`navigated`, `changed`,
+  `text`, `none` or `unknown`).
 - A click or key that opens a JavaScript dialog (alert, confirm, prompt,
   leave-this-page) prints `ok` and a `Note:` line with its text; do not
   repeat it. Every Page Action then fails naming the dialog until you
