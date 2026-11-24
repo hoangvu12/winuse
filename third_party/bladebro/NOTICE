@@ -22,3 +22,8 @@ a single --root item gathers its siblings, data tables print cells by
 header, more count formats are read, star counts are `stars`, and vote,
 answer, view and comment counts are fields. The script runs in winuse's
 isolated world, never the Page's own.
+
+test/e2e/testdata/page-editors.html, the page behind TestPageEditors, is
+sections 1-3 of tools/qol_probe/editor.html at the commit above (plain
+controls, the placeholder composer, the remounting editor), copied as is
+but for its title and an attribution comment.

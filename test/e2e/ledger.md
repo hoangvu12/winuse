@@ -156,8 +156,13 @@ says why; no cell contains `|`.
 | `TestPostedChordFiresAWPFKeyBinding` | A posted chord fires a WPF KeyBinding on a covered Window | user | drives a WPF window hosted by Windows PowerShell, not the fixture | - | - |
 | `TestPageReadSnapshot` | The Page read snapshot matches across routes | user | starts Edge or Chrome; browsers are not the fixture | - | - |
 | `TestPageReadSnapshotExtension` | The Page read snapshot works through the extension | user | acts in the user's own browser and profile (WINUSE_E2E_USER_BROWSER) | - | - |
+| `TestPageEditors` | set-value and type-text --into reach placeholder and remounting rich-text editors and read them back without a false failure | user | starts Edge or Chrome (headless); browsers are not the fixture | - | - |
 | `TestReadGoldens` | read prints the expected Markdown for saved pages (table, article, search, misleading main, docs, a wall) | user | starts Edge or Chrome; browsers are not the fixture | - | - |
 | `TestReadCommand` | winuse read prints a Page as Markdown, with --root, --max-chars, --out, and refuses a native Window | user | starts Edge or Chrome; browsers are not the fixture | - | - |
+| `TestWallCheck` | The wall check names each wall kind on a short challenge page (Cloudflare, Turnstile, DataDome, PerimeterX, reCAPTCHA, Akamai, a 429) and no wall on a long docs page about rate limits or a login form with Turnstile; read.js and extract.js agree | user | starts Edge or Chrome; browsers are not the fixture | - | - |
+| `TestNavigateNotesAWall` | winuse navigate onto a 429 page stays ok with the wall Note, --json carries the wall field, and an ordinary page gets no Note | user | starts Edge or Chrome; browsers are not the fixture | - | - |
+| `TestHTTPStatus` | The main document's HTTP status reads right for 200, 404, 429, 503, a redirect chain and an empty-body error page | user | starts Edge or Chrome; browsers are not the fixture | - | - |
+| `TestPageActionEffects` | A Page click says what it did: no change, text only, a change in a shadow root (--json effect) and a navigation | user | starts Edge or Chrome; browsers are not the fixture | - | - |
 | `TestPostedKeysIntoClassicEdit` | Posted keys reach a covered classic Edit | runner | - | 2026-11-07, lane runs 42367421412 and 42367782401 | passed |
 | `TestPostedKeysRefusedOnBlockedAndMinimizedWindows` | Posted keys are refused on blocked and minimized Windows | runner | - | 2026-11-07, lane runs 42367421412 and 42367782401 | passed |
 | `TestPostedReturnIntoCoveredChromeAddressBar` | A posted Return reaches a covered Chrome's address bar | user | starts Chrome; browsers are not the fixture | - | - |

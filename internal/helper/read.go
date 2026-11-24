@@ -148,7 +148,7 @@ func renderMarkdown(head string, md page.Markdown, a protocol.ReadArgs) (string,
 		}
 	}
 	if md.Block != "" {
-		b.WriteString(notePrefix + "the Page looks like a " + md.Block + " wall; ask the user to handle it\n")
+		b.WriteString(protocol.WallNote(md.Block) + "\n")
 	}
 	return b.String(), nil
 }

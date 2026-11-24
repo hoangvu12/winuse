@@ -739,6 +739,12 @@ type Response struct {
 	// prints them above Out, then a blank line; under --json they are the
 	// line's own "notes" field, never part of "out".
 	Notes string `json:"notes,omitempty"`
+
+	// Effect is what a Headless Page click or key did to its Page
+	// (bladebro-ideas ticket 06): navigated, changed, text, none or
+	// unknown; "" for any other command, a Batch and a failure. Printed
+	// only under --json.
+	Effect string `json:"effect,omitempty"`
 }
 
 // ErrLineTooLarge is returned when a line exceeds MaxLine.

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<!-- A docs page that explains rate limits: long, so not a wall. Expect
+     none. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>Rate limits - Example API docs</title></head>
+<body>
+<nav><a href="/docs">Docs</a> <a href="/docs/auth">Authentication</a> <a href="/docs/errors">Errors</a></nav>
+<main>
+<h1>Rate limits</h1>
+<p>Every API key has a rate limit: the number of requests it may send in one minute. When a key goes over its rate limit, the API answers 429 Too Many Requests and a Retry-After header that says how many seconds to wait before the next request.</p>
+<h2>Limits by plan</h2>
+<table>
+  <thead><tr><th>Plan</th><th>Requests per minute</th><th>Burst</th></tr></thead>
+  <tbody>
+    <tr><td>Free</td><td>60</td><td>10</td></tr>
+    <tr><td>Team</td><td>600</td><td>100</td></tr>
+    <tr><td>Enterprise</td><td>6000</td><td>1000</td></tr>
+  </tbody>
+</table>
+<h2>Handling 429 responses</h2>
+<p>A client that receives Too Many Requests should wait for the number of seconds in Retry-After, then send the request again. Clients that retry at once keep hitting the rate limit and may be blocked for longer. We recommend exponential backoff with jitter, starting at one second and capping at one minute.</p>
+<h2>Checking your usage</h2>
+<p>Every response carries X-RateLimit-Limit, X-RateLimit-Remaining and X-RateLimit-Reset headers. Read them to slow down before you reach the limit rather than after. The usage page in the dashboard shows the last thirty days of requests per key, grouped by endpoint, so you can see which calls use most of your budget.</p>
+<h2>Raising a limit</h2>
+<p>Team and Enterprise plans can ask for a higher limit from the dashboard. Tell us the endpoints, the expected requests per minute and the reason; we answer within two working days.</p>
+</main>
+<footer>© Example API · Status · Terms · Privacy</footer>
+</body>
+</html>
