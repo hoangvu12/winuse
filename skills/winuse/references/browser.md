@@ -107,6 +107,9 @@ Window, so the user sees it only while that Window is uncovered.
 winuse navigate <window> <url>                 # open a URL in the Window's Tab (or <window>:<tab>'s), wait for the load, print the URL
 winuse back <window>                           # also forward and reload
 winuse wait <window> selector <css>            # also text <text>, url <url or *pattern*>, load
+winuse wait <window> selector .spinner --gone  # until it is gone (selector and text take --gone)
+winuse wait <window> idle                      # until the Page settles: no DOM change, no request finishing
+winuse wait <window> js "window.app?.ready"    # until the expression is true (a promise is awaited)
 winuse eval <window> <expression>              # run JavaScript in the Page, print the value
 winuse eval <window> --file x.js [--max 20000] # the expression from a file (- for stdin); a longer cut
 winuse dialog <window> accept|dismiss [text]
@@ -120,7 +123,13 @@ winuse drag <window> <element> <element|@x,y>
 - After an Action that loads or changes the Page, `wait` for what you
   expect (10 seconds by default, `--timeout <seconds>` up to 300), then
   read the Window State. A Page Element goes stale when the Page navigates
-  or the node goes away.
+  or the node goes away. `--observe` already waits up to 1 s for the Page
+  to settle before it reads, and says so in a `Note:` when the Page was
+  still changing; wait only for what takes longer.
+- `wait text` reads the Page's rendered text, its open shadow roots' and
+  its same-origin frames'. `wait js` takes any expression: a syntax error
+  fails at once, and a timeout names the last error it threw. Prefer
+  `selector` or `text` when they say it: they need no script of yours.
 - `set-value` fills a text field, picks a list option by label or value,
   and turns a check box, switch or radio button `on` or `off` (turn another
   radio button on to turn one off).

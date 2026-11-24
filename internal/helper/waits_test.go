@@ -304,6 +304,31 @@ func TestWaitTreeTextKeepsTheWindowState(t *testing.T) {
 	}
 }
 
+// TestWaitTreeTextGone: --gone waits until no Element shows the text
+// (bladebro-ideas 07), and says it in the timeout.
+func TestWaitTreeTextGone(t *testing.T) {
+	d := newWaitDesk()
+	d.trees = func(n int) *wstate.Tree {
+		tree := cannedTree()
+		if n < 3 {
+			tree.Elements = append(tree.Elements, wstate.Element{Depth: 1, Role: "text", Name: "Loading..."})
+		}
+		return tree
+	}
+	out, e := runWait(t, d, protocol.WaitArgs{Window: "101", For: "text", Value: "Loading", Gone: true})
+	if e != nil || out != okOutput || d.peeks != 3 {
+		t.Fatalf("wait text --gone = %q, %v after %d reads", out, e, d.peeks)
+	}
+	d = newWaitDesk()
+	d.trees = func(int) *wstate.Tree {
+		return &wstate.Tree{Elements: []wstate.Element{{Name: "Loading..."}}, FocusedIndex: -1}
+	}
+	_, e = runWait(t, d, protocol.WaitArgs{Window: "101", For: "text", Value: "Loading", Gone: true, TimeoutMS: 500})
+	if e == nil || !strings.HasPrefix(e.Msg, `waiting for text "Loading" to be gone in window 101: `) {
+		t.Fatalf("timeout = %v", e)
+	}
+}
+
 func TestTreeHasTextMatchesNameValueAndDescription(t *testing.T) {
 	tree := &wstate.Tree{Elements: []wstate.Element{{Name: "Open file"}, {Value: "42 kB"}, {Description: "Press F1"}}}
 	for text, want := range map[string]bool{"Open": true, "42 kB": true, "F1": true, "open": false, "Save": false} {

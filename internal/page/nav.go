@@ -254,7 +254,8 @@ func readyState(ctx context.Context, c *cdp.Client, session, state string) (bool
 func evalValue(ctx context.Context, c *cdp.Client, session, expr string, out any) error {
 	cctx, cancel := context.WithTimeout(ctx, pollCall)
 	defer cancel()
-	res, err := c.CallSession(cctx, session, "Runtime.evaluate", map[string]any{"expression": expr, "returnByValue": true, "silent": true})
+	// A promise is awaited (wait js), within the same bound.
+	res, err := c.CallSession(cctx, session, "Runtime.evaluate", map[string]any{"expression": expr, "returnByValue": true, "awaitPromise": true, "silent": true})
 	if err != nil {
 		return err
 	}
@@ -294,25 +295,67 @@ const (
 	WaitURL      = "url"
 	WaitLoadKind = "load"
 	WaitDownload = "download"
+	// WaitIdle (bladebro-ideas 07) waits for the Page to settle (Settle).
+	WaitIdle = "idle"
+	// WaitJS (bladebro-ideas 07) polls the agent's own predicate.
+	WaitJS = "js"
 )
 
-// WaitExpr builds the predicate a wait polls. The agent's value is a JSON
-// string literal in the expression.
-func WaitExpr(kind, value string) (string, error) {
+// WaitGoes reports whether a wait kind takes --gone: wait until the
+// selector or the text is gone.
+func WaitGoes(kind string) bool { return kind == WaitSelector || kind == WaitText }
+
+// waitTextJS reports whether want shows in the document's rendered text,
+// its open shadow roots' and its same-origin frames' (closed shadow roots
+// and cross-origin frames are out of a page script's reach).
+const waitTextJS = `const inRoot = (root, depth) => {
+    if (depth > 8 || !root) return false;
+    if (root.nodeType === 9) {
+      if (root.body && (root.body.innerText || '').includes(want)) return true;
+    } else {
+      for (const n of root.childNodes) {
+        if (n.nodeType === 3 && n.data.includes(want)) return true;
+        if (n.nodeType === 1 && n.tagName !== 'STYLE' && n.tagName !== 'SCRIPT' && (n.innerText ?? n.textContent ?? '').includes(want)) return true;
+      }
+    }
+    for (const el of root.querySelectorAll('*')) {
+      if (el.shadowRoot && inRoot(el.shadowRoot, depth + 1)) return true;
+      if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') {
+        let d = null;
+        try { d = el.contentDocument; } catch (e) {}
+        if (d && inRoot(d, depth + 1)) return true;
+      }
+    }
+    return false;
+  };
+  return inRoot(document, 0)`
+
+// WaitExpr builds the predicate a wait polls; gone (selector and text
+// only) waits for it to stop holding. The agent's value is a JSON string
+// literal in the expression, but for js, whose value is the agent's own
+// expression.
+func WaitExpr(kind, value string, gone bool) (string, error) {
 	lit, _ := json.Marshal(value)
+	if gone && !WaitGoes(kind) {
+		return "", fmt.Errorf("--gone goes with wait selector and wait text, not wait %s", kind)
+	}
+	not := ""
+	if gone {
+		not = "!"
+	}
 	switch kind {
 	case WaitSelector:
 		if strings.TrimSpace(value) == "" {
 			return "", errors.New("wait selector needs a CSS selector")
 		}
-		return `(() => { /* winuse:wait-selector */ const el = document.querySelector(` + string(lit) + `); if (!el) return false;
+		return `(() => { /* winuse:wait-selector */ const shows = () => { const el = document.querySelector(` + string(lit) + `); if (!el) return false;
   const r = el.getBoundingClientRect(), s = getComputedStyle(el);
-  return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; })()`, nil
+  return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; }; return ` + not + `shows(); })()`, nil
 	case WaitText:
 		if value == "" {
 			return "", errors.New("wait text needs the text to wait for")
 		}
-		return `(() => { /* winuse:wait-text */ return !!document.body && document.body.innerText.includes(` + string(lit) + `); })()`, nil
+		return `(() => { /* winuse:wait-text */ const want = ` + string(lit) + `; const shows = () => { ` + waitTextJS + `; }; return ` + not + `shows(); })()`, nil
 	case WaitURL:
 		if strings.TrimSpace(value) == "" {
 			return "", errors.New("wait url needs a URL, part of one, or a pattern with *")
@@ -330,24 +373,65 @@ func WaitExpr(kind, value string) (string, error) {
 			return `/* winuse:wait-load */ document.readyState !== 'loading'`, nil
 		}
 		return `/* winuse:wait-load */ document.readyState === 'complete'`, nil
+	case WaitJS:
+		if strings.TrimSpace(value) == "" {
+			return "", errors.New("wait js needs a JavaScript expression that turns true")
+		}
+		// The expression sits in the wrapper's source, so a syntax error
+		// fails the first poll (Poll: at once); what it throws when it runs
+		// is caught and kept for the timeout's message. The line break
+		// ends a trailing // comment.
+		return `(async () => { /* winuse:wait-js */ try { return { ok: !!(await (` + value + `
+)) }; } catch (e) { return { threw: String(e) || 'an error' }; } })()`, nil
 	}
-	return "", fmt.Errorf("unknown wait %q: wait for a selector, text, url, load or download", kind)
+	return "", fmt.Errorf("unknown wait %q: wait for a selector, text, url, load, idle, js or download", kind)
 }
 
-// WaitTimeoutError is a wait whose condition never held in time.
-type WaitTimeoutError struct{ After time.Duration }
+// WaitTimeoutError is a wait whose condition never held in time; Threw is
+// the last error a wait js predicate threw.
+type WaitTimeoutError struct {
+	After time.Duration
+	Threw string
+}
 
 func (e *WaitTimeoutError) Error() string {
-	return fmt.Sprintf("the condition did not hold within %s", e.After.Round(100*time.Millisecond))
+	msg := fmt.Sprintf("the condition did not hold within %s", e.After.Round(100*time.Millisecond))
+	if e.Threw != "" {
+		msg += "; the last time it ran it threw " + e.Threw
+	}
+	return msg
+}
+
+// pollAnswer is one poll's value: a boolean, or wait js's {ok} or
+// {threw}.
+type pollAnswer struct {
+	ok    bool
+	threw string
+}
+
+func (a *pollAnswer) UnmarshalJSON(b []byte) error {
+	if json.Unmarshal(b, &a.ok) == nil {
+		return nil
+	}
+	var o struct {
+		OK    bool   `json:"ok"`
+		Threw string `json:"threw"`
+	}
+	if err := json.Unmarshal(b, &o); err != nil {
+		return err
+	}
+	a.ok, a.threw = o.OK, o.Threw
+	return nil
 }
 
 // Poll evaluates expr until it is true. It fails at once on an expression
-// that throws on the first poll (an invalid selector), and stops at the
-// Esc stop (ErrStopped), a dialog (*DialogOpenError) or ctx's end
-// (*WaitTimeoutError). A poll that meets a navigation (the context is
-// gone) counts as false.
+// that throws on the first poll (an invalid selector, a wait js syntax
+// error), and stops at the Esc stop (ErrStopped), a dialog
+// (*DialogOpenError) or ctx's end (*WaitTimeoutError). A poll that meets a
+// navigation (the context is gone) counts as false.
 func Poll(ctx context.Context, c *cdp.Client, session, expr string, stopped func() bool) error {
 	start := time.Now()
+	threw := ""
 	for first := true; ; first = false {
 		if stopped != nil && stopped() {
 			return ErrStopped
@@ -355,12 +439,14 @@ func Poll(ctx context.Context, c *cdp.Client, session, expr string, stopped func
 		if d := OpenDialog(c, session); d != nil {
 			return &DialogOpenError{Dialog: *d}
 		}
-		var ok bool
-		err := evalValue(ctx, c, session, expr, &ok)
+		var a pollAnswer
+		err := evalValue(ctx, c, session, expr, &a)
 		var ee *EvalError
 		switch {
-		case err == nil && ok:
+		case err == nil && a.ok:
 			return nil
+		case err == nil && a.threw != "":
+			threw = a.threw
 		case errors.As(err, &ee) && first:
 			return err
 		case err != nil && !c.Alive():
@@ -368,7 +454,7 @@ func Poll(ctx context.Context, c *cdp.Client, session, expr string, stopped func
 		}
 		select {
 		case <-ctx.Done():
-			return &WaitTimeoutError{After: time.Since(start)}
+			return &WaitTimeoutError{After: time.Since(start), Threw: threw}
 		case <-time.After(pollEvery):
 		}
 	}

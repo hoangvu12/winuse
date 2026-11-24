@@ -98,7 +98,7 @@ var tabTargetCommands = map[string]bool{
 const tabTargetsWord = "get-window-state, click, set-value, scroll, hover, drag, select-text, type-text, press-key, upload, navigate, back, forward, reload, dialog, wait, eval and batch"
 
 // pageWaitKinds are the waits a Tab target takes: the Page's.
-var pageWaitKinds = map[string]bool{page.WaitLoadKind: true, page.WaitURL: true, page.WaitDownload: true, "selector": true, "text": true}
+var pageWaitKinds = map[string]bool{page.WaitLoadKind: true, page.WaitURL: true, page.WaitDownload: true, page.WaitSelector: true, page.WaitText: true, page.WaitIdle: true, page.WaitJS: true}
 
 // bgTab is the Tab a command names as <window>:<tab>, resolved and held
 // before the command runs.

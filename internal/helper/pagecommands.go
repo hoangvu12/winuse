@@ -804,9 +804,18 @@ func pageWait(s Services) Command {
 		}
 		kind := strings.ToLower(strings.TrimSpace(a.For))
 		var expr string
-		if kind != page.WaitDownload {
+		switch kind {
+		case page.WaitDownload:
+		case page.WaitIdle:
+			if strings.TrimSpace(a.Value) != "" {
+				return "", Fail("wait: wait idle takes no value", waitUsageHint)
+			}
+			if a.Gone {
+				return "", Fail("wait: --gone goes with wait selector and wait text, not wait idle", waitUsageHint)
+			}
+		default:
 			var err error
-			if expr, err = page.WaitExpr(kind, a.Value); err != nil {
+			if expr, err = page.WaitExpr(kind, a.Value, a.Gone); err != nil {
 				return "", Fail("wait: "+err.Error(), waitUsageHint)
 			}
 		}
@@ -822,8 +831,11 @@ func pageWait(s Services) Command {
 			act: func(ctx context.Context, pw pageWin, stopped func() bool) (string, bool, *Error) {
 				wctx, cancel := pageWaitContext(ctx, want)
 				defer cancel()
-				if kind == page.WaitDownload {
+				switch kind {
+				case page.WaitDownload:
 					return s.waitDownload(wctx, pw, stopped)
+				case page.WaitIdle:
+					return waitIdle(wctx, pw, want, stopped)
 				}
 				id := pw.id()
 				err := page.Poll(wctx, pw.conn.Client, pw.session, expr, stopped)
@@ -836,7 +848,7 @@ func pageWait(s Services) Command {
 				case errors.Is(err, page.ErrStopped):
 					return "", false, escStopBeforeActError()
 				case errors.As(err, &timeout):
-					return "", false, Fail(fmt.Sprintf("waiting for %s in window %d: %s", waitWhat(kind, a.Value), pw.w.ID, timeout.Error()),
+					return "", false, Fail(fmt.Sprintf("waiting for %s in window %d: %s", waitWhat(kind, a.Value, a.Gone), pw.w.ID, timeout.Error()),
 						"the page may need another Action first; read winuse get-window-state "+id+" (wait takes --timeout <seconds>, up to 300)")
 				case errors.As(err, &bad):
 					return "", false, Fail(fmt.Sprintf("wait: the %s cannot be checked: %s", kind, bad.Msg), waitUsageHint)
@@ -849,6 +861,26 @@ func pageWait(s Services) Command {
 	}
 }
 
+// waitIdle is `wait <window> idle`: the settle --observe runs
+// (page.Settle), bounded by the wait.
+func waitIdle(ctx context.Context, pw pageWin, want time.Duration, stopped func() bool) (string, bool, *Error) {
+	id := pw.id()
+	r, err := page.Settle(ctx, pw.conn.Client, pw.session, want, stopped)
+	var dialog *page.DialogOpenError
+	switch {
+	case err == nil && r.Settled:
+		return okOutput, false, nil
+	case err == nil:
+		return "", false, Fail(fmt.Sprintf("waiting for the page to settle in window %d: it did not within %s: %s", pw.w.ID, r.After.Round(100*time.Millisecond), r.Busy),
+			"read it now with winuse get-window-state "+id+", or wait for what you need: winuse wait "+id+" selector <css> or text <text> (wait takes --timeout <seconds>, up to 300)")
+	case errors.Is(err, page.ErrStopped):
+		return "", false, escStopBeforeActError()
+	case errors.As(err, &dialog):
+		return "", false, nothingSent(dialogOpenError(pw.w, dialog.Dialog))
+	}
+	return "", false, Fail(fmt.Sprintf("waiting in window %d failed: %v", pw.w.ID, err), "run winuse browser status "+pw.name)
+}
+
 // waitBrowserPage lets wait download run on a browser page; every other
 // wait is refused there (nil: browserPageError).
 func waitBrowserPage(kind string) func(pageWin) *Error {
@@ -859,7 +891,13 @@ func waitBrowserPage(kind string) func(pageWin) *Error {
 }
 
 // waitWhat names what a wait waited for.
-func waitWhat(kind, value string) string {
+func waitWhat(kind, value string, gone bool) string {
+	switch {
+	case gone:
+		return fmt.Sprintf("%s %q to be gone", kind, value)
+	case kind == page.WaitJS:
+		return fmt.Sprintf("%q to be true", value)
+	}
 	switch kind {
 	case page.WaitLoadKind:
 		if value == "" {

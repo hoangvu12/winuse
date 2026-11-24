@@ -20,7 +20,7 @@ func PageUsage(cmd string) string {
 	case "dialog":
 		return "usage: winuse dialog <window> accept|dismiss [text]   (text answers a prompt)"
 	case "wait":
-		return "usage: winuse wait <window> selector <css> | text <text> | url <url or pattern with *> | load [domcontentloaded] | download   [--timeout <seconds>]\n" +
+		return "usage: winuse wait <window> selector <css> [--gone] | text <text> [--gone] | url <url or pattern with *> | load [domcontentloaded] | idle | js <expression> | download   [--timeout <seconds>]\n" +
 			"       winuse wait <window> <element index | name: | id:> enabled | disabled | gone | value <value> | checked | unchecked | expanded | collapsed   [--timeout <seconds>]\n" +
 			"       winuse wait window <app or title> [--gone] [--timeout <seconds>]\n" +
 			"       winuse wait notification [--app <name>] [--text <text>] [--timeout <seconds>]\n" +
@@ -59,7 +59,8 @@ type DialogArgs struct {
 }
 
 // WaitArgs are wait's arguments: what to wait for (selector, text, url,
-// load or download), its value, and a timeout in milliseconds (0: the
+// load, idle, js or download; bladebro-ideas 07 added idle and js, and
+// Gone for selector and text), its value, and a timeout in milliseconds (0: the
 // default; capped by the request budget, which the CLI widens to the
 // timeout plus WaitMargin through Request.TimeoutMS).
 //
@@ -79,7 +80,7 @@ type WaitArgs struct {
 	Value     string `json:"value,omitempty"`
 	TimeoutMS int    `json:"timeout_ms,omitempty"`
 
-	Gone         bool   `json:"gone,omitempty"`          // window: wait until no such Window is left
+	Gone         bool   `json:"gone,omitempty"`          // window, selector, text: wait until no such Window, element or text is left
 	ElementIndex *int   `json:"element_index,omitempty"` // element: the Element, from the Window's latest Window State
 	Ref          string `json:"ref,omitempty"`           // element: name:<text> or id:<AutomationId>
 	State        string `json:"state,omitempty"`         // element: one of WaitStates

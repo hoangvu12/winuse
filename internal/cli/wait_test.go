@@ -29,6 +29,12 @@ func TestParseWaitCommand(t *testing.T) {
 		{[]string{"101", "5", "value", ""}, protocol.WaitArgs{Window: "101", For: "element", ElementIndex: &five, State: "value"}},
 		{[]string{"101", "5", "gone"}, protocol.WaitArgs{Window: "101", For: "element", ElementIndex: &five, State: "gone"}},
 		{[]string{"notepad", "selector", "#a"}, protocol.WaitArgs{Window: "notepad", For: "selector", Value: "#a"}},
+		// bladebro-ideas 07: idle, js and --gone.
+		{[]string{"101", "idle"}, protocol.WaitArgs{Window: "101", For: "idle"}},
+		{[]string{"101", "idle", "--timeout", "5"}, protocol.WaitArgs{Window: "101", For: "idle", TimeoutMS: 5000}},
+		{[]string{"101", "js", "window.app", "&&", "app.ready"}, protocol.WaitArgs{Window: "101", For: "js", Value: "window.app && app.ready"}},
+		{[]string{"101", "selector", ".spinner", "--gone"}, protocol.WaitArgs{Window: "101", For: "selector", Value: ".spinner", Gone: true}},
+		{[]string{"101", "text", "--gone", "Loading", "now"}, protocol.WaitArgs{Window: "101", For: "text", Value: "Loading now", Gone: true}},
 	}
 	for _, c := range cases {
 		got, err := parseWaitCommand(c.args)
@@ -60,7 +66,11 @@ func TestParseWaitCommandErrors(t *testing.T) {
 		{[]string{"101", "5", "enabled", "now"}, "takes nothing after it"},
 		{[]string{"101", "5", "value"}, "needs the value to wait for"},
 		{[]string{"101", "name:Save", "As", "enabled"}, `quote it, e.g. "name:Save As"`},
-		{[]string{"101", "idle"}, `not "idle"`},
+		{[]string{"101", "networkidle"}, `not "networkidle"`},
+		{[]string{"101", "idle", "now"}, "wait idle takes no value"},
+		{[]string{"101", "js"}, "wait js needs a value"},
+		{[]string{"101", "url", "x", "--gone"}, "--gone goes with wait selector and wait text"},
+		{[]string{"101", "5", "enabled", "--gone"}, "--gone goes with wait selector and wait text"},
 		{[]string{"101", "-3", "enabled"}, `not "-3"`},
 	} {
 		_, err := parseWaitCommand(c.args)

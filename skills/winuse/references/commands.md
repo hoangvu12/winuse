@@ -38,7 +38,7 @@ move-window <window> <x> <y> | resize-window <window> <width> <height>
 maximize-window <window>            # needs --headed: takes the foreground
 batch <window>|- [--timeout <s>] [--stop-on-error] [in <window>|new] <action> [args] [then ...]
 navigate <window> <url> [--wait load|domcontentloaded|none] | back | forward | reload <window>
-wait <window> selector <css> | text <text> | url <url> | load | download [--timeout <s>]
+wait <window> selector <css> [--gone] | text <text> [--gone] | url <url> | load | idle | js <expr> | download [--timeout <s>]
 wait <window> <ref> enabled|disabled|gone|value <v>|checked|unchecked|expanded|collapsed [--timeout <s>]
 wait window <app|title> [--gone] [--timeout <s>] | wait <ms>
 eval <window> <expression> | --file <path|-> [--max <n>] | dialog <window> accept|dismiss [text]
