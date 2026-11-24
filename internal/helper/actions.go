@@ -89,37 +89,11 @@ func click(s Services) Command {
 		if err := parseArgs(args, &a); err != nil {
 			return "", Fail("click: "+err.Error(), clickUsageHint)
 		}
-		count := a.ClickCount
-		if count == 0 {
-			count = 1
+		in, ierr := clickInputOf(a)
+		if ierr != nil {
+			return "", ierr
 		}
-		if count < 1 || count > 3 {
-			return "", Fail("click_count must be 1, 2 or 3", "1 clicks, 2 double-clicks, 3 triple-clicks")
-		}
-		button, ok := parseMouseButton(a.MouseButton)
-		if !ok {
-			return "", Fail("unsupported mouse_button: "+a.MouseButton,
-				"mouse_button is one of left, right, middle (aliases: l, r, m)")
-		}
-		if button != win.MouseLeft && count > 1 {
-			// Codex: "right double click is not supported" — extended to
-			// the middle button and triple clicks.
-			return "", Fail(fmt.Sprintf("%s %s click is not supported", buttonWord(button), clickWord(count)), "")
-		}
-
-		// Modifiers held during the click (desktop-parity ticket 06,
-		// modifiers.go).
-		mods, merr := win.ParseModifiers(a.Modifiers)
-		if merr != nil {
-			return "", Fail("click: "+merr.Error(), clickUsageHint)
-		}
-
-		// Exactly one Element Reference form: an Element Index, a name:/id:
-		// reference, or @x,y coordinates (the shared guard, finding 16).
-		target, terr := parseElementTarget("click", a.ElementIndex, a.Ref, a.Point, clickUsageHint)
-		if terr != nil {
-			return "", terr
-		}
+		count, button, mods, target := in.count, in.button, in.mods, in.target
 		if a.Post {
 			// Posted Clicks to the classic control there, opt-in
 			// (headless-max ticket 12, postclick.go).
@@ -252,6 +226,52 @@ func click(s Services) Command {
 			return okOutput, nil
 		})
 	}
+}
+
+// clickInput is click's arguments, checked: the click count (1 when not
+// given), the button, the held modifiers and the Element Reference.
+type clickInput struct {
+	count  int
+	button win.MouseButton
+	mods   win.Modifiers
+	target elementTarget
+}
+
+// clickInputOf checks click's arguments alone, before anything resolves:
+// the count, the button and the two together, the modifiers, and one
+// Element Reference form. A Batch runs it on a click step while it
+// prepares (batchcheck.go).
+func clickInputOf(a protocol.ClickArgs) (clickInput, *Error) {
+	count := a.ClickCount
+	if count == 0 {
+		count = 1
+	}
+	if count < 1 || count > 3 {
+		return clickInput{}, Fail("click_count must be 1, 2 or 3", "1 clicks, 2 double-clicks, 3 triple-clicks")
+	}
+	button, ok := parseMouseButton(a.MouseButton)
+	if !ok {
+		return clickInput{}, Fail("unsupported mouse_button: "+a.MouseButton,
+			"mouse_button is one of left, right, middle (aliases: l, r, m)")
+	}
+	if button != win.MouseLeft && count > 1 {
+		// Codex: "right double click is not supported" — extended to
+		// the middle button and triple clicks.
+		return clickInput{}, Fail(fmt.Sprintf("%s %s click is not supported", buttonWord(button), clickWord(count)), "")
+	}
+	// Modifiers held during the click (desktop-parity ticket 06,
+	// modifiers.go).
+	mods, merr := win.ParseModifiers(a.Modifiers)
+	if merr != nil {
+		return clickInput{}, Fail("click: "+merr.Error(), clickUsageHint)
+	}
+	// Exactly one Element Reference form: an Element Index, a name:/id:
+	// reference, or @x,y coordinates (the shared guard, finding 16).
+	target, terr := parseElementTarget("click", a.ElementIndex, a.Ref, a.Point, clickUsageHint)
+	if terr != nil {
+		return clickInput{}, terr
+	}
+	return clickInput{count: count, button: button, mods: mods, target: target}, nil
 }
 
 // activateWindow runs `winuse activate-window <window>`: the shared

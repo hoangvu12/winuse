@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/hoangvu12/winuse/internal/version"
+	"github.com/hoangvu12/winuse/internal/win"
 )
 
 const updateUsage = "usage: winuse update [--to <version>] [--no-skill]"
@@ -35,13 +36,13 @@ var (
 	probeVersion = func(exe string) (string, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		out, err := exec.CommandContext(ctx, exe, "version").Output()
+		out, err := win.NoConsoleWindow(exec.CommandContext(ctx, exe, "version")).Output()
 		return strings.TrimSpace(string(out)), err
 	}
 	// installSkillWith runs exe's `skill install <dir>`, so the skill
 	// written is the one the new binary carries.
 	installSkillWith = func(exe, dir string) error {
-		out, err := exec.Command(exe, "skill", "install", dir).CombinedOutput()
+		out, err := win.NoConsoleWindow(exec.Command(exe, "skill", "install", dir)).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
 		}

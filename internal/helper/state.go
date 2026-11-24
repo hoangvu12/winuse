@@ -367,6 +367,10 @@ type Services struct {
 	tabHolds  *tabHolds
 	tabStates *tabStateStore
 
+	// assetBlocks are the Tabs tab new opened and what each blocking Tab
+	// blocks (assets.go, bladebro-ideas 28). Created by defaultServices.
+	assetBlocks *assetBlocks
+
 	// The Notes a Window State shows (ADR 0024, windownotes.go): NoteStore
 	// opens the Notes store, nil showing none (offline tests that do not
 	// set a temp store; Main wires notes.Default); notesSeen is the keys
@@ -934,6 +938,9 @@ func defaultServices(s Services) Services {
 	if s.tabStates == nil {
 		s.tabStates = newTabStateStore()
 	}
+	if s.assetBlocks == nil {
+		s.assetBlocks = newAssetBlocks()
+	}
 	if s.notesSeen == nil {
 		s.notesSeen = newNotesSeen()
 	}
@@ -999,17 +1006,13 @@ func getWindowState(s Services, ctx context.Context, args json.RawMessage) (stri
 	if err := parseArgs(args, &a); err != nil {
 		return "", Fail("get-window-state: "+err.Error(), "run winuse get-window-state <window> [--screenshot] [--timeout <seconds>]")
 	}
+	if ferr := windowStateInput(a); ferr != nil {
+		return "", ferr
+	}
 	ctx = uia.WithSettle(ctx, stateSettle(ctx))
 	w, rerr := resolveWindow(s, a.Window)
 	if rerr != nil {
 		return "", rerr
-	}
-	if a.Screenshot && (a.Root != "" || a.Skeleton) {
-		return "", Fail("get-window-state: --screenshot goes with a full read, not --root or --skeleton", windowStateUsage)
-	}
-	if a.Diff && (a.Root != "" || a.Skeleton) {
-		return "", Fail("get-window-state: --diff compares a full read with your last one; --root and --skeleton read part of the Window",
-			"drop --diff to read the part, or --root/--skeleton to diff the whole Window")
 	}
 	if out, serr, ok := windowStateShape(s, ctx, w, a); ok {
 		if serr != nil {
@@ -1036,6 +1039,30 @@ func getWindowState(s Services, ctx context.Context, args json.RawMessage) (stri
 	return s.stateWithNotes(ctx, a, s.stateNoteKeys(w, pageURL), func(a windowRef) (string, *Error) {
 		return renderState(tree, a, strconv.FormatUint(w.ID, 10), before, what)
 	})
+}
+
+// windowStateInput checks get-window-state's flags alone, before the
+// Window resolves: the ones a read cannot take together (budgetError, the
+// partial reads' and --screenshot's and --diff's). A Batch runs it on a
+// get-window-state step while it prepares (batchcheck.go).
+func windowStateInput(a windowRef) *Error {
+	if e := budgetError(a); e != nil {
+		return e
+	}
+	switch {
+	case a.Screenshot && (a.Root != "" || a.Skeleton):
+		return Fail("get-window-state: --screenshot goes with a full read, not --root or --skeleton", windowStateUsage)
+	case a.Diff && (a.Root != "" || a.Skeleton):
+		return Fail("get-window-state: --diff compares a full read with your last one; --root and --skeleton read part of the Window",
+			"drop --diff to read the part, or --root/--skeleton to diff the whole Window")
+	case a.Skeleton && a.Root != "":
+		return Fail("get-window-state: --skeleton reads the whole Window and --root one Element; pass one", windowStateUsage)
+	case a.Skeleton && a.Depth != 0:
+		return Fail(fmt.Sprintf("get-window-state: --skeleton reads %d levels; --depth goes with a full read or --root <element>", uia.SkeletonDepth), windowStateUsage)
+	case a.Root != "" && (a.Compact || a.Out != ""):
+		return Fail("get-window-state: --compact and --out shape a full read; --root takes --depth, --interactive, --max-chars and --full", windowStateUsage)
+	}
+	return nil
 }
 
 // baselineOf is what a read of w compares with: the Agent's latest Window
