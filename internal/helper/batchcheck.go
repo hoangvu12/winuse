@@ -28,7 +28,7 @@ import (
 // (protocol.BatchStepKinds), by kind: each takes the step's prepared
 // arguments (its Window and the Batch's headed injected). nil is a step
 // with nothing to check but its Window.
-var stepChecks = map[string]func(raw json.RawMessage) *Error{
+var stepChecks = withNavChecks(map[string]func(raw json.RawMessage) *Error{
 	"click": argsCheck(func(a protocol.ClickArgs) *Error {
 		_, e := clickInputOf(a)
 		return e
@@ -63,10 +63,6 @@ var stepChecks = map[string]func(raw json.RawMessage) *Error{
 	"tab-close":   tabCheck("tab-close", true),
 	"tab-switch":  tabCheck("tab-switch", true),
 	"tab-list":    tabCheck("tab-list", false),
-	"navigate":    navCheck("navigate"),
-	"back":        navCheck("back"),
-	"forward":     navCheck("forward"),
-	"reload":      navCheck("reload"),
 	"upload":      argsCheck(uploadInput),
 	"dialog":      argsCheck(func(a protocol.DialogArgs) *Error { _, e := dialogInput(a); return e }),
 	"wait":        argsCheck(waitInput),
@@ -77,6 +73,14 @@ var stepChecks = map[string]func(raw json.RawMessage) *Error{
 	// it acted, too.
 	"get-window-state": argsCheck(windowStateInput),
 	"find":             argsCheck(findInput),
+})
+
+// withNavChecks adds navCheck for each of protocol.NavCommands.
+func withNavChecks(m map[string]func(raw json.RawMessage) *Error) map[string]func(raw json.RawMessage) *Error {
+	for _, cmd := range protocol.NavCommands {
+		m[cmd] = navCheck(cmd)
+	}
+	return m
 }
 
 // checkStep runs one prepared step's static checks: nil when its values
