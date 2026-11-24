@@ -338,6 +338,48 @@ func TestTreeHasTextMatchesNameValueAndDescription(t *testing.T) {
 	}
 }
 
+// TestWaitTreeTextMatchesAcrossLineBreaks (bladebro-ideas 21): the Window
+// State prints every Element on one line, its line breaks as spaces, so a
+// text wait matches as printed: a line break in the wanted text or in the
+// Element is one space, CRLF and CR alike.
+func TestWaitTreeTextMatchesAcrossLineBreaks(t *testing.T) {
+	tree := &wstate.Tree{Elements: []wstate.Element{
+		{Role: "document", Name: "Text editor", Value: "Museum visit notes\r\rOpens at 9:30.\rNo flash photography."},
+		{Role: "text", Name: "Saved\r\n3 files"},
+	}, FocusedIndex: -1}
+	for text, want := range map[string]bool{
+		"Opens at 9:30.\nNo flash":        true, // LF wanted, CR stored
+		"Opens at 9:30.\r\nNo flash":      true,
+		"notes Opens at":                  true, // as the tree prints it: two breaks, one space
+		"notes\n\nOpens":                  true,
+		"Saved 3 files":                   true,
+		"Saved\n3":                        true,
+		"Opens at 9:30.\nYes flash":       false,
+		"Museum visit notesOpens":         false, // a line break is no nothing
+		"Opens at 9:30. No flash cameras": false,
+	} {
+		if got := treeHasText(tree, text); got != want {
+			t.Errorf("%q: %v, want %v", text, got, want)
+		}
+	}
+
+	d := newWaitDesk()
+	d.trees = func(n int) *wstate.Tree {
+		if n < 3 {
+			return cannedTree()
+		}
+		return tree
+	}
+	out, e := runWait(t, d, protocol.WaitArgs{Window: "101", For: "text", Value: "9:30.\nNo flash"})
+	if e != nil || out != okOutput || d.peeks != 3 {
+		t.Fatalf("wait text with a line break = %q, %v after %d reads", out, e, d.peeks)
+	}
+	// Text that is only blanks and line breaks waits for nothing.
+	if _, e := runWait(t, newWaitDesk(), protocol.WaitArgs{Window: "101", For: "text", Value: " \r\n "}); e == nil || !strings.Contains(e.Msg, "needs the text to wait for") {
+		t.Errorf("blank text = %v, want refused", e)
+	}
+}
+
 func TestWaitTreeTextWindowClosed(t *testing.T) {
 	d := newWaitDesk()
 	d.trees = func(int) *wstate.Tree { return cannedTree() }
@@ -434,6 +476,33 @@ func TestWaitElementReachesEachState(t *testing.T) {
 		if d.holds != 1 || d.held[0] != 4 || d.release != 1 || d.reads != 3 {
 			t.Errorf("%s: holds %d of %v, releases %d, reads %d: want element 4 held once, read 3 times, released", c.state, d.holds, d.held, d.release, d.reads)
 		}
+	}
+}
+
+// TestWaitElementValueIgnoresLineBreaks (bladebro-ideas 21): Windows 11
+// Notepad's editor stores CR only, so a multi-line value waited for with
+// LF or CRLF line breaks holds once the text is there, as set-value's
+// read-back does (internal/linebreak).
+func TestWaitElementValueIgnoresLineBreaks(t *testing.T) {
+	for _, want := range []string{"a\nb\nc", "a\r\nb\r\nc", "a\rb\rc"} {
+		d := newWaitDesk()
+		d.states = func(n int) (uia.ElementState, error) {
+			if n < 2 {
+				return uia.ElementState{HasValue: true, Value: "a"}, nil
+			}
+			return uia.ElementState{HasValue: true, Value: "a\rb\rc"}, nil
+		}
+		out, e := runWait(t, d, protocol.WaitArgs{Window: "101", For: "element", ElementIndex: intp(2), State: "value", Value: want, TimeoutMS: 1000})
+		if e != nil || out != okOutput || d.reads != 2 {
+			t.Errorf("value %q over Notepad's %q = %q, %v after %d reads", want, "a\rb\rc", out, e, d.reads)
+		}
+	}
+	// Line breaks aside, the value is still compared exactly.
+	d := newWaitDesk()
+	d.states = func(int) (uia.ElementState, error) { return uia.ElementState{HasValue: true, Value: "a\rb"}, nil }
+	_, e := runWait(t, d, protocol.WaitArgs{Window: "101", For: "element", ElementIndex: intp(2), State: "value", Value: "a b", TimeoutMS: 500})
+	if e == nil || !strings.Contains(e.Msg, `it reads "a\rb"`) {
+		t.Errorf("a line break is no space in a value: %v", e)
 	}
 }
 

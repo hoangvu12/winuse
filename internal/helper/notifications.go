@@ -155,10 +155,12 @@ func toastsIn(tree *wstate.Tree, window uint64) []notification {
 
 // notificationMatches reports whether a notification passes the filters:
 // app in its sender's name, text in its title or text, any part, without
-// case. Empty filters pass everything.
+// case. Empty filters pass everything. The filters are whitespace-
+// collapsed as the toast's fields are, so a line break in text matches
+// the space its lines print joined by (bladebro-ideas 21).
 func notificationMatches(n notification, app, text string) bool {
 	has := func(s, part string) bool { return strings.Contains(strings.ToLower(s), strings.ToLower(part)) }
-	app, text = strings.TrimSpace(app), strings.TrimSpace(text)
+	app, text = wstate.Collapse(app), wstate.Collapse(text)
 	return (app == "" || has(n.App, app)) && (text == "" || has(n.Title, text) || has(n.Text, text))
 }
 
