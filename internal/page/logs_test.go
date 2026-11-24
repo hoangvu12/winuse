@@ -55,7 +55,7 @@ func TestLogEnableReplaysTheEntriesFromBefore(t *testing.T) {
 		logEntry(early, "network", "error", notFound, "https://site.test/api/save"),
 		logEntry(early.Add(time.Second), "security", "error", "Refused to load the image 'https://x.test/a.png' because it violates the following Content Security Policy directive: \"img-src 'self'\".", ""))
 	l := WatchLog(context.Background(), f.c, "S", "T1")
-	l.Settle(context.Background())
+	l.WaitReplay(context.Background())
 	got := l.Entries()
 	if len(got) != 2 || got[0].Source != "network" || got[0].URL != "https://site.test/api/save" || got[1].Source != "security" || got[1].Level != "error" {
 		t.Fatalf("entries %+v", got)
@@ -85,7 +85,7 @@ func TestLogEnableReplaysTheEntriesFromBefore(t *testing.T) {
 func TestTabLogKeepsTheLast50NewestLast(t *testing.T) {
 	f := newFakeTab(t)
 	l := WatchLog(context.Background(), f.c, "S", "T1")
-	l.Settle(context.Background())
+	l.WaitReplay(context.Background())
 	base := time.Now()
 	for i := 0; i < LogRingSize+10; i++ {
 		f.srv.Event("S", "Log.entryAdded", logEntry(base.Add(time.Duration(i)*time.Millisecond), "network", "error", fmt.Sprintf("e%d", i), ""))
@@ -139,7 +139,7 @@ func TestTabLogIsPerTab(t *testing.T) {
 	if again := WatchLog(context.Background(), f.c, "S3", "T1"); again != one {
 		t.Fatal("a new session of Tab 1 got a log of its own")
 	}
-	one.Settle(context.Background())
+	one.WaitReplay(context.Background())
 	got := one.Entries()
 	if len(got) != 2 || got[0].URL != "https://a.test/x" || got[1].URL != "https://a.test/y" {
 		t.Errorf("after the replay: %+v", got)
@@ -182,7 +182,7 @@ func TestTabLogClear(t *testing.T) {
 	old := time.Now().Add(-time.Minute)
 	replayOn(f.srv, logEntry(old, "network", "error", notFound, "https://a.test/x"))
 	l := WatchLog(context.Background(), f.c, "S", "T1")
-	l.Settle(context.Background())
+	l.WaitReplay(context.Background())
 	if len(l.Entries()) != 1 {
 		t.Fatalf("entries %+v", l.Entries())
 	}
@@ -200,7 +200,7 @@ func TestTabLogClear(t *testing.T) {
 	// A browser that kept its store (Log.clear failed) replays the old
 	// entry to a new session: it stays cleared.
 	WatchLog(context.Background(), f.c, "S2", "T1")
-	l.Settle(context.Background())
+	l.WaitReplay(context.Background())
 	f.srv.Event("S2", "Log.entryAdded", logEntry(time.Now().Add(time.Millisecond), "network", "error", "new", ""))
 	waitFor(t, "the new entry", func() bool { return len(l.Entries()) == 1 })
 	if got := l.Entries(); got[0].Text != "new" {
@@ -222,7 +222,7 @@ func TestWatchLogWithoutASession(t *testing.T) {
 	if WatchLog(context.Background(), f.c, "S", "T1") != l {
 		t.Fatal("the attached Tab got another log")
 	}
-	l.Settle(context.Background())
+	l.WaitReplay(context.Background())
 	if got := l.Since(m); len(got) != 1 {
 		t.Errorf("since the mark: %+v", got)
 	}

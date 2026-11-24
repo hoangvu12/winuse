@@ -334,7 +334,7 @@ func logsCommand(s Services) Command {
 					cancel()
 					view.capturing, view.uncovered = true, ok && !covered
 				}
-				l.Settle(ctx) // the replay of a session turned on just now
+				l.WaitReplay(ctx) // the replay of a session turned on just now
 				list := l.Entries()
 				if a.Clear {
 					l.Clear(ctx)

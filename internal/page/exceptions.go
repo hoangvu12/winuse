@@ -22,7 +22,7 @@ package page
 //     It turns the Page domain on (without it Chrome runs neither script
 //     in a new document) and installs in a session once, and again after
 //     the extension's
-//     silent idle detach (logEnableAgain), removing the old scripts first.
+//     silent idle detach (enableAgain), removing the old scripts first.
 //     The event name stays the Tab's, so a Page loaded under an earlier
 //     session still reaches the new buffer (exceptions_world.js asks).
 //   - Coverage. Only documents created after the install have the
@@ -69,7 +69,7 @@ type captureSession struct {
 
 // Capture turns exception capture on for the Tab's life and installs the
 // listener in session if it is not there yet (or was not used for
-// logEnableAgain, as the extension's idle detach drops it). The scripts go
+// enableAgain, as the extension's idle detach drops it). The scripts go
 // out without waiting for their answers; the session's later commands come
 // after them. session "" (a Tab not attached) only turns capture on. It
 // says whether capture was off before.
@@ -92,7 +92,7 @@ func (l *TabLog) Capture(ctx context.Context, session string) bool {
 	}
 	cs := l.captures[session]
 	now := time.Now()
-	if cs != nil && now.Sub(cs.used) <= logEnableAgain {
+	if cs != nil && now.Sub(cs.used) <= enableAgain {
 		cs.used = now
 		l.mu.Unlock()
 		return first
