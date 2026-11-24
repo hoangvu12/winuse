@@ -70,8 +70,10 @@ type HeadlessActor interface {
 	// scroll percent back (headless-parity spec, "Element scroll").
 	ScrollElement(ctx context.Context, hwnd uint64, index int, dir uia.ScrollDirection, steps int) error
 	// ScrollElementIntoView scrolls the Element into view through its
-	// ScrollItem pattern and reads IsOffscreen back.
-	ScrollElementIntoView(ctx context.Context, hwnd uint64, index int) error
+	// ScrollItem pattern and reads it back by its bounds against the
+	// container that scrolls it, and IsOffscreen; already reports an
+	// Element that was in view before and did not move.
+	ScrollElementIntoView(ctx context.Context, hwnd uint64, index int) (already bool, err error)
 }
 
 var _ HeadlessActor = (*uia.Client)(nil)

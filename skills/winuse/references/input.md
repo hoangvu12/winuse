@@ -218,7 +218,9 @@ one item per step, and the next read lists the items it built. `ok`
 means it moved, even partly. "the Element did not scroll; it may already
 be at the end" means nothing moved; "the list is already at its end"
 means nothing was sent. `into-view` scrolls the Element itself into view
-and checks it is on screen. When nothing scrolls it Headless, nothing was
+and checks its bounds lie inside the visible part of the list or pane
+that scrolls it; "still outside" means it was delivered but the Element
+is not in view. When nothing scrolls it Headless, nothing was
 sent; use
 `winuse --headed scroll <window> <ref> <direction>`, which takes the
 foreground.

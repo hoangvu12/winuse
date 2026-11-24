@@ -172,5 +172,11 @@ func intoViewNote(index int, before, after page.Rect, ok bool) string {
 		moved(before.Left, after.Left) || moved(before.Top, after.Top) {
 		return ""
 	}
+	return alreadyInViewNote(index)
+}
+
+// alreadyInViewNote is into-view's note on an Element that was in view
+// before the scroll and did not move, Page or UIA (recap-trial 04).
+func alreadyInViewNote(index int) string {
 	return "element " + strconv.Itoa(index) + " was already in view; nothing scrolled"
 }

@@ -122,6 +122,22 @@ func (f *virtualList) built(id int) bool {
 	return b.Bottom > listView.Top-f.overscan && b.Top < listView.Bottom+f.overscan
 }
 
+// bringIntoView is the list's ScrollIntoView on item id: the least scroll
+// that shows it whole, or nothing when the list ignores the call.
+func (f *virtualList) bringIntoView(id int) {
+	if f.ignore {
+		return
+	}
+	y0, y1 := f.top(id), f.top(id)+f.heights[id]
+	switch {
+	case y1 > f.offset+f.viewH():
+		f.offset = y1 - f.viewH()
+	case y0 < f.offset:
+		f.offset = y0
+	}
+	f.offset = max(0, min(f.offset, f.total()-f.viewH()))
+}
+
 func (f *virtualList) scroller() itemScroller {
 	return itemScroller{
 		read: func() (rect, []rect, error) {
@@ -140,18 +156,7 @@ func (f *virtualList) scroller() itemScroller {
 			if f.calls == f.failAt {
 				return errIntoView
 			}
-			if f.ignore {
-				return nil
-			}
-			id := f.shown[i]
-			y0, y1 := f.top(id), f.top(id)+f.heights[id]
-			switch {
-			case y1 > f.offset+f.viewH():
-				f.offset = y1 - f.viewH()
-			case y0 < f.offset:
-				f.offset = y0
-			}
-			f.offset = max(0, min(f.offset, f.total()-f.viewH()))
+			f.bringIntoView(f.shown[i])
 			return nil
 		},
 		moved: func(i int, before rect) bool {

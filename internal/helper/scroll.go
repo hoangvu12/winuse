@@ -153,13 +153,22 @@ func scrollElement(ctx context.Context, s Services, args json.RawMessage, a prot
 		return scrollRefusal(err, w, index, run.target, plan)
 	}
 	if ha, ok := s.headless("scroll", args); ok {
+		// into-view on an Element already in view says so (recap-trial 04).
+		already, at := false, -1
 		run.act = func(ctx context.Context, w win.WindowInfo, index int) error {
 			if plan.intoView {
-				return ha.ScrollElementIntoView(ctx, w.ID, index)
+				var err error
+				already, err = ha.ScrollElementIntoView(ctx, w.ID, index)
+				at = index
+				return err
 			}
 			return ha.ScrollElement(ctx, w.ID, index, plan.dir, plan.steps)
 		}
-		return s.runHeadless(ctx, a.Window, ha, run)
+		out, rerr := s.runHeadless(ctx, a.Window, ha, run)
+		if rerr == nil && out == okOutput && already {
+			return okWith(alreadyInViewNote(at)), nil
+		}
+		return out, rerr
 	}
 	if !a.Headed {
 		// Unreachable on a real helper (its UIA client is a HeadlessActor):
@@ -179,8 +188,12 @@ func scrollElement(ctx context.Context, s Services, args json.RawMessage, a prot
 			if rerr != nil {
 				return "", rerr
 			}
-			if err := ha.ScrollElementIntoView(ctx, w.ID, index); err != nil {
+			already, err := ha.ScrollElementIntoView(ctx, w.ID, index)
+			if err != nil {
 				return "", headlessFailure(err, w, index, run)
+			}
+			if already {
+				return okWith(alreadyInViewNote(index)), nil
 			}
 			return okOutput, nil
 		})

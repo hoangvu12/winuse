@@ -134,8 +134,9 @@ func (e *PartialRefError) Error() string {
 // the tree prints — and otherwise exact, so a reference the agent copied
 // from the Window State resolves to the Element behind that line. Several
 // matches are an AmbiguousRefError with the candidate lines, except one
-// pair: a name: matching an Element an agent acts on and a non-interactive
-// Element inside it names that control (controlAndItsLabel). None is a
+// pair: a name: matching an Element an agent acts on (or a Page clickable)
+// and a non-interactive Element inside it names that control
+// (controlAndItsLabel). None is a
 // NoMatchRefError; a malformed reference is a BadRefError.
 //
 // elements must be one depth-first tree, as a read stores them; a list
@@ -202,10 +203,19 @@ func controlAndItsLabel(elements []Element, matches []int) (int, bool) {
 		return 0, false
 	}
 	control, label := matches[0], matches[1]
-	if !elements[control].ActedOn() || elements[label].ActedOn() {
+	if !namesAControl(elements[control]) || namesAControl(elements[label]) {
 		return 0, false
 	}
 	return control, descends(elements, control, label)
+}
+
+// namesAControl reports whether an Element counts as a control for
+// controlAndItsLabel: one an agent acts on (ActedOn), or a Page Element
+// marked clickable, a role-less element with a click handler (recap-trial
+// 03). The clickable counts here only: ActedOn, and so the --interactive
+// views, leave it out as before.
+func namesAControl(e Element) bool {
+	return e.ActedOn() || e.Role == "clickable"
 }
 
 // descends reports whether Element d lies inside Element a in a

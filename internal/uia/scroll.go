@@ -12,8 +12,9 @@ package uia
 // before and after: no change at all fails as delivered ("it may already be
 // at the end"), a partial move is ok. With no Scroll pattern on the axis up
 // the chain, a list whose items offer ScrollItem scrolls an item per step
-// (scrollitems.go). Into view is one ScrollIntoView, read back through the
-// Element's IsOffscreen property.
+// (scrollitems.go). Into view is one ScrollIntoView, read back by the
+// Element's bounds against its scrolling container and its IsOffscreen
+// property (intoview.go).
 //
 // The decisions (direction words, the steps bound, the amounts, the
 // percent verdict and the run over the steps) are pure functions tested
@@ -243,20 +244,16 @@ func (c *Client) ScrollElement(ctx context.Context, hwnd uint64, index int, dir 
 }
 
 // ScrollElementIntoView scrolls the Element behind index into view through
-// its ScrollItem pattern and reads IsOffscreen back.
-func (c *Client) ScrollElementIntoView(ctx context.Context, hwnd uint64, index int) error {
-	return c.onElement(ctx, hwnd, index, func(th *thread, el comPtr) error {
-		if err := scrollItemIntoView(el); err != nil {
-			return err
-		}
-		return pollVerify("scroll into-view", "on screen", func() (bool, string) {
-			v := currentProp(el, propIsOffscreen)
-			defer clearVariant(&v)
-			readable := v.has(vtBool)
-			offscreen := readable && v.boolean()
-			return intoViewDone(readable, offscreen), "offscreen"
-		})
+// its ScrollItem pattern and reads it back by its bounds against the
+// container that scrolls it, and IsOffscreen (intoview.go). already
+// reports an Element that was in view before and did not move.
+func (c *Client) ScrollElementIntoView(ctx context.Context, hwnd uint64, index int) (already bool, err error) {
+	err = c.onElement(ctx, hwnd, index, func(th *thread, el comPtr) error {
+		var aerr error
+		already, aerr = th.scrollIntoViewLive(hwnd, el)
+		return aerr
 	})
+	return already && err == nil, err
 }
 
 // scrollItemIntoView is the one ScrollItem.ScrollIntoView call, shared by
