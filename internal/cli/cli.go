@@ -91,6 +91,8 @@ func runCommand(args []string) (code int) {
 		return closeAppCmd(args[1:]) // closeapp.go, desktop-parity ticket 10
 	case "zoom":
 		return zoomCmd(args[1:], headed)
+	case "extract":
+		return extractCmd(args[1:]) // extract.go, bladebro ideas ticket 26
 	case "click":
 		return clickCmd(args[1:], headed)
 	case "type-text":
@@ -129,6 +131,8 @@ func runCommand(args []string) (code int) {
 		return tabCmd(args[1:], headed)
 	case "navigate", "back", "forward", "reload", "upload", "dialog", "wait", "eval":
 		return pageCmd(args[0], args[1:]) // page.go, browser merge ticket 06
+	case "read":
+		return readCmd(args[1:]) // read.go, bladebro-ideas ticket 25
 	case "list-displays":
 		return listDisplaysCmd(args[1:]) // display.go, desktop-parity ticket 08
 	case "screenshot":

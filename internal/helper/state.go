@@ -437,6 +437,7 @@ func CommandsWith(s Services) map[string]Command {
 	for name, cmd := range pageCommands(s) {
 		cmds[name] = cmd
 	}
+	cmds["read"] = pageRead(s) // read.go, bladebro-ideas ticket 25
 	// The clipboard's Desktop commands (clipboard.go, desktop parity
 	// ticket 01): serialized below like the Actions.
 	for name, cmd := range clipboardCommands(s) {
@@ -447,6 +448,7 @@ func CommandsWith(s Services) map[string]Command {
 	// Window screenshot, since it hides the indicator and the cursor.
 	cmds["list-displays"] = listDisplays(s)
 	cmds["screenshot"] = displayScreenshot(s)
+	cmds["extract"] = extractCommand(s) // extract.go: a Page's rows as JSON, reads only
 	// The notifications' Desktop commands (notifications.go, desktop parity
 	// ticket 18): list-notifications only reads; the two actions take the
 	// desktop lane below. open-shell (openshell.go) is Headed only.
@@ -513,6 +515,7 @@ func observationOnlyCommand(name string) bool {
 	case "list-windows", "get-window", "list-apps", "get-window-state", "find", "record-tree", "launch-app",
 		"tab-list",      // reads a browser Window's Tabs only (tabs.go)
 		"list-displays", // a Desktop command that only reads the monitors (display.go)
+		"extract",       // reads a Page's rows in an isolated world (extract.go)
 		StatusCommand:   // read-only probes (status.go): never waits behind an Action
 		return true
 	case "list-notifications": // a Desktop command that only reads the toast banners (notifications.go)

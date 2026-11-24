@@ -54,6 +54,11 @@ type winRig struct {
 	onPoll    func(n int)
 	calls     []string // what the commands sent, as "method params"
 	dialog    bool
+	// settle is what the Page's settle probe answers (page.Settle): how
+	// long its DOM and its finished requests have been quiet, in ms. Zero:
+	// quiet.
+	settleDOM, settleNet float64
+	settles              int
 }
 
 var (
@@ -167,6 +172,15 @@ func (r *winRig) handlers(s *cdptest.Server) {
 		case p.Expression == "location.href":
 			defer r.mu.Unlock()
 			return map[string]any{"result": map[string]any{"type": "string", "value": r.url}}, nil
+		case strings.Contains(p.Expression, "winuse:settle"):
+			defer r.mu.Unlock()
+			r.settles++
+			dom, net := r.settleDOM, r.settleNet
+			if dom == 0 && net == 0 {
+				dom, net = 5000, 5000
+			}
+			r.calls = append(r.calls, "settle "+string(m.Params))
+			return map[string]any{"result": map[string]any{"type": "object", "value": map[string]any{"dom": dom, "net": net, "loading": false}}}, nil
 		case strings.Contains(p.Expression, "winuse:wait-"):
 			r.polls++
 			n, ok, onPoll := r.polls, r.polls >= r.waitAfter, r.onPoll
@@ -180,6 +194,10 @@ func (r *winRig) handlers(s *cdptest.Server) {
 		r.mu.Unlock()
 		r.note("eval", m.Params)
 		return reply, nil
+	})
+	s.Handle("Page.createIsolatedWorld", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
+		r.note(m.Method, m.Params)
+		return map[string]any{"executionContextId": 77}, nil
 	})
 	s.Handle("Page.handleJavaScriptDialog", func(c *cdptest.Conn, m cdptest.Message) (any, error) {
 		r.note(m.Method, m.Params)
@@ -547,10 +565,95 @@ func TestWait(t *testing.T) {
 	if e == nil || e.Exit != protocol.ExitEsc || !strings.Contains(e.Hint, "nothing was sent") {
 		t.Errorf("Esc: %+v", e)
 	}
-	if _, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "idle"}); e == nil || !strings.Contains(e.Msg, "unknown wait") {
+	if _, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "networkidle"}); e == nil || !strings.Contains(e.Msg, "unknown wait") {
 		t.Errorf("bad kind: %+v", e)
 	}
 	r.passiveOnly(t)
+}
+
+// TestWaitIdle: wait idle settles the Page (page.Settle) and fails, saying
+// what kept changing, when it did not settle in time.
+func TestWaitIdle(t *testing.T) {
+	r := newWinRig(t)
+	if out, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "idle"}); e != nil || out != okOutput || r.settles == 0 {
+		t.Fatalf("idle: %q %+v after %d probes", out, e, r.settles)
+	}
+	r.mu.Lock()
+	r.settleDOM, r.settleNet = 1, 5000
+	r.mu.Unlock()
+	_, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "idle", TimeoutMS: 300})
+	if e == nil || !strings.HasPrefix(e.Msg, "waiting for the page to settle in window 301: it did not within ") || !strings.HasSuffix(e.Msg, ": its DOM kept changing") {
+		t.Errorf("busy: %+v", e)
+	}
+	if _, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "idle", Value: "x"}); e == nil || !strings.Contains(e.Msg, "takes no value") {
+		t.Errorf("a value: %+v", e)
+	}
+	r.passiveOnly(t)
+}
+
+// TestWaitJSAndGone: wait js polls the agent's predicate; --gone waits for
+// a selector or text to go, and goes with nothing else.
+func TestWaitJSAndGone(t *testing.T) {
+	r := newWinRig(t)
+	r.waitAfter = 2
+	if out, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "js", Value: "window.ready"}); e != nil || out != okOutput {
+		t.Fatalf("js: %q %+v", out, e)
+	}
+	r.mu.Lock()
+	r.polls = 0
+	r.mu.Unlock()
+	if out, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "selector", Value: ".spinner", Gone: true}); e != nil || out != okOutput {
+		t.Fatalf("gone: %q %+v", out, e)
+	}
+	r.waitAfter = 1 << 30
+	_, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "text", Value: "Loading", Gone: true, TimeoutMS: 200})
+	if e == nil || !strings.HasPrefix(e.Msg, `waiting for text "Loading" to be gone in window 301: the condition did not hold within `) {
+		t.Errorf("gone timeout: %+v", e)
+	}
+	if _, e := r.run(t, "wait", protocol.WaitArgs{Window: "301", For: "url", Value: "x", Gone: true}); e == nil || !strings.Contains(e.Msg, "--gone") {
+		t.Errorf("url --gone: %+v", e)
+	}
+}
+
+// TestObserveSettlesThePage: --observe on a browser Window settles its
+// Page before the read; a Page that does not settle in SettleBound is read
+// anyway, with a note.
+func TestObserveSettlesThePage(t *testing.T) {
+	r := newWinRig(t)
+	act := func(ctx context.Context, args json.RawMessage) (string, *Error) {
+		r.note("act", nil)
+		return okOutput, nil
+	}
+	run := func() string {
+		ctx, cancel := context.WithTimeout(context.Background(), protocol.RequestTimeout+protocol.ObserveTimeout)
+		defer cancel()
+		out, e := r.svc.observed("click", act)(withObserve(ctx, &protocol.Observe{Mode: protocol.ObserveFull}), json.RawMessage(`{"window":"301"}`))
+		if e != nil {
+			t.Fatalf("observe: %+v", e)
+		}
+		return out
+	}
+	out := run()
+	r.mu.Lock()
+	order := strings.Join(r.calls, "\n")
+	r.mu.Unlock()
+	if i, j := strings.Index(order, "act "), strings.Index(order, "settle "); i < 0 || j < i {
+		t.Fatalf("no settle after the Action: %s", order)
+	}
+	if strings.Contains(out, "had not settled") {
+		t.Errorf("a quiet Page got a note:\n%s", out)
+	}
+	r.mu.Lock()
+	r.settleDOM, r.settleNet = 1, 1
+	r.mu.Unlock()
+	start := time.Now()
+	out = run()
+	if took := time.Since(start); took < page.SettleBound {
+		t.Errorf("observed after %s, before the settle's bound", took)
+	}
+	if !strings.Contains(out, notePrefix+"the Page had not settled after ") || !strings.Contains(out, "(its DOM kept changing), so this read may miss what it does next") {
+		t.Errorf("no settle note:\n%s", out)
+	}
 }
 
 func TestEval(t *testing.T) {

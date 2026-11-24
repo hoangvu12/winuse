@@ -18,6 +18,7 @@ close-app <app> [--force]           # --force ends what is still running: the on
 get-window-state <window> [--screenshot] [--skeleton | --root <element>] [--depth N] [--interactive] [--compact] [--max-chars N | --out <file>] [--timeout <s>]
 find <window> [--role <r>] [--name <text>] [--text <text>] [--state <s>] [--first | --limit N | --count] [--max-chars N] [--timeout <s>]
 zoom <window> <x>,<y>,<w>,<h>
+extract <window> [--root <element>] [--as list|table|jsonld] [--limit N] [--max-chars N | --out <file>]   # a Page's list, table or JSON-LD as JSON rows
 click <window> <ref> [--count 1|2|3] [--button left|middle|right] [--post] [--modifiers ctrl,shift,alt]
 # --modifiers: Headless on a Page and for ctrl or shift on a multi-select list item; else --post or --headed
 set-value <window> <ref> <value|on|off|item name> | --stdin | --file <path>   # flags before <ref>: a value ending with winuse flags is refused; -- <value> sets it as written
@@ -38,11 +39,12 @@ move-window <window> <x> <y> | resize-window <window> <width> <height>
 maximize-window <window>            # needs --headed: takes the foreground
 batch <window>|- [--timeout <s>] [--stop-on-error] [in <window>|new] <action> [args] [then ...]
 navigate <window> <url> [--wait load|domcontentloaded|none] | back | forward | reload <window>
-wait <window> selector <css> | text <text> | url <url> | load | download [--timeout <s>]
+wait <window> selector <css> [--gone] | text <text> [--gone] | url <url> | load | idle | js <expr> | download [--timeout <s>]
 wait <window> <ref> enabled|disabled|gone|value <v>|checked|unchecked|expanded|collapsed [--timeout <s>]
 wait window <app|title> [--gone] [--timeout <s>] | wait <ms>
 eval <window> <expression> | --file <path|-> [--max <n>] | dialog <window> accept|dismiss [text]
 upload <window> [<element>] <file>...
+read <window> [--root <element>] [--urls full] [--max-chars N | --out <file>]   # a Page's main content as Markdown; Pages only
 tab list <window> | tab new <window> [url] | tab switch <window> <tab> | tab close <window> <tab>
 browser status | launch | connect | stop [browser]
 browser use [browser|auto]          # pin a browser (it persists); auto removes the pin
